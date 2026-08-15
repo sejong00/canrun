@@ -1,0 +1,24 @@
+# deps / build
+node_modules/
+.next/
+out/
+dist/
+coverage/
+.turbo/
+*.tsbuildinfo
+
+# env & secrets — 절대 커밋 금지 (CLAUDE.md 규칙 7)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# platform
+.wrangler/
+.vercel/
+.dev.vars
+
+# misc
+*.log
+.DS_Store
