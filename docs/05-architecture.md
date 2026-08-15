@@ -6,7 +6,7 @@
 
 | 레이어 | 선택 | 근거 / 대안 |
 |---|---|---|
-| 프레임워크 | **Next.js 15 (App Router) + `output:'export'` 정적 내보내기** + TypeScript strict | SSG 풀 HTML(네이버 Yeti·구글 렌더큐 리스크 제거). **주의: static export는 middleware·redirects·headers 미지원** → "en 루트 + `/ko/`" URL 구조는 P0-1 스파이크로 검증하고, 불가하면 폴백(전 로케일 프리픽스 `/en/`·`/ko/` + 루트 `_redirects` + x-default)을 결정·기록. 대안: Astro(더 가벼움)지만 계산기 인터랙션·팀 숙련도로 Next 우세 |
+| 프레임워크 | **Next.js 16 (App Router) + `output:'export'` 정적 내보내기** + TypeScript strict | SSG 풀 HTML(네이버 Yeti·구글 렌더큐 리스크 제거). **주의: static export는 middleware·redirects·headers 미지원** → "en 루트 + `/ko/`" URL 구조는 P0-1 스파이크로 검증 완료(아래 결정 기록). 대안: Astro(더 가벼움)지만 계산기 인터랙션·팀 숙련도로 Next 우세. (계획 시점 표기는 15였으나 P0-1 착수 시점(2026-08-15) 안정 버전이 16.3이라 16으로 시작 — 한 메이저 뒤에서 시작하지 않기 위함) |
 | i18n | next-intl (SSG 호환) + `[locale]` 세그먼트 | en 루트, `/ko/` — `04` §6 스펙 |
 | UI | Tailwind CSS 4 + shadcn/ui + 다크모드 | |
 | 엔진 | `packages/engine` 순수 TS + vitest | UI/빌드 공용. `02-engine-spec.md` |
@@ -16,6 +16,18 @@
 | og:image | 빌드 타임 satori→resvg (허브+상위 콤보만), 나머지 기본 카드 | P2: Workers 온디맨드 전환 |
 | 분석 | Cloudflare Web Analytics + GSC + 네이버 서치어드바이저 (+P2 Plausible 검토) | 쿠키리스, 동의 배너 최소화 |
 | 에러 | Sentry 무료 티어 (클라이언트만) | |
+
+### i18n 스파이크 결정 기록 (P0-1, 2026-08-15)
+
+**결정: A안 채택 — "en 루트 + `/ko/`" URL 구조를 static export에서 구현 가능함을 산출물로 확인했다.**
+
+- 문제: next-intl 공식 가이드는 static export에서 `localePrefix: 'always'`(전 로케일 프리픽스)를 권장한다 — 무프리픽스 URL은 middleware가 로케일을 해석해야 하는데 static export는 middleware 미지원([공식 문서](https://next-intl.dev/docs/routing/middleware), [maintainer 답변](https://github.com/amannn/next-intl/discussions/2132)).
+- 채택한 방법: `localePrefix: 'as-needed'`(링크·캐노니컬·hreflang은 en 무프리픽스로 생성, middleware 없음) + **빌드 후처리 `scripts/postbuild.ts`가 `out/en/**`을 `out/` 루트로 평탄화**(충돌 시 즉시 실패). 정적 파일 위치가 곧 URL이므로 미들웨어 없이 en=루트가 성립한다.
+- 주의점 1: next-intl의 `Link`에 `locale` prop을 주는 로케일 전환 링크는 항상 프리픽스를 붙인다(`/en` 잔존) → 전환 링크는 `getPathname({href, locale})` + `next/link`로 생성한다(`apps/web/i18n/navigation.ts` 주석).
+- 주의점 2: `trailingSlash: false`라 루트 URL은 `https://host`(슬래시 없음)로 정규화된다 — 캐노니컬·hreflang 전체가 동일 형태라 SEO 문제 없음.
+- 안전망: `out/_redirects`에 `/en /`·`/en/* /:splat` 301을 생성해 잔존 `/en` 링크·북마크를 정리한다.
+- 검증(회귀 테스트로 상시 강제): `pnpm test:export` → `test/export-invariants.spec.ts` — ①`out/index.html`=en·`out/ko.html`=ko 존재 ②`out/en/` 부재 ③en 페이지에 `/en` 프리픽스 링크 0건 ④캐노니컬 자기참조+hreflang en/ko/x-default 완전 대칭 ⑤`_redirects` 존재·2,000룰 이내.
+- 폴백(불필요해졌으나 기록): A안이 향후 Next/next-intl 변경으로 깨지면 `localePrefix: 'always'` + 루트 `_redirects`(`/ → /en` 302) + x-default=en으로 전환한다. 전환 비용은 postbuild 평탄화 제거 + 테스트 기대값 변경.
 
 ## 2. 저장소 구조 (모노레포, pnpm)
 ```

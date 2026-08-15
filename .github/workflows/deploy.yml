@@ -1,0 +1,47 @@
+# Cloudflare Pages 배포 (docs/05 §1·§8, HANDOFF.md §2-5)
+#
+# 시크릿 제로 원칙: 토큰은 GitHub Actions Secrets 에만 존재한다.
+#   - CLOUDFLARE_API_TOKEN  (권한: Cloudflare Pages — Edit 만, 최소 권한)
+#   - CLOUDFLARE_ACCOUNT_ID
+# 등록: GitHub → Settings → Secrets and variables → Actions. 파일 저장·echo 금지.
+# 사전 조건: Cloudflare 대시보드에서 Pages 프로젝트 `canrun` 생성 (Direct Upload).
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  workflow_call: # daily-rebuild 에서 재사용
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build (static export + postbuild)
+        run: pnpm build
+
+      - name: Deploy to Cloudflare Pages
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: pnpm dlx wrangler@4 pages deploy apps/web/out --project-name=canrun

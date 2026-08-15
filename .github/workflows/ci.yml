@@ -1,0 +1,60 @@
+# CI 게이트 (docs/05 §6·§8): typecheck → lint → test → 데이터 검증 → build → 산출물 불변식,
+# 병렬로 gitleaks 시크릿 스캔. Playwright/Lighthouse 는 페이지 템플릿이 생기는 P1-1 에서 추가.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        # 버전은 package.json 의 packageManager 필드에서 읽는다
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: Validate data (zod gate)
+        run: pnpm validate-data
+
+      - name: Build (static export + postbuild)
+        run: pnpm build
+
+      - name: Export invariants (i18n spike — en root + /ko/)
+        run: pnpm test:export
+
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 전체 히스토리 스캔 (docs/05 §8)
+
+      # 액션 대신 공식 이미지 직접 실행 — org 라이선스 키 요구를 피하고 버전을 고정한다.
+      - name: Scan for secrets
+        run: |
+          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.24.3 \
+            detect --source /repo --config /repo/.gitleaks.toml \
+            --log-opts="--all" --redact --verbose

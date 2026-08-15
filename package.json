@@ -1,0 +1,28 @@
+{
+  "name": "canrun",
+  "version": "0.0.0",
+  "private": true,
+  "description": "CanRun — LLM hardware calculator + programmatic SEO site (en + /ko/)",
+  "packageManager": "pnpm@11.21.0",
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm --filter @canrun/web dev",
+    "build": "pnpm --filter @canrun/web build && pnpm run postbuild",
+    "postbuild": "tsx scripts/postbuild.ts",
+    "start": "pnpm dlx serve apps/web/out",
+    "typecheck": "tsc --noEmit && pnpm -r --no-bail typecheck",
+    "lint": "pnpm --filter @canrun/web lint",
+    "test": "vitest run",
+    "test:export": "vitest run --config vitest.export.config.ts",
+    "validate-data": "tsx scripts/validate-data.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "tsx": "^4.23.12",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10"
+  }
+}

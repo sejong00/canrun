@@ -1,0 +1,16 @@
+{
+  "name": "@canrun/engine",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Pure calculation engine — zero runtime dependencies (CLAUDE.md rule 6)",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {}
+}

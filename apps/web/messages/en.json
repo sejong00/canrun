@@ -1,0 +1,26 @@
+{
+  "Site": {
+    "name": "CanRun",
+    "tagline": "Can my PC run this LLM?"
+  },
+  "Home": {
+    "metaTitle": "CanRun — Can my PC run this LLM?",
+    "metaDescription": "Enter your GPU and RAM to see which open LLMs you can run, at which quantization, and how many tokens per second to expect.",
+    "heading": "Can my PC run this LLM?",
+    "intro": "Pick your GPU and RAM, and get the models you can actually run — with quantization, memory breakdown, and an estimated tokens-per-second band.",
+    "status": "Phase 0 scaffold — the calculator lands in P1-3.",
+    "cta": "Read the methodology",
+    "estimateNotice": "Every number on this site ships with an error band and a confidence label: measured, calibrated (±15%), or theoretical (±30%)."
+  },
+  "LocaleSwitcher": {
+    "label": "Language",
+    "en": "English",
+    "ko": "한국어"
+  },
+  "NotFound": {
+    "metaTitle": "Page not found — CanRun",
+    "heading": "Page not found",
+    "body": "That page does not exist. Try starting from the home page.",
+    "cta": "Go to home"
+  }
+}

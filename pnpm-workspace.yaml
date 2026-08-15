@@ -1,0 +1,11 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+
+# 빌드 스크립트 실행 허용 목록 (pnpm 기본은 차단 — 공급망 방어, docs/05 §8)
+# 필요한 것만 명시적으로 true. 나머지는 차단 상태를 유지한다.
+allowBuilds:
+  '@parcel/watcher': false
+  '@swc/core': false
+  esbuild: true
+  unrs-resolver: false

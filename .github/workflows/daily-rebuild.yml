@@ -1,0 +1,14 @@
+# 일 1회 스케줄 리빌드 (docs/05 §1) — 데이터·가격 갱신 반영. ISR 대체.
+name: Daily rebuild
+
+on:
+  schedule:
+    - cron: '0 18 * * *' # 18:00 UTC = 03:00 KST
+
+permissions:
+  contents: read
+
+jobs:
+  rebuild:
+    uses: ./.github/workflows/deploy.yml
+    secrets: inherit

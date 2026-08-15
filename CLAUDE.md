@@ -20,7 +20,7 @@ pnpm run sync-models -- --dry # HF 데이터 동기화 드라이런
 7. **시크릿 제로**: 정적 export 산출물은 전부 공개다. 키·토큰을 저장소/데이터/코드/빌드 출력 어디에도 넣지 않는다 — 배포·API 토큰은 GitHub Actions Secrets, P2 서버 시크릿은 `wrangler secret`만. `.env*`는 gitignore 유지, 커밋 전 gitleaks 통과. 공개 성격 값(AdSense pub ID·어필리에이트 태그·Sentry DSN)만 클라이언트 포함 허용. 상세: `docs/05` §8.
 
 ## 구조 (상세: docs/05)
-`packages/engine`(계산) · `packages/data`(스키마) · `data/*.json`(시드) · `apps/web`(Next.js 15 static export) · `scripts/`(동기화·파서) 
+`packages/engine`(계산) · `packages/data`(스키마) · `data/*.json`(시드) · `apps/web`(Next.js 16 static export — 버전 결정 기록: docs/05 §1) · `scripts/`(동기화·파서) 
 
 ## 작업 순서
 `docs/06-roadmap-tasks.md`의 태스크 단위로. 각 태스크의 AC 전부 충족 후 다음으로. 현재 Phase는 저장소 이슈/보드 참조.
