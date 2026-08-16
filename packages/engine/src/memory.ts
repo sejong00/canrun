@@ -5,19 +5,29 @@ import {
   COMPUTE_BUFFER_PER_32K_CTX_GB,
   CPU_OS_RESERVE_GB,
   KV_BYTES_PER_EL,
+  NATIVE_QUANTS,
   OS_RESERVE_GB,
   QUANT_BPW,
   UNIFIED_USABLE_FRACTION,
 } from './constants';
 import type { Hardware, KvQuant, ModelQuant, QuantId } from './types';
 
-/** 가중치 크기 GB — 1순위 fileGB(실제 GGUF), 2순위 paramsB × bpw / 8 (§2.1). */
+/**
+ * 가중치 크기 GB — 1순위 fileGB(실제 GGUF), 2순위 paramsB × bpw / 8 (§2.1).
+ * 네이티브 quant(MXFP4 등)는 bpw 환산 금지 — fileGB 없으면 명시적 실패 (외부 리뷰 반영).
+ */
 export function weightsGB(mq: Pick<ModelQuant, 'paramsB' | 'quant' | 'fileGB'>): number {
-  return mq.fileGB ?? weightsGBFromBpw(mq.paramsB, mq.quant);
+  if (mq.fileGB !== undefined) return mq.fileGB;
+  return weightsGBFromBpw(mq.paramsB, mq.quant);
 }
 
-/** bpw 폴백만으로 가중치 GB (bestQuant 탐색 등 fileGB 가 없는 quant 용). */
+/** bpw 폴백만으로 가중치 GB (bestQuant 탐색 등 fileGB 가 없는 quant 용). 네이티브 quant 거부. */
 export function weightsGBFromBpw(paramsB: number, quant: QuantId): number {
+  if (NATIVE_QUANTS.includes(quant)) {
+    throw new Error(
+      `${quant} is a native quantization — bpw conversion is forbidden, actual fileGB is required (docs/02 §2.1)`,
+    );
+  }
   return (paramsB * QUANT_BPW[quant]) / 8;
 }
 

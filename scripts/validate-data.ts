@@ -23,8 +23,36 @@ const dataDir = join(repoRoot, 'data');
 
 const readJson = (file: string): unknown => JSON.parse(readFileSync(join(dataDir, file), 'utf8'));
 
+/**
+ * 필수 데이터셋 — 이 파일들이 없으면 빌드가 성립하지 않는다 (외부 리뷰 반영).
+ * 레지스트리→파일 역검사와 함께 "파일이 조용히 사라지는" 회귀를 차단한다.
+ */
+const REQUIRED_DATASETS = [
+  'gpus.json',
+  'models.json',
+  'model-quants.json',
+  'quants.json',
+  'benchmarks.json',
+  'aliases.json',
+] as const;
+
 const files = readdirSync(dataDir).filter((name) => name.endsWith('.json'));
 const failures: string[] = [];
+
+// --- 0) 역검사: 레지스트리·필수 목록의 파일이 실제로 존재하는가 -----------------
+for (const file of Object.keys(schemaRegistry)) {
+  if (!files.includes(file)) {
+    failures.push(`registry: data/${file} is registered but missing on disk`);
+  }
+}
+for (const file of REQUIRED_DATASETS) {
+  if (!files.includes(file)) {
+    failures.push(`required: data/${file} is a required dataset but missing`);
+  }
+  if (!(file in schemaRegistry)) {
+    failures.push(`required: data/${file} must have a schema in the registry`);
+  }
+}
 
 // --- 1) 파일 단위 zod ---------------------------------------------------------
 for (const file of files) {

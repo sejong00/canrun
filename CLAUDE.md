@@ -11,7 +11,7 @@ pnpm run sync-models -- --dry # HF 데이터 동기화 드라이런
 ```
 
 ## 절대 규칙
-1. **엔진 상수는 출처 없이 변경 금지.** `packages/engine/src/constants.ts`의 모든 값에 `// source: URL` 주석. 변경 시 `verify_engine` 회귀 통과 필수. 테스트 기대값이 곧 스펙(`docs/02-engine-spec.md` §7~8).
+1. **엔진 상수는 출처 없이 변경 금지.** `packages/engine/src/constants.ts`의 모든 값에 `// source:` 주석 — 실측 유래 상수는 **https URL 필수**, 실측이 아닌 설계 결정(정책 임계값)만 `// source: docs/02 §N (policy)` 형식 허용. 테스트가 강제함. 변경 시 `verify-engine` 회귀 통과 필수. 테스트 기대값이 곧 스펙(`docs/02-engine-spec.md` §7~8).
 2. **데이터 레코드는 `sources[]` 필수.** zod가 강제함. 실거래가는 `priceAsOf` 없이 표시 금지. 미출시 하드웨어(RTX 50 Super, B770 등 rumor) 등록 금지.
 3. **추정치는 항상 밴드+신뢰 라벨** (`measured` / `calibrated` — NVIDIA·AMD dGPU dense ±12%, 그 외 클래스·MoE·부분 오프로드 ±20% (`docs/02` §4) / `theoretical ±30%`). 단정 표현 금지.
 4. **i18n**: 사용자 노출 문자열은 전부 `messages/{en,ko}.json`. 하드코딩 금지. 페이지 추가 시 en/ko 동시 + hreflang 대칭(템플릿이 자동 생성 — 수기 태그 금지). 장문 기계번역 게시 금지(`docs/04` §6).

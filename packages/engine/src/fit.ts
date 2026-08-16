@@ -90,16 +90,18 @@ function fitOnce(hw: Hardware, mq: ModelQuant, weights: number, opts?: FitOption
     }
   }
 
-  // 3. partial-offload (dense, dgpu): GPU 풀 + RAM 에 나눠 탑재, gpuFrac = usableVram/need
+  // 3. partial-offload (dense, dgpu): kv+buffer 는 GPU 상주, 가중치만 분할.
+  //    CPU측 가중치 = weights − max(0, usableVram − kv − buffer) — 외부 리뷰 반영(2026-08):
+  //    기존 need 비례식은 kv/buffer 까지 오프로드된다고 가정해 CPU측 부담을 과소평가했다.
   if (hw.kind === 'dgpu' && !isMoe(mq) && pool > 0) {
-    const gpuFrac = Math.min(1, pool / need);
-    const cpuWeights = weights * (1 - gpuFrac);
-    if (cpuWeights <= usableRam) {
+    const gpuWeights = Math.max(0, Math.min(weights, pool - kv - buffer));
+    const cpuWeights = weights - gpuWeights;
+    if (gpuWeights > 0 && cpuWeights <= usableRam) {
       return {
         fits: true,
         mode: 'partial-offload',
-        gpuFrac,
-        vram: breakdown(Math.max(0, pool - kv - buffer), kv, buffer, osReserve, limit),
+        gpuFrac: gpuWeights / weights,
+        vram: breakdown(gpuWeights, kv, buffer, osReserve, limit),
       };
     }
   }

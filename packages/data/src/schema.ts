@@ -170,11 +170,24 @@ export const BenchPointSchema = z
     }
   });
 
+// _redirects 는 공백 구분 포맷 — 공백·?·#·제어문자 인젝션 방어 (scripts/build-redirects.ts 와 동일 규칙)
+const redirectPath = z
+  .string()
+  .regex(/^\/[^\s?#]*$/)
+  .refine((path) => {
+    // C0 제어문자·DEL 거부 — scripts/build-redirects.ts 의 hasControlChars 와 동일 규칙
+    for (let i = 0; i < path.length; i += 1) {
+      const code = path.charCodeAt(i);
+      if (code < 0x20 || code === 0x7f) return false;
+    }
+    return true;
+  }, 'control characters are not allowed');
+
 export const AliasSchema = z.object({
   /** 요청이 들어오는 alias 경로 */
-  from: z.string().regex(/^\//),
+  from: redirectPath,
   /** canonical 경로 (301 대상) */
-  to: z.string().regex(/^\//),
+  to: redirectPath,
 });
 
 export type Gpu = z.infer<typeof GpuSchema>;

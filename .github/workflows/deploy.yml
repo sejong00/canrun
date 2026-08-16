@@ -11,7 +11,12 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
-  workflow_call: # daily-rebuild 에서 재사용
+  workflow_call: # daily-rebuild 에서 재사용 — 필요한 시크릿만 명시 선언 (최소 전달)
+    secrets:
+      CLOUDFLARE_API_TOKEN:
+        required: true
+      CLOUDFLARE_ACCOUNT_ID:
+        required: true
 
 permissions:
   contents: read

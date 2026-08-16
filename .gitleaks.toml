@@ -1,20 +1,19 @@
 # gitleaks 설정 (docs/05 §8, CLAUDE.md 규칙 7)
-# 기본 룰셋을 확장한다. allowlist 는 문서·리서치의 예시 문자열 오탐 방지용 —
-# 실제 시크릿은 애초에 저장소에 존재할 수 없는 구조가 1차 방어선이다.
+# 기본 룰셋 사용. 외부 리뷰 반영: 디렉터리 전체 allowlist(docs/·research/·MASTER_PLAN)를
+# 제거 — 문서 폴더도 전량 스캔한다. 오탐이 생기면 파일 전체가 아니라 해당 룰의
+# regexTarget/정규식 단위로만 좁혀 추가한다 (2026-08-16 전체 히스토리 스캔 0건 확인).
 
 [extend]
 useDefault = true
 
 [allowlist]
-description = "Planning docs and research notes may quote example tokens/URLs"
+description = "Build outputs and lockfile only — never source or docs directories"
 paths = [
-  '''docs/.*\.md''',
-  '''research/.*\.md''',
-  '''MASTER_PLAN\.md''',
-  '''pnpm-lock\.yaml''',
   # 빌드 산출물·캐시 (gitignore 대상 — --no-git 로컬 스캔 오탐 방지.
   # Next 가 캐시에 넣는 난수 키는 시크릿이 아니며 커밋되지 않는다)
   '''(^|/)\.next/''',
   '''(^|/)out/''',
   '''(^|/)node_modules/''',
+  # pnpm lockfile 의 integrity 해시는 generic-api-key 오탐원
+  '''(^|/)pnpm-lock\.yaml$''',
 ]

@@ -46,15 +46,17 @@ describe('1) weights: paramsB × bpw / 8 vs actual GGUF size (11 cases)', () => 
 });
 
 describe('2) KV cache: 2·layers·kvHeads·headDim·2B vs known KiB/tok (7 cases)', () => {
+  // 정확값 일치 (외부 리뷰 반영 — 근사 허용 오차 제거, 공식이므로 toBe)
   it.each(KV_CASES.map((c) => [c.name, c] as const))('%s exact match', (_name, c) => {
-    const kib = kvBytesPerToken({ layers: c.layers, kvHeads: c.kvHeads, headDim: c.headDim }) / 1024;
-    expect(Math.abs(kib - c.expectKiB)).toBeLessThan(0.5);
+    expect(kvBytesPerToken({ layers: c.layers, kvHeads: c.kvHeads, headDim: c.headDim })).toBe(
+      c.expectKiB * 1024,
+    );
   });
 
-  it('Llama-3.1-8B @16k ctx: f16 = 2.15GB, q8_0 ≈ ×0.535', () => {
+  it('Llama-3.1-8B @16k ctx: f16 exactly 2^31 bytes = 2.147483648 GB, q8_0 = ×0.535', () => {
     const f16 = kvGB(128 * 1024, 16384, 'f16');
-    expect(f16).toBeCloseTo(2.15, 2);
-    expect(kvGB(128 * 1024, 16384, 'q8_0')).toBeCloseTo(f16 * 0.535, 2);
+    expect(f16).toBe((128 * 1024 * 16384) / 1e9); // 2.147483648
+    expect(kvGB(128 * 1024, 16384, 'q8_0')).toBeCloseTo(f16 * 0.535, 9);
   });
 });
 

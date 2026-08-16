@@ -11,4 +11,7 @@ permissions:
 jobs:
   rebuild:
     uses: ./.github/workflows/deploy.yml
-    secrets: inherit
+    # 외부 리뷰 반영: inherit 대신 필요한 2개만 명시 전달 (시크릿 표면 최소화)
+    secrets:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

@@ -28,8 +28,15 @@ export const QUANT_BPW: Readonly<Record<QuantId, number>> = Object.freeze({
   F16: 16.0005,
 });
 
+/**
+ * 네이티브 양자화 — flat bpw 에서 이탈하므로 bpw 환산 금지, 실제 fileGB 필수 (§2.1 주의).
+ * weightsGB()/weightsGBFromBpw() 가 명시적으로 실패시킨다.
+ */
+// source: docs/02 §2.1 (policy)
+export const NATIVE_QUANTS: readonly QuantId[] = Object.freeze(['MXFP4']);
+
 /** bestQuant 탐색 사다리 — bpw 오름차순, IQ2_M 이 바닥 (§2.4-5). MXFP4/F16 은 네이티브라 제외. */
-// source: docs/02-engine-spec.md §2.1 표 순서 (bpw 값은 QUANT_BPW 와 동일 출처)
+// source: docs/02 §2.1 (policy)
 export const QUANT_LADDER: readonly QuantId[] = Object.freeze([
   'IQ2_M',
   'Q2_K',
@@ -53,14 +60,14 @@ export const KV_BYTES_PER_EL: Readonly<Record<KvQuant, number>> = Object.freeze(
   q4_0: 0.57,
 });
 
-/** llama.cpp 그래프·스크래치 근사: 0.5GB + 0.3GB × (ctx/32k) (§2.3) */
-// source: docs/02-engine-spec.md §2.3 (llama.cpp compute buffer 로그 관찰 근사, 2026-08-09 검증 세트)
+/** llama.cpp 그래프·스크래치 근사: 0.5GB + 0.3GB × (ctx/32k) (§2.3, compute buffer 로그 관찰 근사) */
+// source: docs/02 §2.3 (policy)
 export const COMPUTE_BUFFER_BASE_GB = 0.5;
-// source: docs/02-engine-spec.md §2.3 (위와 동일 근사식의 ctx 비례항)
+// source: docs/02 §2.3 (policy)
 export const COMPUTE_BUFFER_PER_32K_CTX_GB = 0.3;
 
 /** OS 예약 (디스플레이 출력 GPU만, §2.3). macOS 는 unified 규칙에 흡수. */
-// source: docs/02-engine-spec.md §2.3 (Windows DWM/컴포지터 상주 실측 관행, headless 0)
+// source: docs/02 §2.3 (policy)
 export const OS_RESERVE_GB = Object.freeze({
   windowsDisplay: 0.6,
   linuxDisplay: 0.3,
@@ -71,15 +78,15 @@ export const OS_RESERVE_GB = Object.freeze({
 // source: https://github.com/ggml-org/llama.cpp/discussions/2182 (macOS recommendedMaxWorkingSetSize ≈ 램의 ~70%)
 export const UNIFIED_USABLE_FRACTION = 0.7;
 
-/** cpu-only 모드에서 OS 몫 차감 (§2.3) */
-// source: docs/02-engine-spec.md §2.3 (usable(cpu) = ram − 4GB)
+/** cpu-only 모드에서 OS 몫 차감 (§2.3, usable(cpu) = ram − 4GB) */
+// source: docs/02 §2.3 (policy)
 export const CPU_OS_RESERVE_GB = 4;
 
 /**
  * 클래스별 효율 계수 (tg = eff × BW / bytesPerToken).
  * moe 미검증 클래스(intel-arc)는 undefined → dense 값 사용 + theoretical 처리.
  */
-// source: docs/02-engine-spec.md §3.2 — 실측 70여 점 도출 (llama.cpp 공식 스레드 https://github.com/ggml-org/llama.cpp/discussions/15396 외, LocalScore, hardware-corner.net)
+// source: https://github.com/ggml-org/llama.cpp/discussions/15013 · https://github.com/ggml-org/llama.cpp/discussions/15396 · https://www.localscore.ai · https://www.hardware-corner.net/gpu-ranking-local-llm/ — 실측 70여 점 도출 (docs/02 §3.2, research/hardware.md §6)
 export const EFF: Readonly<Record<EffClass, { dense: number; moe?: number }>> = Object.freeze({
   nvidia: { dense: 0.7, moe: 0.45 }, // 0.62~0.80, 대역폭 클수록↓ (5090은 0.62, 3060은 0.80 → effOverride)
   amd: { dense: 0.78, moe: 0.5 },
@@ -91,8 +98,8 @@ export const EFF: Readonly<Record<EffClass, { dense: number; moe?: number }>> = 
   cpu: { dense: 0.5, moe: 0.43 }, // ≥8코어 전제, 코어 부족 시 ×0.7 은 UI 안내
 });
 
-/** pp ≈ ppCoef × fp16Tflops (±40% "대략" 표기 전용, §3.5) */
-// source: docs/02-engine-spec.md §3.5 (NVIDIA 140/TFLOP, Apple 45, AMD/Intel 30~40 — 7900 XTX Vulkan 실측 근거)
+/** pp ≈ ppCoef × fp16Tflops (±40% "대략" 표기 전용, §3.5 — NVIDIA 140/TFLOP, Apple 45, AMD/Intel 30~40) */
+// source: https://github.com/ggml-org/llama.cpp/discussions/15013 (CUDA pp512) · https://github.com/ggml-org/llama.cpp/discussions/10879 (7900 XTX Vulkan)
 export const PP_COEF: Readonly<Partial<Record<EffClass, number>>> = Object.freeze({
   nvidia: 140,
   apple: 45,
@@ -102,12 +109,12 @@ export const PP_COEF: Readonly<Partial<Record<EffClass, number>>> = Object.freez
   strix: 35,
 });
 
-/** 고속 소형 MoE 대역폭 모델 상한 이탈 캡 (§9: 5090에서 30B-A3B 오버헤드 지배) */
-// source: docs/02-engine-spec.md §9 (RTX 5090 Qwen3-30B-A3B 실측 141.6 tok/s, 모델 상한 235 캡)
+/** 고속 소형 MoE 대역폭 모델 상한 이탈 캡 (§9: 5090에서 30B-A3B 오버헤드 지배, 실측 141.6 tok/s) */
+// source: https://www.hardware-corner.net/gpu-ranking-local-llm/ (RTX 5090 Qwen3-30B-A3B) — 캡 값 자체는 docs/02 §9 (policy)
 export const MOE_TG_CAP_TOKS = 235;
 
-/** 판정 임계 (ctx 8k, Q4_K_M 기준, §5). 리즈닝 모델은 ×1.5. */
-// source: docs/02-engine-spec.md §5 (20 tok/s ≈ 읽는 속도 상회, 8 ≈ 인내 가능, 2 미만 실사용 불가)
+/** 판정 임계 (ctx 8k, Q4_K_M 기준, §5 — 20 ≈ 읽는 속도 상회, 8 ≈ 인내 가능, 2 미만 실사용 불가). */
+// source: docs/02 §5 (policy)
 export const VERDICT_THRESHOLDS = Object.freeze({
   sMinTg: 20,
   aMinTg: 8,
@@ -115,8 +122,8 @@ export const VERDICT_THRESHOLDS = Object.freeze({
   reasoningMultiplier: 1.5,
 });
 
-/** dense 부분 오프로드에서 gpuFrac < 0.9 → B등급 상한 (§3.4 절벽 경고) */
-// source: docs/02-engine-spec.md §3.4 (gpt-oss-120b 5090 naive 3.4 vs cpu-moe 9.6 tok/s 실측)
+/** dense 부분 오프로드에서 gpuFrac < 0.9 → B등급 상한 (§3.4 절벽 — gpt-oss-120b 5090 naive 3.4 vs cpu-moe 9.6) */
+// source: https://www.hardware-corner.net/gpt-oss-offloading-moe-layers/ (절벽 실측) — 임계 0.9 는 docs/02 §3.4 (policy)
 export const PARTIAL_OFFLOAD_B_CAP_GPU_FRAC = 0.9;
 
 /**
@@ -124,7 +131,7 @@ export const PARTIAL_OFFLOAD_B_CAP_GPU_FRAC = 0.9;
  * NVIDIA·AMD dGPU dense ±12% / 그 외 클래스·모든 MoE·부분 오프로드 ±20%.
  * 검증 최대 오차 17.1%(M4 Pro)를 상회하도록 설정 — 밴드가 검증값보다 좁으면 안 됨.
  */
-// source: docs/02-engine-spec.md §4·§7 (속도 12점 MAE 6.3% / max 17.1%, verify-regression.test.ts)
+// source: docs/02 §4 (policy) — 검증 근거는 §7 (속도 12점 MAE 6.3% / max 17.1%, verify-regression.test.ts)
 export const BANDS = Object.freeze({
   calibratedDgpuDense: 0.12,
   calibratedOther: 0.2,

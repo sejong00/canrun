@@ -48,6 +48,21 @@ describe('§2.4 mode ordering', () => {
     expect(r.mode).toBe('partial-offload');
     expect(r.gpuFrac).toBeGreaterThan(0);
     expect(r.gpuFrac).toBeLessThan(1);
+    // gpuFrac = GPU 상주 가중치 / 전체 가중치 — kv+buffer 는 GPU 몫에서 선차감
+    const gpuWeights = 7.4 - r.vram.kv - r.vram.buffer;
+    expect(r.gpuFrac).toBeCloseTo(gpuWeights / 9.0, 6);
+    expect(r.vram.weights).toBeCloseTo(gpuWeights, 6);
+  });
+
+  it('3-회귀(외부 리뷰): Qwen3-14B Q4 · 8GB GPU · RAM 7GB → 탑재 불가', () => {
+    // usableRam 3GB. 구식(need 비례): cpu측 9.0×(1−7.4/10.885)=2.88 ≤ 3 → 오탑재 판정.
+    // 정정식: cpu측 = 9.0 − (7.4−1.31−0.575) = 3.49 > 3 → 불가가 정답.
+    const lowRam: Hardware = { ...RTX_4060_8GB, ramGB: 7 };
+    const r = fit(lowRam, QWEN3_14B_Q4);
+    expect(r.fits).toBe(false);
+    expect(r.mode).not.toBe('partial-offload');
+    // 더 낮은 quant 는 가능해야 함 (IQ4_XS 8.25GB → cpu측 2.73 ≤ 3)
+    expect(r.bestQuant).toBe('IQ4_XS');
   });
 
   it('4. dgpu falls through to cpu-only when MoE cannot fit VRAM but RAM holds all', () => {

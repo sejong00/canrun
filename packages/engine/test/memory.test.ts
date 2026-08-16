@@ -22,6 +22,13 @@ describe('weightsGB (§2.1)', () => {
     expect(weightsGB({ paramsB: 8.03, quant: 'Q4_K_M' })).toBeCloseTo(4.91, 1);
     expect(weightsGBFromBpw(8.03, 'Q4_K_M')).toBeCloseTo((8.03 * 4.8944) / 8, 6);
   });
+
+  it('refuses bpw conversion for native quants — fileGB required (§2.1, 리뷰 반영)', () => {
+    expect(() => weightsGB({ paramsB: 20.9, quant: 'MXFP4' })).toThrow(/fileGB/);
+    expect(() => weightsGBFromBpw(20.9, 'MXFP4')).toThrow(/native/);
+    // fileGB 가 있으면 정상 (환산 없이 실측값 그대로)
+    expect(weightsGB({ paramsB: 20.9, quant: 'MXFP4', fileGB: 12.11 })).toBe(12.11);
+  });
 });
 
 describe('kvBytesPerToken (§2.2)', () => {
