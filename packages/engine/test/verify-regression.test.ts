@@ -31,7 +31,7 @@ describe('1) weights: paramsB × bpw / 8 vs actual GGUF size (11 cases)', () => 
     return Math.abs(pred - actualGB) / actualGB;
   });
 
-  it.each(WEIGHTS_CASES.map((c, i) => [c.name, c.quant, c] as const))(
+  it.each(WEIGHTS_CASES.map((c) => [c.name, c.quant, c] as const))(
     '%s %s within ±1.6%%',
     (_name, _quant, c) => {
       const pred = weightsGBFromBpw(c.paramsB, c.quant);

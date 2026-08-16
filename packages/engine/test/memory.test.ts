@@ -66,6 +66,8 @@ describe('osReserveGB (§2.3)', () => {
 
   it('macOS unified is absorbed into the ×0.70 rule → 0', () => {
     expect(osReserveGB({ kind: 'unified', os: 'macos', isDisplayGpu: true })).toBe(0);
+    // macOS dgpu(eGPU 엣지)도 흡수 규칙 — 별도 예약 없음
+    expect(osReserveGB({ kind: 'dgpu', os: 'macos', isDisplayGpu: true })).toBe(0);
   });
 });
 

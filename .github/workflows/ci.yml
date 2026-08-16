@@ -33,8 +33,8 @@ jobs:
       - name: Lint
         run: pnpm lint
 
-      - name: Unit tests
-        run: pnpm test
+      - name: Unit tests + engine coverage gate (90%+)
+        run: pnpm test:coverage
 
       - name: Validate data (zod gate)
         run: pnpm validate-data

@@ -65,6 +65,28 @@ describe('tgEstimate (§3.1~3.4)', () => {
     expect(partial).toBeLessThan(full);
   });
 
+  it('cpu-only MoE uses cpu MoE eff (0.43)', () => {
+    const cpuHw: Hardware = {
+      kind: 'cpu',
+      os: 'linux',
+      memBandwidthGBs: 89.6,
+      ramGB: 64,
+      ramBandwidthGBs: 89.6,
+      effClass: 'cpu',
+    };
+    const bytes = 12.11 * (3.6 / 20.9) + (24 * 1024 * 2048) / 1e9;
+    expect(tgEstimate(cpuHw, GPT_OSS_20B, { mode: 'cpu-only' }, { ctx: 2048 })).toBeCloseTo(
+      (0.43 * 89.6) / bytes,
+      1,
+    );
+  });
+
+  it('partial-offload without gpuFrac degrades to cpu speed (defensive default 0)', () => {
+    const opts = { ctx: 8192 } as const;
+    const cpu = tgEstimate(RTX_3060_12GB, QWEN3_8B_Q4, { mode: 'cpu-only' }, opts);
+    expect(tgEstimate(RTX_3060_12GB, QWEN3_8B_Q4, { mode: 'partial-offload' }, opts)).toBeCloseTo(cpu, 6);
+  });
+
   it('cpu-only uses RAM bandwidth with cpu dense eff', () => {
     const cpuHw: Hardware = {
       kind: 'cpu',

@@ -139,7 +139,9 @@ F: tg < 2 || 모든 quant 미탑재
 ## 6. 멀티 GPU (P1은 베타 표기)
 VRAM 합산 − GPU당 buffer 중복. tg ≈ 단일 카드 계수 × 0.68 (2×3090 NVLink 70B 실측 14~16 tok/s 근거). 이종 조합은 P2에서.
 
-## 7. 검증 결과 (2026-08-09, `verify_engine.py` — 저장소에 포함시켜 CI 회귀 테스트화)
+## 7. 검증 결과 (2026-08-09 — CI 회귀 테스트로 이식 완료)
+
+> **이식 기록 (P0-2, 2026-08-16)**: 원본 `verify_engine.py` 는 `packages/engine/test/verify-regression.test.ts` 로 assertion 이식 후 삭제(git 히스토리에 보존). `pnpm run verify-engine` 으로 단독 실행, CI 에서 상시 회귀. 아래 수치가 테스트 기대값이다.
 - 가중치: 실제 GGUF 11종 대조 **MAE 0.7% / max 1.6%**
 - KV: 아키텍처 7종 공식값 **전수 일치**
 - 속도: 실측 12점 대조 **MAE 6.3% / max 17.1%** (worst: M4 Pro −17%, 5060Ti MoE −15% → 클래스 계수 한계, Phase 2 기기별 보정 대상)

@@ -50,6 +50,15 @@ describe('§2.4 mode ordering', () => {
     expect(r.gpuFrac).toBeLessThan(1);
   });
 
+  it('4. dgpu falls through to cpu-only when MoE cannot fit VRAM but RAM holds all', () => {
+    // nonExpert 가 VRAM 을 넘는 MoE: full·cpu-moe 실패, dense 아님 → partial 스킵, RAM 전량 탑재
+    const bigNonExpert: ModelQuant = { ...QWEN35_35B_A3B_Q4, nonExpertGB: 20 };
+    const hw: Hardware = { ...RTX_3060_12GB, ramGB: 48 };
+    const r = fit(hw, bigNonExpert);
+    expect(r.fits).toBe(true);
+    expect(r.mode).toBe('cpu-only');
+  });
+
   it('4. cpu-only when there is no GPU', () => {
     const cpuOnly: Hardware = {
       kind: 'cpu',
@@ -78,7 +87,7 @@ describe('§2.4-5 bestQuant search (fail → lower quant loop down to IQ2_M)', (
     os: 'linux',
     vramGB: 6,
     memBandwidthGBs: 272,
-    ramGB: 8, // usable RAM 4GB — partial/cpu 도 대형 모델 불가
+    ramGB: 6, // usable RAM 2GB — Q8_0 은 partial(CPU 몫 3.7GB)·cpu-only 도 실패
     ramBandwidthGBs: 51.2,
     effClass: 'nvidia',
   };

@@ -8,7 +8,10 @@
  *  - 결정론: 같은 입력 → 같은 출력
  */
 
-import type { EvaluateOptions, Hardware, ModelQuant, Result } from './types';
+import { fit } from './fit';
+import { ppEstimate, tgEstimate } from './speed';
+import type { Confidence, EvaluateOptions, Hardware, ModelQuant, Result } from './types';
+import { bandFor, verdictOf } from './verdict';
 
 export * from './types';
 export * from './constants';
@@ -20,10 +23,53 @@ export * from './verdict';
 /** 엔진 스펙 버전 — docs/02-engine-spec.md 개정 시 함께 올린다. */
 export const ENGINE_SPEC_VERSION = '0.2.0';
 
+/** 실측 중앙값 (§4 measured: 실측 중앙값 표시, 추정은 보조). */
+function median(values: readonly number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 1 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
+}
+
 /**
  * 종합 평가: fit(§2.4) → speed(§3) → confidence/밴드(§4) → verdict(§5) 조립.
  * 기본값: ctx 8192, kvQuant 'f16' (§5 판정 기준 조건).
  */
-export function evaluate(_hw: Hardware, _mq: ModelQuant, _opts?: EvaluateOptions): Result {
-  throw new Error('not implemented');
+export function evaluate(hw: Hardware, mq: ModelQuant, opts?: EvaluateOptions): Result {
+  const fitResult = fit(hw, mq, { ctx: opts?.ctx, kvQuant: opts?.kvQuant });
+  const moe = mq.activeParamsB !== undefined;
+
+  const estimated = fitResult.fits
+    ? tgEstimate(hw, mq, fitResult, { ctx: opts?.ctx, kvQuant: opts?.kvQuant })
+    : 0;
+
+  const measured = opts?.measuredTgTokS;
+  const confidence: Confidence = measured?.length
+    ? 'measured'
+    : opts?.theoretical
+      ? 'theoretical'
+      : 'calibrated';
+
+  const est = confidence === 'measured' ? median(measured!) : estimated;
+  const band = bandFor(confidence, hw.effClass, fitResult.mode, moe);
+  // measured 는 실측 분포로 밴드 산출 (n=1 이면 low=high=est)
+  const low = confidence === 'measured' ? Math.min(...measured!) : est * (1 - band);
+  const high = confidence === 'measured' ? Math.max(...measured!) : est * (1 + band);
+
+  const pp = ppEstimate(hw);
+
+  return {
+    verdict: verdictOf({
+      mode: fitResult.mode,
+      tgTokS: est,
+      gpuFrac: fitResult.gpuFrac,
+      reasoning: opts?.reasoning,
+      fitsAnyQuant: fitResult.fits,
+    }),
+    mode: fitResult.mode,
+    vram: fitResult.vram,
+    tgTokS: { est, low, high },
+    ...(pp !== undefined ? { ppTokS: { est: pp } } : {}),
+    confidence,
+    ...(fitResult.bestQuant !== undefined ? { bestQuant: fitResult.bestQuant } : {}),
+  };
 }

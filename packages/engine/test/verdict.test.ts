@@ -31,6 +31,7 @@ describe('verdictOf (§5, ctx 8k Q4_K_M 기준)', () => {
     expect(verdictOf({ mode: 'partial-offload', tgTokS: 30, gpuFrac: 0.5 })).toBe('B');
     // cpu-moe 가 아닌 partial 은 S 불가(§5: S 는 full-gpu 전용) — gpuFrac ≥ 0.9 라도 A 상한
     expect(verdictOf({ mode: 'partial-offload', tgTokS: 30, gpuFrac: 0.95 })).toBe('A');
+    expect(verdictOf({ mode: 'partial-offload', tgTokS: 5, gpuFrac: 0.95 })).toBe('B');
   });
 
   it('리즈닝 모델: 임계 ×1.5 (§5)', () => {
@@ -63,6 +64,17 @@ describe('evaluate confidence wiring (§4)', () => {
     const r = evaluate(RTX_4060_8GB, LLAMA31_8B_Q4, { measuredTgTokS: [38, 40, 42] });
     expect(r.confidence).toBe('measured');
     expect(r.tgTokS.est).toBe(40);
+    // low/high 는 실측 분포의 min/max
+    expect(r.tgTokS.low).toBe(38);
+    expect(r.tgTokS.high).toBe(42);
+    // 짝수 개수는 가운데 두 값 평균
+    expect(evaluate(RTX_4060_8GB, LLAMA31_8B_Q4, { measuredTgTokS: [38, 42] }).tgTokS.est).toBe(40);
+  });
+
+  it('ppTokS present only when fp16Tflops is provided', () => {
+    expect(evaluate(RTX_4060_8GB, LLAMA31_8B_Q4).ppTokS).toBeUndefined();
+    const withTflops = { ...RTX_4060_8GB, fp16Tflops: 15.1 };
+    expect(evaluate(withTflops, LLAMA31_8B_Q4).ppTokS?.est).toBeCloseTo(140 * 15.1, 3);
   });
 
   it('calibrated: 기본 경로, low/high = est × (1∓밴드)', () => {
@@ -83,5 +95,16 @@ describe('§8 seed: M4 Max 128GB + Llama-3.3-70B Q4 (measured 9.8 tok/s)', () =>
   it("verdict ∈ ['A','B']", () => {
     const r = evaluate(M4_MAX_128, LLAMA33_70B_Q4);
     expect(['A', 'B']).toContain(r.verdict);
+  });
+});
+
+describe('evaluate F path (§2.4-5)', () => {
+  it('F verdict with tg 0 and bestQuant surfaced when nothing fits', () => {
+    const tiny = { ...RTX_4060_8GB, vramGB: 6, ramGB: 6 };
+    const bigQuant = { ...LLAMA31_8B_Q4, fileGB: 8.71, quant: 'Q8_0' as const };
+    const r = evaluate(tiny, bigQuant);
+    expect(r.verdict).toBe('F');
+    expect(r.tgTokS.est).toBe(0);
+    expect(r.bestQuant).toBeDefined();
   });
 });
