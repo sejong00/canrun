@@ -1,0 +1,13 @@
+[
+  { "id": "IQ2_M", "bpw": 2.9294, "tier": "desperate", "note": "2비트 중 최선 — 대형 모델 최후수단" },
+  { "id": "Q2_K", "bpw": 3.1593, "tier": "desperate", "note": "열화 — UD-Q2_K_XL 변형 권장 표기" },
+  { "id": "IQ3_XS", "bpw": 3.4977, "tier": "degraded", "note": "저VRAM 스위트스폿" },
+  { "id": "Q3_K_M", "bpw": 3.996, "tier": "degraded", "note": "소형 모델엔 열화 가시" },
+  { "id": "IQ4_XS", "bpw": 4.4597, "tier": "ok", "note": "4비트 최고 효율" },
+  { "id": "Q4_K_M", "bpw": 4.8944, "tier": "ok", "note": "기본 추천값 · Ollama 기본" },
+  { "id": "Q5_K_M", "bpw": 5.7036, "tier": "safe", "note": "Q6_K 근접 품질" },
+  { "id": "Q6_K", "bpw": 6.5633, "tier": "safe", "note": "준무손실" },
+  { "id": "Q8_0", "bpw": 8.5008, "tier": "safe", "note": "사실상 무손실" },
+  { "id": "MXFP4", "bpw": 4.25, "tier": "safe", "note": "gpt-oss/Kimi K3 네이티브 — 실파일 크기만 사용, bpw 환산 금지" },
+  { "id": "F16", "bpw": 16.0005, "tier": "safe", "note": "무손실 기준" }
+]

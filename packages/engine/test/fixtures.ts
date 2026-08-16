@@ -122,7 +122,7 @@ export const GPT_OSS_20B: ModelQuant = {
   quant: 'MXFP4',
   kvBytesPerToken: 24 * 1024,
   attnType: 'swa',
-  nonExpertGB: 2.4, // 잠정값 — P0-3 시드에서 확정 (fit 모드 판정에만 사용)
+  nonExpertGB: 0.65, // P0-3 확정 — 32E top-4 유도 (packages/data/src/derive.ts, data/models.json)
   maxContext: 131072,
 };
 
@@ -134,7 +134,7 @@ export const GPT_OSS_120B: ModelQuant = {
   quant: 'MXFP4',
   kvBytesPerToken: 36 * 1024,
   attnType: 'swa',
-  nonExpertGB: 6.5, // 잠정값 — P0-3 시드에서 확정
+  nonExpertGB: 0.81, // P0-3 확정 — 128E top-4 유도 (packages/data/src/derive.ts)
   maxContext: 131072,
 };
 
@@ -187,7 +187,7 @@ export const QWEN3_30B_A3B_Q4: ModelQuant = {
   quant: 'Q4_K_M',
   kvBytesPerToken: 96 * 1024,
   attnType: 'full',
-  nonExpertGB: 2.0, // 잠정값 — P0-3 시드에서 확정
+  nonExpertGB: 0.91, // P0-3 확정 — 128E top-8 유도 (packages/data/src/derive.ts)
   maxContext: 262144,
 };
 
@@ -199,6 +199,6 @@ export const QWEN35_35B_A3B_Q4: ModelQuant = {
   quant: 'Q4_K_M',
   kvBytesPerToken: 20 * 1024,
   attnType: 'hybrid',
-  nonExpertGB: 2.5, // 잠정값 — P0-3 시드에서 확정 (3060 12GB cpu-moe 실증: openclawdc 2026-07)
+  nonExpertGB: 1.22, // P0-3 확정 — 256E top-8+1shared 유도 (3060 12GB cpu-moe 실증: openclawdc 2026-07)
   maxContext: 262144,
 };

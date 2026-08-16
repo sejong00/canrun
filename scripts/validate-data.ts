@@ -1,37 +1,33 @@
 /**
  * `data/*.json` 전수 검증 — CI 게이트 (docs/05 §6, CLAUDE.md 규칙 2).
  *
- * `@canrun/data` 의 schemaRegistry 에 등록된 파일은 zod 로 파싱해 실패 시 CI 를 깨뜨린다.
- * 레지스트리에 없는 data/*.json 은 "스키마 미등록" 으로 실패시킨다 — 스키마 없는
- * 데이터가 조용히 쌓이는 것을 막는 배선 (P0-3 에서 스키마가 등록되면 즉시 게이트로 동작).
- *
- * 예외: aliases.json 은 P0-1 스텁이 자체 구조 검증을 가지므로 여기서 그 검증을 재사용한다.
+ * 1) zod: schemaRegistry 에 등록된 스키마로 파일 단위 파싱 (출처 없는 레코드 = 실패).
+ *    레지스트리에 없는 data/*.json 은 "스키마 미등록" 으로 실패 — 스키마 없는 데이터 유입 차단.
+ * 2) validateAll: 파일 간 정합성 (FK, bpw ≡ 엔진 상수, nonExpertGB ≡ 유도식, KV 공식 대조).
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { schemaRegistry } from '../packages/data/src/index';
-import { loadAliases } from './build-redirects';
+import {
+  parseBenchmarks,
+  parseGpus,
+  parseModelQuants,
+  parseModels,
+  parseQuantDefs,
+  schemaRegistry,
+  validateAll,
+} from '../packages/data/src/index';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const dataDir = join(repoRoot, 'data');
 
+const readJson = (file: string): unknown => JSON.parse(readFileSync(join(dataDir, file), 'utf8'));
+
 const files = readdirSync(dataDir).filter((name) => name.endsWith('.json'));
 const failures: string[] = [];
 
+// --- 1) 파일 단위 zod ---------------------------------------------------------
 for (const file of files) {
-  // P0-1 스텁: aliases.json 은 build-redirects 의 구조 검증을 통과해야 한다.
-  // P0-3 에서 zod 스키마로 승격되면 이 분기는 제거된다.
-  if (file === 'aliases.json' && !(file in schemaRegistry)) {
-    try {
-      loadAliases(repoRoot);
-      console.log(`✓ data/${file} (stub validation)`);
-    } catch (error) {
-      failures.push(`data/${file}: ${error instanceof Error ? error.message : String(error)}`);
-    }
-    continue;
-  }
-
   const schema = schemaRegistry[file];
   if (!schema) {
     failures.push(
@@ -39,13 +35,26 @@ for (const file of files) {
     );
     continue;
   }
-
-  const parsed = schema.safeParse(JSON.parse(readFileSync(join(dataDir, file), 'utf8')));
+  const parsed = schema.safeParse(readJson(file));
   if (parsed.success) {
-    console.log(`✓ data/${file}`);
+    const count = Array.isArray(parsed.data) ? ` (${parsed.data.length} records)` : '';
+    console.log(`✓ data/${file}${count}`);
   } else {
     failures.push(`data/${file}: ${parsed.error.message}`);
   }
+}
+
+// --- 2) 파일 간 정합성 --------------------------------------------------------
+if (failures.length === 0) {
+  const problems = validateAll({
+    gpus: parseGpus(readJson('gpus.json')),
+    models: parseModels(readJson('models.json')),
+    modelQuants: parseModelQuants(readJson('model-quants.json')),
+    quantDefs: parseQuantDefs(readJson('quants.json')),
+    benchmarks: parseBenchmarks(readJson('benchmarks.json')),
+  });
+  for (const problem of problems) failures.push(`cross-check: ${problem}`);
+  if (problems.length === 0) console.log('✓ cross-file consistency');
 }
 
 if (failures.length > 0) {
