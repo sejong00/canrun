@@ -1,0 +1,56 @@
+# 주간 HF 데이터 동기화 → PR (docs/03 §5.1, docs/05 §2).
+# diff 는 자동 머지하지 않는다 — 사람 승인 후 머지·배포 (데이터 조작 방지 + 리뷰 기록).
+# 알려진 한계: GITHUB_TOKEN 이 만든 PR 은 ci.yml 을 트리거하지 않는다 —
+# 리뷰어가 close/reopen 하거나 추후 PAT 도입(운영자 결정). 완화책으로
+# PR 생성 전에 validate-data 를 이 job 에서 직접 돌린다.
+name: Data sync
+
+on:
+  schedule:
+    - cron: '0 21 * * 1' # 월 21:00 UTC = 화 06:00 KST (주 1회 — docs/03 §7)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        # 버전은 package.json 의 packageManager 필드에서 읽는다
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Sync from Hugging Face (writes data/*.json + report)
+        run: pnpm run sync-models -- --report sync-report.md
+        env:
+          # 선택 — 공개 API 는 무토큰으로 충분, gated repo(meta-llama 등)만 필요 (docs/05 §8)
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+
+      - name: Validate before PR (zod + cross-file)
+        run: pnpm validate-data
+
+      - name: Engine regression against synced data
+        run: pnpm test
+
+      - uses: peter-evans/create-pull-request@v7
+        with:
+          branch: data/hf-sync
+          title: 'chore(data): weekly HF sync'
+          commit-message: |
+            chore(data): sync model sizes/arch from Hugging Face
+
+            Co-Authored-By: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
+          body-path: sync-report.md
+          add-paths: data/*.json
+          labels: data-sync

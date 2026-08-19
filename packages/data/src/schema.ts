@@ -106,6 +106,19 @@ export const ModelSchema = z
       /** 사전 계산 (KiB/tok 아님 — 바이트/tok, f16). SWA/MLA/하이브리드 보정 반영값. */
       kvBytesPerTokenF16: z.number().positive(),
     }),
+    /**
+     * 비-full attention(swa/mla/hybrid) KV 수동 고정 — docs/03 §5.1 "수동 필드 우선".
+     * 존재 시 sync-models 는 arch.* 를 자동 갱신하지 않는다. kvBytesPerTokenF16 은
+     * arch.kvBytesPerTokenF16 과 일치해야 한다(엔진은 계속 arch 만 읽음 — 미러 강제).
+     */
+    attnOverrides: z
+      .object({
+        kvBytesPerTokenF16: z.number().positive(),
+        /** 보정 근거 (예: "hybrid 3:1 — full attn 12/48 layers") */
+        reason: z.string().min(1),
+        sources,
+      })
+      .optional(),
     maxContext: z.number().int().positive(),
     license: z.string().min(1),
     moe: z.boolean(),
@@ -122,6 +135,21 @@ export const ModelSchema = z
   .superRefine((model, ctx) => {
     if (model.moe && model.activeParamsB === undefined) {
       ctx.addIssue({ code: 'custom', message: `${model.id}: moe model requires activeParamsB` });
+    }
+    if (model.attnOverrides && model.arch.attnType === 'full') {
+      ctx.addIssue({
+        code: 'custom',
+        message: `${model.id}: attnOverrides is only for non-full attention (docs/03 §5.1)`,
+      });
+    }
+    if (
+      model.attnOverrides &&
+      model.attnOverrides.kvBytesPerTokenF16 !== model.arch.kvBytesPerTokenF16
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `${model.id}: attnOverrides.kvBytesPerTokenF16 ${model.attnOverrides.kvBytesPerTokenF16} != arch.kvBytesPerTokenF16 ${model.arch.kvBytesPerTokenF16}`,
+      });
     }
   });
 

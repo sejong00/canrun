@@ -1,0 +1,3 @@
+# 데이터 시드는 LF 고정 — scripts/hf-common.ts serializeRecords 가 바이트 일치를 전제
+# (autocrlf 체크아웃이 CRLF 로 바꾸면 sync diff 가 전면 오염된다)
+data/*.json text eol=lf

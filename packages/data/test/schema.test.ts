@@ -78,3 +78,44 @@ describe('structural refinements', () => {
     expect(ModelSchema.safeParse({ ...model, activeParamsB: 3 }).success).toBe(true);
   });
 });
+
+describe('attnOverrides (docs/03 §5.1 수동 필드 우선)', () => {
+  const hybridModel = {
+    id: 'test-hybrid',
+    family: 'test',
+    name: 'Test Hybrid',
+    hfId: 'test/test-hybrid',
+    paramsB: 27,
+    arch: { layers: 48, kvHeads: 4, headDim: 256, attnType: 'hybrid', kvBytesPerTokenF16: 49152 },
+    maxContext: 262144,
+    license: 'Apache-2.0',
+    moe: false,
+    category: ['chat'],
+    popularity: 3,
+    releasedAt: '2026-01-01',
+    sources: ['https://example.com/model'],
+  };
+  const override = {
+    kvBytesPerTokenF16: 49152,
+    reason: 'hybrid 3:1 — full attn 12/48 layers',
+    sources: ['https://example.com/config'],
+  };
+
+  it('accepts a valid override on a non-full model', () => {
+    expect(ModelSchema.safeParse({ ...hybridModel, attnOverrides: override }).success).toBe(true);
+  });
+
+  it('rejects an override on a full-attention model', () => {
+    const full = {
+      ...hybridModel,
+      arch: { ...hybridModel.arch, attnType: 'full', kvBytesPerTokenF16: 393216 },
+      attnOverrides: { ...override, kvBytesPerTokenF16: 393216 },
+    };
+    expect(ModelSchema.safeParse(full).success).toBe(false);
+  });
+
+  it('rejects an override whose kvBytesPerTokenF16 mismatches arch', () => {
+    const mismatched = { ...hybridModel, attnOverrides: { ...override, kvBytesPerTokenF16: 1 } };
+    expect(ModelSchema.safeParse(mismatched).success).toBe(false);
+  });
+});

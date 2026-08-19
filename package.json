@@ -19,7 +19,9 @@
     "test:coverage": "vitest run --coverage",
     "test:export": "vitest run --config vitest.export.config.ts",
     "verify-engine": "vitest run packages/engine/test/verify-regression.test.ts",
-    "validate-data": "tsx scripts/validate-data.ts"
+    "validate-data": "tsx scripts/validate-data.ts",
+    "sync-models": "tsx scripts/sync-models.ts",
+    "new-model-alert": "tsx scripts/new-model-alert.ts"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",
