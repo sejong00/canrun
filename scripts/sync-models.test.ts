@@ -54,6 +54,19 @@ describe('matchQuantFiles', () => {
     expect(matchQuantFiles([file('m-XQ2_K.gguf', 1)], 'Q2_K')).toHaveLength(0);
   });
 
+  it('separates UD variants from their base quants (합산 오염 방지)', () => {
+    const both = [file('m-IQ2_M.gguf', 1_000_000_000), file('m-UD-IQ2_M.gguf', 2_000_000_000)];
+    expect(matchQuantFiles(both, 'IQ2_M').map((e) => e.path)).toEqual(['m-IQ2_M.gguf']);
+    expect(matchQuantFiles(both, 'UD-IQ2_M').map((e) => e.path)).toEqual(['m-UD-IQ2_M.gguf']);
+    expect(matchQuantFiles([file('m-UD-Q2_K_XL.gguf', 1)], 'Q2_K')).toHaveLength(0);
+    expect(matchQuantFiles([file('m-UD-Q2_K_XL.gguf', 1)], 'UD-Q2_K_XL')).toHaveLength(1);
+  });
+
+  it('falls back to the UD variant when only UD is deployed (unsloth MTP repos)', () => {
+    const udOnly = [file('m-UD-Q4_K_M.gguf', 22_630_000_000)];
+    expect(matchQuantFiles(udOnly, 'Q4_K_M').map((e) => e.path)).toEqual(['m-UD-Q4_K_M.gguf']);
+  });
+
   it('excludes mmproj weights and non-gguf files', () => {
     expect(matchQuantFiles(flat, 'F16')).toHaveLength(0); // mmproj-…-F16.gguf 제외
     expect(matchQuantFiles([file('notes-Q4_K_M.txt', 1)], 'Q4_K_M')).toHaveLength(0);
@@ -311,6 +324,24 @@ describe('buildSyncPlan — config/arch', () => {
     const kvRef = changes.find((c) => c.field === 'arch.kvBytesPerTokenF16');
     expect(kvRef?.kind).toBe('manual');
     expect(kvRef?.note).toContain('131072'); // full-attn 공식 참조값
+  });
+
+  it('suppresses the KV reference row once attnOverrides is set (주간 PR 노이즈 제거)', () => {
+    const locked = fullModel({
+      arch: { layers: 32, kvHeads: 8, headDim: 128, attnType: 'hybrid', kvBytesPerTokenF16: 32768 },
+      attnOverrides: {
+        kvBytesPerTokenF16: 32768,
+        reason: 'hybrid — full attn 8/32 layers',
+        sources: ['https://example.com/config'],
+      },
+    });
+    const input = makeInput({
+      models: [locked],
+      quants: [],
+      configByHfId: new Map([['org/test-8b', llamaConfig]]),
+    });
+    const changes = buildSyncPlan(input);
+    expect(changes.find((c) => c.field === 'arch.kvBytesPerTokenF16')).toBeUndefined();
   });
 
   it('reports gated configs as skipped, fetch errors as error', () => {

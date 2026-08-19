@@ -45,6 +45,8 @@ export const QuantIdSchema = z.enum([
   'Q6_K',
   'Q8_0',
   'MXFP4',
+  'UD-Q2_K_XL',
+  'UD-IQ2_M',
   'F16',
 ]);
 

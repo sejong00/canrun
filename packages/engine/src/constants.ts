@@ -25,6 +25,10 @@ export const QUANT_BPW: Readonly<Record<QuantId, number>> = Object.freeze({
   Q6_K: 6.5633,
   Q8_0: 8.5008,
   MXFP4: 4.25, // gpt-oss/Kimi K3 네이티브 — bpw 환산 금지, fileGB 필수
+  // unsloth Dynamic 2.0 — 모델별 bpw 가변(중요 레이어 상향), NATIVE 로 환산 차단. 아래는 명목치(대표 실측 역산).
+  // source: https://huggingface.co/unsloth/Qwen3.5-27B-MTP-GGUF (UD-Q2_K_XL 12.04GB / 27.78B = 3.4672bpw, UD-IQ2_M 11.02GB = 3.1735bpw)
+  'UD-Q2_K_XL': 3.4672,
+  'UD-IQ2_M': 3.1735,
   F16: 16.0005,
 });
 
@@ -32,8 +36,8 @@ export const QUANT_BPW: Readonly<Record<QuantId, number>> = Object.freeze({
  * 네이티브 양자화 — flat bpw 에서 이탈하므로 bpw 환산 금지, 실제 fileGB 필수 (§2.1 주의).
  * weightsGB()/weightsGBFromBpw() 가 명시적으로 실패시킨다.
  */
-// source: docs/02 §2.1 (policy)
-export const NATIVE_QUANTS: readonly QuantId[] = Object.freeze(['MXFP4']);
+// source: docs/02 §2.1 (policy) — UD 변형은 flat bpw 이탈 (§2.1 주의: Unsloth UD)
+export const NATIVE_QUANTS: readonly QuantId[] = Object.freeze(['MXFP4', 'UD-Q2_K_XL', 'UD-IQ2_M']);
 
 /** bestQuant 탐색 사다리 — bpw 오름차순, IQ2_M 이 바닥 (§2.4-5). MXFP4/F16 은 네이티브라 제외. */
 // source: docs/02 §2.1 (policy)

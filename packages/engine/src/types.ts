@@ -15,6 +15,8 @@ export type QuantId =
   | 'Q6_K'
   | 'Q8_0'
   | 'MXFP4'
+  | 'UD-Q2_K_XL'
+  | 'UD-IQ2_M'
   | 'F16';
 
 /** 효율 계수 클래스 — §3.2 표의 행. */

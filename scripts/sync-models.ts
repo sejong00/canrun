@@ -79,12 +79,17 @@ const SUSPICIOUS_DELTA_PCT = 5;
  * tree 항목에서 quant 파일 매칭 — 경계 규칙으로 근접 오매칭 차단:
  * 앞 경계 ^|-|_|.|/ (IQ2_K 의 'I' 는 경계 아님 → Q2_K 미매칭),
  * 뒤 경계 -|.|/ 또는 끝 ('_' 제외 → Q4_K_M_L 미매칭). 대소문자 무시(mxfp4).
+ * 비-UD quant 는 플레인 파일 우선, 플레인이 없으면 UD- 접두 변형(unsloth Dynamic)으로 폴백 —
+ * 둘 다 배포하는 repo 의 합산 오염은 막고, UD 만 배포하는 repo(MTP 계열)는 실파일을 취한다.
  * mmproj-*.gguf(비전 프로젝터)는 모델 가중치가 아니므로 제외.
  */
 export function matchQuantFiles(entries: readonly TreeEntry[], quant: QuantId): TreeEntry[] {
   const esc = quant.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const re = new RegExp(`(?:^|[-_./])${esc}(?:[-./]|$)`, 'i');
-  return entries.filter((entry) => {
+  const udRe = quant.startsWith('UD-')
+    ? undefined
+    : new RegExp(`(?:^|[-_./])UD-${esc}(?:[-./]|$)`, 'i');
+  const candidates = entries.filter((entry) => {
     if (entry.type !== 'file') return false;
     const path = entry.path;
     if (!path.toLowerCase().endsWith('.gguf')) return false;
@@ -92,6 +97,9 @@ export function matchQuantFiles(entries: readonly TreeEntry[], quant: QuantId): 
     if (base.toLowerCase().startsWith('mmproj')) return false;
     return re.test(path);
   });
+  if (udRe === undefined) return candidates;
+  const plain = candidates.filter((entry) => !udRe.test(entry.path));
+  return plain.length > 0 ? plain : candidates;
 }
 
 /** 분할 파일 합산 → decimal GB 2자리. size 누락 항목이 있으면 NaN. */
@@ -324,8 +332,9 @@ export function buildSyncPlan(input: SyncInput): Change[] {
           note: 'full attention 공식 재계산 (docs/02 §2.2)',
         });
       }
-    } else if (!isFull) {
-      // 참조값만 리포트 — swa/mla/hybrid 보정은 attnOverrides 수동 몫 (docs/03 §5.1)
+    } else if (!isFull && model.attnOverrides === undefined) {
+      // 참조값만 리포트 — swa/mla/hybrid 보정은 attnOverrides 수동 몫 (docs/03 §5.1).
+      // override 확정 후엔 반복 노이즈라 생략 (arch 필드 드리프트 행이 변화 감지를 담당).
       changes.push({
         file: 'models.json',
         id: model.id,
