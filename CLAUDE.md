@@ -27,3 +27,5 @@ pnpm run sync-models -- --dry # HF 데이터 동기화 드라이런
 
 ## 스타일
 TypeScript strict, 함수형 우선, 컴포넌트는 shadcn 패턴. 커밋은 conventional commits. 숫자 단위: 메모리 decimal GB(GiB 아님 — GGUF 관행), 속도 tok/s 소수 1자리.
+
+사용자에게는 항상 한국어로 답한다.
