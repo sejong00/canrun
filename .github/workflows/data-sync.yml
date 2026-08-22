@@ -43,7 +43,7 @@ jobs:
       - name: Engine regression against synced data
         run: pnpm test
 
-      - uses: peter-evans/create-pull-request@v7
+      - uses: peter-evans/create-pull-request@v8
         with:
           branch: data/hf-sync
           title: 'chore(data): weekly HF sync'
