@@ -103,10 +103,10 @@ KV = KiB/tok(f16). 파일 크기 = 실측 GGUF(decimal GB), 출처 repo 명기.
 
 ### 확장 후보(P1.5~P2에서 추가): llama-3.2-1b/3b(2.02GB), qwen3-4b-2507(2.50), qwen3.5-4b(2.83), gemma-3-4b(2.49), phi-4-mini(2.49), qwen3-coder-30b-a3b, glm-4.5-air(106B/12B, UD-Q4 67.7), llama-4-scout(109/17, 65.4), mistral-small-4-119b-a6.5b(73.8, **KV 576 KiB 주의 — MHA 32 kv헤드**), deepseek-v4-flash(284/13, UD-Q4 155, DSA), qwen3-235b-a22b(142), glm-4.6(216), minimax-m3(427/23, 264), kimi-k2.6(1T/32B, 584), kimi-k3(2.78T/104B, 1510)
 
-### 한국 모델 (ko 차별화 — **구현 중 스펙 수집 태스크 P0-4b**)
+### 한국 모델 (ko 차별화 — **P0-4b 완료, 시드 9종 등재**)
 | 후보 | 상태 |
 |---|---|
-| LG EXAONE 4.0(32B/1.2B급), 카카오 Kanana-1.5, 네이버 HyperCLOVA X SEED(0.5~14B급), Upstage Solar 후속 | config.json에서 layers/kv_heads 추출 + GGUF 존재 여부 확인 필요. ko 페이지 우선 노출, en에도 포함(글로벌에 없는 콘텐츠 = 백링크 유인) |
+| EXAONE 4.0(32B/1.2B)·4.5-33B, Kanana 1.5(8B/15.7B-A3B), HyperCLOVA X SEED(1.5B/Think 14B), Solar Open(100B/Open 2 250B) | 시드 등재 완료(`korean: true`) — config·GGUF 실측은 research/models.md §1G. ko 페이지 우선 노출, en에도 포함(글로벌에 없는 콘텐츠 = 백링크 유인) |
 
 ### quant 목록(콤보 페이지당 표시): Q2_K(UD-XL 표기)·IQ3_XS·Q3_K_M·IQ4_XS·Q4_K_M(기본)·Q5_K_M·Q6_K·Q8_0 + 모델 네이티브(MXFP4 등). bpw 표는 `02-engine-spec.md` §2.1.
 
@@ -158,6 +158,7 @@ llama-bench -m {model.gguf} -p 2048 -n 128 -d 8192,16384             # 컨텍스
 - **B. MoE (16GB 카드의 킬러 콘텐츠)**: gpt-oss-20b MXFP4(풀 GPU, 공개 실측 111.6 tok/s 재현 대조) / qwen3-30b-a3b-2507 Q4_K_M(`--n-cpu-moe` 최소 스필 ~4GB) / qwen3.5-35b-a3b Q4_K_M(스필 ~9GB — RAM 16GB에선 저ctx 조건부, **실패해도 그 기록이 데이터**)
 - **C. 교육용 절벽 데모**: qwen3-32b Q4_K_M `-ngl` 스윕(부분 오프로드 감속 곡선) + KV f16 vs q8_0 비교 1종
 - **D. 불가 판정 실증**: llama-3.3-70b Q4_K_M — "안 됨"을 실측으로 못박는 콤보 페이지용
+- **E. 한국 모델 5종 (ko 차별화 — 글로벌에 공개 실측 전무 = 백링크 유인, P0-4b 시드)**: kanana-1.5-8b {Q4_K_M, Q8_0} / hyperclovax-seed-think-14b Q4_K_M(단일 배포, 리즈닝 — 감쇠 측정 포함) / kanana-1.5-15.7b-a3b Q4_K_M(10.44GB — 16GB 풀 GPU MoE) / hyperclovax-seed-1.5b Q8_0(온디바이스급 대조) / exaone-4.5-33b IQ4_XS(18.03GB — `-ngl` 부분 오프로드, C그룹 절벽 곡선과 교차 검증) — 각 ctx {2k, 16k}
 → 출시 시 16GB 세그먼트에 "실측 배지" 달린 페이지 확보.
 
 ## 7. 갱신 케이던스 요약

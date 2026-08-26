@@ -63,6 +63,8 @@ export const MOE_ARCH: Readonly<Record<string, MoeArch>> = Object.freeze({
   'gpt-oss-120b': { totalParamsB: 116.8, activeParamsB: 5.1, experts: 128, topK: 4 },
   'qwen3-30b-a3b-2507': { totalParamsB: 30.5, activeParamsB: 3.3, experts: 128, topK: 8 },
   'qwen3.5-35b-a3b': { totalParamsB: 35.95, activeParamsB: 3, experts: 256, topK: 8 },
+  'kanana-1.5-15.7b-a3b': { totalParamsB: 15.7, activeParamsB: 3, experts: 64, topK: 8 },
+  'solar-open-100b': { totalParamsB: 102.65, activeParamsB: 12, experts: 128, topK: 8 },
 });
 
 export type SeedFiles = {

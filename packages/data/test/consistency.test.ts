@@ -35,8 +35,9 @@ describe('seed scale (docs/06 P0-3)', () => {
     expect(unified.length).toBeGreaterThanOrEqual(10);
   });
 
-  it('has the 20 first-wave models', () => {
-    expect(seed.models.length).toBe(20);
+  it('has the 29 models (first-wave 20 + 한국 모델 9, P0-4b)', () => {
+    expect(seed.models.length).toBe(29);
+    expect(seed.models.filter((m) => m.korean).length).toBe(9);
   });
 
   it('has ≥30 calibration benchmarks', () => {

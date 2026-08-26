@@ -70,6 +70,29 @@ gpt급 요약: Qwen3-235B-A22B-2507 (235/22B, Q4 142, KV 188) · Qwen3-Coder-480
 
 기타 2025-26: Qwen3-Next-80B-A3B, Ministral-8B, Granite 4.0, Olmo 3, Leanstral-1.5, Qwen3-VL, Phi-4-reasoning-plus. **Meta는 2025-04 이후 신규 릴리스 없음(org 리스팅 확인).**
 
+### 1G. 한국 모델 (P0-4b 수집 2026-08-19, EXAONE 4.5 추가 2026-08-26 — ko 차별화, `korean: true`)
+
+시드 등재 9종 (config 는 HF raw config.json, 크기는 명기 repo tree API 실측):
+
+| 모델 | HF repo | params | L/KV/hd | attn | KV(B/tok) | ctx | 라이선스 | GGUF (기준 quant) |
+|---|---|---|---|---|---|---|---|---|
+| EXAONE 4.0 32B | LGAI-EXAONE/EXAONE-4.0-32B | ⭐32.00B | 64/8/128 | SWA 3:1 LLLG(win4096), full 16/64 | 65536 | 131k | EXAONE 1.2 **NC** | **공식** …-32B-GGUF: Q4_K_M 19.34 · Q8_0 34.01 · Q6_K 26.26 · IQ4_XS 17.39 |
+| EXAONE 4.5 33B (현행 플래그십, 멀티모달) | LGAI-EXAONE/EXAONE-4.5-33B (2026-04-04) | ⭐34.35B(비전 포함) | 64/8/128 | SWA 3:1 LLLG(win4096), full 16/64 + MTP 1층 | 65536 | 262k | EXAONE 1.2 **NC** | **공식** GGUF(텍스트, mmproj 별도): Q4_K_M 20.05 · Q8_0 35.14 · Q6_K 27.13 · IQ4_XS 18.03 |
+| EXAONE 4.0 1.2B | LGAI-EXAONE/EXAONE-4.0-1.2B | ⭐1.28B | 30/8/64 full | full | 61440 | 65k | 〃 | **공식** GGUF: Q4_K_M 0.81 · Q8_0 1.36 · Q6_K 1.05 · IQ4_XS 0.75 |
+| Kanana 1.5 8B | kakaocorp/kanana-1.5-8b-instruct-2505 | ⭐8.03B | 32/8/128 full | full | 131072 | 32k(YaRN 128k) | Apache-2.0 | mradermacher: Q4_K_M 4.92 · Q8_0 8.54 · Q2_K 3.18 · IQ4_XS 4.48 |
+| Kanana 1.5 15.7B-A3B | kakaocorp/kanana-1.5-15.7b-a3b-instruct | ⭐15.70B/~3B | 32/8/128, Mixtral 64E top-8 | full | 131072 | 32k | Kanana License | mradermacher: Q4_K_M 10.44 · Q8_0 16.70 · Q2_K 6.48 · IQ4_XS 8.71 |
+| HyperCLOVA X SEED 1.5B | naver-hyperclovax/HyperCLOVAX-SEED-Text-Instruct-1.5B (**gated**) | ⭐1.59B | 24/8/128 full (llamafied 미러 config) | full | 98304 | 16k(카드) | HyperCLOVA X SEED | mradermacher(-hf 변환본): Q4_K_M 1.01 · Q8_0 1.69 · Q2_K 0.69 · IQ4_XS 0.92 |
+| HyperCLOVA X SEED Think 14B | naver-hyperclovax/HyperCLOVAX-SEED-Think-14B | ⭐14.75B | 38/8/128 full | full | 155648 | 131k | 〃 | naver-ellm 단일: Q4_K_M 8.92 |
+| Solar Open 100B | upstage/Solar-Open-100B | ⭐102.65B/12B | 48/8/128, 128E top-8+1shared | full | 196608 | 131k(YaRN×2) | Upstage Solar License | mradermacher: Q4_K_M 62.26 · Q8_0 109.15 · Q2_K 37.69 · IQ4_XS 55.53 |
+| Solar Open 2 250B | upstage/Solar-Open2-250B (2026-07-22) | ⭐250.29B/15B | 48/8/128, KDA hybrid [S,L×3]×12(GQA 12/48), 320E top-8+1shared | hybrid | 49152 | **1M** | 〃 | prometheusAIR: IQ4_XS 136.24 · Q6_K 205.55 · Q2_K 95.43 (Q8_0 266.14 은 Baekpica — 미등재) |
+
+**보류·기록만 (GGUF 부재 또는 태스크 범위 외):**
+- **HyperCLOVA X SEED 공식 GGUF 부재** — org 는 "지원 계획 없음"(discussions/5, 2025-05). 시드는 커뮤니티 변환본 사용(위 표). 0.5B(24/8/128, ctx 8k)·Vision-3B·Think-32B(2025-12, ⭐33.31B)·Omni-8B 는 naver-ellm GGUF 존재하나 소형/비전/후순위로 미등재.
+- ~~EXAONE 4.5-33B~~ → **2026-08-26 시드 등재 완료**(위 표). EXAONE-4.0.1-32B 리비전은 4.0 과 동일 arch, 공식 GGUF 없음(bartowski 만).
+- **K-EXAONE 236B-A23B** (2025-12, 공식 GGUF)·**K-EXAONE 2.0 750B-A37B** (2026-07) — 서버급, 카탈로그 후순위.
+- **Kanana 2** (2026-07, 3b: Qwen3 기반 — mradermacher GGUF / 30b-a3b: 커뮤니티 GGUF) — 후속 등재 후보.
+- **Upstage Solar 후속 존재 확인**: 오픈웨이트는 Solar Open 100B(2025-12)·Open 2 250B(2026-07-22, 뉴스 확인) — 시드 등재 완료. Solar Pro 2~4 는 클로즈드(웨이트 미공개), solar-pro-preview(2024)는 GGUF 부재 — 보류.
+
 ## 2. GGUF quant 포맷 (llama.cpp 공식 실측표, Llama-3.1-8B 기준 — 엔진 상수 원천)
 
 | quant | bpw | 8B 파일(GiB) | GB/1B | 등급 |
@@ -101,6 +124,8 @@ gpt급 요약: Qwen3-235B-A22B-2507 (235/22B, Q4 142, KV 188) · Qwen3-Coder-480
 ## 4. 재확인 플래그 (시드 JSON화 시 체크)
 Gemma-4-26B-A4B UD-IQ4_XS 9.92GB(이상치 의심) · Mistral Small 4 라이선스(카드 재확인) · Maverick/480B/397B/M2.5 크기(† 값) · Kimi K3 active 104B(일부 언론 ~50B 오보) · 모든 † 값.
 
+P0-4b 유래: HyperCLOVAX Think-14B GGUF llama.cpp 구동(커스텀 arch `hyperclovax` — naver-ellm 변환 경로 미확인) · Kanana 15.7B-A3B active 3B(명시 수치 미공개 — 모델명 A3B + 카드 "FLOPS 37% of 8B" 유래) · HCX 1.5B ctx 16k(공식 카드) vs llamafied 미러 max_position 131072 — 카드 우선.
+
 ## 5. 출처 URL (계열별)
 - quant 표: github.com/ggml-org/llama.cpp → tools/quantize/README.md (bpw·GiB 원표) · k-quants PR #1684 · i-quants PR #4773
 - 런타임: llama.cpp PR #15434(FA)·#15077(cpu-moe)·#22673(MTP)·tools/server/README.md(KV quant) · docs.ollama.com/context-length · unsloth.ai/docs/models/qwen3.6 · openclawdc.com/blog/llama-cpp-moe-offload-flags-explained · convly.ai/lm-studio-complete-guide-2026 · machinelearning.apple.com/research/exploring-llms-mlx-m5
@@ -112,4 +137,5 @@ Gemma-4-26B-A4B UD-IQ4_XS 9.92GB(이상치 의심) · Mistral Small 4 라이선�
 - Mistral: api/models?author=mistralai · mistralai/Mistral-Small-4-119B-2603 raw config · recipes.vllm.ai/mistralai/Mistral-Small-4-119B-2603 · mistral.ai/news/mistral-small-4 · unsloth/Mistral-Small-4-119B-2603-GGUF · bartowski/mistralai_Mistral-Small-3.2-24B-Instruct-2506-GGUF
 - GLM/Kimi/MiniMax: zai-org/GLM-5 raw config · recipes.vllm.ai/zai-org/GLM-5.2 · unsloth/GLM-{5.2,4.6,4.5-Air}-GGUF · moonshotai/Kimi-K3 raw config · unsloth/Kimi-{K3,K2.6}-GGUF · marktechpost.com 2026-07-16(K3 릴리스) · MiniMaxAI/MiniMax-M2.5 raw config · unsloth/MiniMax-M3-GGUF
 - Phi: lmstudio-community/phi-4-GGUF tree · microsoft/phi-4
+- 한국 모델(P0-4b): LGAI-EXAONE/EXAONE-4.0-{32B,1.2B}{,-GGUF} raw config·tree · api/models?author={LGAI-EXAONE,kakaocorp,naver-hyperclovax,upstage} · kakaocorp/kanana-1.5-{8b-instruct-2505,15.7b-a3b-instruct} raw config · mradermacher/{kanana-1.5-8b-instruct-2505,kanana-1.5-15.7b-a3b-instruct,HyperCLOVAX-SEED-Text-Instruct-1.5B-hf,Solar-Open-100B}-GGUF tree · minpeter/HyperCLOVAX-SEED-Text-Instruct-1.5B-hf raw config(1.5B gated 우회) · naver-hyperclovax/HyperCLOVAX-SEED-Think-14B raw config · naver-ellm/HyperCLOVAX-SEED-Think-14B-GGUF tree · upstage/Solar-Open{-100B,2-250B} raw config+카드(active 12B/15B 명기) · prometheusAIR/Solar-Open2-250B-GGUF tree · koreatimes.co.kr 2026-07-23(Solar Open 2 발표)
 - 2026 지형 개관: fazm.ai/t/latest-open-source-llm-releases-2026 · thundercompute.com/blog/best-open-source-llms · insiderllm.com/guides/best-local-coding-models-2026

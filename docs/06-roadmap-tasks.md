@@ -21,7 +21,7 @@ sync-models(파일 크기·config) + new-model-alert + PR 자동화.
 AC: 드라이런으로 시드 대비 diff 리포트 생성, 수동 실행 1회로 실데이터 검증.
 
 **P0-4b. (병행, 사람 작업) 한국 모델 스펙 수집** — EXAONE 4.0/Kanana/HyperCLOVA X SEED config+GGUF 확인 → models.json 추가.
-**P0-5. (병행, 사람 작업) 자체 실측 1차 — RTX 5060 Ti 16GB** — ref: `03` §6 프로토콜·매트릭스(A~D그룹). AC: benchmarks.json에 own 실측 ≥30행(A그룹만으로 충족 가능), gpt-oss-20b 공개 실측(111.6 tok/s) 대비 ±15% 내 재현 확인.
+**P0-5. (병행, 사람 작업) 자체 실측 1차 — RTX 5060 Ti 16GB** — ref: `03` §6 프로토콜·매트릭스(A~E그룹). AC: benchmarks.json에 own 실측 ≥30행(A그룹만으로 충족 가능), gpt-oss-20b 공개 실측(111.6 tok/s) 대비 ±15% 내 재현 확인.
 
 ## Phase 1 — MVP 출시 (4~7주차)
 
