@@ -17,7 +17,7 @@ pnpm run sync-models -- --dry # HF 데이터 동기화 드라이런
 4. **i18n**: 사용자 노출 문자열은 전부 `messages/{en,ko}.json`. 하드코딩 금지. 페이지 추가 시 en/ko 동시 + hreflang 대칭(템플릿이 자동 생성 — 수기 태그 금지). 장문 기계번역 게시 금지(`docs/04` §6).
 5. **SEO 불변식**: 캐노니컬 자기참조, `publishBatch` 필드로 인덱싱 게이트 제어(`docs/04` §3) — 게이트 승인 없이 배치 확대 금지. 콤보 페이지는 고유 데이터 8요소 충족(`docs/04` §4).
 6. 엔진은 순수 함수(의존성·Date·random 금지). 포맷팅은 UI 레이어.
-7. **시크릿 제로**: 정적 export 산출물은 전부 공개다. 키·토큰을 저장소/데이터/코드/빌드 출력 어디에도 넣지 않는다 — 배포·API 토큰은 GitHub Actions Secrets, P2 서버 시크릿은 `wrangler secret`만. `.env*`는 gitignore 유지, 커밋 전 gitleaks 통과. 공개 성격 값(AdSense pub ID·어필리에이트 태그·Sentry DSN)만 클라이언트 포함 허용. 상세: `docs/05` §8.
+7. **시크릿 제로**: 정적 export 산출물은 전부 공개다. 키·토큰을 저장소/데이터/코드/빌드 출력 어디에도 넣지 않는다 — 배포·API 토큰은 GitHub Actions Secrets, P2 서버 시크릿은 `wrangler secret`만. `.env*`는 gitignore 유지, 커밋 전 gitleaks 통과(로컬 도구가 없을 때의 임시 절차: `docs/PROGRESS.md` §4 09-28). 공개 성격 값(AdSense pub ID·어필리에이트 태그·Sentry DSN)만 클라이언트 포함 허용. 상세: `docs/05` §8.
 
 ## 구조 (상세: docs/05)
 `packages/engine`(계산) · `packages/data`(스키마) · `data/*.json`(시드) · `apps/web`(Next.js 16 static export — 버전 결정 기록: docs/05 §1) · `scripts/`(동기화·파서) 
@@ -25,7 +25,8 @@ pnpm run sync-models -- --dry # HF 데이터 동기화 드라이런
 ## 세션 운영
 - **현재 위치·다음 태스크·결정 기록은 `docs/PROGRESS.md`가 단일 진실 원천.** 세션 시작은 `/canrun-start`, 태스크 종료는 `/canrun-wrap`.
 - 1세션 = 1태스크(`docs/06` 단위). AC 전부 충족 전 다음 태스크 금지. 규모 있는 태스크는 플랜 모드로 계획 먼저.
-- PR 머지·이슈 닫기·저장소 설정 변경·푸시는 사용자 확인 후.
+- **위임 — 확인 없이 처리하고 결과만 보고**: CI 초록인 Dependabot PR 머지(npm minor/patch 그룹, GitHub Actions 액션 — 메이저 포함, CI가 안 도는 워크플로의 액션이면 머지 후 `workflow_dispatch`로 확인) · 리포트 SUSPICIOUS 0·ERROR 0인 data-sync PR 머지(CI 확인용 close→reopen 포함) · new-model 이슈 트리아지·닫기 · `git push origin main` — 게이트 통과한 태스크 커밋, 그리고 `/canrun-start`의 운영 점검 기록 커밋(`docs/PROGRESS.md`만, 시크릿 스캔 후). 머지는 `gh pr merge <N> --merge` 형식만(브랜치 삭제·`--admin` 금지). 위임 명령은 Bash 도구로 실행한다(허용 규칙이 Bash 기준).
+- **확인 필요**: npm 메이저 업데이트, SUSPICIOUS·manual 데이터 반영, 저장소 설정 변경, 브랜치·태그 삭제와 force push, 비용이 드는 일. 판단이 애매하면 확인 쪽으로.
 - 설계 결정이나 스펙 이탈은 `docs/PROGRESS.md` §4에 근거와 함께 기록(스펙 문서를 고쳤다면 양쪽 모두).
 
 ## 스타일

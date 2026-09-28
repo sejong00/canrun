@@ -1,8 +1,9 @@
 # 주간 HF 데이터 동기화 → PR (docs/03 §5.1, docs/05 §2).
-# diff 는 자동 머지하지 않는다 — 사람 승인 후 머지·배포 (데이터 조작 방지 + 리뷰 기록).
-# 알려진 한계: GITHUB_TOKEN 이 만든 PR 은 ci.yml 을 트리거하지 않는다 —
-# 리뷰어가 close/reopen 하거나 추후 PAT 도입(운영자 결정). 완화책으로
-# PR 생성 전에 validate-data 를 이 job 에서 직접 돌린다.
+# diff 는 자동 머지하지 않는다 — 리포트 SUSPICIOUS·ERROR 0이면 Claude 위임 머지, 그 외 사람 승인
+# (docs/PROGRESS.md §3 — 데이터 조작 방지 + 리뷰 기록).
+# 알려진 한계: GITHUB_TOKEN 이 만든 PR 에도 ci.yml 런은 생기지만 job 이 실행되지 않고(0개) 대기하다
+# 30일 경과·PR 종료 시 failure 로 기록된다 — 게이트 실패가 아니다. 실제 CI 가 필요하면 사람 토큰으로
+# close/reopen 하거나 추후 PAT 도입(운영자 결정). 완화책으로 PR 생성 전에 validate-data 를 이 job 에서 직접 돌린다.
 name: Data sync
 
 on:

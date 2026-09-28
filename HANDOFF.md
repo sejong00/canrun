@@ -10,19 +10,17 @@
 ## 1. 매 세션의 흐름
 
 1. 저장소 폴더(`D:\workspace\canrun-plan`)에서 `claude` 실행
-2. **`/canrun-start`** — 현재 위치, 쌓인 PR·이슈, 다음 태스크를 보고받는다 (fast-forward pull 외 파일 수정 없음. GitHub 점검엔 `gh` CLI 로그인이 필요 — `docs/PROGRESS.md` §2 사람 작업)
+2. **`/canrun-start`** — Claude가 쌓인 운영 잡일(Dependabot·data-sync 머지, new-model 트리아지)을 위임 범위 안에서 처리하고, 처리 결과·결정이 필요한 것·다음 태스크를 보고한다
 3. 진행 지시 — 예: `P1-1 진행해줘`. 규모가 있으면 플랜 모드 계획이 먼저 뜨니 훑어보고 승인
-4. 끝나면 **`/canrun-wrap`** — AC 표를 확인하고, 전부 충족이면 `푸시해`
+4. 끝나면 **`/canrun-wrap`** — AC 확인 → 게이트 → 커밋 → 푸시까지 Claude가 한다. 미충족·게이트 실패면 멈추고 알린다
 5. 다음 태스크는 **`/clear` 후 새 세션**에서 (1세션 = 1태스크)
 
 모델: 대부분 기본값으로 충분. **P1-2(콤보 템플릿)처럼 핵심 로직 태스크는 `/model`로 가장 강한 모델을 고른다.**
 
-## 2. 주간 루틴 (15분)
+## 2. 주간 루틴
 
-- 화요일 아침: data-sync PR 확인 → 머지 (CI 체크가 안 붙어 있는 게 정상. P1-1 이후엔 PR을 close→reopen해 CI를 돌린 뒤 머지)
-- new-model 이슈 훑기 → 추가할 모델만 남기고 닫기 (출시 후엔 매일 — 48h 플레이북)
-- 리포트 판독·Dependabot PR 처리 기준: `docs/PROGRESS.md` §3
-- 판단이 애매하면 `/canrun-start`의 권고를 보고 결정
+출시 전엔 따로 없다. 자동화(주간 data-sync PR·주간 new-model 요약 이슈·월간 Dependabot)가 쌓은 일은 다음 `/canrun-start`에서 Claude가 처리한다. 보고의 "결정이 필요한 것"(npm 메이저 업데이트, 이상 데이터 등)에만 답하면 된다. 위임 범위: `CLAUDE.md` "세션 운영".
+P1-6(출시 후)부터는 주 1회 GSC 수치(클릭·노출·인덱스)를 Claude에게 전달한다 — 인덱싱 게이트 기록용.
 
 ## 3. 교차 검증 (마일스톤마다, 특히 P1-2 후)
 
@@ -30,11 +28,12 @@
 
 ## 4. 사람 작업
 
-`docs/PROGRESS.md` §2 "사람 작업" 체크리스트 — `gh` CLI 로그인, 도메인, P0-5 실측, 에디토리얼 감수, GSC·네이버 소유 확인, 커뮤니티 게시, (선택) HF_TOKEN.
+`docs/PROGRESS.md` §2 "사람 작업" 체크리스트 — 도메인, P0-5 실측, 에디토리얼 감수, GSC·네이버 소유 확인, 커뮤니티 게시, (선택) HF_TOKEN, (선택) 로컬 gitleaks 설치.
 
 ## 5. 보안 (요약 — 상세 `docs/05` §8, `CLAUDE.md` 규칙 7)
 
-- 토큰·키는 GitHub Actions Secrets / `wrangler secret`에만 둔다. 파일이나 채팅에 붙여넣지 않는다 (Cloudflare 배포 토큰 `CLOUDFLARE_API_TOKEN`·`CLOUDFLARE_ACCOUNT_ID`는 08-15 첫 배포 때 등록 — 라이브 사이트 기준, Actions 런은 재개 점검에서 확인. 교체할 때도 Actions Secrets만)
-- GitHub 조회는 `gh` CLI 로그인으로 한다 — Claude Code가 git 자격증명에서 토큰을 꺼내 쓰지 않게 한다
+- 토큰·키는 GitHub Actions Secrets / `wrangler secret`에만 둔다. 파일이나 채팅에 붙여넣지 않는다 (Cloudflare 배포 토큰 `CLOUDFLARE_API_TOKEN`·`CLOUDFLARE_ACCOUNT_ID`는 08-16 등록 — 08-15 첫 push 배포는 토큰 미등록으로 실패했고 08-16 수동 실행이 첫 배포. 교체할 때도 Actions Secrets만)
+- GitHub 조회·머지는 `gh` CLI 로그인으로 한다 — Claude Code가 git 자격증명에서 토큰을 꺼내 쓰지 않게 한다
+- 위임용 자동 허용 규칙은 `.claude/settings.local.json`(개인 설정, 커밋 안 됨)에 있다: `gh pr merge/close/reopen`·`gh issue close/comment`·`gh workflow run`·`git push origin main`(force push·원격 브랜치 삭제·머지 시 브랜치 삭제·`--admin`은 거부). 위임을 끄려면 이 파일을 지운다
 - 저장소 공개 전환 시: secret scanning 활성화 + 전체 히스토리 스캔 1회
-- 자격증명으로 저장소 설정을 바꾸는 작업은 Claude Code가 멈추고 확인을 구한다 — 정상 동작이니 브라우저에서 직접 하거나 승인한다
+- 위임 범위 밖(저장소 설정 변경 등)은 Claude Code가 멈추고 확인을 구한다 — 정상 동작이니 브라우저에서 직접 하거나 승인한다
