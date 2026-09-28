@@ -7,6 +7,12 @@ coverage/
 .turbo/
 *.tsbuildinfo
 
+# e2e / Lighthouse CI 산출물 (CI 는 아티팩트로 업로드)
+test-results/
+playwright-report/
+lhci-report/
+.lighthouseci/
+
 # env & secrets — 절대 커밋 금지 (CLAUDE.md 규칙 7)
 .env
 .env.*

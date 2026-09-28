@@ -2,62 +2,25 @@
  * AC (docs/06 P0-3): 전 (GPU × 모델 × quant) 조합 엔진 스모크 — NaN/음수 0건.
  *
  * 조합 구성:
- *  - dgpu: RAM 프로필 32GB / DDR5-5600 페어링 (계산기 기본값과 동일)
- *  - unified/cpu: ramOptionsGB 최소·최대 2점
+ *  - 하드웨어: 허브와 같은 구성 (assess.ts hardwareConfigs — dgpu 32GB DDR5-5600 가정, 통합·CPU 는 RAM 옵션 전부)
  *  - quant: 모델별 등록 quant (model-quants) + 미등록 대비 Q4_K_M bpw 폴백 1점
  */
 import { evaluate, type Hardware, type ModelQuant, type Verdict } from '@canrun/engine';
 import { describe, expect, it } from 'vitest';
-import type { Gpu, Model } from '../src/index';
+import { hardwareConfigs, toModelQuant, type Gpu, type Model } from '../src/index';
 import { loadSeed } from './seed';
 
 const seed = loadSeed();
 
 function hardwareVariants(gpu: Gpu): Hardware[] {
-  if (gpu.kind === 'dgpu') {
-    return [
-      {
-        kind: 'dgpu',
-        os: 'windows',
-        vramGB: gpu.vramGB,
-        memBandwidthGBs: gpu.memBandwidthGBs,
-        fp16Tflops: gpu.fp16Tflops,
-        ramGB: 32,
-        ramBandwidthGBs: 89.6,
-        effClass: gpu.effClass,
-        isDisplayGpu: true,
-      },
-    ];
-  }
-  const rams = [...new Set([gpu.ramOptionsGB![0]!, gpu.ramOptionsGB!.at(-1)!])];
-  return rams.map((ramGB) => ({
-    kind: gpu.kind,
-    os: gpu.vendor === 'apple' ? 'macos' : 'linux',
-    memBandwidthGBs: gpu.memBandwidthGBs,
-    fp16Tflops: gpu.fp16Tflops,
-    ramGB,
-    ramBandwidthGBs: gpu.memBandwidthGBs,
-    effClass: gpu.effClass,
-  }));
+  return hardwareConfigs(gpu, seed.gpus).map((config) => config.hw);
 }
 
 function modelQuantVariants(model: Model): ModelQuant[] {
   const registered = seed.modelQuants.filter((mq) => mq.modelId === model.id);
-  const base = {
-    paramsB: model.paramsB,
-    activeParamsB: model.activeParamsB,
-    kvBytesPerToken: model.arch.kvBytesPerTokenF16,
-    attnType: model.arch.attnType,
-    nonExpertGB: model.nonExpertGB,
-    maxContext: model.maxContext,
-  } as const;
-  const variants: ModelQuant[] = registered.map((mq) => ({
-    ...base,
-    quant: mq.quant,
-    fileGB: mq.fileGB,
-  }));
+  const variants: ModelQuant[] = registered.map((mq) => toModelQuant(model, mq));
   // bpw 폴백 경로도 조합에 포함 (fileGB 미등록 quant 재현)
-  variants.push({ ...base, quant: 'Q4_K_M' });
+  variants.push(toModelQuant(model));
   return variants;
 }
 

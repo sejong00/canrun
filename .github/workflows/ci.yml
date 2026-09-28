@@ -1,5 +1,6 @@
-# CI 게이트 (docs/05 §6·§8): typecheck → lint → test → 데이터 검증 → build → 산출물 불변식,
-# 병렬로 gitleaks 시크릿 스캔. Playwright/Lighthouse 는 페이지 템플릿이 생기는 P1-1 에서 추가.
+# CI 게이트 (docs/05 §6·§8): typecheck → lint → test → 데이터 검증 → build → 산출물 불변식
+# → Playwright 스모크 → Lighthouse CI (P1-1 에서 연결), 병렬로 gitleaks 시크릿 스캔.
+# E2E·LHCI 는 build 산출물을 scripts/serve-out.ts (Cloudflare Pages 경로 매핑 모사) 로 띄워 검사한다.
 name: CI
 
 on:
@@ -44,6 +45,26 @@ jobs:
 
       - name: Export invariants (i18n spike — en root + /ko/)
         run: pnpm test:export
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: E2E smoke (Playwright)
+        run: pnpm test:e2e
+
+      # 예산은 lighthouserc.json — 4개 카테고리 ≥0.9 · 스크립트 전송량(gzip) ≤150KB · CLS ≤0.1 = error,
+      # LCP ≤2s = warn (콤보 템플릿 예산은 P1-2). 3회 측정의 median-run 기준 (기본 optimistic 은 최고값).
+      - name: Lighthouse CI
+        run: pnpm lhci
+
+      # 리포트는 워크플로 아티팩트로만 — temporary-public-storage(공개 URL) 업로드 금지
+      - name: Upload Lighthouse report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: lighthouse-report
+          path: lhci-report/
+          if-no-files-found: ignore
 
   gitleaks:
     runs-on: ubuntu-latest

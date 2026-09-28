@@ -6,7 +6,7 @@ description: 태스크 종료 — AC 검증, 전체 게이트, docs/PROGRESS.md 
 1. 해당 태스크의 AC(`docs/06-roadmap-tasks.md` + `docs/PROGRESS.md` §2의 추가 요구)를 항목별로 충족/미충족 + 증거로 표 보고해.
    **미충족이 있으면 여기서 멈추고** 알려줘.
 2. `git fetch` → 뒤처지기만 했으면 `git pull --ff-only`(lockfile이 바뀌었으면 `pnpm install`). 미푸시 로컬 커밋이 있는데 원격도 앞서 있으면 멈추고 보고(해소는 내 확인 후).
-   전체 게이트 = `.github/workflows/ci.yml`의 게이트 스텝을 같은 순서로 로컬 실행(현재: `pnpm run typecheck` · `pnpm run lint` · `pnpm run test:coverage`(엔진 회귀 + 커버리지 90%) · `pnpm run validate-data` · `pnpm build` · `pnpm run test:export`). **하나라도 실패하면 멈추고** 원인을 보고해.
+   전체 게이트 = `.github/workflows/ci.yml`의 게이트 스텝을 같은 순서로 로컬 실행(현재: `pnpm run typecheck` · `pnpm run lint` · `pnpm run test:coverage`(엔진 회귀 + 커버리지 90%) · `pnpm run validate-data` · `pnpm build` · `pnpm run test:export` · `pnpm run test:e2e` · `pnpm run lhci` — 마지막 둘은 로컬 Chrome이 필요하다. 없으면 `docs/PROGRESS.md` §5의 Edge 절차로 대신 돌리고, 그것도 안 되면 푸시 후 CI 결과로 확인). **하나라도 실패하면 멈추고** 원인을 보고해.
    gitleaks는 로컬 도구(`gitleaks` 또는 `docs/PROGRESS.md` §5의 Docker 명령)가 실행에 성공하면 커밋 전에 그 결과를 쓰고, 도구가 없거나 실행이 실패하면(Docker 데몬 미기동 등) 추가된 줄을 시크릿 패턴 정규식으로 스캔한 뒤 푸시 후 CI gitleaks 결과로 확인해(§4 09-28).
 3. `docs/PROGRESS.md` 갱신:
    - §1 현재 위치, §2 큐(완료 항목 제거, 새로 생긴 후속 작업 추가 — 다른 절에서 큐 항목은 번호 대신 「이름」으로 참조)

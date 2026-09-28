@@ -1,11 +1,9 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { notFound } from 'next/navigation';
-import { hasLocale, NextIntlClientProvider } from 'next-intl';
+import { hasLocale } from 'next-intl';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
-import NextLink from 'next/link';
-import { getPathname, Link } from '@/i18n/navigation';
-import { routing, type Locale } from '@/i18n/routing';
+import { routing } from '@/i18n/routing';
 import { SITE_URL } from '@/lib/site';
 import '../globals.css';
 
@@ -31,6 +29,12 @@ export async function generateMetadata({ params }: Omit<Props, 'children'>): Pro
   };
 }
 
+/**
+ * 헤더(로케일 전환 포함)는 페이지 경로를 아는 PageShell 이 그린다.
+ * NextIntlClientProvider 는 두지 않는다 — 클라이언트에서 번역을 쓰는 컴포넌트가 없고, 두면
+ * 모든 페이지에 messages 전체와 intl-messageformat 번들이 실린다 (결정 D6, JS 예산 docs/01 §7).
+ * 클라이언트 컴포넌트가 번역이 필요해지면 그 서브트리에만 필요한 네임스페이스로 프로바이더를 둔다.
+ */
 export default async function LocaleLayout({ children, params }: Props) {
   const { locale } = await params;
   if (!hasLocale(routing.locales, locale)) {
@@ -40,44 +44,16 @@ export default async function LocaleLayout({ children, params }: Props) {
   setRequestLocale(locale);
 
   const t = await getTranslations({ locale, namespace: 'Site' });
-  const tSwitcher = await getTranslations({ locale, namespace: 'LocaleSwitcher' });
 
   return (
     <html lang={locale}>
       <body className="min-h-dvh">
-        <NextIntlClientProvider>
-          <header className="border-b border-border">
-            <div className="mx-auto flex max-w-3xl items-center justify-between gap-4 px-6 py-4">
-              <Link href="/" className="font-semibold tracking-tight">
-                {t('name')}
-              </Link>
-              <nav aria-label={tSwitcher('label')} className="flex items-center gap-3 text-sm">
-                {routing.locales.map((target) => (
-                  // 로케일 전환 링크 — i18n/navigation.ts 주석 참조 (en 무프리픽스 유지)
-                  <NextLink
-                    key={target}
-                    href={getPathname({ href: '/', locale: target })}
-                    hrefLang={target}
-                    aria-current={target === locale ? 'page' : undefined}
-                    className={
-                      target === locale
-                        ? 'font-medium text-foreground'
-                        : 'text-muted-foreground hover:text-foreground'
-                    }
-                  >
-                    {tSwitcher(target as Locale)}
-                  </NextLink>
-                ))}
-              </nav>
-            </div>
-          </header>
-          <main className="mx-auto max-w-3xl px-6 py-16">{children}</main>
-          <footer className="border-t border-border">
-            <p className="mx-auto max-w-3xl px-6 py-6 text-sm text-muted-foreground">
-              {t('tagline')}
-            </p>
-          </footer>
-        </NextIntlClientProvider>
+        {children}
+        <footer className="border-t border-border">
+          <p className="mx-auto max-w-5xl px-4 py-6 text-sm text-muted-foreground sm:px-6">
+            {t('tagline')}
+          </p>
+        </footer>
       </body>
     </html>
   );

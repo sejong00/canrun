@@ -12,6 +12,10 @@ const config = [
       '**/out/**',
       'coverage/**',
       'data/**',
+      'playwright-report/**',
+      'test-results/**',
+      'lhci-report/**',
+      '.lighthouseci/**',
     ],
   },
   {

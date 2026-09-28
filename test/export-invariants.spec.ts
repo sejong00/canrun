@@ -174,6 +174,201 @@ describe('en pages carry no /en-prefixed internal links', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// P1-1 허브 템플릿 불변식 (docs/04 §2·§5·§6, CLAUDE.md 규칙 3·4·5)
+// ---------------------------------------------------------------------------
+
+const readIds = (file: string) =>
+  (JSON.parse(readFileSync(join(repoRoot, 'data', file), 'utf8')) as Array<{ id: string }>).map(
+    (record) => record.id,
+  );
+
+const isKoPath = (urlPath: string) => urlPath === '/ko' || urlPath.startsWith('/ko/');
+const hubPathOf = (urlPath: string) => (isKoPath(urlPath) ? urlPath.slice('/ko'.length) : urlPath);
+const isHub = (urlPath: string) => /^\/(gpu|model)\//.test(hubPathOf(urlPath));
+
+function decodeEntities(text: string): string {
+  return text
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#x27;|&#39;/g, "'")
+    .replace(/&amp;/g, '&');
+}
+
+function jsonLdBlocks(html: string): Array<Record<string, unknown>> {
+  return [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].map(
+    (m) => JSON.parse(m[1]!) as Record<string, unknown>,
+  );
+}
+
+function metaDescription(html: string): string | undefined {
+  const raw = html.match(/<meta name="description" content="([^"]*)"/)?.[1];
+  return raw === undefined ? undefined : decodeEntities(raw);
+}
+
+function titleOf(html: string): string | undefined {
+  const raw = html.match(/<title>([^<]*)<\/title>/)?.[1];
+  return raw === undefined ? undefined : decodeEntities(raw);
+}
+
+function visibleFaq(html: string): Array<{ question: string; answer: string }> {
+  const questions = [...html.matchAll(/<h3[^>]*data-faq-question[^>]*>([\s\S]*?)<\/h3>/g)].map(
+    (m) => decodeEntities(m[1]!),
+  );
+  const answers = [...html.matchAll(/<p[^>]*data-faq-answer[^>]*>([\s\S]*?)<\/p>/g)].map((m) =>
+    decodeEntities(m[1]!),
+  );
+  return questions.map((question, i) => ({ question, answer: answers[i] ?? '' }));
+}
+
+/** `<a href="/…">` 내부 링크 (로케일 전환 링크 제외 옵션) */
+function internalLinks(html: string, { skipLocaleSwitch = false } = {}): string[] {
+  const links: string[] = [];
+  for (const m of html.matchAll(/<a\b[^>]*>/g)) {
+    const tag = m[0];
+    const href = tag.match(/href="(\/[^"/][^"]*|\/)"/)?.[1];
+    if (!href) continue;
+    if (skipLocaleSwitch && tag.includes('data-locale-switch')) continue;
+    links.push(href);
+  }
+  return links;
+}
+
+/** 스크립트·스타일을 뺀 가시 텍스트 (RSC 인라인 페이로드 제외) */
+function visibleText(html: string): string {
+  return decodeEntities(
+    html
+      .replace(/<script[\s\S]*?<\/script>/g, ' ')
+      .replace(/<style[\s\S]*?<\/style>/g, ' ')
+      .replace(/<[^>]+>/g, ' '),
+  );
+}
+
+describe('hub pages exist for every catalog record (결정 D1 — 허브 전체 생성)', () => {
+  it('every gpus.json / models.json id has an en and a ko hub', () => {
+    const urls = new Set(pages.map((p) => p.urlPath));
+    for (const id of readIds('gpus.json')) {
+      expect(urls.has(`/gpu/${id}`), `/gpu/${id}`).toBe(true);
+      expect(urls.has(`/ko/gpu/${id}`), `/ko/gpu/${id}`).toBe(true);
+    }
+    for (const id of readIds('models.json')) {
+      expect(urls.has(`/model/${id}`), `/model/${id}`).toBe(true);
+      expect(urls.has(`/ko/model/${id}`), `/ko/model/${id}`).toBe(true);
+    }
+  });
+});
+
+describe('html lang matches the locale', () => {
+  it('ko pages are lang="ko", everything else lang="en"', () => {
+    for (const page of pages) {
+      const lang = page.html.match(/<html[^>]*\blang="([^"]+)"/)?.[1];
+      expect(lang, page.file).toBe(isKoPath(page.urlPath) ? 'ko' : 'en');
+    }
+  });
+});
+
+describe('structured data (docs/04 §5)', () => {
+  it('every JSON-LD block parses; hubs carry BreadcrumbList + FAQPage', () => {
+    for (const page of pages) {
+      const blocks = jsonLdBlocks(page.html);
+      if (!isHub(page.urlPath)) continue;
+      const types = blocks.map((b) => b['@type']);
+      expect(types, page.file).toContain('BreadcrumbList');
+      expect(types, page.file).toContain('FAQPage');
+    }
+  });
+
+  it('breadcrumbs: every item has a URL (결정 D7), the last one is the canonical', () => {
+    for (const page of pages.filter((p) => isHub(p.urlPath))) {
+      const crumbs = jsonLdBlocks(page.html).find((b) => b['@type'] === 'BreadcrumbList')!;
+      const items = crumbs.itemListElement as Array<{ item?: string; position: number }>;
+      expect(items.length, page.file).toBeGreaterThanOrEqual(2);
+      items.forEach((item, i) => {
+        expect(item.position, page.file).toBe(i + 1);
+        expect(item.item, page.file).toMatch(/^https?:\/\//);
+      });
+      expect(items.at(-1)!.item, page.file).toBe(extractCanonical(page.html));
+    }
+  });
+
+  it('FAQPage text equals the visible FAQ (Google FAQ guideline)', () => {
+    for (const page of pages.filter((p) => isHub(p.urlPath))) {
+      const faq = jsonLdBlocks(page.html).find((b) => b['@type'] === 'FAQPage')!;
+      const entities = (
+        faq.mainEntity as Array<{ name: string; acceptedAnswer: { text: string } }>
+      ).map((q) => ({ question: q.name, answer: q.acceptedAnswer.text }));
+      expect(entities.length, page.file).toBe(3);
+      expect(entities, page.file).toEqual(visibleFaq(page.html));
+    }
+  });
+});
+
+describe('estimates always carry a band (CLAUDE.md 규칙 3)', () => {
+  const RANGE = /\d[\d.,]*–\d[\d.,]*/;
+  const QUOTED_SPEED = /\d[\d.,]*\s*tok\/s/;
+  it('meta descriptions and FAQ answers that quote a tok/s value also quote a range', () => {
+    for (const page of pages) {
+      const texts = [metaDescription(page.html) ?? '', ...visibleFaq(page.html).map((q) => q.answer)];
+      for (const text of texts) {
+        if (!QUOTED_SPEED.test(text)) continue;
+        expect(RANGE.test(text), `${page.file}: ${text}`).toBe(true);
+      }
+    }
+  });
+});
+
+describe('titles and descriptions (docs/04 §4 — no duplicate templates)', () => {
+  it('are present and unique across pages', () => {
+    const titles = new Map<string, string>();
+    const descriptions = new Map<string, string>();
+    for (const page of pages) {
+      const title = titleOf(page.html);
+      const description = metaDescription(page.html);
+      expect(title, `${page.file} title`).toBeTruthy();
+      expect(description, `${page.file} description`).toBeTruthy();
+      expect(titles.get(title!), `duplicate title: ${title}`).toBeUndefined();
+      expect(descriptions.get(description!), `duplicate description: ${description}`).toBeUndefined();
+      titles.set(title!, page.file);
+      descriptions.set(description!, page.file);
+    }
+  });
+});
+
+describe('internal linking (docs/04 §2 — 고아 페이지 0)', () => {
+  it('every hub is linked from at least one other page', () => {
+    const inbound = new Map<string, number>();
+    for (const page of pages) {
+      // 로케일 전환 링크는 제외 — 짝 페이지의 스위처가 항상 인바운드가 되어 검사가 무력해진다
+      for (const href of new Set(internalLinks(page.html, { skipLocaleSwitch: true }))) {
+        if (href === page.urlPath) continue;
+        inbound.set(href, (inbound.get(href) ?? 0) + 1);
+      }
+    }
+    for (const page of pages.filter((p) => isHub(p.urlPath))) {
+      expect(inbound.get(page.urlPath) ?? 0, `orphan hub ${page.urlPath}`).toBeGreaterThan(0);
+    }
+  });
+
+  it('ko pages link only to /ko/* (except the locale switcher)', () => {
+    for (const page of pages.filter((p) => isKoPath(p.urlPath))) {
+      for (const href of internalLinks(page.html, { skipLocaleSwitch: true })) {
+        expect(isKoPath(href), `${page.file} → ${href}`).toBe(true);
+      }
+    }
+  });
+});
+
+describe('en pages render no Korean text (CLAUDE.md 규칙 4)', () => {
+  const HANGUL = /[ᄀ-ᇿ㄰-㆏가-힯]+/g;
+  it('only the locale switcher label may be Hangul', () => {
+    for (const page of pages.filter((p) => !isKoPath(p.urlPath))) {
+      const hangul = (visibleText(page.html).match(HANGUL) ?? []).filter((w) => w !== '한국어');
+      expect(hangul, page.file).toEqual([]);
+    }
+  });
+});
+
 describe('_redirects (docs/05 §3)', () => {
   it('exists, includes the /en cleanup rules, stays under the CF limit', () => {
     const path = join(outDir, '_redirects');

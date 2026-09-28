@@ -7,12 +7,23 @@
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
+  /* muted 배경(0.97) 위에서도 AA 4.5:1 — 0.556 은 4.34:1 로 미달 (P1-1 접근성) */
+  --muted-foreground: oklch(0.5 0 0);
   --primary: oklch(0.205 0 0);
   --primary-foreground: oklch(0.985 0 0);
   --border: oklch(0.922 0 0);
   --ring: oklch(0.708 0 0);
   --radius: 0.625rem;
+
+  /* 판정 색 (docs/01 §3 green/teal/amber/red) — 틴트 배경 + 진한 글자, 텍스트 대비 AA */
+  --verdict-s-bg: oklch(0.962 0.044 156.743);
+  --verdict-s-fg: oklch(0.448 0.119 151.328);
+  --verdict-a-bg: oklch(0.953 0.051 180.801);
+  --verdict-a-fg: oklch(0.437 0.078 188.216);
+  --verdict-b-bg: oklch(0.962 0.059 95.617);
+  --verdict-b-fg: oklch(0.473 0.137 46.201);
+  --verdict-f-bg: oklch(0.936 0.032 17.717);
+  --verdict-f-fg: oklch(0.444 0.177 26.899);
 }
 
 /* 시스템 다크 모드 — .light 로 명시 옵트아웃 가능 */
@@ -26,6 +37,14 @@
     --primary-foreground: oklch(0.205 0 0);
     --border: oklch(0.34 0 0);
     --ring: oklch(0.556 0 0);
+    --verdict-s-bg: oklch(0.266 0.065 152.934);
+    --verdict-s-fg: oklch(0.871 0.15 154.449);
+    --verdict-a-bg: oklch(0.277 0.046 192.524);
+    --verdict-a-fg: oklch(0.855 0.138 181.071);
+    --verdict-b-bg: oklch(0.279 0.077 45.635);
+    --verdict-b-fg: oklch(0.879 0.169 91.605);
+    --verdict-f-bg: oklch(0.258 0.092 26.042);
+    --verdict-f-fg: oklch(0.808 0.114 19.571);
   }
 }
 
@@ -38,6 +57,14 @@
   --primary-foreground: oklch(0.205 0 0);
   --border: oklch(0.34 0 0);
   --ring: oklch(0.556 0 0);
+  --verdict-s-bg: oklch(0.266 0.065 152.934);
+  --verdict-s-fg: oklch(0.871 0.15 154.449);
+  --verdict-a-bg: oklch(0.277 0.046 192.524);
+  --verdict-a-fg: oklch(0.855 0.138 181.071);
+  --verdict-b-bg: oklch(0.279 0.077 45.635);
+  --verdict-b-fg: oklch(0.879 0.169 91.605);
+  --verdict-f-bg: oklch(0.258 0.092 26.042);
+  --verdict-f-fg: oklch(0.808 0.114 19.571);
 }
 
 @theme inline {
@@ -49,6 +76,14 @@
   --color-primary-foreground: var(--primary-foreground);
   --color-border: var(--border);
   --color-ring: var(--ring);
+  --color-verdict-s-bg: var(--verdict-s-bg);
+  --color-verdict-s-fg: var(--verdict-s-fg);
+  --color-verdict-a-bg: var(--verdict-a-bg);
+  --color-verdict-a-fg: var(--verdict-a-fg);
+  --color-verdict-b-bg: var(--verdict-b-bg);
+  --color-verdict-b-fg: var(--verdict-b-fg);
+  --color-verdict-f-bg: var(--verdict-f-bg);
+  --color-verdict-f-fg: var(--verdict-f-fg);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
 }
@@ -57,4 +92,12 @@ body {
   background-color: var(--background);
   color: var(--foreground);
   -webkit-font-smoothing: antialiased;
+}
+
+/* 본문 링크는 색만으로 구분하지 않는다 (WCAG link-in-text-block) — 배지 링크는 .no-underline */
+@layer base {
+  main a {
+    text-decoration-line: underline;
+    text-underline-offset: 3px;
+  }
 }

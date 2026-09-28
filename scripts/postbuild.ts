@@ -34,6 +34,15 @@ if (existsSync(enRootHtml)) {
   }
   renameSync(enRootHtml, rootIndex);
 }
+// 홈 RSC 페이로드도 같이 이동 — 클라이언트 라우터는 `/` 의 페이로드를 /index.txt 로 요청한다
+const enRootTxt = join(outDir, 'en.txt');
+const rootIndexTxt = join(outDir, 'index.txt');
+if (existsSync(enRootTxt)) {
+  if (existsSync(rootIndexTxt)) {
+    throw new Error('both out/index.txt and out/en.txt exist — unexpected export layout, aborting');
+  }
+  renameSync(enRootTxt, rootIndexTxt);
+}
 
 // `/en/**` 하위 페이지: out/en/** → out/** (충돌 = 즉시 실패, 조용한 덮어쓰기 금지)
 if (existsSync(enDir)) {

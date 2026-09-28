@@ -52,6 +52,32 @@ describe('seed scale (docs/06 P0-3)', () => {
   });
 });
 
+describe('locale-neutral display fields (CLAUDE.md 규칙 4 — en 페이지에 한글 노출 금지)', () => {
+  // 허브가 en/ko 양쪽에 그대로 렌더하는 필드. 한국어 설명은 messages 로, 내부 메모는 note(렌더 금지)로.
+  const HANGUL = /[ᄀ-ᇿ㄰-㆏가-힯]/;
+
+  it('gpu.name·aliases, model.name·family, bench.flags·hardwareDesc contain no Hangul', () => {
+    const fields: Array<[string, string | undefined]> = [
+      ...seed.gpus.flatMap((g): Array<[string, string]> => [
+        [`gpus/${g.id}.name`, g.name],
+        ...g.aliases.map((a): [string, string] => [`gpus/${g.id}.aliases`, a]),
+      ]),
+      ...seed.models.flatMap((m): Array<[string, string]> => [
+        [`models/${m.id}.name`, m.name],
+        [`models/${m.id}.family`, m.family],
+      ]),
+      ...seed.benchmarks.flatMap((bp): Array<[string, string | undefined]> => [
+        [`benchmarks/${bp.id}.flags`, bp.flags],
+        [`benchmarks/${bp.id}.hardwareDesc`, bp.hardwareDesc],
+      ]),
+    ];
+    for (const [label, value] of fields) {
+      if (value === undefined) continue;
+      expect(HANGUL.test(value), `${label} = ${value}`).toBe(false);
+    }
+  });
+});
+
 describe('MoE nonExpertGB derivation (P0-2 잠정값 확정)', () => {
   it.each(Object.keys(MOE_ARCH))('%s seed value matches the derivation', (modelId) => {
     const model = seed.models.find((m) => m.id === modelId);

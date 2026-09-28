@@ -27,6 +27,8 @@ import { z } from 'zod';
 
 export * from './schema';
 export * from './derive';
+export * from './assess';
+export * from './license';
 
 /**
  * `data/<파일명>` → 파일 전체 스키마. `scripts/validate-data.ts` 가 순회하며,
