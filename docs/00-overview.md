@@ -56,10 +56,11 @@
 | `05-architecture.md` | 스택, 저장소 구조, 빌드/배포, Phase 2 확장 경로 | Phase 0 (스캐폴드) |
 | `06-roadmap-tasks.md` | 주 단위 태스크 + 완료 기준 + Claude Code 세션 프롬프트 | 상시 |
 | `07-monetization.md` | 수익화 순서, 광고/어필리에이트 조건, 시나리오 | Phase 1.5부터 |
+| `PROGRESS.md` | 현재 위치·다음 할 일·결정 기록 (단일 진실 원천) | 매 세션 |
 | `CLAUDE.md` | 저장소 루트에 넣을 Claude Code 컨벤션 파일 | 저장소 생성 직후 |
 
 ## 7. 즉시 다음 행동 (착수 첫 주)
 
-1. 도메인 확정·구매 (후보와 기준: 마스터 플랜 §10) + GitHub 저장소 생성, `CLAUDE.md` 배치 — **이관 절차·첫 세션 프롬프트는 `HANDOFF.md`**
+1. 도메인 확정·구매 (후보와 기준: 마스터 플랜 §10) + GitHub 저장소 생성, `CLAUDE.md` 배치 — **이관 절차·첫 세션 프롬프트(완료)는 `git show 03337a8:HANDOFF.md`, 현재 운영은 `HANDOFF.md`·`docs/PROGRESS.md`**
 2. Claude Code로 Phase 0 착수: 모노레포 스캐폴드 → 엔진 패키지(테스트 우선) → 시드 데이터 JSON화 (`06-roadmap-tasks.md` P0-1~P0-4)
 3. 자체 리그(RTX 5060 Ti 16GB)로 벤치마크 1차 측정 (프로토콜·매트릭스: `03-data-spec.md` §6) — 수요 최다 16GB 세그먼트의 실측이 "실측 검증" 포지셔닝의 초기 데이터. 하이엔드는 공개 실측 시드로 커버

@@ -22,8 +22,11 @@ pnpm run sync-models -- --dry # HF 데이터 동기화 드라이런
 ## 구조 (상세: docs/05)
 `packages/engine`(계산) · `packages/data`(스키마) · `data/*.json`(시드) · `apps/web`(Next.js 16 static export — 버전 결정 기록: docs/05 §1) · `scripts/`(동기화·파서) 
 
-## 작업 순서
-`docs/06-roadmap-tasks.md`의 태스크 단위로. 각 태스크의 AC 전부 충족 후 다음으로. 현재 Phase는 저장소 이슈/보드 참조.
+## 세션 운영
+- **현재 위치·다음 태스크·결정 기록은 `docs/PROGRESS.md`가 단일 진실 원천.** 세션 시작은 `/canrun-start`, 태스크 종료는 `/canrun-wrap`.
+- 1세션 = 1태스크(`docs/06` 단위). AC 전부 충족 전 다음 태스크 금지. 규모 있는 태스크는 플랜 모드로 계획 먼저.
+- PR 머지·이슈 닫기·저장소 설정 변경·푸시는 사용자 확인 후.
+- 설계 결정이나 스펙 이탈은 `docs/PROGRESS.md` §4에 근거와 함께 기록(스펙 문서를 고쳤다면 양쪽 모두).
 
 ## 스타일
 TypeScript strict, 함수형 우선, 컴포넌트는 shadcn 패턴. 커밋은 conventional commits. 숫자 단위: 메모리 decimal GB(GiB 아님 — GGUF 관행), 속도 tok/s 소수 1자리.

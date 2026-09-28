@@ -18,6 +18,9 @@ coverage/
 .wrangler/
 .vercel/
 .dev.vars
+.claude/settings.local.json
+.claude/worktrees/
+CLAUDE.local.md
 
 # misc
 *.log

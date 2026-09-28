@@ -1,58 +1,40 @@
-# HANDOFF — Claude Code 이관 가이드
+# HANDOFF — Claude Code 운영 가이드 (YOO용)
 
-> 이 폴더 전체가 저장소의 초기 커밋이 된다. 계획은 `docs/00`부터, 작업 규칙은 `CLAUDE.md`(Claude Code가 자동 로드), 태스크는 `docs/06`.
+> 초기 이관(2026-08-15)은 끝났다 — 당시 절차·첫 세션 프롬프트 원문은 `git show 03337a8:HANDOFF.md`. **2026-09-27부터는 Claude Code에서 직접 운영한다.**
+> 진행 상태의 단일 진실 원천: `docs/PROGRESS.md` · 작업 규칙: `CLAUDE.md`(자동 로드) · 태스크 정의: `docs/06-roadmap-tasks.md`
 
-## 0. 구조 한 줄 정리 (오해 방지)
+## 0. 구조 한 줄 (오해 방지)
 
-**내 PC = 개발·빌드·벤치마크 머신. 서버 아님.** 서비스는 정적 파일로 빌드되어 Cloudflare CDN이 서빙하고, 계산은 방문자 브라우저에서 실행된다. PC에 포트를 열거나 상시 켜둘 필요가 없다. 로컬에서 도는 것: `pnpm dev`(개발 미리보기 localhost:3000), `pnpm build`(정적 산출물 생성), llama-bench(5060 Ti 16GB 실측). 상세: `docs/05` §8.
+내 PC = 개발·빌드·실측 머신이지 서버가 아니다. 서비스는 정적 파일로 빌드되어 Cloudflare Pages가 서빙하고, 계산은 방문자 브라우저에서 돈다. PC를 켜둘 필요도, 포트를 열 필요도 없다. 상세: `docs/05` §8.
 
-## 1. 사전 준비물
+## 1. 매 세션의 흐름
 
-git · Node.js 20+ · pnpm(`corepack enable`) · Claude Code · GitHub 계정 · Cloudflare 계정(무료) · (첫 주 내) 도메인
+1. 저장소 폴더(`D:\workspace\canrun-plan`)에서 `claude` 실행
+2. **`/canrun-start`** — 현재 위치, 쌓인 PR·이슈, 다음 태스크를 보고받는다 (fast-forward pull 외 파일 수정 없음. GitHub 점검엔 `gh` CLI 로그인이 필요 — `docs/PROGRESS.md` §2 사람 작업)
+3. 진행 지시 — 예: `P1-1 진행해줘`. 규모가 있으면 플랜 모드 계획이 먼저 뜨니 훑어보고 승인
+4. 끝나면 **`/canrun-wrap`** — AC 표를 확인하고, 전부 충족이면 `푸시해`
+5. 다음 태스크는 **`/clear` 후 새 세션**에서 (1세션 = 1태스크)
 
-## 2. 이관 절차
+모델: 대부분 기본값으로 충분. **P1-2(콤보 템플릿)처럼 핵심 로직 태스크는 `/model`로 가장 강한 모델을 고른다.**
 
-1. GitHub에서 **private 저장소** 생성 (예: `canrun`)
-2. 이 폴더 내용물을 저장소 루트로 복사 → `git add -A && git commit -m "docs: initial plan" && git push`
-   (`.gitignore` 포함되어 있음 — `.env*`는 애초에 커밋되지 않는 구조)
-3. 저장소 루트에서 `claude` 실행
-4. 아래 "첫 세션 프롬프트" 붙여넣기 → 이후 태스크 단위로 반복
-5. Cloudflare Pages 연결 시: API 토큰은 **GitHub → Settings → Secrets and variables → Actions**에만 등록 (`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`) — 파일로 저장 금지
+## 2. 주간 루틴 (15분)
 
-## 3. 프롬프트
+- 화요일 아침: data-sync PR 확인 → 머지 (CI 체크가 안 붙어 있는 게 정상. P1-1 이후엔 PR을 close→reopen해 CI를 돌린 뒤 머지)
+- new-model 이슈 훑기 → 추가할 모델만 남기고 닫기 (출시 후엔 매일 — 48h 플레이북)
+- 리포트 판독·Dependabot PR 처리 기준: `docs/PROGRESS.md` §3
+- 판단이 애매하면 `/canrun-start`의 권고를 보고 결정
 
-**첫 세션 (P0-1):**
-```
-docs/06-roadmap-tasks.md의 P0-1(저장소 스캐폴드)을 수행해줘.
-참조: docs/05-architecture.md 전체(§8 보안 포함).
-규모가 있으니 플랜 모드로 계획을 먼저 보여준 뒤 진행하고,
-완료 기준(AC)을 항목별로 충족 여부와 함께 보고해줘.
-i18n 스파이크(en 루트 + /ko/ 정적 산출 확인) 결과는 docs/05에 결정 기록으로 남겨줘.
-```
+## 3. 교차 검증 (마일스톤마다, 특히 P1-2 후)
 
-**범용 템플릿 (이후 모든 태스크):**
-```
-docs/06-roadmap-tasks.md의 {태스크 ID}를 수행해줘. 참조: {해당 ref 문서}.
-AC 전부 충족 후 항목별 보고. 미충족 항목이 있으면 다음 태스크로 넘어가지 말 것.
-```
+`docs/PROGRESS.md` §6 절차대로 격리 클론 + `docs/review-brief.md`로 다른 모델(Codex 등)의 리뷰를 받는다. 결과는 Claude Code에 "이 리뷰를 판정해서 수용분을 수정 태스크로 처리해줘"로 넘긴다.
 
-**세션 시작 시 상태 파악용:**
-```
-docs/06 기준으로 현재 완료된 태스크와 다음 태스크를 git log·코드 상태로 판단해서 알려줘.
-```
+## 4. 사람 작업
 
-## 4. 사람(YOO) 작업 체크리스트 — Claude Code가 못 하는 것
+`docs/PROGRESS.md` §2 "사람 작업" 체크리스트 — `gh` CLI 로그인, 도메인, P0-5 실측, 에디토리얼 감수, GSC·네이버 소유 확인, 커뮤니티 게시, (선택) HF_TOKEN.
 
-- [ ] 도메인 결정·구매 (MASTER_PLAN §10)
-- [ ] Cloudflare Pages 연결 + Actions Secrets 등록 (위 §2-5)
-- [ ] 자체 실측 1차 — RTX 5060 Ti 16GB (`docs/03` §6 프로토콜·매트릭스, P0-5)
-- [ ] 에디토리얼 감수 (특히 ko 12편, P1-4)
-- [ ] 출시 주: GSC·네이버 서치어드바이저 소유 확인
-- [ ] 커뮤니티 활동(아카라이브·레딧)은 본인 계정으로
+## 5. 보안 (요약 — 상세 `docs/05` §8, `CLAUDE.md` 규칙 7)
 
-## 5. 보안 체크리스트 (요약 — 상세 `docs/05` §8)
-
-- 이 계획 폴더에는 키·토큰·개인정보 없음 확인 완료 (2026-08-10 스캔; 유일한 개인 표기는 문서 작성자 "YOO" 핸들 3곳)
-- 시크릿은 Actions Secrets / `wrangler secret`에만 — 저장소·데이터·빌드 출력은 전부 공개 전제
-- P0-1에서 gitleaks CI 스텝 포함할 것 (CLAUDE.md 규칙 7)
-- 저장소 공개 전환 시: secret scanning 활성화 + 히스토리 스캔 1회
+- 토큰·키는 GitHub Actions Secrets / `wrangler secret`에만 둔다. 파일이나 채팅에 붙여넣지 않는다 (Cloudflare 배포 토큰 `CLOUDFLARE_API_TOKEN`·`CLOUDFLARE_ACCOUNT_ID`는 08-15 첫 배포 때 등록 — 라이브 사이트 기준, Actions 런은 재개 점검에서 확인. 교체할 때도 Actions Secrets만)
+- GitHub 조회는 `gh` CLI 로그인으로 한다 — Claude Code가 git 자격증명에서 토큰을 꺼내 쓰지 않게 한다
+- 저장소 공개 전환 시: secret scanning 활성화 + 전체 히스토리 스캔 1회
+- 자격증명으로 저장소 설정을 바꾸는 작업은 Claude Code가 멈추고 확인을 구한다 — 정상 동작이니 브라우저에서 직접 하거나 승인한다

@@ -1,4 +1,4 @@
-# Cloudflare Pages 배포 (docs/05 §1·§8, HANDOFF.md §2-5)
+# Cloudflare Pages 배포 (docs/05 §1·§8)
 #
 # 시크릿 제로 원칙: 토큰은 GitHub Actions Secrets 에만 존재한다.
 #   - CLOUDFLARE_API_TOKEN  (권한: Cloudflare Pages — Edit 만, 최소 권한)
