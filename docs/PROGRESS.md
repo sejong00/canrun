@@ -10,7 +10,7 @@
 - 마지막 기능 커밋 `8e46062`(08-26). 09-28 재개 점검으로 밀린 PR 3건 머지(data sync #31 · npm minor/patch #72 · peter-evans v8 #28) — CI·Deploy 초록. 라이브: https://canrun.pages.dev (en `/` + ko `/ko` 헬로 페이지만, sitemap 없음)
 - 데이터: 모델 29종(한국 9종) · 모델×quant 100행(`model-quants.json`; QuantId 정의 13종은 `quants.json`) · GPU 프로필 54개(dGPU 39·통합 메모리 12·CPU 3) · 캘리브레이션 실측 52점(**own 0**)
 - 자동화: 주간 data-sync PR(화 06:00 KST) · 주간 new-model 요약 이슈(월 06:30 KST — 출시 전) · Daily rebuild(03:00 KST) · CI 6게이트(typecheck·lint·test:coverage 90%·validate-data·build·test:export) + gitleaks(전 히스토리) · Dependabot(npm·actions 월간). 08-26 이후 실패 런 2건은 모두 `data/hf-sync` PR의 job 0개 CI 런(08-26·09-01 — 봇 PR의 알려진 동작, 게이트 실패 아님, §5), 09-28 Deploy 2건은 동시성 취소 — 그 외 전부 성공
-- GitHub에 남은 것: PR #4 eslint 10·#5 typescript 6(보류 — 백로그) · new-model 열린 이슈 21건(높음 14 = 백로그 「카탈로그 확장」 입력, llama.cpp 본선 지원 대기 7)
+- GitHub에 남은 것: PR #85 eslint 10.11(09-28 #4를 대체)·#5 typescript 6(보류 — 백로그) · new-model 열린 이슈 21건(높음 14 = 백로그 「카탈로그 확장」 입력, llama.cpp 본선 지원 대기 7)
 - 운영 방식: 머지·트리아지·푸시 등 반복 잡일은 Claude에 위임(`CLAUDE.md` "세션 운영", 로컬 허용 규칙 `.claude/settings.local.json`)
 
 ## 2. 다음 할 일 큐 (위에서부터)
@@ -34,7 +34,7 @@
 **출시 후 백로그** (출시 전엔 손대지 않는다)
 - **카탈로그 확장** — 높음 이슈 14건: #8 DeepSeek-V4-Flash-0731 · #10 Ling-3.0-tiny · #16 LFM2.5-2.6B · #18 Nemotron-3.5-Lightning-30B-A3B · #20 Ling-3.0-flash · #41 granite-4.2-30b · #42 Laguna-S-2.1 · #43 Spark-X2.5-4B · #45 K2-Horizon-MoVA-36B-A4B · #51 MiniCPM5-2B · #54 MiniCPM5-1B · #61 Llama-3.2-3B · #69 Llama-3.2-1B · #70 Xing4.0-29B-A4B (#42·#45·#70은 llama.cpp 본선 지원 확인 후) + 알림이 놓쳤던 원본(첫 요약 이슈에 함께 올라온다 — 30일 다운로드 순): **google/gemma-4-31B-it**(946만) · **Qwen/Qwen3.8-27B**(673만) · Qwen3.6-35B-A3B(325만) · Qwen3.8-Flash-Next(123만). **대기 목록**(llama.cpp 본선 지원 대기 — 이때 재확인): #19 Motif-3 · #22 maple-preview · #32 GLM-5.3-Flash · #44 Ouro-1.4B · #49 Nanbeige4.2-3B · #57 K2-Horizon-7B · #77 AliceAI-80B-A3B. 위 번호의 이슈는 이 태스크 때까지 열어 두고, `/canrun-start`는 재판정하지 않는다
 - **TS 6 이행** (#5) — `packages/engine`·`packages/data` tsconfig에 `"types": ["node"]` 추가로 Typecheck 실패 해소(§5). 그 전까지 PR은 열어 둔다
-- **eslint 10** (#4) — eslint-plugin-react·import·jsx-a11y의 eslint 10 지원 대기
+- **eslint 10** (#85 — 09-28 Dependabot이 #4를 닫고 10.11.0으로 새로 올림) — eslint-plugin-react·import·jsx-a11y의 eslint 10 지원 대기
 
 **사람 작업 (YOO)**
 - [ ] 도메인 결정·구매 — P1-5 전까지 (후보·기준: `MASTER_PLAN.md` §10). 연결 = CF Pages 커스텀 도메인 + `NEXT_PUBLIC_SITE_URL`(기본값 `https://canrun.pages.dev`, `apps/web/lib/site.ts`). 빌드가 Actions(`deploy.yml` → wrangler Direct Upload)라 **CF 대시보드 env는 효과 없음** — `deploy.yml` Build 스텝 env로 주입하는 코드 변경 필요(daily-rebuild는 deploy.yml 재사용). 전환 후 pages.dev → 커스텀 도메인 리다이렉트 검토
@@ -51,7 +51,7 @@
 |---|---|---|
 | 매주 화 06:00 KST 이후 | data-sync PR(`chore(data): weekly HF sync`, 브랜치 `data/hf-sync`) | 리포트가 SUSPICIOUS 0·ERROR 0이면 머지(위임), 아니면 보고. GITHUB_TOKEN이 만든 PR이라 CI job이 돌지 않는 게 정상(job 0개 런이 대기하다 failure로 기록됨 — §5) — sync job은 validate-data·`pnpm test`(엔진 회귀)만 사전 수행하고 typecheck·lint·build·test:export는 돌지 않는다. **P1-1 이후(데이터가 페이지를 생성)엔 PR을 close→reopen해 CI 초록을 본 뒤 머지**(`data-sync.yml` 헤더 주석). 리포트 action 열: `auto` 중 model-quants fileGB 행은 \|Δ\|≤5%라 정상, models.json 쪽 auto 행(arch.*·kvBytesPerTokenF16·nonExpertGB)은 Δ 임계 없이 반영되니 값 변화·출처 확인 · `auto ⚠SUSPICIOUS`(fileGB \|Δ\|>5%)도 이미 반영된 값이라 머지 전 출처 확인 · `manual`·`skipped`는 미반영 — §5 상시 항목 외 새 manual 행은 별도 데이터 태스크로. 새 PR이 없으면 ① 열린 `data/hf-sync` PR이 갱신됐는지(같은 브랜치라 기존 PR에 쌓임) ② 변경 0 ③ job 실패(ERROR 행·검증 실패 시 exit 1) 순으로 확인 |
 | 매주 월 06:30 KST (P1-5부터 매일) | new-model 요약 이슈 | 후보마다 HF 공개 API로 파라미터·GGUF 확인 → 가치 판정 → 높음은 백로그 「카탈로그 확장」, 본선 미지원은 그 대기 목록에 추가, 이슈는 사유 코멘트와 함께 닫기(위임). 백로그에 번호가 있는 이슈는 재판정하지 않는다. 알림 자체가 카탈로그·기보고·리팩·OCR·타 org 파생을 거르므로 남은 후보만 보면 된다 |
-| 매월 | Dependabot PR | npm minor/patch 그룹·GitHub Actions 액션 = CI 초록이면 머지(위임 — CI가 안 도는 워크플로의 액션이면 머지 후 `workflow_dispatch`로 확인) / npm 메이저 = 권고와 함께 보고 / eslint 10(#4)·typescript 6(#5)은 백로그 |
+| 매월 | Dependabot PR | npm minor/patch 그룹·GitHub Actions 액션 = CI 초록이면 머지(위임 — CI가 안 도는 워크플로의 액션이면 머지 후 `workflow_dispatch`로 확인) / npm 메이저 = 권고와 함께 보고 / eslint 10(#85)·typescript 6(#5)은 백로그 |
 | 매주 (P1-6부터) | GSC 수치 → 저장소 기록 | **사람**이 수치 전달 → Claude가 기록. 인덱싱 ≥80% 게이트 (`docs/06` P1-6) |
 | 마일스톤마다 | 외부 리뷰 (§6) | **사람**이 리뷰어에게 브리프 전달 → Claude가 판정·수정. P1-2 후 필수 권장 |
 
@@ -108,7 +108,7 @@
 
 ## 7. 이력 (최신이 위)
 
-- **09-28** 재개 점검 완료 + 운영 위임 — PR #31(data sync, fileGB 12행 \|Δ\|≤3.63%)·#72(npm minor/patch 13건: next 16.3.5·react 19.3·zod 4.6 등)·#28(peter-evans v8, Data sync 수동 실행으로 확인) 머지 · new-model 71건 트리아지(50건 닫음, 21건 유지) · `a09a12f` 알림 요약 이슈 전환·필터 + Dependabot 월간 · `docs: 운영 위임 규칙 + 재개 점검 기록`(CLAUDE.md 위임 범위·명령 2종·HANDOFF·이 파일)
+- **09-28** 재개 점검 완료 + 운영 위임 — PR #31(data sync, fileGB 12행 \|Δ\|≤3.63%)·#72(npm minor/patch 13건: next 16.3.5·react 19.3·zod 4.6 등)·#28(peter-evans v8, Data sync 수동 실행으로 확인) 머지 · new-model 71건 트리아지(50건 닫음, 21건 유지) · `a09a12f` 알림 요약 이슈 전환·필터 + Dependabot 월간 · `6b6fcbf` 운영 위임 규칙 + 재개 점검 기록(CLAUDE.md 위임 범위·명령 2종·HANDOFF·이 파일) — 푸시 후 CI(gitleaks 포함)·Deploy 초록 · dependabot.yml 변경으로 Dependabot 재실행 → #84(npm minor/patch 7건: next 16.3.6 등) 위임 머지, #85(eslint 10.11)는 #4를 대체해 보류
 - **09-27** `docs: Claude Code 운영 이관` — Cowork → Claude Code 운영 이관(이 파일·`docs/review-brief.md`·커스텀 명령 `/canrun-start`·`/canrun-wrap` 도입). Cowork 초안을 저장소 실상과 대조해 정정(Phase 0 상태, gated 5종, attnOverrides 11종, 리뷰 기준 커밋, GitHub 조회 방식 등). 공백기 점검: 09-27 fetch 기준 origin/main 변동 없음, own 실측 0, 커스텀 도메인 미설정(코드·라이브 canonical 기준)
 - **08-26** `8e46062` P0-4b 한국 모델 9종(EXAONE 4.5 포함 — models 20→29 · model-quants 68→100행) + `docs/03` §6 실측 매트릭스 E그룹(측정 계획) → Phase 0 코드·데이터 태스크 종료(P0-5 자체 실측만 남음)
 - **08 하순** Data sync 첫 실행 실패(저장소 설정) → 설정 ON 후 그린, PR #31 생성 (09-28 확인: 08-19·08-24 실패 → 08-26 성공, #31은 08-26 생성)
