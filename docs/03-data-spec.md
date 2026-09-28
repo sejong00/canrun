@@ -2,22 +2,38 @@
 
 > MVP 데이터는 저장소 `/data/*.json` (버전 관리·PR 리뷰 가능). Phase 2에서 제출 데이터만 D1(SQLite)로. **모든 레코드에 `sources: string[]` 필수.** 본 문서의 시드 표는 2026-08-09 리서치 실측·공식 스펙 기준 — 그대로 JSON화하면 시드 v1 완성.
 
-## 1. 스키마 (zod로 구현, `packages/data/schema.ts`)
+## 1. 스키마 (zod로 구현, `packages/data/src/schema.ts`)
+
+정본은 `packages/data/src/schema.ts` — 이 블록은 요약이며 불일치 시 코드가 우선. 초기 명세 대비 P0-3 이탈(`schema.ts` 헤더·PROGRESS §4 08-16): ① Gpu.kind에 `'cpu'` 추가(§2 CPU 프로필 3종, 엔진 `Hardware.kind`와 정합) ② unified/cpu는 `vramGB` 대신 `ramOptionsGB[]`(PRD "Mac은 칩+RAM 통합 선택") ③ BenchPoint.modelId·quant는 자유 문자열(카탈로그 외 캘리브레이션 모델·실측 quant 표기 보존 — §4).
 
 ```ts
-Gpu { id, name, aliases[], vendor:'nvidia'|'amd'|'intel'|'apple'|'amd-apu'|'nvidia-dgx',
-     kind:'dgpu'|'unified', form:'desktop'|'laptop', vramGB, memBandwidthGBs, fp16Tflops,
-     effClass, launchYear, msrpUSD?, streetUSD?, streetKRW?, priceAsOf?, popular:boolean, sources[] }
-Model { id, family, name, hfId, paramsB, activeParamsB?, arch:{layers,kvHeads,headDim,
-     attnType:'full'|'swa'|'mla'|'hybrid', kvBytesPerTokenF16},  // 사전계산 저장
-     maxContext, license, moe:boolean, nonExpertGB?, category:('chat'|'coding'|'reasoning'|'vision')[],
-     korean?:boolean, popularity:1..5, releasedAt, sources[] }
-ModelQuant { modelId, quant, fileGB, ggufRepo, sources[] }   // 실제 파일 크기
-QuantDef { id, bpw, tier:'safe'|'ok'|'degraded'|'desperate', note }
-BenchPoint { id, gpuId|hardwareDesc, modelId, quant, backend, backendVersion,
-     ctx, ppTokS?, tgTokS, flags?, sourceUrl, sourceType:'official-thread'|'localscore'|'community'|'own',
+// 공통: sources = URL[] (min 1 — Gpu·Model·ModelQuant·attnOverrides. BenchPoint는 sourceUrl 단일, QuantDef·Alias는 없음)
+//       날짜 = 'YYYY-MM-DD' · id = slug /^[a-z0-9][a-z0-9.-]*$/
+Gpu { id, name, aliases[], vendor:'nvidia'|'amd'|'intel'|'apple'|'amd-apu'|'nvidia-dgx'|'generic',
+     kind:'dgpu'|'unified'|'cpu', form:'desktop'|'laptop',
+     vramGB?,            // dgpu 필수 (decimal GB)
+     ramOptionsGB?: number[],   // unified/cpu 필수 — 선택 가능한 RAM 구성 GB (min 1)
+     memBandwidthGBs, fp16Tflops?,   // FP16 크리플(GTX 10)이면 실효값
+     effClass:'nvidia'|'amd'|'intel-arc'|'apple'|'apple-ultra'|'strix'|'dgx-spark'|'cpu',
+     launchYear:2015..2026, msrpUSD?, streetUSD?, streetKRW?,
+     priceAsOf?,         // streetUSD/KRW 존재 시 필수 (CLAUDE.md 규칙 2)
+     popular:boolean, note?, sources[] }
+Model { id, family, name, hfId, paramsB, activeParamsB?,   // moe ⇒ activeParamsB 필수
+     arch:{layers, kvHeads, headDim, attnType:'full'|'swa'|'mla'|'hybrid', kvBytesPerTokenF16},  // 바이트/tok f16 사전계산 (SWA/MLA/하이브리드 보정 반영)
+     attnOverrides?:{kvBytesPerTokenF16, reason, sources[]},  // 비-full 전용, arch.kvBytesPerTokenF16과 일치(미러) — 존재 시 sync가 arch 자동 갱신 안 함 (§5.1)
+     maxContext, license, moe:boolean, nonExpertGB?,   // MoE attention+shared GB (derive.ts 유도)
+     category:('chat'|'coding'|'reasoning'|'vision')[] (min 1),
+     korean?:boolean, popularity:1..5, releasedAt, note?, sources[] }
+ModelQuant { modelId, quant:QuantId, fileGB, ggufRepo, sources[] }   // 실제 GGUF 크기 (decimal GB, 분할 합산)
+QuantId = 'IQ2_M'|'Q2_K'|'IQ3_XS'|'Q3_K_M'|'IQ4_XS'|'Q4_K_M'|'Q5_K_M'|'Q6_K'|'Q8_0'|'MXFP4'|'UD-Q2_K_XL'|'UD-IQ2_M'|'F16'
+QuantDef { id:QuantId, bpw, tier:'safe'|'ok'|'degraded'|'desperate', note }   // bpw = 엔진 QUANT_BPW (consistency 테스트)
+BenchPoint { id, gpuId?|hardwareDesc?,   // 둘 중 하나 필수 (카탈로그 외 하드웨어는 hardwareDesc)
+     modelId:string, quant:string,       // 자유 문자열 — 캘리브레이션 id(llama-2-7b)·실측 표기(Q4_0, Q4_K_XL) 허용
+     backend:'llama.cpp'|'ollama'|'lm-studio'|'mlx'|'llamafile', backendVersion?,
+     ctx, ppTokS?, tgTokS, flags?, sourceUrl:URL, sourceType:'official-thread'|'localscore'|'community'|'own',
      verified:boolean, measuredAt }
-Submission (P2, D1) { BenchPoint + submitterHash, ip rate-limit fields, status:'pending'|'approved'|'rejected'|'flagged' }
+Alias { from, to }   // alias 경로 → canonical 301 (_redirects). 경로 /^\/[^\s?#]*$/ + 제어문자 거부 (build-redirects.ts와 동일)
+Submission (P2, D1 — 미구현) { BenchPoint + submitterHash, ip rate-limit fields, status:'pending'|'approved'|'rejected'|'flagged' }
 ```
 
 ## 2. 시드: GPU (dgpu 32종 + 통합 10종, `data/gpus.json`)

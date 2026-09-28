@@ -43,8 +43,24 @@
 | B | Runs slowly / 겨우 가능 | 부분 오프로드/CPU, 2~8 tok/s | amber |
 | F | Won't run / 불가 | 최저 quant도 미탑재 or < 2 tok/s | red |
 
-- 모든 수치에 신뢰 라벨: `측정됨(실측 N건)` > `보정된 추정(±15%)` > `이론 추정(±30%)`. **오차를 숨기지 않는 것이 브랜드 전략** (경쟁사 willitrunai의 약점이 과장 추정).
+- 모든 수치에 신뢰 라벨: `측정됨(실측 N건)` > `보정된 추정`(NVIDIA·AMD dGPU dense ±12% / 그 외 클래스·모든 MoE·부분 오프로드 ±20% — `02-engine-spec.md` §4) > `이론 추정(±30%)`. **오차를 숨기지 않는 것이 브랜드 전략** (경쟁사 willitrunai의 약점이 과장 추정).
 - 등급 산출 기본값: Q4_K_M 기준. 카드에는 "이 quant면 가능" 최적 quant를 병기.
+
+### 허브 판정 규칙 (P1-1 — 정본 `packages/data/src/assess.ts`, 결정 기록 `docs/PROGRESS.md` §4 09-29)
+- **가정 하드웨어**: dGPU = 시스템 RAM 32GB DDR5-5600 듀얼채널(대역폭은 `gpus.json` `cpu-ddr5-5600-2ch`에서 조회) · Windows에서 화면 출력 담당(OS 예약 0.6GB) · ctx 8k · KV f16. 통합 메모리·CPU 프로필은 `ramOptionsGB` 구성마다 평가. 가정은 페이지에 명시한다. 통합 메모리 칩의 CPU 경로(wired limit 초과 → cpu-only) 대역폭은 `통합 대역폭 × min(1, 클래스 계수/CPU 계수)`(dense·MoE 각각, 엔진 상수에서 유도 — 새 상수 없음)로 깎는다: CPU 경로가 같은 칩의 GPU 경로보다 빠르게 추정되는 역전 방지(P1-1 리뷰, `unifiedCpuBandwidth`).
+- **기준 quant**: Q4_K_M → 없으면 MXFP4(네이티브) → 없으면 Q4_K_M bpw에 가장 가까운 등록 quant. 판정 배지·등급 카운트·정렬은 기준 판정.
+- **추천 quant("이 quant면 가능")**: 기준이 비-desperate quant의 최고 판정에 이미 도달하면 기준 그대로 / 아니면 그 판정의 비-desperate quant 중 파일이 가장 큰 것 / desperate 티어는 비-desperate가 전부 F일 때만 / 전부 F면 추천 없음. 같은 판정 안에서 더 큰 quant로 올리는 "품질 상향 추천"은 하지 않는다(속도·컨텍스트를 잃는다).
+- **최후 수단**: desperate quant가 추천보다 높은 판정을 내면 "품질 손실 큼" 힌트로 따로 표시.
+- **실측 조인**: (gpuId, modelId, quant) 정확 일치(`Q4_K_XL` ≠ `Q4_K_M`) + 가정 하드웨어에서 fit 성립 + dGPU는 full-gpu일 때만(호스트 RAM·오프로드 플래그가 조인 키에 없음). 실측을 보일 때도 보정 추정 밴드를 병기(n=1이면 실측 밴드 폭이 0 — 규칙 3).
+- **리즈닝 임계 ×1.5**(`02` §5): `category`에 `reasoning`이 있는 모델.
+- **F 사유**: 미탑재(필요 메모리 vs 가용 표시, 속도 숨김) / 너무 느림(밴드 표시).
+- **판정 사유**: 같은 속도를 full-gpu로 냈을 때보다 등급이 낮으면, 실제로 판정을 묶은 규칙을 표기(`02` §5·§3.4): A에서 멈춤 = "S는 모델 전체가 GPU에 있어야 함"(cpu-moe ≥ 20 tok/s, 부분 오프로드 GPU 비율 ≥ 90%) / 부분 오프로드 GPU 비율 < 90% → B 상한 / cpu-moe 8~20 tok/s → B("원활은 20 이상", 리즈닝 30) / CPU 전용 → B 상한.
+- **desperate 티어 표기**: 2비트(desperate) quant를 추천·인용할 때는 항상 "품질 손실 큼"을 붙인다. FAQ "가장 큰 모델"은 기준 또는 비-desperate 추천 quant로만 답한다.
+- **최대 컨텍스트**: 표시 quant가 같은 모드·같은 판정을 유지하는 최대 ctx 계단(8k~256k, 모델 maxContext 이하).
+- **RAM 힌트**(dGPU): 기준 판정이 64/96/128GB RAM에서 개선되면 그 최소 RAM과 판정.
+- **최저가 옵션**(모델 허브): dGPU 실거래가(`priceAsOf` 동반)만 순위. 쾌적(S) 최저가 + 그보다 싼 원활(A) 최저가(있으면)를 함께 보인다 — S가 없으면 A 최저가만. MSRP는 "출시가" 라벨로 표시만 하고 순위에 쓰지 않는다. 통합 메모리 기기는 가격 순위 제외.
+- **GGUF 출처 배지**: 공식(GGUF repo owner = 모델 `hfId` owner) / llama.cpp 팀(`ggml-org`) / 커뮤니티(업로더명 표시).
+- **라이선스 배지**: `license` 정확 문자열 → 오픈 / 별도 약관 / 비상업 분류(`packages/data/src/license.ts`, 미분류는 테스트 실패). 권리 판단이 아니라 "약관 확인 필요도" 표시.
 
 ## 4. 기능 목록
 
@@ -73,8 +89,8 @@
 |---|---|---|---|
 | 홈(=간이 계산기) | `/` | 정적 | 1 |
 | 계산기 | `/calculator` | 정적+CSR | 1 |
-| GPU 허브 | `/gpu/{slug}` | SSG from JSON | 30 |
-| 모델 허브 | `/model/{slug}` | SSG | 20 |
+| GPU 허브 | `/gpu/{slug}` | SSG from JSON | 카탈로그 전체 (현 54 — CPU 프로필 포함) |
+| 모델 허브 | `/model/{slug}` | SSG | 카탈로그 전체 (현 29) |
 | 콤보 | `/can-i-run/{model}/on/{gpu}` | SSG | 600 (단계적 인덱싱) |
 | 가이드 | `/guides/{slug}` | MDX | 10 |
 | 방법론 | `/methodology` | 정적 | 1 |
@@ -90,7 +106,7 @@
 
 ## 7. 비기능 요구사항
 
-- 성능: 콤보 페이지 LCP < 2.0s(모바일 4G), JS < 150KB(계산기 제외 페이지), 광고 도입 후에도 CLS < 0.1(슬롯 고정 높이).
+- 성능: 콤보 페이지 LCP < 2.0s(모바일 4G), JS < 150KB(계산기 제외 페이지 — 모듈 스크립트 gzip 전송량 기준, Lighthouse `resource-summary:script:size`. P1-1 기준선 131KB: React·Next 런타임만, next-intl 클라이언트 번들 미포함), 광고 도입 후에도 CLS < 0.1(슬롯 고정 높이).
 - 접근성: 판정을 색+아이콘+텍스트 3중 표기(색맹 대응).
 - 정확성 거버넌스: 엔진 상수 변경은 반드시 출처 커밋(`02-engine-spec.md` §8), 스펙 데이터는 `sources` 필드 필수(`03-data-spec.md`).
 - 모든 페이지에 데이터 기준일 표시("Data updated: 2026-08-09") — 신뢰 + freshness 신호.
@@ -104,6 +120,6 @@
 - 멀티 GPU(2×3090 등): VRAM 합산은 되지만 대역폭은 합산 안 됨 — P1은 "멀티 GPU는 베타: VRAM 합산, 속도는 단일 GPU 기준 ~0.68×" 명시(`02-engine-spec.md` §6).
 - 통합 메모리(Mac/Strix Halo): "VRAM" 대신 사용 가능 메모리 = RAM × 기본 0.7 (macOS wired limit 안내 툴팁).
 - 노트북 GPU: 데스크톱과 별개 SKU로 취급(예: "RTX 4090 Laptop"은 16GB·576GB/s — 혼동 방지 경고 배지).
-- iGPU/구형 GPU(FP16 미지원 GTX 10 등): CPU 추론 권장 판정으로 폴백.
+- iGPU/구형 GPU(FP16 미지원 GTX 10 등): ~~CPU 추론 권장 판정으로 폴백~~ → P1-1: GPU 판정 유지 + theoretical(±30%) 라벨 + "FP16 성능 낮음 — 프롬프트 처리 매우 느림" 주의 배지(`fp16Tflops` < 1). tg는 대역폭 지배라 Pascal에서도 GPU가 CPU보다 빠르다 — CPU 폴백은 사용자를 더 느린 경로로 보낸다(PROGRESS §4 09-29).
 - 카탈로그에 없는 신모델: HF repo id 입력 경로(F4) + "모델 추가 요청" 링크(GitHub issue).
 - Ollama 기본 컨텍스트(VRAM 24GB 미만이면 4k)로 인한 체감 차이: 콤보 페이지 커맨드 스니펫에 항상 `OLLAMA_CONTEXT_LENGTH` 명시.
