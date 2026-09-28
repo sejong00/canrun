@@ -1,14 +1,14 @@
-# 의존성 lockfile 고정 + 주간 갱신 (docs/05 §8 운영)
+# 의존성 lockfile 고정 + 월간 갱신 (docs/05 §8 운영). 출시 전 잡일 축소로 주간→월간 (docs/PROGRESS.md §4 09-28).
 version: 2
 updates:
   - package-ecosystem: npm
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
     groups:
       minor-and-patch:
         update-types: ['minor', 'patch']
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly

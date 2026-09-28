@@ -139,8 +139,8 @@ KV = KiB/tok(f16). 파일 크기 = 실측 GGUF(decimal GB), 출처 repo 명기.
 ### 5.1 `sync-models.ts` (주 1회 + 신모델 수시, GitHub Actions)
 1. 후보 GGUF repo(bartowski, unsloth, lmstudio-community, ggml-org) HF API `GET /api/models/{repo}/tree/main` → quant별 실제 파일 크기 갱신 (분할 파일 합산).
 2. 원본 repo `config.json` fetch → layers/kv_heads/head_dim/ctx → `kvBytesPerTokenF16` 재계산. 하이브리드/SWA/MLA는 `attnOverrides` 수동 필드 우선(자동 추출 불가 케이스).
-3. diff 있으면 PR 자동 생성(사람 승인 후 머지·배포) — 데이터 조작 방지 + 리뷰 기록.
-### 5.2 `new-model-alert.ts` (일 1회): HF trending + 지정 org 신규 릴리스 감지 → GitHub issue 생성("48h 내 페이지" SLA — `04-seo-content-plan.md` §8).
+3. diff 있으면 PR 자동 생성(리뷰 후 머지·배포 — 리포트 SUSPICIOUS·ERROR 0이면 Claude가 위임 처리, 그 외는 사람 승인. `docs/PROGRESS.md` §3) — 데이터 조작 방지 + 리뷰 기록.
+### 5.2 `new-model-alert.ts` (출시 전 주 1회 → P1-5 출시부터 일 1회): HF trending + 지정 org 신규 릴리스 감지(`text-generation`·`image-text-to-text`) → 카탈로그·기보고·리팩·타 org 파생 제외 → 새 후보가 있으면 요약 GitHub issue 1건 생성("48h 내 페이지" SLA는 출시 후 — `04-seo-content-plan.md` §8).
 ### 5.3 가격 (`prices.json`): 주간 수동/반자동(정찰 소스: 아마존 표시가, 다나와 최저가). `priceAsOf` 없는 가격 표시 금지. TechPowerUp 등 DB **통째 스크래핑 금지**(개별 사실 확인·출처 기재만) — 법적 리스크 정책.
 
 ## 6. 자체 실측 프로토콜 (리그: RTX 5060 Ti 16GB + RAM 16GB, "own" sourceType)

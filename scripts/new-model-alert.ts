@@ -1,12 +1,14 @@
 /**
  * 신모델 감지 — docs/03-data-spec.md §5.2 (P0-4).
  *
- * HF trending + 지정 org 신규 릴리스(7일 창)에서 카탈로그(models.json)·aliases 에 없는
- * text-generation 모델을 골라 GitHub issue 후보로 출력한다. 이슈 생성·중복 제거는
+ * HF trending + 지정 org 신규 릴리스(8일 창)에서 카탈로그(models.json)에 없는 LLM 원본을
+ * 골라, 이미 보고된 모델을 뺀 뒤 요약 이슈 1건의 제목·본문을 만든다. 이슈 생성은
  * .github/workflows/new-model-alert.yml 의 gh CLI 몫 — 스크립트는 항상 read-only.
- * 48h 플레이북(docs/04 §8)의 트리거 신호.
+ * 48h 플레이북(docs/04 §8)의 트리거 신호 (출시 전 주 1회 — docs/PROGRESS.md §4 09-28).
  *
- * 실행: pnpm run new-model-alert [-- --json]   # --json: CI 용 구조화 출력
+ * 실행: pnpm run new-model-alert                          # 후보 표 (로컬 확인용)
+ *       pnpm run new-model-alert -- --json                # 후보 JSON
+ *       pnpm run new-model-alert -- --digest issues.json  # 요약 이슈 JSON (issues.json = gh issue list --json title,body)
  */
 
 import { readFileSync } from 'node:fs';
@@ -39,8 +41,14 @@ export const WATCHED_ORGS = [
 /** trending 노이즈 컷 — 파인튠 잡음 제거용 최소 likes. */
 export const TRENDING_MIN_LIKES = 100;
 
-/** org 신규 릴리스 감시 창 (일). */
-export const ORG_RELEASE_WINDOW_DAYS = 7;
+/** org 신규 릴리스 감시 창 (일) — 주 1회 실행 + 스케줄 지연 여유 1일. 겹치는 날은 보고 이력으로 중복 제거. */
+export const ORG_RELEASE_WINDOW_DAYS = 8;
+
+/**
+ * LLM 파이프라인 — Qwen3.6+ 등 최신 원본은 네이티브 멀티모달이라 image-text-to-text 로 태깅된다.
+ * text-generation 만 보면 원본은 빠지고 텍스트 전용 파생만 잡힌다 (09-28 트리아지: Qwen3.8-27B 누락).
+ */
+export const LLM_PIPELINES = ['text-generation', 'image-text-to-text'] as const;
 
 export type HfApiModel = {
   id: string;
@@ -58,9 +66,17 @@ export type Candidate = {
   downloads: number;
   createdAt?: string;
   url: string;
-  issueTitle: string;
-  issueBody: string;
 };
+
+/** 요약 이슈 — 본문 끝의 마커가 다음 실행의 중복 제거 키. */
+export type Digest = {
+  title: string;
+  body: string;
+  hfIds: string[];
+};
+
+/** 요약 이슈 본문의 보고 이력 마커. */
+export const DIGEST_MARKER = 'new-model-ids:';
 
 /** 카탈로그가 이미 아는 hfId 집합 (소문자) — 본체 + GGUF repo 참조까지. */
 export function knownHfIds(models: readonly Model[], ggufRepos: readonly string[]): Set<string> {
@@ -70,19 +86,31 @@ export function knownHfIds(models: readonly Model[], ggufRepos: readonly string[
   return known;
 }
 
-/** GGUF 미러/양자화 repo 여부 — 원본 모델이 아니므로 후보 제외. */
-const isGgufMirror = (hfId: string): boolean => /gguf|awq|gptq|-bnb-/i.test(hfId);
+/**
+ * 양자화·포맷 리팩과 검열 제거·드래프트 파생 — 원본이 아니므로 후보 제외
+ * (09-28 트리아지 71건 중 절반이 이 부류). BF16 은 NVIDIA 등이 원본 표기로 쓰므로 제외하지 않는다.
+ */
+const REPACK_PATTERN =
+  /gguf|awq|gptq|-bnb-|fp8|nvfp4|mlx|-int[48]\b|w4a16|exl2|abliterat|uncensor|obliterat|dflash/i;
+
+export const isRepack = (hfId: string): boolean => REPACK_PATTERN.test(hfId);
+
+/** OCR 전용 VLM — image-text-to-text 로 태깅되지만 LLM 계산기 대상이 아니다 (09-28 첫 요약 드라이런). */
+const TASK_ONLY_PATTERN = /ocr/i;
+
+/**
+ * 다른 org 모델을 base_model 로 둔 파생(파인튠·양자화·머지·어댑터) 여부 — HF tags 기준.
+ * 같은 org 의 Instruct←Base 는 원본으로 본다.
+ */
+export function isThirdPartyDerivative(model: HfApiModel): boolean {
+  const org = model.id.split('/')[0]?.toLowerCase();
+  return (model.tags ?? []).some((tag) => {
+    const base = /^base_model:(?:finetune|quantized|merge|adapter):([^/]+)\//.exec(tag);
+    return base?.[1] !== undefined && base[1].toLowerCase() !== org;
+  });
+}
 
 function toCandidate(model: HfApiModel, reason: Candidate['reason']): Candidate {
-  const issueTitle = `[new-model] ${model.id}`;
-  const bodyLines = [
-    `HF: https://huggingface.co/${model.id}`,
-    `사유: ${reason === 'trending' ? 'HF trending' : 'org 신규 릴리스'} · likes ${model.likes ?? 0} · downloads ${model.downloads ?? 0}`,
-    model.createdAt !== undefined ? `createdAt: ${model.createdAt}` : undefined,
-    '',
-    '48h 플레이북 (docs/04 §8): ① config.json·GGUF 크기 수집(sync PR) ② 허브+콤보 페이지',
-    '③ en/ko 가이드 ④ sitemap ping ⑤ (선택) 실측 1점 ⑥ 커뮤니티 링크',
-  ].filter((line): line is string => line !== undefined);
   return {
     hfId: model.id,
     reason,
@@ -90,8 +118,6 @@ function toCandidate(model: HfApiModel, reason: Candidate['reason']): Candidate 
     downloads: model.downloads ?? 0,
     createdAt: model.createdAt,
     url: `https://huggingface.co/${model.id}`,
-    issueTitle,
-    issueBody: bodyLines.join('\n'),
   };
 }
 
@@ -108,10 +134,13 @@ export function filterCandidates(
   const byId = new Map<string, Candidate>();
   const windowStart = now.getTime() - ORG_RELEASE_WINDOW_DAYS * 24 * 3600 * 1000;
 
+  const pipelines: readonly string[] = LLM_PIPELINES;
   const eligible = (m: HfApiModel): boolean =>
     !known.has(m.id.toLowerCase()) &&
-    !isGgufMirror(m.id) &&
-    (m.pipeline_tag === undefined || m.pipeline_tag === 'text-generation');
+    !isRepack(m.id) &&
+    !TASK_ONLY_PATTERN.test(m.id) &&
+    !isThirdPartyDerivative(m) &&
+    (m.pipeline_tag === undefined || pipelines.includes(m.pipeline_tag));
 
   for (const m of trending) {
     if (!eligible(m)) continue;
@@ -128,6 +157,53 @@ export function filterCandidates(
   return [...byId.values()];
 }
 
+/** 이미 보고된 hfId (소문자) — 구 개별 이슈 제목 `[new-model] <org>/<name>` + 요약 이슈 본문 마커. */
+export function reportedHfIds(issues: readonly { title: string; body?: string }[]): Set<string> {
+  const ids = new Set<string>();
+  const markerRe = new RegExp(`<!-- ${DIGEST_MARKER} ([^>]*) -->`);
+  for (const issue of issues) {
+    const single = /^\[new-model\] ([^\s/]+\/\S+)$/.exec(issue.title.trim());
+    if (single?.[1] !== undefined) ids.add(single[1].toLowerCase());
+    const marker = markerRe.exec(issue.body ?? '');
+    for (const id of marker?.[1]?.split(',') ?? []) {
+      if (id.trim() !== '') ids.add(id.trim().toLowerCase());
+    }
+  }
+  return ids;
+}
+
+/** 미보고 후보만 모아 요약 이슈 1건을 만든다. 새 후보가 없으면 null (이슈 생성 안 함). now 는 주입. */
+export function buildDigest(
+  candidates: readonly Candidate[],
+  reported: ReadonlySet<string>,
+  now: Date,
+): Digest | null {
+  const fresh = candidates.filter((c) => !reported.has(c.hfId.toLowerCase()));
+  if (fresh.length === 0) return null;
+  const hfIds = fresh.map((c) => c.hfId);
+  const rows = fresh.map(
+    (c) =>
+      `| [${c.hfId}](${c.url}) | ${c.reason === 'trending' ? 'HF trending' : 'org 신규 릴리스'} | ${c.likes} | ${c.downloads} | ${c.createdAt?.slice(0, 10) ?? '—'} |`,
+  );
+  const body = [
+    `신모델 후보 ${fresh.length}건 — HF trending + 감시 org 릴리스, 카탈로그·기보고·리팩·타 org 파생 제외.`,
+    '',
+    '| 모델 | 사유 | likes | downloads | createdAt |',
+    '|---|---|---|---|---|',
+    ...rows,
+    '',
+    '트리아지: `/canrun-start`에서 Claude가 가치 판정 → 추가할 모델만 카탈로그 태스크로 옮기고 이 이슈를 닫는다.',
+    '48h 플레이북 (docs/04 §8): ① config.json·GGUF 크기 수집(sync PR) ② 허브+콤보 페이지 ③ en/ko 가이드 ④ sitemap ping ⑤ (선택) 실측 1점 ⑥ 커뮤니티 링크',
+    '',
+    `<!-- ${DIGEST_MARKER} ${hfIds.join(',')} -->`,
+  ];
+  return {
+    title: `[new-model] 후보 ${now.toISOString().slice(0, 10)} (${fresh.length}건)`,
+    body: body.join('\n'),
+    hfIds,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // 실행부
 // ---------------------------------------------------------------------------
@@ -141,7 +217,11 @@ async function fetchJson(url: string, fetchImpl: FetchLike): Promise<HfApiModel[
 }
 
 async function main(): Promise<void> {
-  const json = process.argv.slice(2).includes('--json');
+  const args = process.argv.slice(2);
+  const json = args.includes('--json');
+  const digestIdx = args.indexOf('--digest');
+  const reportedPath = digestIdx >= 0 ? args[digestIdx + 1] : undefined;
+  if (digestIdx >= 0 && reportedPath === undefined) throw new Error('--digest 에는 이슈 JSON 경로가 필요');
   const fetchImpl = globalThis.fetch;
 
   const rawModels = JSON.parse(readFileSync(join(dataDir, 'models.json'), 'utf8')) as unknown;
@@ -151,21 +231,33 @@ async function main(): Promise<void> {
   const models = parseModels(rawModels);
   const known = knownHfIds(models, rawQuants.map((mq) => mq.ggufRepo));
 
-  const trending = await fetchJson(
-    `${HF_BASE}/api/models?sort=trendingScore&direction=-1&limit=50&pipeline_tag=text-generation`,
-    fetchImpl,
-  );
+  const trending: HfApiModel[] = [];
   const orgReleases: HfApiModel[] = [];
-  for (const org of WATCHED_ORGS) {
-    const page = await fetchJson(
-      `${HF_BASE}/api/models?author=${org}&sort=createdAt&direction=-1&limit=20&pipeline_tag=text-generation`,
-      fetchImpl,
+  for (const pipeline of LLM_PIPELINES) {
+    trending.push(
+      ...(await fetchJson(
+        `${HF_BASE}/api/models?sort=trendingScore&direction=-1&limit=50&pipeline_tag=${pipeline}`,
+        fetchImpl,
+      )),
     );
-    orgReleases.push(...page);
+    for (const org of WATCHED_ORGS) {
+      orgReleases.push(
+        ...(await fetchJson(
+          `${HF_BASE}/api/models?author=${org}&sort=createdAt&direction=-1&limit=20&pipeline_tag=${pipeline}`,
+          fetchImpl,
+        )),
+      );
+    }
   }
 
-  const candidates = filterCandidates(known, trending, orgReleases, new Date());
+  const now = new Date();
+  const candidates = filterCandidates(known, trending, orgReleases, now);
 
+  if (reportedPath !== undefined) {
+    const issues = JSON.parse(readFileSync(reportedPath, 'utf8')) as { title: string; body?: string }[];
+    console.log(JSON.stringify(buildDigest(candidates, reportedHfIds(issues), now), null, 2));
+    return;
+  }
   if (json) {
     console.log(JSON.stringify(candidates, null, 2));
     return;

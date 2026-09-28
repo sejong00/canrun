@@ -1,10 +1,11 @@
-# 일간 신모델 감지 → GitHub issue (docs/03 §5.2, 48h 플레이북 docs/04 §8).
-# 스크립트는 read-only 로 후보만 출력 — 이슈 생성·제목 기반 중복 제거는 여기서 gh CLI 로.
+# 신모델 감지 → 요약 GitHub issue 1건 (docs/03 §5.2, 48h 플레이북 docs/04 §8).
+# 출시 전엔 주 1회 — P1-5 출시 때 매일로 되돌린다 (docs/PROGRESS.md §4 09-28).
+# 스크립트는 read-only 로 요약 이슈 JSON 만 만든다 — 기보고 모델 제외는 이슈 이력(구 개별 제목 + 요약 본문 마커)으로.
 name: New model alert
 
 on:
   schedule:
-    - cron: '30 21 * * *' # 매일 21:30 UTC = 06:30 KST
+    - cron: '30 21 * * 0' # 매주 일 21:30 UTC = 월 06:30 KST
   workflow_dispatch:
 
 permissions:
@@ -28,24 +29,24 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
-      - name: Detect new models
-        run: pnpm run new-model-alert -- --json > candidates.json
+      - name: Collect reported models (issue history)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh issue list --label new-model --state all --limit 1000 --json title,body > reported.json
 
-      - name: Create issues (dedupe by title)
+      - name: Build digest
+        run: pnpm run new-model-alert -- --digest reported.json > digest.json
+
+      - name: Create digest issue
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          count=$(jq 'length' candidates.json)
-          echo "candidates: $count"
+          if [ "$(jq -r 'type' digest.json)" != "object" ]; then
+            echo "신규 후보 없음 — 이슈 생성 안 함"
+            exit 0
+          fi
           gh label create new-model --color 0e8a16 --description "신모델 감지 (docs/03 §5.2)" 2>/dev/null || true
-          jq -c '.[]' candidates.json | while read -r c; do
-            title=$(jq -r .issueTitle <<<"$c")
-            existing=$(gh issue list --state all --search "in:title \"$title\"" --json number --jq '.[0].number // empty')
-            if [ -z "$existing" ]; then
-              gh issue create --title "$title" --label new-model --body "$(jq -r .issueBody <<<"$c")"
-              echo "created: $title"
-            else
-              echo "skip (exists #$existing): $title"
-            fi
-          done
+          gh issue create --title "$(jq -r .title digest.json)" --label new-model --body "$(jq -r .body digest.json)"
+          echo "created: $(jq -r .title digest.json)"
