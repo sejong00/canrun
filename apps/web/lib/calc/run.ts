@@ -6,7 +6,7 @@ import {
   assessCombo,
   compareCombos,
   hardwareConfigs,
-  measuredPoints,
+  HUB_POLICY,
   pickConfigCombo,
   verdictRank,
   type CatalogLite,
@@ -23,7 +23,10 @@ export type ResultCard = {
   /** 평가 ctx — 모델 최대보다 큰 선택은 최대로 클램프 */
   ctx: number;
   clamped: boolean;
-  /** 표시 quant 의 실측 점 수 (조건 무관 — "8k·f16 조건 실측 N건" 부기용) */
+  /**
+   * 표시 quant 가 기준 조건(8k·f16, 같은 하드웨어)에서 실제로 조인되는 실측 점 수 — 허브·콤보 "상세"에 보이는 수와 같다.
+   * 현재 조건이 기준이면 표시 quant 의 조인 그대로, 아니면 "8k·f16 조건 실측 N건" 부기용 (미탑재·cpu-moe·부분 오프로드면 0)
+   */
   measuredCount: number;
   bucket: SizeBucket;
   /**
@@ -70,6 +73,11 @@ export function assembleResults(catalog: CatalogLite, rawState: CalcState): RunR
       ...(theoretical ? { theoretical: true } : {}),
       ramHint: gpu.kind === 'dgpu',
     });
+    // 실측 배지 수: 기준 조건에서의 조인(D4 규칙 그대로)만 센다 — 조건 무관 원시 점 수를 쓰면 기준 조건에서도 조인되지 않는
+    // 조합(미탑재·cpu-moe)에 "8k·f16 조건 실측 N건 — 상세에서 확인" 이 붙어 상세 페이지와 어긋난다 (리뷰 반영)
+    const atReference = ctx === HUB_POLICY.referenceCtx && state.kv === 'f16';
+    const refCombo = atReference ? combo : assessCombo(catalog, gpu, config, model, theoretical ? { theoretical: true } : {});
+    const measuredCount = refCombo.perQuant.find((x) => x.quant === combo.display.quant)?.measured?.points.length ?? 0;
     let hubConfig: ResultCard['hubConfig'];
     if (hubConfigs.length === 1) hubConfig = { ramGB: hubConfigs[0]!.ramGB, os: hubConfigs[0]!.hw.os };
     else if (hubConfigs.length > 1) {
@@ -82,7 +90,7 @@ export function assembleResults(catalog: CatalogLite, rawState: CalcState): RunR
       combo,
       ctx,
       clamped: ctx < state.ctx,
-      measuredCount: measuredPoints(catalog.benchmarks, gpu.id, model.id, combo.display.quant).length,
+      measuredCount,
       bucket: sizeBucket(model.paramsB),
       ...(hubConfig ? { hubConfig } : {}),
     };

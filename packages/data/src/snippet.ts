@@ -8,6 +8,9 @@
  *  - Ollama `ollama run hf.co/<user>/<repo>:<tag>` — 태그는 파일명 기준, 분할 GGUF 는 미지원(매니페스트 400),
  *    컨텍스트 기본값은 VRAM 티어(24GiB 미만 4k) → `OLLAMA_CONTEXT_LENGTH` 서버 env 또는 `/set parameter num_ctx`,
  *    전문가 CPU 오프로드 플래그 없음
+ *  - Ollama KV 캐시 양자화 = 서버 env `OLLAMA_KV_CACHE_TYPE`(f16|q8_0|q4_0, 전역), 플래시 어텐션 필요 —
+ *    `OLLAMA_FLASH_ATTENTION=1` 로 강제 (https://docs.ollama.com/faq "How can I set the quantization type for the K/V cache?",
+ *    "How can I enable Flash Attention?"). f16(기본)이면 env 를 붙이지 않는다
  * 순수 함수 — 문자열은 사용자 노출 문구가 아니라 명령이므로 여기서 조립한다(i18n 대상 아님).
  */
 
@@ -117,10 +120,13 @@ export function nCpuMoeMin(
   return Math.min(layers, base + margin);
 }
 
-function serveCommand(os: Os, ctx: number): string {
+/** Ollama 서버 기동 명령 — 컨텍스트 + (KV 양자화면) 플래시 어텐션·KV 타입 env. f16 출력은 P1-2 와 바이트 동일 */
+function serveCommand(os: Os, ctx: number, kvQuant: KvQuant): string {
+  const env: [string, string][] = [['OLLAMA_CONTEXT_LENGTH', String(ctx)]];
+  if (kvQuant !== 'f16') env.push(['OLLAMA_FLASH_ATTENTION', '1'], ['OLLAMA_KV_CACHE_TYPE', kvQuant]);
   return os === 'windows'
-    ? `$env:OLLAMA_CONTEXT_LENGTH="${ctx}"; ollama serve`
-    : `OLLAMA_CONTEXT_LENGTH=${ctx} ollama serve`;
+    ? `${env.map(([k, v]) => `$env:${k}="${v}"`).join('; ')}; ollama serve`
+    : `${env.map(([k, v]) => `${k}=${v}`).join(' ')} ollama serve`;
 }
 
 /**
@@ -203,7 +209,7 @@ export function commandPlan(
     ? undefined
     : {
         run: `ollama run hf.co/${file.repo}:${file.tag}`,
-        serve: serveCommand(config.hw.os, ctx),
+        serve: serveCommand(config.hw.os, ctx, kvQuant),
         replSet: `/set parameter num_ctx ${ctx}`,
         contextLength: ctx,
         autoOffload: mode === 'partial-offload',

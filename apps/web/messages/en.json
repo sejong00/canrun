@@ -37,7 +37,8 @@
     "gpuHint": "Search by name or nickname — e.g. 4060 laptop, M4 Pro, 7900 xtx. No GPU? Pick “CPU only”.",
     "gpuNoMatch": "Nothing matches “{query}”. Pick from the list, or enter the specs yourself.",
     "gpuEnterSpecs": "Enter specs",
-    "gpuAmbiguous": "“{text}” comes in several memory sizes — pick one.",
+    "gpuAmbiguous": "“{text}” comes in several versions — pick yours.",
+    "gpuAmbiguousPick": "Several matches for “{text}” — pick one.",
     "groupNvidia": "NVIDIA",
     "groupAmd": "AMD Radeon",
     "groupIntel": "Intel Arc",
@@ -123,7 +124,7 @@
     "cardMaxCtx": "Context headroom",
     "ctxClamped": "{ctx} (model max)",
     "measuredBadge": "{n, plural, one {# measured run} other {# measured runs}}",
-    "measuredElsewhere": "{n, plural, one {# measured run} other {# measured runs}} at 8k / f16 — see details",
+    "measuredElsewhere": "{n, plural, one {# measured run} other {# measured runs}} used for the 8k / f16 verdict — see details",
     "cardDetails": "Details",
     "cardDetailsHub": "Details (hub assumptions: 32 GB RAM, Windows, display GPU, DDR5-5600)",
     "cardDetailsHubOther": "Details (hub page uses {ram} GB, {os})",
@@ -138,16 +139,18 @@
     "faq2Q": "What do the four verdicts mean?",
     "faq2A": "Runs great: the whole model sits on the GPU and generates faster than you read. Runs well: a comfortable wait, including MoE models that keep their experts in system RAM. Runs slowly: it works but crawls (CPU or a GPU/CPU split). Won't run: not enough memory, or too slow to be usable. Reasoning models are judged 1.5× more strictly because they spend tokens thinking.",
     "faq3Q": "Is my hardware information sent anywhere?",
-    "faq3A": "No. Detection and every calculation run inside your browser; there is no server. A share link only carries the GPU, RAM and settings you picked as URL parameters."
+    "faq3A": "No. Detection and every calculation run inside your browser; there is no server. A share link only carries the GPU, RAM and settings you picked as URL parameters.",
+    "gpuConfirmVariant": "“{text}”: only one memory size is in the catalog — pick it if it matches yours, otherwise enter your specs below."
   },
   "Detect": {
     "button": "Detect my GPU",
     "working": "Detecting…",
     "found": "Detected {gpu}.",
-    "ambiguous": "Detected {gpu} — pick the memory size.",
+    "ambiguous": "Detected {gpu} — pick the exact version.",
     "appleUnknown": "Apple silicon detected — pick your chip.",
     "none": "Couldn’t identify the GPU — pick it from the list.",
-    "privacy": "Runs in your browser; nothing is sent anywhere."
+    "privacy": "Runs in your browser; nothing is sent anywhere.",
+    "confirm": "Detected {gpu} — only one memory size is in the catalog. Pick it if it matches yours, otherwise enter your specs."
   },
   "Share": {
     "label": "Share",
@@ -156,7 +159,8 @@
     "copied": "Link copied.",
     "copyFailed": "Couldn’t copy — copy it from the address bar.",
     "urlLabel": "Share link",
-    "text": "Which local LLMs run on {gpu}? — CanRun"
+    "text": "Which local LLMs run on {gpu}? — CanRun",
+    "textCustom": "Which local LLMs run on custom hardware ({class} · {mem} GB)? — CanRun"
   },
   "LicenseShort": {
     "permissive": "Open",
@@ -258,7 +262,6 @@
     "community": "Community GGUF · {owner}"
   },
   "GpuName": {
-    "custom": "Custom hardware",
     "cpu-ddr5-5600-2ch": "DDR5-5600 dual-channel CPU",
     "cpu-ddr5-6000-2ch": "DDR5-6000 dual-channel CPU",
     "cpu-ddr4-3200-2ch": "DDR4-3200 dual-channel CPU"
@@ -525,6 +528,7 @@
     "kv": "--cache-type-k q8_0 --cache-type-v q8_0 shrinks the KV cache to {kv} GB at {ctx} context.",
     "ctx": "Ollama defaults to 4k context on GPUs under 24 GB. Set OLLAMA_CONTEXT_LENGTH when starting the server, or /set parameter num_ctx inside the chat.",
     "ollamaAutoOffload": "Ollama splits layers between GPU and CPU automatically.",
+    "ollamaKv": "OLLAMA_KV_CACHE_TYPE applies to every model this server runs and needs flash attention (forced on above with OLLAMA_FLASH_ATTENTION=1). /set parameter in the chat cannot change the KV cache type.",
     "ollamaNoMoe": "Ollama has no expert-offload flag, so this mode is llama.cpp only.",
     "ollamaSharded": "Ollama cannot pull multi-file GGUFs yet, so use llama.cpp for this file.",
     "noFit": "No run command: this file does not fit in {usable} GB of usable memory plus {ram} GB of RAM.",
@@ -556,6 +560,7 @@
     "reset": "Back to 8k / f16",
     "summary": "At {ctx} with a {kv} KV cache, {quant} needs {need} GB: {verdict}, {speed}.",
     "summaryNoFit": "At {ctx} with a {kv} KV cache, {quant} needs {need} GB and does not fit ({usable} GB usable).",
+    "summaryNoFitDgpu": "At {ctx} with a {kv} KV cache, {quant} needs {need} GB and does not fit in {usable} GB of usable VRAM plus {ram} GB of RAM.",
     "commandFollows": "The run commands below follow this setting.",
     "commandNone": "No run command for this setting — the commands below stay at 8k / f16."
   }

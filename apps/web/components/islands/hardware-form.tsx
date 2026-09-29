@@ -6,7 +6,18 @@ import { CustomHardwareFields } from '@/components/islands/custom-hardware-field
 import { DetectButton } from '@/components/islands/detect-button';
 import { Pill } from '@/components/pill';
 import { formatCtx, formatInt } from '@/lib/format';
-import { laptopSibling, matchGpu, rankGpus, type DetectResult, type GpuNames } from '@/lib/calc/gpu-match';
+import {
+  GPU_GROUPS,
+  gpuGroup,
+  laptopSibling,
+  matchGpu,
+  gpuTokens,
+  rankGpus,
+  variantStem,
+  type DetectResult,
+  type GpuGroup,
+  type GpuNames,
+} from '@/lib/calc/gpu-match';
 import {
   CTX_OPTIONS,
   DDR_KINDS,
@@ -44,6 +55,24 @@ function memoryLabel(t: CalcTranslators, locale: string, gpu: GpuCore): string {
   return t.calc('optionMemoryRange', { min: formatInt(locale, Math.min(...opts)), max: formatInt(locale, Math.max(...opts)) });
 }
 
+/** 둘러보기 그룹 머리글 (D29) — 리터럴 키로 써서 i18n 정적 스캔이 양 로케일 존재를 검사한다 */
+function groupLabel(t: CalcTranslators, group: GpuGroup): string {
+  switch (group) {
+    case 'nvidia':
+      return t.calc('groupNvidia');
+    case 'amd':
+      return t.calc('groupAmd');
+    case 'intel':
+      return t.calc('groupIntel');
+    case 'apple':
+      return t.calc('groupApple');
+    case 'apu':
+      return t.calc('groupApu');
+    case 'cpu':
+      return t.calc('groupCpu');
+  }
+}
+
 /** 상태의 하드웨어 → 입력창 텍스트 */
 function textFor(hardware: HardwareChoice, catalog: CatalogLite, t: CalcTranslators): string {
   if (hardware.kind === 'catalog') {
@@ -63,43 +92,74 @@ export function HardwareForm({ locale, catalog, names, t, state, dispatch, hydra
   // 사용자가 타이핑 중인 텍스트 — 상태의 하드웨어가 바뀌면(복원·감지·선택) 상태 텍스트로 돌아간다
   const [draft, setDraft] = useState<{ text: string; hardware: HardwareChoice } | undefined>(undefined);
   const [open, setOpen] = useState(false);
-  const [active, setActive] = useState(0);
-  const [candidates, setCandidates] = useState<string[] | undefined>(undefined);
+  // -1 = 활성 옵션 없음. 포커스만으로는 어떤 옵션도 활성화하지 않는다(APG) — 빈 입력에서 Enter 가 인기 1위를 고르던 문제
+  const [active, setActive] = useState(-1);
+  // 감지가 제시한 후보 — 입력 초안처럼 그때의 하드웨어에 묶는다(다른 선택·커스텀으로 바뀌면 자동으로 사라진다).
+  // kind: 'variants' = 메모리·코어 변형(확인·선택 필요), 'chips' = Apple 칩 목록(안내 문구 없음)
+  const [candidates, setCandidates] = useState<{ ids: string[]; kind: 'variants' | 'chips'; hardware: HardwareChoice } | undefined>(undefined);
   const [detectMessage, setDetectMessage] = useState<{ text: string; visible: boolean } | undefined>(undefined);
 
   const stateText = textFor(state.hardware, catalog, t);
   const text = draft && draft.hardware === state.hardware ? draft.text : stateText;
   const selected = state.hardware.kind === 'catalog' ? findGpu(catalog, state.hardware.gpuId) : undefined;
+  const detected = candidates && candidates.hardware === state.hardware ? candidates : undefined;
 
   // URL·홈 폼에서 온 모호한 텍스트(3080·4060 ti·m4 max)도 Enter 경로와 같이 후보 목록 + 안내를 보인다 (렌더 파생, setState 없음)
   const unresolvedMatch =
     hydrated && state.hardware.kind === 'unresolved' && text === state.hardware.text ? matchGpu(text, catalog.gpus, { names }) : undefined;
-  const ambiguousIds = candidates ?? (unresolvedMatch?.kind === 'ambiguous' ? unresolvedMatch.candidates : undefined);
-  const options = ambiguousIds
+  const ambiguousIds = detected?.ids ?? (unresolvedMatch?.kind === 'ambiguous' ? unresolvedMatch.candidates : undefined);
+  // 후보 안내 문장: 1개 = 카탈로그 유일 변형 확인, 같은 이름의 변형들 = "버전이 여러 가지", 그 외(CPU 프로필 등) = "여러 개 해당"
+  const ambiguousGpus = (ambiguousIds ?? []).map((cid) => findGpu(catalog, cid)).filter((g): g is GpuCore => g !== undefined);
+  const sameStem = new Set(ambiguousGpus.map((g) => variantStem(g.name))).size === 1;
+  // 뜻 있는 토큰이 없는 질의(빈 입력·"nvidia"·"AMD Radeon") = 둘러보기: 6그룹(D29) 순서. 제조사 단어면 rankGpus 가 그 제조사만 남긴다
+  const browsing = !ambiguousIds && gpuTokens(text).length === 0;
+  const ranked = ambiguousIds
     ? ambiguousIds.map((cid) => findGpu(catalog, cid)).filter((g): g is GpuCore => g !== undefined)
     : rankGpus(text, catalog.gpus, names);
+  const options = browsing ? GPU_GROUPS.flatMap((g) => ranked.filter((gpu) => gpuGroup(gpu) === g)) : ranked;
   const noMatch = hydrated && text.trim() !== '' && options.length === 0 && !selected;
   // 감지 none 폴백: 포커스만 옮기고 팝업은 열지 않는다 (시각 변화 0, D30)
   const quietFocus = useRef(false);
+  // 지연 blur 확정: 타이머 + 최신 렌더의 commitText (ref 는 effect 에서만 갱신 — react-hooks 7 refs 규칙)
+  const blurTimer = useRef<number | undefined>(undefined);
+  const commitRef = useRef<(source: 'blur' | 'enter' | 'submit') => void>(() => {});
+  const cancelBlurCommit = () => {
+    window.clearTimeout(blurTimer.current);
+    blurTimer.current = undefined;
+  };
 
   const choose = (gpu: GpuCore) => {
     dispatch({ type: 'hardware', hardware: { kind: 'catalog', gpuId: gpu.id } });
     setDraft(undefined);
     setCandidates(undefined);
     setOpen(false);
-    setActive(0);
+    setActive(-1);
   };
 
   const onInput = (value: string) => {
     setDraft({ text: value, hardware: state.hardware });
     setCandidates(undefined);
     setOpen(true);
-    setActive(0);
+    // 첫 후보는 입력이 한 GPU 로 확정될 때만 활성 — 토큰 겹침 폴백("rtx 3060 ti" → RTX 5090)·약한 부분 일치(50)·
+    // 메모리 형제(4060 ti)는 Enter 로 고르지 않는다. 명시 선택은 ArrowDown·탭 (재검증)
+    const m = matchGpu(value, catalog.gpus, { names });
+    const first = m.kind === 'exact' ? rankGpus(value, catalog.gpus, names)[0] : undefined;
+    setActive(m.kind === 'exact' && first?.id === m.id ? 0 : -1);
   };
 
-  const commitText = () => {
-    // 포커스가 떠날 때 텍스트를 해석 — 정확히 1개면 선택, 아니면 unresolved (URL 에 남아 폼에 유지)
-    if (!draft || draft.hardware !== state.hardware) return;
+  /**
+   * 입력 텍스트 해석 — 정확히 1개면 선택, 아니면 unresolved (URL 에 남아 폼에 유지).
+   * blur 는 감지가 제시한 후보(확인 대기)를 추측으로 확정하지 않는다 — 옵션 선택·Enter·제출만 확정 (D30, 재검증)
+   */
+  const commitText = (source: 'blur' | 'enter' | 'submit') => {
+    if (source === 'blur' && detected) {
+      setOpen(false);
+      return;
+    }
+    if (!draft || draft.hardware !== state.hardware) {
+      setOpen(false);
+      return;
+    }
     const m = matchGpu(draft.text, catalog.gpus, { names });
     if (m.kind === 'exact') {
       choose(findGpu(catalog, m.id)!);
@@ -113,6 +173,13 @@ export function HardwareForm({ locale, catalog, names, t, state, dispatch, hydra
     setOpen(false);
   };
 
+  // 최신 렌더의 commitText 를 지연 blur 타이머에 넘긴다 (effect 안 ref 갱신 — 렌더 중 ref 쓰기 금지 규칙 준수)
+  useEffect(() => {
+    commitRef.current = commitText;
+  });
+  // 언마운트 시 대기 중인 blur 확정 취소
+  useEffect(() => () => window.clearTimeout(blurTimer.current), []);
+
   const onKey = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
@@ -120,13 +187,14 @@ export function HardwareForm({ locale, catalog, names, t, state, dispatch, hydra
       setActive((i) => Math.min(i + 1, Math.max(0, options.length - 1)));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      setActive((i) => Math.max(i - 1, 0));
+      // 맨 위에서 한 번 더 올리면 입력창(활성 없음)으로 돌아간다
+      setActive((i) => Math.max(i - 1, -1));
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      // 빈 입력창에서 Enter 는 아무것도 고르지 않는다 (인기 1위가 선택되던 문제)
-      const pick = open && text.trim() !== '' ? options[active] : undefined;
+      // 활성 옵션이 있을 때만 고른다 — 포커스만 주고 누른 Enter 는 입력 텍스트 해석(commitText)만
+      const pick = open && active >= 0 ? options[active] : undefined;
       if (pick) choose(pick);
-      else commitText();
+      else commitText('enter');
     } else if (e.key === 'Escape') {
       setOpen(false);
     } else if (e.key === 'Home' && open) {
@@ -146,25 +214,32 @@ export function HardwareForm({ locale, catalog, names, t, state, dispatch, hydra
       return;
     }
     if (result.kind === 'ambiguous') {
-      setDraft({ text: result.text, hardware: state.hardware });
-      setCandidates(result.candidates);
+      // 입력창엔 용량을 뺀 표시명("GeForce RTX 4060 Ti"), 후보는 고르게만 한다 — 활성 옵션 없음(Enter 로 추측 선택 금지, D30).
+      // 후보가 하나면 카탈로그에 그 용량만 있는 경우(3060 12GB 등): 맞는지 확인하게 한다
+      const first = findGpu(catalog, result.candidates[0] ?? '');
+      const label = first ? variantStem(gpuName(t.names, first)) : result.text;
+      setDraft({ text: label, hardware: state.hardware });
+      setCandidates({ ids: result.candidates, kind: 'variants', hardware: state.hardware });
       setOpen(true);
-      setActive(0);
-      setDetectMessage({ text: t.detect('ambiguous', { gpu: result.text }), visible: true });
+      setActive(-1);
+      setDetectMessage({ text: t.detect(result.candidates.length === 1 ? 'confirm' : 'ambiguous', { gpu: label }), visible: true });
       inputRef.current?.focus();
       return;
     }
     if (result.kind === 'apple-unknown') {
       setDraft({ text: 'Apple', hardware: state.hardware });
-      setCandidates(catalog.gpus.filter((g) => g.vendor === 'apple').map((g) => g.id));
+      setCandidates({ ids: catalog.gpus.filter((g) => g.vendor === 'apple').map((g) => g.id), kind: 'chips', hardware: state.hardware });
       setOpen(true);
-      setActive(0);
+      setActive(-1);
       setDetectMessage({ text: t.detect('appleUnknown'), visible: true });
       inputRef.current?.focus();
       return;
     }
     // none: 시각 변화 없이 콤보박스로 포커스(팝업은 열지 않음) — 스크린리더에만 안내 (무소음 폴백, D30)
     setDetectMessage({ text: t.detect('none'), visible: false });
+    // 열려 있던 목록도 닫는다 — 감지 버튼을 누르기 전 포커스로 열린 팝업이 남지 않게 (재검증)
+    setOpen(false);
+    setActive(-1);
     quietFocus.current = true;
     inputRef.current?.focus();
   };
@@ -172,10 +247,32 @@ export function HardwareForm({ locale, catalog, names, t, state, dispatch, hydra
   const listId = `${id}-gpu-list`;
   const hintId = `${id}-gpu-hint`;
   // 키보드로 옮긴 활성 옵션을 리스트박스(max-h 50vh) 안에서 보이게 — DOM 부작용만, setState 없음
-  const activeOptionId = hydrated && open && options[active] ? `${listId}-${options[active].id}` : undefined;
+  const activeOption = active >= 0 ? options[active] : undefined;
+  const activeOptionId = hydrated && open && activeOption ? `${listId}-${activeOption.id}` : undefined;
   useEffect(() => {
     if (activeOptionId) document.getElementById(activeOptionId)?.scrollIntoView({ block: 'nearest' });
   }, [activeOptionId]);
+  const renderOption = (gpu: GpuCore, i: number) => (
+    <li
+      key={gpu.id}
+      id={`${listId}-${gpu.id}`}
+      role="option"
+      aria-selected={i === active}
+      data-gpu-id={gpu.id}
+      className={`flex min-h-10 cursor-pointer items-center justify-between gap-2 px-3 py-2 text-sm ${i === active ? 'bg-muted' : ''}`}
+      onMouseDown={(e) => {
+        e.preventDefault();
+        choose(gpu);
+      }}
+      onMouseEnter={() => setActive(i)}
+    >
+      <span>
+        {gpuName(t.names, gpu)}
+        {gpu.form === 'laptop' && <span className="ml-1 text-xs text-muted-foreground">· {t.calc('optionLaptop')}</span>}
+      </span>
+      <span className="text-xs text-muted-foreground tabular-nums">{memoryLabel(t, locale, gpu)}</span>
+    </li>
+  );
   const locked = osLocked(state.hardware, catalog);
   const os = locked ?? state.os ?? defaultOs(state.hardware, catalog);
   const isDgpu = !selected ? state.hardware.kind !== 'custom' || state.hardware.custom.kind === 'dgpu' : selected.kind === 'dgpu';
@@ -197,7 +294,7 @@ export function HardwareForm({ locale, catalog, names, t, state, dispatch, hydra
       onSubmit={(e) => {
         if (hydrated) {
           e.preventDefault();
-          commitText();
+          commitText('submit');
           document.getElementById('results-heading')?.focus();
         }
       }}
@@ -230,7 +327,7 @@ export function HardwareForm({ locale, catalog, names, t, state, dispatch, hydra
                       'aria-expanded': open && options.length > 0,
                       'aria-controls': listId,
                       'aria-autocomplete': 'list' as const,
-                      'aria-activedescendant': open && options[active] ? `${listId}-${options[active].id}` : undefined,
+                      'aria-activedescendant': activeOptionId,
                     }
                   : { list: listId })}
                 onChange={(e) => onInput(e.currentTarget.value)}
@@ -240,10 +337,18 @@ export function HardwareForm({ locale, catalog, names, t, state, dispatch, hydra
                     return;
                   }
                   setOpen(true);
+                  setActive(-1);
                 }}
                 onBlur={() => {
-                  // 옵션 클릭(mousedown)이 blur 보다 먼저 선택되도록 지연
-                  window.setTimeout(commitText, 120);
+                  // 옵션 클릭(mousedown)이 blur 보다 먼저 선택되도록 지연. 타이머는 blur 시점의 클로저가 아니라 **최신 렌더**의
+                  // commitText 를 부른다 — 그 사이 커스텀 열기 등으로 하드웨어가 바뀌면 옛 초안이 그 선택을 덮지 않는다 (재검증)
+                  blurTimer.current = window.setTimeout(() => {
+                    blurTimer.current = undefined;
+                    if (document.activeElement === inputRef.current) return; // 감지 후보 경로가 포커스를 되돌린 경우
+                    commitRef.current('blur');
+                    setOpen(false);
+                    setActive(-1);
+                  }, 120);
                 }}
                 onKeyDown={onKey}
               />
@@ -253,29 +358,29 @@ export function HardwareForm({ locale, catalog, names, t, state, dispatch, hydra
                     id={listId}
                     role="listbox"
                     aria-label={t.calc('gpuLabel')}
+                    // 머리글·여백·스크롤바를 눌러도 입력창 포커스가 떠나지 않게, 스크롤 영역은 Tab 순서에서 뺀다 (재검증)
+                    tabIndex={-1}
+                    onMouseDown={(e) => e.preventDefault()}
                     className="absolute left-0 right-0 z-10 mt-1 max-h-[50vh] overflow-auto rounded-md border border-border bg-background shadow-lg"
                   >
-                    {options.map((gpu, i) => (
-                      <li
-                        key={gpu.id}
-                        id={`${listId}-${gpu.id}`}
-                        role="option"
-                        aria-selected={i === active}
-                        data-gpu-id={gpu.id}
-                        className={`flex min-h-10 cursor-pointer items-center justify-between gap-2 px-3 py-2 text-sm ${i === active ? 'bg-muted' : ''}`}
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          choose(gpu);
-                        }}
-                        onMouseEnter={() => setActive(i)}
-                      >
-                        <span>
-                          {gpuName(t.names, gpu)}
-                          {gpu.form === 'laptop' && <span className="ml-1 text-xs text-muted-foreground">· {t.calc('optionLaptop')}</span>}
-                        </span>
-                        <span className="text-xs text-muted-foreground tabular-nums">{memoryLabel(t, locale, gpu)}</span>
-                      </li>
-                    ))}
+                    {browsing
+                      ? // 둘러보기: APG "grouped listbox" — group 안의 presentation 머리글 + option
+                        GPU_GROUPS.map((group) => {
+                          const items = options.map((gpu, i) => ({ gpu, i })).filter(({ gpu }) => gpuGroup(gpu) === group);
+                          if (items.length === 0) return null;
+                          const headingId = `${listId}-group-${group}`;
+                          return (
+                            <li key={group} role="presentation">
+                              <ul role="group" aria-labelledby={headingId}>
+                                <li role="presentation" id={headingId} data-gpu-group={group} className="px-3 pb-1 pt-2 text-xs font-semibold text-muted-foreground">
+                                  {groupLabel(t, group)}
+                                </li>
+                                {items.map(({ gpu, i }) => renderOption(gpu, i))}
+                              </ul>
+                            </li>
+                          );
+                        })
+                      : options.map((gpu, i) => renderOption(gpu, i))}
                   </ul>
                 ) : null
               ) : (
@@ -295,8 +400,15 @@ export function HardwareForm({ locale, catalog, names, t, state, dispatch, hydra
           <p role="status" aria-live="polite" className={detectMessage?.visible ? 'text-sm' : 'sr-only'}>
             {detectMessage?.text ?? ''}
           </p>
-          {ambiguousIds && (
-            <p className="text-sm text-muted-foreground">{t.calc('gpuAmbiguous', { text: text.trim() })}</p>
+          {/* Apple 칩 목록은 감지 안내("칩을 골라 주세요")로 충분 — 변형 문장을 붙이면 거짓이 된다 (재검증) */}
+          {ambiguousIds && detected?.kind !== 'chips' && (
+            <p className="text-sm text-muted-foreground">
+              {ambiguousIds.length === 1
+                ? t.calc('gpuConfirmVariant', { text: text.trim() })
+                : sameStem
+                  ? t.calc('gpuAmbiguous', { text: text.trim() })
+                  : t.calc('gpuAmbiguousPick', { text: text.trim() })}
+            </p>
           )}
           {selected && (
             <div className="flex flex-wrap gap-2">
@@ -429,7 +541,10 @@ export function HardwareForm({ locale, catalog, names, t, state, dispatch, hydra
         if (e.currentTarget.open && !customOpen) dispatch({ type: 'custom', patch: {} });
         if (!e.currentTarget.open && customOpen) dispatch({ type: 'hardware', hardware: { kind: 'none' } });
       }}>
-        <summary className="cursor-pointer text-sm font-medium">{t.calc('customToggle')}</summary>
+        {/* 누르는 순간 대기 중인 blur 확정을 취소 — 느린 클릭에서 확정이 먼저 일어나 레이아웃이 밀리고 클릭이 빗나가던 문제 (재검증) */}
+        <summary className="cursor-pointer text-sm font-medium" onPointerDown={cancelBlurCommit}>
+          {t.calc('customToggle')}
+        </summary>
         {customOpen && state.hardware.kind === 'custom' && (
           <CustomHardwareFields locale={locale} t={t} custom={state.hardware.custom} dispatch={dispatch} hydrated={hydrated} />
         )}

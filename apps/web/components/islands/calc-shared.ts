@@ -109,8 +109,10 @@ export function makeReducer(catalog: CatalogLite) {
         const base: CustomHardware =
           state.hardware.kind === 'custom' ? state.hardware.custom : { kind: 'dgpu', effClass: 'nvidia' };
         // 종류 ↔ 계열 결합은 normalize(coerceCustomClass) 가 맡는다 — URL 파서와 같은 규칙
-        const custom: CustomHardware = { ...base, ...action.patch };
-        return normalize({ ...state, hardware: { kind: 'custom', custom } }, catalog);
+        const hardware: HardwareChoice = { kind: 'custom', custom: { ...base, ...action.patch } };
+        // 'hardware' 와 같은 규칙: 부류가 바뀌면(맥·CPU → 커스텀 dGPU, 커스텀 dGPU ↔ 통합) RAM·OS 를 기본값으로 (재검증)
+        const keep = isDgpuChoice(state.hardware, catalog) === isDgpuChoice(hardware, catalog);
+        return normalize({ ...state, hardware, ...(keep ? {} : { ramGB: undefined, os: undefined }) }, catalog);
       }
       case 'ram':
         return normalize({ ...state, ramGB: action.ramGB }, catalog);

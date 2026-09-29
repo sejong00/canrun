@@ -123,6 +123,36 @@ describe('assembleResults — options', () => {
     expect(assembleResults(catalog, { ...defaultState(), hardware: { kind: 'unresolved', text: 'nope' } })).toBeUndefined();
   });
 
+  it('measured badge count = the reference-condition (8k·f16) join on the same hardware, never raw points (review fix)', () => {
+    let joinedAtRef = 0;
+    let rawButNotJoined = 0;
+    for (const gpuId of catalog.gpus.map((g) => g.id)) {
+      const at8k = assembleResults(catalog, withGpu(gpuId))!;
+      const byModel = new Map(at8k.all.map((c) => [c.model.id, c]));
+      const joinAt8k = (modelId: string, quant: string) =>
+        byModel.get(modelId)!.combo.perQuant.find((x) => x.quant === quant)?.measured?.points.length ?? 0;
+      for (const card of at8k.all) {
+        // 기준 조건: 표시 quant 의 조인 그대로 — 배지가 붙으면 반드시 measured 라벨
+        expect(card.measuredCount).toBe(card.combo.display.measured?.points.length ?? 0);
+        if (card.measuredCount > 0) {
+          joinedAtRef += 1;
+          expect(card.combo.display.result.confidence).toBe('measured');
+        }
+        const raw = catalog.benchmarks.filter((b) => b.gpuId === gpuId && b.modelId === card.model.id && b.quant === card.combo.display.quant).length;
+        if (raw > 0 && card.measuredCount === 0) rawButNotJoined += 1;
+      }
+      // 다른 조건(16k·q8_0): 조인은 없고, 부기 수는 같은 quant 의 기준 조건 조인 수
+      const at16k = assembleResults(catalog, withGpu(gpuId, { ctx: 16384, kv: 'q8_0' }))!;
+      for (const card of at16k.all) {
+        expect(card.combo.display.measured).toBeUndefined();
+        expect(card.measuredCount).toBe(joinAt8k(card.model.id, card.combo.display.quant));
+      }
+    }
+    expect(joinedAtRef, 'fixture must exercise joined badges').toBeGreaterThanOrEqual(3);
+    // 조건 무관 원시 점 수를 쓰던 때는 이런 카드에 "8k·f16 조건 실측 N건" 이 붙었다 — 지금은 0
+    expect(rawButNotJoined, 'fixture must exercise raw-but-not-joined combos').toBeGreaterThan(0);
+  });
+
   it('RAM hint is the smallest candidate (32/64/96/128) above the user RAM that improves the verdict (review fix)', () => {
     const run = assembleResults(catalog, withGpu('rtx-4060', { ramGB: 16 }))!;
     const hinted = run.all.filter((c) => c.combo.ramHint);

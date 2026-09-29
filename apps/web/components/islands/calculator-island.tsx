@@ -6,7 +6,7 @@ import { HardwareForm } from '@/components/islands/hardware-form';
 import { ResultList } from '@/components/islands/result-list';
 import { ShareButton } from '@/components/islands/share-button';
 import { bindTranslators, classKey, localePrefix, makeReducer } from '@/components/islands/calc-shared';
-import { formatCtx, formatGB, formatInt } from '@/lib/format';
+import { formatCtx, formatGB, formatInt, formatMemGB } from '@/lib/format';
 import { matchGpu } from '@/lib/calc/gpu-match';
 import { assembleResults } from '@/lib/calc/run';
 import { defaultState, type CalcState } from '@/lib/calc/state';
@@ -49,6 +49,13 @@ export function CalculatorIsland({
     if (parsed.hardware.kind === 'none' && typed) {
       const m = matchGpu(typed, catalog.gpus, { names });
       parsed.hardware = m.kind === 'exact' ? { kind: 'catalog', gpuId: m.id } : { kind: 'unresolved', text: typed };
+    }
+    // 하이드레이션 전에 "사양 직접 입력" 을 열었으면(React 19 는 open 속성 불일치를 패치하지 않는다) 여기서 맞춘다 (재검증):
+    // GPU 가 없으면 커스텀으로, URL·타이핑 GPU 가 있으면 그쪽이 이기고 빈 패널은 닫는다
+    const details = document.querySelector<HTMLDetailsElement>('form[data-calc-form] details[data-gpu-custom]');
+    if (details?.open) {
+      if (parsed.hardware.kind === 'none') parsed.hardware = { kind: 'custom', custom: { kind: 'dgpu', effClass: 'nvidia' } };
+      else if (parsed.hardware.kind !== 'custom') details.open = false;
     }
     dispatch({ type: 'restore', state: parsed });
     setRestored(true);
@@ -104,11 +111,7 @@ export function CalculatorIsland({
         <p className="rounded-lg border border-verdict-b-fg/40 bg-verdict-b-bg p-3 text-sm text-verdict-b-fg">{t.calc('customNotice')}</p>
       )}
       {hydrated && results && (
-        <ShareButton
-          t={t}
-          url={shareUrl}
-          shareText={t.share('text', { gpu: gpuName(t.names, results.hardware.gpu) })}
-        />
+        <ShareButton t={t} url={shareUrl} shareText={shareTextFor(t, locale, state, results.hardware)} />
       )}
       <ResultList
         locale={locale}
@@ -125,6 +128,23 @@ export function CalculatorIsland({
   );
 }
 
+/** 공유 문구 — 커스텀 하드웨어는 합성 GPU 이름 대신 제조사 계열·메모리로 (리뷰 반영) */
+function shareTextFor(
+  t: ReturnType<typeof bindTranslators>,
+  locale: string,
+  state: CalcState,
+  hw: NonNullable<ReturnType<typeof assembleResults>>['hardware'],
+): string {
+  if (state.hardware.kind === 'custom') {
+    const c = state.hardware.custom;
+    return t.share('textCustom', {
+      class: t.calc(classKey(c.effClass)),
+      mem: formatMemGB(locale, c.kind === 'dgpu' ? (c.vramGB ?? 0) : (c.memGB ?? 0)),
+    });
+  }
+  return t.share('text', { gpu: gpuName(t.names, hw.gpu) });
+}
+
 function assumptionText(
   t: ReturnType<typeof bindTranslators>,
   locale: string,
@@ -139,7 +159,7 @@ function assumptionText(
     const customCommon = {
       ...common,
       class: t.calc(classKey(c.effClass)),
-      mem: formatInt(locale, c.kind === 'dgpu' ? (c.vramGB ?? 0) : (c.memGB ?? 0)),
+      mem: formatMemGB(locale, c.kind === 'dgpu' ? (c.vramGB ?? 0) : (c.memGB ?? 0)),
       bw: formatInt(locale, c.bandwidthGBs ?? 0),
     };
     // 커스텀 dGPU 는 카탈로그 dGPU 와 같은 시스템 RAM 종류·화면 출력 가정을 쓴다 — 문장에도 드러낸다

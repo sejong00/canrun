@@ -76,6 +76,78 @@ for (const locale of LOCALES) {
     });
   }
 
+  test.describe(`${locale} combo island Ollama block follows the cell both ways (review fix)`, () => {
+    test('8k·f16 omitted → q4_0 cell shows the Ollama command → back to omitted', async ({ page }) => {
+      // 8k·f16 은 cpu-moe(Ollama 생략), 8k·q4_0 은 full-gpu(Ollama 가능) — data 로 확인한 쌍 (29쌍 중 하나)
+      const problems = collectProblems(page);
+      await open(page, localePath(locale, '/can-i-run/kanana-1.5-15.7b-a3b/on/rtx-4070'));
+      await expect(page.locator('figure[data-snippet-omitted="ollama"]')).toHaveCount(1);
+      await expect(page.locator('figure[data-snippet="ollama"]')).toHaveCount(0);
+      await expect(page.locator('[data-ctx-slider]')).toBeEnabled();
+
+      await page.locator('[data-kv-toggle] input[value="q4_0"]').check();
+      const code = page.locator('figure[data-snippet="ollama"] [data-snippet-code="ollama"]');
+      await expect(code).toContainText('OLLAMA_CONTEXT_LENGTH');
+      await expect(code).toContainText('8192');
+      // 셀이 KV q4_0 을 가정하므로 Ollama 서버도 같은 KV 타입으로 띄운다 (재검증 — 없으면 f16 KV 로 돌아 안 들어간다)
+      await expect(code).toContainText('OLLAMA_KV_CACHE_TYPE');
+      await expect(code).toContainText('q4_0');
+      await expect(code).toContainText('OLLAMA_FLASH_ATTENTION');
+      await expect(page.locator('figure[data-snippet="ollama"] [data-snippet-code="ollama-repl"]')).toContainText('num_ctx 8192');
+      await expect(page.locator('figure[data-snippet-omitted="ollama"]')).toHaveCount(0);
+
+      await page.locator('button[data-ctx-reset]').click();
+      await expect(page.locator('figure[data-snippet-omitted="ollama"]')).toHaveCount(1);
+      await expect(page.locator('figure[data-snippet="ollama"]')).toHaveCount(0);
+      expect(problems).toEqual([]);
+    });
+
+    test('every ctx step keeps exactly one Ollama state and the command matches the selected ctx', async ({ page }) => {
+      // 8k 에 Ollama 가 있고 어떤 셀에선 생략되는 페이지 (정방향 37쌍 중 하나)
+      await open(page, localePath(locale, '/can-i-run/gpt-oss-20b/on/rtx-5070-ti'));
+      const slider = page.locator('[data-ctx-slider]');
+      await expect(slider).toBeEnabled();
+      const ticks = await page.locator('button[data-ctx-tick]').all();
+      let omittedSeen = 0;
+      for (const tick of ticks) {
+        const ctx = (await tick.getAttribute('data-ctx-tick')) ?? '';
+        await tick.click();
+        const withCode = await page.locator('figure[data-snippet="ollama"]').count();
+        const omitted = await page.locator('figure[data-snippet-omitted="ollama"]').count();
+        expect(withCode + omitted, `ctx ${ctx}: exactly one Ollama block`).toBe(1);
+        const summary = (await page.locator('[data-live-summary]').textContent()) ?? '';
+        // 명령 없는 셀(미탑재)은 8k·f16 블록을 유지한다 (CtxControls.commandNone)
+        const hasCommand = !/기준 그대로|stay at 8k/.test(summary);
+        if (withCode && hasCommand) {
+          await expect(page.locator('figure[data-snippet="ollama"] [data-snippet-code="ollama"]')).toContainText(ctx);
+        }
+        if (omitted) omittedSeen += 1;
+      }
+      expect(omittedSeen, 'this page must exercise an omitted cell').toBeGreaterThan(0);
+    });
+  });
+
+  test.describe(`${locale} combo island summaries stay truthful (re-verification)`, () => {
+    test('a page without a run command never talks about "the commands below"', async ({ page }) => {
+      await open(page, localePath(locale, '/can-i-run/llama-3.3-70b/on/rtx-5060'));
+      await expect(page.locator('[data-no-run]')).toBeVisible();
+      await page.locator('button[data-ctx-tick="4096"]').click();
+      const summary = page.locator('[data-live-summary]');
+      await expect(summary).toHaveAttribute('data-ctx', '4096');
+      await expect(summary).not.toHaveText(/stay at 8k|follow this setting|기준 그대로|이 설정을 따릅니다/);
+      await expect(page.locator('[data-no-run]')).toBeVisible();
+    });
+
+    test('a dGPU no-fit cell names VRAM plus RAM as the limit, not VRAM alone', async ({ page }) => {
+      await open(page, localePath(locale, '/can-i-run/llama-3.3-70b/on/rtx-5090'));
+      await page.locator('button[data-ctx-tick="65536"]').click();
+      const summary = page.locator('[data-live-summary]');
+      await expect(summary).toHaveAttribute('data-ctx', '65536');
+      await expect(summary).toContainText('VRAM');
+      await expect(summary).toContainText('RAM');
+    });
+  });
+
   test.describe(`${locale} model hub price sort`, () => {
     test('sorting by street price reorders rows and the default order restores', async ({ page }) => {
       const problems = collectProblems(page);

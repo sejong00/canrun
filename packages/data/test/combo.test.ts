@@ -277,6 +277,7 @@ describe('ctxMatrix planRow — 콤보 아일랜드 props (P1-3 결정 D28)', ()
     expect(cell.plan?.llamaCpp?.command).toContain('-c 16384');
     expect(cell.plan?.llamaCpp?.command).toContain('--cache-type-k q8_0 --cache-type-v q8_0');
     expect(cell.plan?.ollama?.serve).toContain('OLLAMA_CONTEXT_LENGTH="16384"');
+    expect(cell.plan?.ollama?.serve).toContain('$env:OLLAMA_KV_CACHE_TYPE="q8_0"');
     expect(cell.plan?.ollama?.replSet).toBe('/set parameter num_ctx 16384');
     // planRow 없이는 붙지 않는다 (기존 콤보 표 경로)
     const plain = ctxMatrix(g, hardwareConfigs(g, seed.gpus)[0]!, model('qwen3-14b'), r);

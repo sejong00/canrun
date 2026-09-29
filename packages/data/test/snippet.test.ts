@@ -75,6 +75,16 @@ describe('commandPlan — llama.cpp', () => {
     expect(p.ollama?.replSet).toBe('/set parameter num_ctx 8192');
   });
 
+  it('KV quant: the Ollama server env sets flash attention + OLLAMA_KV_CACHE_TYPE (f16 unchanged) — re-verification fix', () => {
+    const win = planFor('rtx-4060', 'llama-3.1-8b', { ctx: 16384, kvQuant: 'q8_0' });
+    expect(win.ollama?.serve).toBe(
+      '$env:OLLAMA_CONTEXT_LENGTH="16384"; $env:OLLAMA_FLASH_ATTENTION="1"; $env:OLLAMA_KV_CACHE_TYPE="q8_0"; ollama serve',
+    );
+    const unix = planFor('cpu-ddr5-5600-2ch', 'qwen3-8b', { configIndex: 1, kvQuant: 'q4_0' });
+    expect(unix.ollama?.serve).toBe('OLLAMA_CONTEXT_LENGTH=8192 OLLAMA_FLASH_ATTENTION=1 OLLAMA_KV_CACHE_TYPE=q4_0 ollama serve');
+    expect(planFor('rtx-4060', 'llama-3.1-8b', { kvQuant: 'f16' }).ollama?.serve).toBe('$env:OLLAMA_CONTEXT_LENGTH="8192"; ollama serve');
+  });
+
   it('KV q8_0 at 16k adds cache-type flags', () => {
     expect(planFor('rtx-4060', 'llama-3.1-8b', { ctx: 16384, kvQuant: 'q8_0' }).llamaCpp?.command).toBe(
       'llama-server -hf bartowski/Meta-Llama-3.1-8B-Instruct-GGUF:Q4_K_M -c 16384 -ngl all -fa on --cache-type-k q8_0 --cache-type-v q8_0',

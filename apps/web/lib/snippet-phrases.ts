@@ -33,5 +33,10 @@ export function llamaNotes(t: Translate, locale: string, plan: CommandPlan, kvQ8
 /** Ollama 블록 각주 — 컨텍스트 기본값 안내 · 자동 오프로드 */
 export function ollamaNotes(t: Translate, plan: CommandPlan): string[] {
   if (!plan.ollama) return [];
-  return [t('ctx'), ...(plan.ollama.autoOffload ? [t('ollamaAutoOffload')] : [])];
+  return [
+    t('ctx'),
+    ...(plan.ollama.autoOffload ? [t('ollamaAutoOffload')] : []),
+    // KV 양자화 셀: 서버 env 로만 바뀌고 전역이다 (Ollama FAQ — snippet.ts 헤더)
+    ...(plan.kvQuant !== 'f16' ? [t('ollamaKv')] : []),
+  ];
 }

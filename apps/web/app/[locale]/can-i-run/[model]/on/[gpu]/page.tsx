@@ -135,13 +135,23 @@ export default async function ComboPage({ params }: Props) {
           verdict: t.verdict(cell.verdict),
           speed: speedPhrase(t.common, t.confidence, locale, speedQ),
         })
-      : tCtx('summaryNoFit', {
-          ctx: formatCtx(cell.ctx),
-          kv: cell.kvQuant,
-          quant: q.quant,
-          need: gb(cell.needGB),
-          usable: gb(usableGBFor(page, q)),
-        });
+      : gpu.kind === 'dgpu'
+        ? // dGPU 는 부분 오프로드로 VRAM + RAM 까지 쓴다 — VRAM 만 한도로 쓰면 옆 셀(더 큰 필요량인데 들어감)과 모순 (재검증)
+          tCtx('summaryNoFitDgpu', {
+            ctx: formatCtx(cell.ctx),
+            kv: cell.kvQuant,
+            quant: q.quant,
+            need: gb(cell.needGB),
+            usable: gb(q.memory.gpuUsableGB),
+            ram: gb(q.memory.ramUsableGB),
+          })
+        : tCtx('summaryNoFit', {
+            ctx: formatCtx(cell.ctx),
+            kv: cell.kvQuant,
+            quant: q.quant,
+            need: gb(cell.needGB),
+            usable: gb(usableGBFor(page, q)),
+          });
     const plan = cell.plan;
     return {
       ctx: cell.ctx,
@@ -157,9 +167,12 @@ export default async function ComboPage({ params }: Props) {
               code: `${plan.ollama.serve}\n${plan.ollama.run}`,
               replSet: plan.ollama.replSet,
               notes: ollamaNotes(tSnippet, plan),
+              serveHint: plan.os === 'windows' ? tSnippet('serveWindows') : tSnippet('serveUnix'),
             },
           }
-        : {}),
+        : plan?.llamaCpp
+          ? { ollamaOmitted: plan.ollamaOmitted === 'sharded' ? tSnippet('ollamaSharded') : tSnippet('ollamaNoMoe') }
+          : {}),
       notes: plan ? llamaNotes(tSnippet, locale, plan, kvGB(model.arch.kvBytesPerTokenF16, cell.ctx, 'q8_0')) : [],
     };
   });

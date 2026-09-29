@@ -41,6 +41,11 @@ export function formatUSD(locale: string, value: number): string {
 }
 
 /** 정수 */
+/** 입력한 메모리 크기 그대로 (자릿수 채움 없음): 8 → "8", 3.5 → "3.5" — 커스텀 하드웨어 문장·공유 문구 */
+export function formatMemGB(locale: string, value: number): string {
+  return new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(value);
+}
+
 export function formatInt(locale: string, value: number): string {
   return new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(value);
 }

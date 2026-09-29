@@ -191,6 +191,12 @@ for (const locale of LOCALES) {
       await expect(page.locator('[role="option"][data-gpu-id="rtx-4060-ti-8gb"]')).toBeVisible();
       await expect(page.locator('[role="option"][data-gpu-id="rtx-4060-ti-16gb"]')).toBeVisible();
       await expect(page.locator('[data-result-card]')).toHaveCount(0);
+      // 입력창엔 용량을 뺀 표시명, 활성 옵션 없음 → Enter 로도 추측 선택되지 않는다 (D30, 리뷰 반영)
+      const input = page.locator('form[data-calc-form] input[name="gpu"]');
+      await expect(input).toHaveValue('GeForce RTX 4060 Ti');
+      await input.press('Enter');
+      await expect(page.locator('[data-result-card]')).toHaveCount(0);
+      await expect.poll(() => new URL(page.url()).searchParams.get('gpu')).toBe('GeForce RTX 4060 Ti');
     });
 
     test('detect (negative stub): silent fallback — nothing changes, no errors, button keeps its place', async ({ page }) => {
@@ -205,7 +211,170 @@ for (const locale of LOCALES) {
       await expect(input).toHaveValue('');
       await expect(page.locator('[data-result-card]')).toHaveCount(0);
       expect(new URL(page.url()).search).toBe('');
+      // 시각 변화 0: 목록이 열리지 않고, 안내는 스크린리더 전용 live region 에만 (D30, 리뷰 반영)
+      await expect(page.locator('[role="listbox"]')).toHaveCount(0);
+      await expect(page.locator('form[data-calc-form] [role="status"]')).toHaveClass(/sr-only/);
+      await expect(page.locator('form[data-calc-form] [role="status"]')).toHaveText(/Couldn|알아내지/);
       expect(problems).toEqual([]);
+    });
+
+    test('detect (single tracked variant): asks to confirm instead of guessing the memory size (review fix)', async ({ page }) => {
+      await page.addInitScript({ content: RENDERER_STUB('ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 (0x00002503) Direct3D11 vs_5_0 ps_5_0, D3D11)', true) });
+      await open(page, path);
+      await page.locator('button[data-detect]').click();
+      await expect(page.locator('[role="option"][data-gpu-id="rtx-3060-12gb"]')).toBeVisible();
+      await expect(page.locator('[role="option"]')).toHaveCount(1);
+      await expect(page.locator('form[data-calc-form] input[name="gpu"]')).toHaveValue('GeForce RTX 3060');
+      await expect(page.locator('form[data-calc-form] [role="status"]')).toContainText(/only one memory size|한 가지 용량만/);
+      await expect(page.locator('[data-result-card]')).toHaveCount(0);
+      // 안내를 본 뒤 Enter = 입력창 텍스트를 직접 입력한 것과 같이 확정 (카탈로그 유일 변형) — 사용자의 명시적 수락
+      await page.locator('form[data-calc-form] input[name="gpu"]').press('Enter');
+      await expect.poll(() => new URL(page.url()).search).toBe('?gpu=rtx-3060-12gb');
+      await expect(page.locator('[data-result-card]').first()).toBeVisible();
+    });
+
+    test('detect (single tracked variant): leaving the field or opening custom specs never accepts the guess (re-verification)', async ({ page }) => {
+      await page.addInitScript({ content: RENDERER_STUB('ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 (0x00002503) Direct3D11 vs_5_0 ps_5_0, D3D11)', true) });
+      await open(page, path);
+      await page.locator('button[data-detect]').click();
+      await expect(page.locator('[role="option"][data-gpu-id="rtx-3060-12gb"]')).toBeVisible();
+      // (a) 다른 곳을 눌러 포커스가 떠나도 확정하지 않는다
+      await page.locator('h1').click();
+      await page.waitForTimeout(400);
+      await expect(page.locator('[data-result-card]')).toHaveCount(0);
+      expect(new URL(page.url()).search).toBe('');
+      // (b) 안내대로 "사양 직접 입력" 을 열면 커스텀 패널이 열린 채로 남는다 (옛 blur 확정이 덮어쓰지 않는다)
+      await page.locator('form[data-calc-form] input[name="gpu"]').focus();
+      await page.locator('details[data-gpu-custom] > summary').click();
+      await expect(page.locator('details[data-gpu-custom]')).toHaveAttribute('open', '');
+      await expect(page.locator('details[data-gpu-custom] input[name="bw"]')).toBeVisible();
+      await expect.poll(() => new URL(page.url()).searchParams.get('gpu')).toBe('custom');
+      await page.waitForTimeout(400);
+      await expect(page.locator('details[data-gpu-custom]')).toHaveAttribute('open', '');
+    });
+
+    test('detect (Apple silicon, chip unknown): lists the Apple chips without a variant hint (re-verification)', async ({ page }) => {
+      await page.addInitScript({ content: RENDERER_STUB('Apple GPU', false) });
+      await open(page, path);
+      await page.locator('button[data-detect]').click();
+      await expect(page.locator('[role="option"][data-gpu-id="apple-m4"]')).toBeVisible();
+      // evaluateAll 에 문자열 화살표 함수를 주면 호출되지 않는다(PROGRESS §5) — locator 순회
+      const ids: string[] = [];
+      for (const option of await page.locator('[role="option"]').all()) ids.push((await option.getAttribute('data-gpu-id')) ?? '');
+      expect(ids.length).toBeGreaterThan(5);
+      expect(ids.every((id) => id.startsWith('apple-'))).toBe(true);
+      await expect(page.locator('form[data-calc-form] [role="status"]')).toContainText(/Apple silicon|Apple 실리콘/);
+      await expect(page.getByText(/several versions|several matches|버전이 여러|여러 개예요/)).toHaveCount(0);
+    });
+
+    test('typing: a vendor word browses that vendor and Enter selects nothing; an unknown model + Enter never picks a fallback (re-verification)', async ({ page }) => {
+      await open(page, path);
+      const input = page.locator('form[data-calc-form] input[name="gpu"]');
+      await expect(input).toHaveAttribute('role', 'combobox');
+      await input.fill('nvidia');
+      // NVIDIA 제품만: 그래픽카드 그룹 + DGX Spark(통합 메모리 PC 그룹). Apple M4 같은 인기 1위가 섞이지 않는다
+      await expect(page.locator('[data-gpu-group="nvidia"]')).toBeVisible();
+      for (const other of ['amd', 'intel', 'apple', 'cpu']) await expect(page.locator(`[data-gpu-group="${other}"]`)).toHaveCount(0);
+      await expect(page.locator('[role="option"][data-gpu-id="apple-m4"]')).toHaveCount(0);
+      await expect(input).not.toHaveAttribute('aria-activedescendant', /.+/);
+      await input.press('Enter');
+      await expect(page.locator('[data-result-card]')).toHaveCount(0);
+      await expect.poll(() => new URL(page.url()).searchParams.get('gpu')).toBe('nvidia');
+
+      await input.fill('rtx 3060 ti');
+      await expect(input).not.toHaveAttribute('aria-activedescendant', /.+/);
+      await input.press('Enter');
+      await expect(page.locator('[data-result-card]')).toHaveCount(0);
+      await expect.poll(() => new URL(page.url()).searchParams.get('gpu')).toBe('rtx 3060 ti');
+
+      // 확정되는 입력은 첫 후보가 활성 — Enter 로 고른다
+      await input.fill('4070');
+      await expect(input).toHaveAttribute('aria-activedescendant', /rtx-4070$/);
+      await input.press('Enter');
+      await expect.poll(() => new URL(page.url()).searchParams.get('gpu')).toBe('rtx-4070');
+      await expect(page.locator('[data-result-card]').first()).toBeVisible();
+    });
+
+    test('the popup closes when focus leaves; clicking a group heading keeps focus (re-verification)', async ({ page }) => {
+      await open(page, path);
+      const input = page.locator('form[data-calc-form] input[name="gpu"]');
+      await expect(input).toHaveAttribute('role', 'combobox');
+      await input.focus();
+      await page.locator('[data-gpu-group="amd"]').click();
+      await expect(input).toBeFocused();
+      await expect(page.locator('[role="listbox"]')).toHaveCount(1);
+      await page.locator('h1').click();
+      await expect(page.locator('[role="listbox"]')).toHaveCount(0);
+      await expect(input).toHaveAttribute('aria-expanded', 'false');
+      await input.focus();
+      await input.press('Tab');
+      await expect(page.locator('[role="listbox"]')).toHaveCount(0);
+    });
+
+    for (const [typed, expectGpu, resolves] of [
+      ['rtx 4070', 'rtx-4070', true],
+      ['4060 ti', '4060 ti', false],
+    ] as const) {
+      test(`text typed before hydration is kept and resolved on mount: "${typed}" (D29, re-verification)`, async ({ page }) => {
+        const problems = collectProblems(page);
+        let release!: () => void;
+        const gate = new Promise<void>((resolve) => (release = resolve));
+        await page.route(/\/_next\/static\/chunks\/.*\.js(\?.*)?$/, async (route) => {
+          await gate;
+          await route.continue();
+        });
+        await page.goto(`${path}?ctx=16384`, { waitUntil: 'commit' });
+        const input = page.locator('form[data-calc-form] input[name="gpu"]');
+        await input.click();
+        await page.keyboard.type(typed);
+        await expect(input).not.toHaveAttribute('role', 'combobox'); // 아직 하이드레이션 전
+        release();
+        await expect(input).toHaveAttribute('role', 'combobox');
+        await page.waitForURL((u) => u.searchParams.get('gpu') === expectGpu && u.searchParams.get('ctx') === '16384');
+        if (resolves) {
+          await expect(input).toHaveValue('GeForce RTX 4070');
+          await expect(page.locator('[data-result-card]').first()).toBeVisible();
+        } else {
+          await expect(input).toHaveValue(typed); // 지워지지 않는다
+          await expect(page.locator('[data-result-card]')).toHaveCount(0);
+        }
+        expect(problems).toEqual([]);
+      });
+    }
+
+    test('custom specs opened before hydration stay open with their fields (re-verification)', async ({ page }) => {
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      await page.route(/\/_next\/static\/chunks\/.*\.js(\?.*)?$/, async (route) => {
+        await gate;
+        await route.continue();
+      });
+      await page.goto(path, { waitUntil: 'commit' });
+      await page.locator('details[data-gpu-custom] > summary').click();
+      await expect(page.locator('details[data-gpu-custom]')).toHaveAttribute('open', '');
+      release();
+      await expect(page.locator('form[data-calc-form] input[name="gpu"]')).toHaveAttribute('role', 'combobox');
+      await expect(page.locator('details[data-gpu-custom] input[name="bw"]')).toBeVisible();
+      await expect.poll(() => new URL(page.url()).searchParams.get('gpu')).toBe('custom');
+    });
+
+    test('empty input: focus opens the six browse groups, Enter picks nothing (D29, review fix)', async ({ page }) => {
+      await open(page, path);
+      const input = page.locator('form[data-calc-form] input[name="gpu"]');
+      await expect(input).toHaveAttribute('role', 'combobox');
+      await input.focus();
+      await expect(page.locator('[role="listbox"] [role="group"]')).toHaveCount(6);
+      await expect(page.locator('[data-gpu-group]')).toHaveCount(6);
+      await expect(input).not.toHaveAttribute('aria-activedescendant', /.+/);
+      await input.press('Enter');
+      await expect(page.locator('[data-result-card]')).toHaveCount(0);
+      expect(new URL(page.url()).search).toBe('');
+      // ArrowDown 으로 첫 옵션을 활성화한 뒤의 Enter 만 고른다
+      await input.focus();
+      await input.press('ArrowDown');
+      await expect(input).toHaveAttribute('aria-activedescendant', /.+/);
+      await input.press('Enter');
+      await expect(page.locator('[data-result-card]').first()).toBeVisible();
     });
   });
 

@@ -37,7 +37,8 @@
     "gpuHint": "이름이나 별칭으로 검색 — 예: 4060 laptop, M4 Pro, 7900 xtx. GPU가 없으면 ‘CPU’로 검색해 CPU 전용 항목을 고르세요.",
     "gpuNoMatch": "‘{query}’에 맞는 항목이 없어요. 목록에서 고르거나 사양을 직접 입력하세요.",
     "gpuEnterSpecs": "직접 입력하기",
-    "gpuAmbiguous": "‘{text}’: 메모리 용량이 여러 가지예요 — 하나를 고르세요.",
+    "gpuAmbiguous": "‘{text}’: 버전이 여러 가지예요 — 내 것을 고르세요.",
+    "gpuAmbiguousPick": "‘{text}’에 해당하는 항목이 여러 개예요 — 하나를 고르세요.",
     "groupNvidia": "NVIDIA",
     "groupAmd": "AMD Radeon",
     "groupIntel": "Intel Arc",
@@ -123,7 +124,7 @@
     "cardMaxCtx": "컨텍스트 여유",
     "ctxClamped": "{ctx} (모델 최대)",
     "measuredBadge": "실측 {n}건",
-    "measuredElsewhere": "8k·f16 조건 실측 {n}건 — 상세에서 확인",
+    "measuredElsewhere": "실측 {n}건(8k·f16 판정에 반영) — 상세에서 확인",
     "cardDetails": "상세",
     "cardDetailsHub": "상세 (허브 가정 기준: RAM 32GB·Windows·화면 출력 GPU·DDR5-5600)",
     "cardDetailsHubOther": "상세 (허브 페이지 기준: {ram}GB·{os})",
@@ -138,16 +139,18 @@
     "faq2Q": "판정 네 단계는 무엇을 뜻하나요?",
     "faq2A": "쾌적: 모델 전체가 GPU에 있고 읽는 속도보다 빠르게 생성합니다. 원활: 기다릴 만한 속도로, MoE 전문가를 시스템 RAM에 둔 경우를 포함합니다. 겨우 가능: 돌아가긴 하지만 느립니다(CPU 또는 GPU/CPU 분할). 불가: 메모리가 모자라거나 실사용이 불가능한 속도입니다. 리즈닝 모델은 사고 토큰 때문에 기준을 1.5배 엄격하게 봅니다.",
     "faq3Q": "내 하드웨어 정보가 어딘가로 전송되나요?",
-    "faq3A": "아니요. 감지와 계산은 전부 브라우저 안에서 실행되고 서버가 없습니다. 공유 링크에는 여러분이 고른 GPU·RAM·설정만 URL 파라미터로 들어갑니다."
+    "faq3A": "아니요. 감지와 계산은 전부 브라우저 안에서 실행되고 서버가 없습니다. 공유 링크에는 여러분이 고른 GPU·RAM·설정만 URL 파라미터로 들어갑니다.",
+    "gpuConfirmVariant": "‘{text}’: 카탈로그엔 이 용량만 있어요 — 내 기기와 같으면 고르고, 다르면 아래에서 사양을 직접 입력하세요."
   },
   "Detect": {
     "button": "내 GPU 감지",
     "working": "감지 중…",
     "found": "감지 결과: {gpu}",
-    "ambiguous": "감지 결과: {gpu} — 메모리 용량을 골라 주세요.",
+    "ambiguous": "감지 결과: {gpu} — 정확한 버전을 골라 주세요.",
     "appleUnknown": "Apple 실리콘이에요 — 칩을 골라 주세요.",
     "none": "GPU를 알아내지 못했어요 — 목록에서 골라 주세요.",
-    "privacy": "브라우저 안에서만 확인하고 어디에도 보내지 않습니다."
+    "privacy": "브라우저 안에서만 확인하고 어디에도 보내지 않습니다.",
+    "confirm": "감지 결과: {gpu} — 카탈로그엔 한 가지 용량만 있어요. 내 기기와 같으면 고르고, 다르면 사양을 직접 입력하세요."
   },
   "Share": {
     "label": "공유",
@@ -156,7 +159,8 @@
     "copied": "링크를 복사했어요.",
     "copyFailed": "복사하지 못했어요 — 주소창에서 복사해 주세요.",
     "urlLabel": "공유 링크",
-    "text": "{gpu}에서 돌아가는 로컬 LLM — CanRun"
+    "text": "{gpu}에서 돌아가는 로컬 LLM — CanRun",
+    "textCustom": "직접 입력 사양({class} · {mem}GB)에서 돌아가는 로컬 LLM — CanRun"
   },
   "LicenseShort": {
     "permissive": "오픈",
@@ -258,7 +262,6 @@
     "community": "커뮤니티 GGUF · {owner}"
   },
   "GpuName": {
-    "custom": "직접 입력 사양",
     "cpu-ddr5-5600-2ch": "DDR5-5600 듀얼채널 CPU",
     "cpu-ddr5-6000-2ch": "DDR5-6000 듀얼채널 CPU",
     "cpu-ddr4-3200-2ch": "DDR4-3200 듀얼채널 CPU"
@@ -412,7 +415,7 @@
     "comboCtxQ": "{gpu}에서 {model} 컨텍스트는 얼마까지 쓸 수 있나요?",
     "comboCtxA": "{quant} 기준 f16 KV 캐시로는 {ctxF16} 컨텍스트까지(KV {kvF16}GB), q8_0 KV 캐시로는 {ctxQ8}까지(KV {kvQ8}GB) {verdict} 판정을 유지합니다. 모델 최대 컨텍스트는 {maxModel}입니다.",
     "comboCtxNoneA": "어떤 컨텍스트로도 안 들어갑니다: 4k에서도 {quant}에는 {need}GB가 필요한데 사용 가능 메모리는 {usable}GB입니다.",
-    "comboCtxTooSlowA": "{quant}는 f16 KV 캐시로 {ctxF16} 컨텍스트까지(KV {kvF16}GB), q8_0 KV 캐시로 {ctxQ8}까지(KV {kvQ8}GB) 들어가지만, 어떤 길이에서도 실사용엔 너무 느립니다 — {speed}. 모델 최대 컨텍스트는 {maxModel}입니다.",
+    "comboCtxTooSlowA": "{quant} 파일은 f16 KV 캐시로 {ctxF16} 컨텍스트까지(KV {kvF16}GB), q8_0 KV 캐시로 {ctxQ8}까지(KV {kvQ8}GB) 들어가지만, 어떤 길이에서도 실사용엔 너무 느립니다 — {speed}. 모델 최대 컨텍스트는 {maxModel}입니다.",
     "comboQuantTooSlowA": "실사용 속도가 나오는 quant가 없습니다. 가장 빠른 {quant}({size}GB)도 {speed}.",
     "comboQuantNoneACpu": "이 구성에서 도는 quant가 없습니다: 가장 작은 파일({minQuant}, {minSize}GB)도 8k 컨텍스트에서 {minNeed}GB가 필요한데 사용 가능한 RAM은 {ram}GB입니다.",
     "comboQuantNoneAUnified": "이 구성에서 도는 quant가 없습니다: 가장 작은 파일({minQuant}, {minSize}GB)도 8k 컨텍스트에서 {minNeed}GB가 필요한데 통합 메모리 중 GPU가 쓸 수 있는 양은 {usable}GB입니다.",
@@ -460,7 +463,7 @@
     "barUnified": "통합 메모리",
     "barRam": "시스템 RAM",
     "barRamWeights": "시스템 RAM의 가중치",
-    "memoryNone": "{quant}는 들어가지 않습니다 — 필요 {need}GB, 사용 가능 메모리 {usable}GB라 분해할 구성이 없습니다.",
+    "memoryNone": "{quant} 파일은 들어가지 않습니다 — 필요 {need}GB, 사용 가능 메모리 {usable}GB라 분해할 구성이 없습니다.",
     "barWeights": "가중치",
     "barKv": "KV 캐시",
     "barBuffer": "연산 버퍼",
@@ -476,7 +479,7 @@
     "ctxCaption": "{quant} 기준 컨텍스트 길이·KV 캐시 종류별 필요 메모리와 판정, 그리고 예상 tok/s.",
     "ctxSummary": "{quant} 기준 f16 KV 캐시로는 {ctx} 컨텍스트까지, q8_0으로는 {ctxQ8}까지 {verdict} 판정을 유지합니다.",
     "ctxSummaryNone": "{quant} 기준으로는 어떤 컨텍스트로도 안 들어갑니다: 4k에서도 {need}GB가 필요한데 사용 가능 메모리는 {usable}GB입니다.",
-    "ctxSummaryTooSlow": "{quant}는 f16 KV 캐시로 {ctx} 컨텍스트까지, q8_0으로는 {ctxQ8}까지 들어가지만 어떤 길이에서도 실사용엔 너무 느립니다.",
+    "ctxSummaryTooSlow": "{quant} 파일은 f16 KV 캐시로 {ctx} 컨텍스트까지, q8_0으로는 {ctxQ8}까지 들어가지만 어떤 길이에서도 실사용엔 너무 느립니다.",
     "ctxCellNoFit": "미탑재",
     "speedTitle": "예상 속도",
     "tg": "생성",
@@ -496,8 +499,8 @@
     "lowerQuant": "{model}의 더 낮은 quant",
     "higherQuant": "쾌적을 유지하는 더 큰 quant",
     "cpuMoe": "전문가만 시스템 RAM에 두기",
-    "cpuMoeBody": "--n-cpu-moe {n}은 전 층의 전문가를 RAM에 둡니다(이 추정의 가정). {min}까지 줄여도 들어가며, CPU에 두는 층이 적을수록 빠릅니다.",
-    "cpuMoeBodyNoMin": "--n-cpu-moe {n}은 전 층의 전문가를 RAM에 둡니다(이 추정의 가정).",
+    "cpuMoeBody": "--n-cpu-moe {n} 설정은 전 층의 전문가를 RAM에 둡니다(이 추정의 가정). {min}까지 줄여도 들어가며, CPU에 두는 층이 적을수록 빠릅니다.",
+    "cpuMoeBodyNoMin": "--n-cpu-moe {n} 설정은 전 층의 전문가를 RAM에 둡니다(이 추정의 가정).",
     "ramUpgrade": "같은 GPU에 시스템 RAM {ram}GB",
     "ramConfig": "같은 칩의 {ram}GB 구성",
     "chip": "{gpu}에서 {model}",
@@ -525,6 +528,7 @@
     "kv": "--cache-type-k q8_0 --cache-type-v q8_0: {ctx} 기준 KV 캐시가 {kv}GB로 줄어듭니다.",
     "ctx": "Ollama는 24GB 미만 GPU에서 컨텍스트 기본값이 4k입니다. 서버를 띄울 때 OLLAMA_CONTEXT_LENGTH를 지정하거나, 대화 안에서 /set parameter num_ctx를 쓰세요.",
     "ollamaAutoOffload": "Ollama는 GPU와 CPU에 층을 자동으로 나눕니다.",
+    "ollamaKv": "OLLAMA_KV_CACHE_TYPE 설정은 이 서버가 돌리는 모든 모델에 적용되고 플래시 어텐션이 필요합니다(위 명령은 OLLAMA_FLASH_ATTENTION=1로 켭니다). 대화 안의 /set parameter로는 KV 캐시 타입을 바꿀 수 없습니다.",
     "ollamaNoMoe": "Ollama에는 전문가 오프로드 옵션이 없어 이 방식은 llama.cpp로만 돌립니다.",
     "ollamaSharded": "Ollama는 아직 분할 GGUF를 받지 못하므로 이 파일은 llama.cpp로 돌리세요.",
     "noFit": "실행 명령 없음: 이 파일은 사용 가능 메모리 {usable}GB + RAM {ram}GB에 들어가지 않습니다.",
@@ -556,6 +560,7 @@
     "reset": "8k·f16으로 되돌리기",
     "summary": "{ctx} 컨텍스트·KV {kv}에서 {quant} 기준 {need}GB 필요 — {verdict}, {speed}.",
     "summaryNoFit": "{ctx} 컨텍스트·KV {kv}에서 {quant} 기준 {need}GB가 필요해 들어가지 않습니다(사용 가능 {usable}GB).",
+    "summaryNoFitDgpu": "{ctx} 컨텍스트·KV {kv}에서 {quant} 기준 {need}GB가 필요해 들어가지 않습니다(사용 가능 VRAM {usable}GB + RAM {ram}GB).",
     "commandFollows": "아래 실행 명령이 이 설정을 따릅니다.",
     "commandNone": "이 설정에선 실행 명령이 없어 아래 명령은 8k·f16 기준 그대로입니다."
   }

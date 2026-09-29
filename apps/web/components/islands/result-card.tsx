@@ -51,17 +51,13 @@ export function ResultCard({
   const maxCtx = q.result.verdict === 'F' ? undefined : (combo.maxCtx ?? card.ctx);
   const maxCtxText =
     maxCtx === undefined ? undefined : maxCtx >= model.maxContext ? t.calc('ctxClamped', { ctx: formatCtx(model.maxContext) }) : formatCtx(maxCtx);
-  // 실측 배지: 조인됐으면 "실측 N건", 조인 조건(8k·f16)이 아니라서 못 붙었으면 "8k·f16 조건 실측 N건".
-  // 8k·f16 인데도 조인이 안 된 경우(미탑재·cpu-moe·부분 오프로드)는 허브와 같이 배지 없음 — "다른 조건" 문구가 거짓이 된다
-  const atReference = state.ctx === HUB_POLICY.referenceCtx && state.kv === 'f16';
+  // 실측 배지: 조인됐으면 "실측 N건", 기준 조건(8k·f16)에서만 조인되면 "8k·f16 조건 실측 N건". 수는 기준 조건의 실제 조인 수(run.ts)
   const measuredText =
     card.measuredCount === 0
       ? undefined
       : q.result.confidence === 'measured'
         ? t.calc('measuredBadge', { n: card.measuredCount })
-        : atReference
-          ? undefined
-          : t.calc('measuredElsewhere', { n: card.measuredCount });
+        : t.calc('measuredElsewhere', { n: card.measuredCount });
   // "상세" 라벨 — 콤보 페이지의 평가 구성이 사용자 구성과 다르면 부기: dGPU 는 허브 가정(D2), 통합·CPU 는 콤보 페이지가 고른 RAM·OS
   const hubOther = hardware.gpu.kind !== 'dgpu' ? card.hubConfig : undefined;
   const osLabel = (os: ResolvedHardware['os']) => t.calc(os === 'windows' ? 'osWindows' : os === 'linux' ? 'osLinux' : 'osMacos');

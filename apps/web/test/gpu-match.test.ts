@@ -5,7 +5,17 @@ import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import type { GpuCore } from '@canrun/data/client';
 import { describe, expect, it } from 'vitest';
-import { interpretDetection, laptopSibling, matchGpu, rankGpus, rendererCandidates, type DetectInput } from '../lib/calc/gpu-match';
+import {
+  GPU_GROUPS,
+  gpuGroup,
+  interpretDetection,
+  laptopSibling,
+  matchGpu,
+  rankGpus,
+  rendererCandidates,
+  variantStem,
+  type DetectInput,
+} from '../lib/calc/gpu-match';
 import { shortGpuName } from '../lib/phrases';
 
 const repo = resolve(__dirname, '../../..');
@@ -120,9 +130,27 @@ describe('matchGpu — catalog self-resolution', () => {
     expect(matchGpu('m5', gpus)).toEqual({ kind: 'exact', id: 'apple-m5' }); // Pro/Max 로 새지 않는다
     expect(matchGpu('9060 xt', gpus)).toEqual({ kind: 'exact', id: 'rx-9060-xt-16gb' }); // 메모리 용량만 남는 건 허용
     expect(matchGpu('7900', gpus)).toEqual({ kind: 'none' }); // XT/XTX 를 골라야 한다
+    // 메모리 표기는 원래 라벨에서 먼저 뺀다 — 모델 번호가 용량으로 읽혀 VRAM 숫자만으로 확정되지 않는다 (재검증)
+    for (const q of ['8', 'rtx 8', '10', 'rtx 10', 'xt 16', 'rx xt 16', '12', '16gb']) expect(matchGpu(q, gpus).kind, q).not.toBe('exact');
+    expect(matchGpu('3050 8', gpus)).toEqual({ kind: 'exact', id: 'rtx-3050-8gb' });
+    expect(matchGpu('3080 10', gpus)).toEqual({ kind: 'exact', id: 'rtx-3080-10gb' });
+    expect(matchGpu('3060 12gb', gpus)).toEqual({ kind: 'exact', id: 'rtx-3060-12gb' });
     // 콤보박스 목록엔 여전히 뜬다 (확정만 금지)
     expect(rankGpus('4070 ti', gpus).map((g) => g.id)).toContain('rtx-4070-ti-super');
     expect(rankGpus('7900', gpus).map((g) => g.id)).toEqual(expect.arrayContaining(['rx-7900-xt', 'rx-7900-xtx']));
+  });
+
+  it('vendor-only queries browse that vendor instead of listing everything popular-first (re-verification)', () => {
+    const vendorOfId = (id: string) => gpus.find((g) => g.id === id)!.vendor;
+    const nvidia = rankGpus('nvidia', gpus).map((g) => g.id);
+    expect(nvidia.length).toBeGreaterThan(20);
+    expect(nvidia.every((id) => ['nvidia', 'nvidia-dgx'].includes(vendorOfId(id)))).toBe(true);
+    const amd = rankGpus('AMD Radeon', gpus).map((g) => g.id);
+    expect(amd).toEqual(expect.arrayContaining(['rx-7900-xtx', 'amd-strix-halo']));
+    expect(amd.every((id) => ['amd', 'amd-apu'].includes(vendorOfId(id)))).toBe(true);
+    expect(rankGpus('Intel', gpus).map((g) => g.id)).toEqual(['arc-b580']);
+    expect(rankGpus('gpu', gpus)).toHaveLength(gpus.length); // 제조사 없는 잡음 = 전체 둘러보기
+    for (const q of ['nvidia', 'AMD Radeon', 'Intel', 'gpu']) expect(matchGpu(q, gpus).kind, q).toBe('none');
   });
 
   it('rankGpus lists candidates for the combobox (empty query = popular first)', () => {
@@ -135,6 +163,26 @@ describe('matchGpu — catalog self-resolution', () => {
       expect(ids).toEqual(expect.arrayContaining(['cpu-ddr5-5600-2ch', 'cpu-ddr5-6000-2ch', 'cpu-ddr4-3200-2ch']));
       expect(ids.every((id) => id.startsWith('cpu-'))).toBe(true);
     }
+  });
+
+  it('variantStem drops only the memory variant from display names', () => {
+    expect(variantStem('GeForce RTX 4060 Ti 16GB')).toBe('GeForce RTX 4060 Ti');
+    expect(variantStem('GeForce RTX 3060 12GB')).toBe('GeForce RTX 3060');
+    expect(variantStem('Radeon RX 9060 XT 16GB')).toBe('Radeon RX 9060 XT');
+    expect(variantStem('Apple M4 Max (32-core GPU)')).toBe('Apple M4 Max');
+    expect(variantStem('GeForce RTX 4090')).toBe('GeForce RTX 4090');
+    expect(variantStem('Ryzen AI Max+ 395 (Strix Halo)')).toBe('Ryzen AI Max+ 395 (Strix Halo)');
+  });
+
+  it('gpuGroup puts every catalog GPU in one of the six browse groups (D29), none empty', () => {
+    const byGroup = new Map<string, string[]>();
+    for (const gpu of gpus) byGroup.set(gpuGroup(gpu), [...(byGroup.get(gpuGroup(gpu)) ?? []), gpu.id]);
+    expect([...byGroup.keys()].sort()).toEqual([...GPU_GROUPS].sort());
+    expect(byGroup.get('cpu')).toEqual(expect.arrayContaining(['cpu-ddr5-5600-2ch', 'cpu-ddr4-3200-2ch']));
+    expect(byGroup.get('apu')).toEqual(expect.arrayContaining(['amd-strix-halo', 'nvidia-dgx-spark']));
+    expect(byGroup.get('apple')!.every((id) => id.startsWith('apple-'))).toBe(true);
+    expect(byGroup.get('intel')).toEqual(['arc-b580']);
+    expect(byGroup.get('nvidia')).toEqual(expect.arrayContaining(['rtx-4060', 'rtx-4060-laptop', 'gtx-1080-ti']));
   });
 
   it('laptopSibling finds the Laptop SKU of a desktop card', () => {

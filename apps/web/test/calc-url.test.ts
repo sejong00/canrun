@@ -121,6 +121,12 @@ describe('serializeCalcQuery / parseCalcQuery', () => {
     expect(parseCalcQuery('?gpu=custom&kind=unified&class=apple&mem=64&bw=256&os=windows', catalog).os).toBeUndefined();
   });
 
+  it('a bare VRAM number or vendor word never resolves to a GPU (re-verification)', () => {
+    for (const q of ['8', '10', 'xt%2016', 'nvidia', 'rtx%203060%20ti']) {
+      expect(parseCalcQuery(`?gpu=${q}`, catalog).hardware.kind, q).toBe('unresolved');
+    }
+  });
+
   it('custom kind ↔ class coupling holds for URLs too (review fix)', () => {
     expect(parseCalcQuery('?gpu=custom&kind=unified&class=nvidia&mem=64&bw=500', catalog).hardware).toMatchObject({ custom: { kind: 'unified', effClass: 'apple' } });
     expect(parseCalcQuery('?gpu=custom&kind=dgpu&class=apple&vram=24&bw=800', catalog).hardware).toMatchObject({ custom: { kind: 'dgpu', effClass: 'nvidia' } });

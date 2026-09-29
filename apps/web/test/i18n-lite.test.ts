@@ -107,12 +107,18 @@ describe('island source files only use keys that exist in both locales', () => {
     for (const m of shared.matchAll(/(\w+):\s*makeT\([^,]+,\s*[^,]+,\s*'([^']+)'\)/g)) nsOf.set(m[1]!, m[2]!);
     expect(nsOf.size, 'bindTranslators namespaces').toBeGreaterThanOrEqual(10);
 
+    // 전체 메시지가 아니라 계산기 페이지가 실제로 넘기는 사전(CALC_MESSAGE_SPEC 로 고른 것)과 대조한다 — 네임스페이스·개별 키를
+    // spec 에 빠뜨리면 런타임 `missing message` 로 깨지는 것을 여기서 잡는다 (리뷰 반영)
+    const picked = {
+      en: pickMessages(messages.en, CALC_MESSAGE_SPEC),
+      ko: pickMessages(messages.ko, CALC_MESSAGE_SPEC),
+    };
     const missing: string[] = [];
     let checked = 0;
     const check = (file: string, ns: string, key: string) => {
       checked += 1;
       for (const locale of ['en', 'ko'] as const) {
-        if (typeof messages[locale][ns]?.[key] !== 'string') missing.push(`${file}: ${ns}.${key} (${locale})`);
+        if (typeof picked[locale][`${ns}.${key}`] !== 'string') missing.push(`${file}: ${ns}.${key} (${locale}, not in the picked dict)`);
       }
     };
     for (const file of files) {

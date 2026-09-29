@@ -108,10 +108,12 @@ function scoreGpu(query: string, qTokens: string[], gpu: GpuCore, names: GpuName
     if (normalizeGpuText(label) === q) s = exactScore;
     else if (tokens.length > 0 && tokenSetEq(tokens, qTokens)) s = 80;
     else if (qTokens.length > 0 && qTokens.every((t) => tokens.includes(t))) {
-      // 질의 ⊂ 라벨: 라벨의 나머지가 시리즈 접두·메모리 용량뿐이면 60(확정 가능), Ti/Super/XT/Laptop/Max 같은 SKU 토큰이
-      // 남으면 50(목록엔 뜨지만 확정 금지 — "RTX 4070 Ti" 를 4070 Ti Super 로, "GTX 1080" 을 1080 Ti 로 오매칭하던 문제)
-      const extra = tokens.filter((t) => !qTokens.includes(t) && !SERIES_PREFIX.has(t));
-      s = configStripped(extra).length === 0 ? 60 : 50;
+      // 질의 ⊂ 라벨: 라벨의 나머지가 시리즈 접두·메모리 용량·DDR 구성뿐이면 60(확정 가능), Ti/Super/XT/Laptop/Max 같은 SKU 토큰이
+      // 남으면 50(목록엔 뜨지만 확정 금지 — "RTX 4070 Ti" 를 4070 Ti Super 로, "GTX 1080" 을 1080 Ti 로 오매칭하던 문제).
+      // 메모리 표기는 **원래 라벨**에서 먼저 뺀다 — 질의 토큰을 먼저 빼면 "3050 8 gb" 에서 8 이 빠진 뒤 "3050 gb" 가 용량으로
+      // 읽혀 "8" 이 RTX 3050 8GB 로 확정되던 문제(재검증)
+      const extra = configStripped(tokens).filter((t) => !qTokens.includes(t) && !SERIES_PREFIX.has(t));
+      s = extra.length === 0 ? 60 : 50;
     }
     if (s > best || (s === best && tokens.length > bestTokens)) {
       best = s;
@@ -131,7 +133,10 @@ function scoreGpu(query: string, qTokens: string[], gpu: GpuCore, names: GpuName
 export function rankGpus(query: string, gpus: readonly GpuCore[], names: GpuNames = {}): GpuCore[] {
   const qTokens = gpuTokens(query);
   if (qTokens.length === 0) {
-    return [...gpus].sort((a, b) => Number(b.popular) - Number(a.popular) || a.name.localeCompare(b.name));
+    // 뜻 있는 토큰이 없다(빈 질의·"nvidia"·"AMD Radeon" 같은 제조사 단어만) — 둘러보기. 제조사 단어면 그 제조사만
+    const vendor = vendorOf(query);
+    const pool = vendor ? gpus.filter((g) => catalogVendor(g) === vendor) : gpus;
+    return [...pool].sort((a, b) => Number(b.popular) - Number(a.popular) || a.name.localeCompare(b.name));
   }
   const scored = gpus
     .map((gpu) => scoreGpu(query, qTokens, gpu, names))
@@ -218,6 +223,28 @@ export function matchGpu(
     return { kind: 'ambiguous', candidates: candidates.map((g) => g.id).sort(), text: stem.join(' ') };
   }
   return { kind: 'exact', id: top.gpu.id };
+}
+
+/** 메모리 변형을 뺀 표시명 — "GeForce RTX 4060 Ti 16GB" → "GeForce RTX 4060 Ti", "Apple M4 Max (32-core GPU)" → "Apple M4 Max" (감지 후보 안내) */
+export function variantStem(name: string): string {
+  return name
+    .replace(/\s*\(\d+-core GPU\)/i, '')
+    .replace(/\s+\d+\s?GB\b/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** 콤보박스 둘러보기(빈 질의) 그룹 (D29) — NVIDIA · AMD · Intel · Apple · 통합 메모리 PC · CPU만 */
+export type GpuGroup = 'nvidia' | 'amd' | 'intel' | 'apple' | 'apu' | 'cpu';
+export const GPU_GROUPS: readonly GpuGroup[] = ['nvidia', 'amd', 'intel', 'apple', 'apu', 'cpu'];
+
+export function gpuGroup(gpu: Pick<GpuCore, 'kind' | 'vendor'>): GpuGroup {
+  if (gpu.kind === 'cpu') return 'cpu';
+  if (gpu.vendor === 'apple') return 'apple';
+  if (gpu.kind === 'unified') return 'apu';
+  if (gpu.vendor === 'amd') return 'amd';
+  if (gpu.vendor === 'intel') return 'intel';
+  return 'nvidia';
 }
 
 /** 데스크톱 dGPU 의 노트북 형제 (같은 번호의 Laptop SKU) — 감지가 "Laptop GPU" 를 잃었을 때의 안내용 */

@@ -18,7 +18,10 @@ export type CtxCellView = {
   /** 완성된 요약 문장 (fits 여부에 따라 서버가 고른 문장) */
   summary: string;
   command?: string;
-  ollama?: { code: string; replSet: string; notes: string[] };
+  /** Ollama 블록 — serveHint 는 OS 별 안내("PowerShell …"/"터미널:") */
+  ollama?: { code: string; replSet: string; notes: string[]; serveHint: string };
+  /** llama.cpp 명령은 있는데 Ollama 가 안 되는 셀(cpu-moe·분할 GGUF)의 생략 사유 문장 */
+  ollamaOmitted?: string;
   notes: { key: string; text: string }[];
 };
 
@@ -90,19 +93,53 @@ function applyCell(cell: CtxCellView, initialCell: CtxCellView | undefined) {
   if (!source?.command) return;
   setText('[data-snippet-code="llama.cpp"]', source.command);
   setNotes('[data-snippet-notes="llama.cpp"]', source.notes);
-  // Ollama 블록: 이 셀에 Ollama 명령이 있으면 코드·각주까지 교체, 없으면(예: 큰 ctx 에서 cpu-moe 로 전환) 블록을 숨긴다 —
-  // "아래 명령이 이 설정을 따릅니다" 문장이 8k 기준 Ollama 명령을 가리키지 않도록 (리뷰 지적)
-  const ollamaFigure = document.querySelector<HTMLElement>('figure[data-snippet="ollama"]');
+  renderOllama(source);
+}
+
+/**
+ * Ollama 블록을 셀 상태로 다시 그린다 — 양방향(리뷰 반영): 8k 에 Ollama 가 있던 페이지에서 cpu-moe 셀로 가면 생략 사유로,
+ * 8k 에 생략이던 페이지(cpu-moe)에서 더 작은 ctx 의 full-gpu 셀로 가면 명령 블록으로. 마크업은 서버 `CommandSnippet` 과
+ * 같은 구조(figcaption → 안내 p → 코드 영역 → 각주 ul)이고, 코드 영역은 llama.cpp 영역을 복제해 스타일·a11y 속성을 맞춘다.
+ */
+function renderOllama(source: CtxCellView) {
+  const figure = document.querySelector<HTMLElement>('figure[data-snippet="ollama"], figure[data-snippet-omitted="ollama"]');
+  const caption = figure?.querySelector('figcaption');
+  if (!figure || !caption) return;
   if (source.ollama) {
-    setText('[data-snippet-code="ollama"]', source.ollama.code);
-    setText('[data-snippet-code="ollama-repl"]', source.ollama.replSet);
-    setNotes(
-      '[data-snippet-notes="ollama"]',
-      source.ollama.notes.map((text, i) => ({ key: `ollama-${i}`, text })),
-    );
-    if (ollamaFigure) ollamaFigure.hidden = false;
-  } else if (ollamaFigure) {
-    ollamaFigure.hidden = true;
+    const regionTemplate = document.querySelector<HTMLElement>('figure[data-snippet="llama.cpp"] [role="region"]');
+    const region = regionTemplate?.cloneNode(true) as HTMLElement | undefined;
+    const code = region?.querySelector<HTMLElement>('code');
+    if (!region || !code) return;
+    region.setAttribute('aria-label', caption.textContent ?? '');
+    code.dataset.snippetCode = 'ollama';
+    code.textContent = source.ollama.code;
+    const hint = document.createElement('p');
+    hint.className = 'text-xs text-muted-foreground';
+    hint.textContent = source.ollama.serveHint;
+    const list = document.createElement('ul');
+    list.className = 'list-disc pl-5 text-xs text-muted-foreground';
+    list.dataset.snippetNotes = 'ollama';
+    for (const text of source.ollama.notes) {
+      const li = document.createElement('li');
+      li.textContent = text;
+      list.append(li);
+    }
+    const replItem = document.createElement('li');
+    const repl = document.createElement('code');
+    repl.dataset.snippetCode = 'ollama-repl';
+    repl.textContent = source.ollama.replSet;
+    replItem.append(repl);
+    list.append(replItem);
+    figure.replaceChildren(caption, hint, region, list);
+    figure.removeAttribute('data-snippet-omitted');
+    figure.dataset.snippet = 'ollama';
+  } else if (source.ollamaOmitted) {
+    const note = document.createElement('p');
+    note.className = 'text-sm text-muted-foreground';
+    note.textContent = source.ollamaOmitted;
+    figure.replaceChildren(caption, note);
+    figure.removeAttribute('data-snippet');
+    figure.dataset.snippetOmitted = 'ollama';
   }
 }
 
@@ -129,7 +166,8 @@ export function CtxKvControls(p: CtxKvProps) {
     if (hydrated && picked === undefined && cell && !isInitial) applyCell(cell, initialCell);
   }, [hydrated, picked, cell, initialCell, isInitial]);
   const live = hydrated && cell && !isInitial ? cell : undefined;
-  const commandNote = live ? (live.command ? p.labels.commandFollows : p.labels.commandNone) : '';
+  // 정적 명령 블록이 없는 페이지(8k·f16 미탑재)는 명령을 쓸 곳이 없다 — "아래 명령" 문장을 붙이지 않는다 (재검증)
+  const commandNote = !live || !initialCell?.command ? '' : live.command ? p.labels.commandFollows : p.labels.commandNone;
 
   return (
     <fieldset
@@ -202,7 +240,7 @@ export function CtxKvControls(p: CtxKvProps) {
         aria-live="polite"
         className="basis-full text-muted-foreground"
       >
-        {live ? `${live.summary} ${commandNote}` : ''}
+        {live ? [live.summary, commandNote].filter(Boolean).join(' ') : ''}
       </p>
     </fieldset>
   );
