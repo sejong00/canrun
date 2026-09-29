@@ -124,7 +124,14 @@ beforeAll(() => {
 // ---------------------------------------------------------------------------
 
 const isHub = (page: PageFacts) => page.kind === 'gpu' || page.kind === 'model';
-const isStructured = (page: PageFacts) => isHub(page) || page.kind === 'combo';
+const isCalculator = (page: PageFacts) => page.kind === 'calculator';
+const isStructured = (page: PageFacts) => isHub(page) || page.kind === 'combo' || isCalculator(page);
+/** 계산기 페이지 (P1-3) — 없으면 명확히 실패 */
+function requireCalculators(): PageFacts[] {
+  const calcs = pages.filter(isCalculator);
+  if (calcs.length === 0) throw new Error('no /calculator page under apps/web/out — P1-3 calculator not exported');
+  return calcs;
+}
 const urlSet = () => new Set(pages.map((p) => p.urlPath));
 const byUrl = () => new Map(pages.map((p) => [p.urlPath, p]));
 
@@ -265,11 +272,13 @@ describe('html lang matches the locale', () => {
 });
 
 describe('structured data (docs/04 §5)', () => {
-  it('every JSON-LD block parses; hubs and combos carry BreadcrumbList + FAQPage', () => {
+  it('every JSON-LD block parses; hubs, combos and the calculator carry BreadcrumbList + FAQPage; calculator adds SoftwareApplication, home WebSite', () => {
     for (const page of pages) {
       expect(page.jsonLdError, page.file).toBeUndefined();
-      if (!isStructured(page)) continue;
       const types = page.jsonLd.map((b) => b['@type']);
+      if (page.kind === 'home') expect(types, page.file).toContain('WebSite');
+      if (isCalculator(page)) expect(types, page.file).toContain('SoftwareApplication');
+      if (!isStructured(page)) continue;
       expect(types, page.file).toContain('BreadcrumbList');
       expect(types, page.file).toContain('FAQPage');
     }
@@ -348,8 +357,14 @@ describe('internal linking (docs/04 §2 — 고아 페이지 0)', () => {
         inbound.set(href, (inbound.get(href) ?? 0) + 1);
       }
     }
-    for (const page of pages.filter(isHub)) {
-      expect(inbound.get(page.urlPath) ?? 0, `orphan hub ${page.urlPath}`).toBeGreaterThan(0);
+    for (const page of pages.filter((p) => isHub(p) || isCalculator(p))) {
+      expect(inbound.get(page.urlPath) ?? 0, `orphan ${page.kind} ${page.urlPath}`).toBeGreaterThan(0);
+    }
+  });
+
+  it('every page links to the locale-correct calculator from the header (P1-3 D36)', () => {
+    for (const page of pages) {
+      expect(page.markers.navCalculator, `${page.file} a[data-nav-calculator]`).toBe(localePath(page.locale, '/calculator'));
     }
   });
 
@@ -473,9 +488,11 @@ describe('combo indexing gate (data/publish.json — 결정 D9, docs/04 §3)', (
 });
 
 describe('combo linking rules (docs/04 §3 — 공개 페이지는 공개 콤보로만 링크)', () => {
-  it('home, hub pages and indexable combos link only to indexable combos', () => {
+  it('home, calculator, hub pages and indexable combos link only to indexable combos', () => {
     requireCombos();
-    const publicPages = pages.filter((p) => p.kind === 'home' || isHub(p) || (p.kind === 'combo' && indexableOf(p)));
+    const publicPages = pages.filter(
+      (p) => p.kind === 'home' || isCalculator(p) || isHub(p) || (p.kind === 'combo' && indexableOf(p)),
+    );
     for (const page of publicPages) {
       for (const { href } of page.links) {
         const indexable = hrefIndexable(href);
@@ -592,6 +609,99 @@ describe('boilerplate ratio (결정 D16 — ≥50% 페이지에 나타나는 문
         BOILERPLATE_MAX,
       );
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// P1-3 계산기·홈·아일랜드 불변식 (결정 D24~D36)
+// ---------------------------------------------------------------------------
+
+describe('calculator page (P1-3 D24·D29)', () => {
+  it('exists in both locales, indexable, 2-level breadcrumb, form SSR markup and zero result cards / combo links in static HTML', () => {
+    const calcs = requireCalculators();
+    expect(calcs.map((p) => p.urlPath).sort()).toEqual(['/calculator', '/ko/calculator']);
+    for (const page of calcs) {
+      expect(page.robotsNoindex, page.file).toBe(false);
+      expect(page.h1Count, page.file).toBe(1);
+      expect(page.markers.calculator, `${page.file} [data-calculator]`).toBe(true);
+      expect(page.markers.calcForm, `${page.file} form[data-calc-form]`).toBe(true);
+      // SSR = datalist 폴백 (승격은 하이드레이션 뒤) — D29
+      expect(page.markers.inputList, `${page.file} input[list]`).toBe(true);
+      expect(page.datalistOptionCount, `${page.file} datalist options`).toBeGreaterThanOrEqual(gpus.length);
+      expect(page.markers.resultCards, `${page.file} static result cards`).toBe(0);
+      expect(page.links.map((l) => l.href).filter((h) => comboOf(h)), `${page.file} static combo links`).toEqual([]);
+      expect(page.formActions, `${page.file} form action`).toContain(localePath(page.locale, '/calculator'));
+      const crumbs = page.jsonLd.find((b) => b['@type'] === 'BreadcrumbList')!;
+      expect((crumbs.itemListElement as unknown[]).length, page.file).toBe(2);
+    }
+  });
+});
+
+describe('home form (P1-3 D25)', () => {
+  it('has a GET form to the locale-correct calculator with a datalist covering every GPU, plus a clean calculator link', () => {
+    for (const page of pages.filter((p) => p.kind === 'home')) {
+      expect(page.formActions, page.file).toContain(localePath(page.locale, '/calculator'));
+      expect(page.datalistOptionCount, `${page.file} datalist options`).toBeGreaterThanOrEqual(gpus.length);
+      expect(page.markers.openCalculator, `${page.file} a[data-open-calculator]`).toBe(localePath(page.locale, '/calculator'));
+      expect(page.markers.calculator, `${page.file} must not embed the island`).toBe(false);
+    }
+  });
+});
+
+describe('islands SSR (P1-3 D28 · price sort)', () => {
+  it('every combo page renders the ctx/KV controls and keeps the static ctx table; every model hub renders the sort control', () => {
+    for (const page of requireCombos()) {
+      expect(page.markers.ctxControls, `${page.file} [data-ctx-controls]`).toBe(true);
+    }
+    for (const page of pages.filter((p) => p.kind === 'model')) {
+      expect(page.markers.sortControl, `${page.file} [data-sort-control]`).toBe(true);
+    }
+    for (const page of pages.filter((p) => p.kind === 'gpu' || p.kind === 'home')) {
+      expect(page.markers.sortControl || page.markers.ctxControls, `${page.file} has no island`).toBe(false);
+    }
+  });
+});
+
+/** 초기 모듈 스크립트 gzip 합 (D34) — LHCI 는 8 URL 만 보므로 전 페이지를 여기서 본다. source: docs/01 §7 (policy) */
+const SCRIPT_BUDGET = 150_000;
+/** 계산기 별도 캡 — 첫 측정 152,686 B × 1.15 → lighthouserc.json 180,224(176 KiB) 와 정합 (전송 헤더 몫 제외). source: docs/01 §7 (policy) */
+const CALC_SCRIPT_BUDGET = 176_000;
+/** 홈 청크집합 대비 페이지별 추가분 상한 (콤보·허브 아일랜드) */
+const EXTRA_CHUNK_MAX = 3_072;
+
+describe('script budget (P1-3 D34 — 전 페이지 초기 모듈 스크립트 gzip 합)', () => {
+  it('non-calculator pages ≤ 150,000 B, calculator ≤ cap, islands add ≤ 3 KiB over the home chunk set, no preload outside the initial set', () => {
+    const { gzipSync } = require('node:zlib') as typeof import('node:zlib');
+    const sizes = new Map<string, number>();
+    const sizeOf = (src: string): number => {
+      if (!sizes.has(src)) {
+        const file = join(outDir, src.replace(/^\//, ''));
+        sizes.set(src, existsSync(file) ? gzipSync(readFileSync(file), { level: 6 }).length : Number.NaN);
+      }
+      return sizes.get(src)!;
+    };
+    const home = pages.find((p) => p.urlPath === '/')!;
+    const homeSet = new Set(home.scriptSrcs);
+    const homeTotal = home.scriptSrcs.reduce((sum, s) => sum + sizeOf(s), 0);
+    let worst = { page: home, total: homeTotal };
+    let calcTotal = 0;
+    for (const page of pages) {
+      const total = page.scriptSrcs.reduce((sum, s) => sum + sizeOf(s), 0);
+      expect(Number.isFinite(total), `${page.file} references a missing chunk`).toBe(true);
+      for (const src of page.preloadSrcs) {
+        expect(page.scriptSrcs.includes(src), `${page.file} preloads a chunk outside its initial set: ${src}`).toBe(true);
+      }
+      if (isCalculator(page)) {
+        expect(total, `${page.file} script gz ${total}`).toBeLessThanOrEqual(CALC_SCRIPT_BUDGET);
+        calcTotal = Math.max(calcTotal, total);
+        continue;
+      }
+      expect(total, `${page.file} script gz ${total}`).toBeLessThanOrEqual(SCRIPT_BUDGET);
+      const extra = page.scriptSrcs.filter((s) => !homeSet.has(s)).reduce((sum, s) => sum + sizeOf(s), 0);
+      expect(extra, `${page.file} extra chunks over home ${extra} B`).toBeLessThanOrEqual(EXTRA_CHUNK_MAX);
+      if (total > worst.total) worst = { page, total };
+    }
+    console.log(`[scripts] home ${homeTotal} B gz · worst non-calculator ${worst.total} B (${worst.page.urlPath}) · calculator ${calcTotal} B`);
   });
 });
 

@@ -33,6 +33,8 @@
 ### F4. 인터랙티브 계산기 (`/calculator`)
 - F1+F2 통합 자유 조작 UI. 임의 파라미터 수동 입력 모드(카탈로그에 없는 모델: 파라미터 수·레이어·kv_heads 직접 입력 or HF repo id 입력 → 클라이언트에서 HF API fetch).
 - 결과 공유: URL 쿼리 직렬화 + **공유 카드 이미지**(og:image, Reddit/커뮤니티 확산용).
+- **P1-3 구현 범위(PROGRESS §4 09-29 D24~D36)**: 하드웨어 = 카탈로그 GPU 54종(콤보박스 — 별칭·토큰 fuzzy) **+ 커스텀 하드웨어**(종류·클래스·VRAM/통합 메모리·대역폭·FP16 직접 입력 → 결과는 전부 `theoretical ±30%`, 실측 조인·콤보 링크 없음 — D32), 모델 = 카탈로그 29종(카테고리·최소 판정·크기 필터, 판정/속도/크기 정렬). RAM·DDR·OS·디스플레이 GPU·컨텍스트(8k~128k 7단)·KV quant(f16/q8_0/q4_0) 조작 — 실측 조인은 허브와 같은 8k·f16 조건에서만(D33). 상태는 URL 쿼리(D31: `gpu kind class vram mem bw fp16 ram ddr os display ctx kv cat min size sort m`, 기본값 생략)로 직렬화 → 공유 버튼(`navigator.share` → 클립보드 → 읽기 전용 입력 폴백). GPU 감지(D30): 버튼 클릭 시에만 WebGL `UNMASKED_RENDERER` + WebGPU `adapter.info` 수집 → 4상태(정확/메모리 분기 후보 제시/Apple 미상/없음 — 실패는 시각 변화 0).
+  - **이관**: 수동 파라미터·HF repo id 입력 → **P2**(카탈로그 밖 모델은 결과 하단 "모델 추가 요청" GitHub 이슈 링크로 대체) · og:image 공유 카드 → **P1-5** · F2 방향(모델 → 하드웨어 54종 판정·가격 정렬)은 **모델 허브 표 + 가격 정렬 UI**로 충족, 계산기 통합은 P2 · 콤보 RAM 토글·멀티 GPU → P2 (D35).
 
 ## 3. 판정 체계 (Verdict) — 사이트 전체 공통 언어
 
@@ -87,8 +89,8 @@
 
 | 페이지 | 라우트 | 생성 방식 | 1차 수량(×2 언어) |
 |---|---|---|---|
-| 홈(=간이 계산기) | `/` | 정적 | 1 |
-| 계산기 | `/calculator` | 정적+CSR | 1 |
+| 홈(=간이 계산기) | `/` | 정적 — no-JS GET 폼(`?gpu=` → `/calculator`) + 인기 GPU 링크(P1-3 D25) | 1 |
+| 계산기 | `/calculator` | 정적 SSR(폼·FAQ·범례) + 클라이언트 아일랜드(카탈로그·번역은 props — P1-3 D27), **index**(D24) | 1 |
 | GPU 허브 | `/gpu/{slug}` | SSG from JSON | 카탈로그 전체 (현 54 — CPU 프로필 포함) |
 | 모델 허브 | `/model/{slug}` | SSG | 카탈로그 전체 (현 29) |
 | 콤보 | `/can-i-run/{model}/on/{gpu}` | SSG | 카탈로그 전 조합(현 1,566 = GPU 54 × 모델 29) 생성 — 인덱싱은 `data/publish.json` 배치 게이트(`04` §3, P1-2) |
@@ -106,7 +108,7 @@
 
 ## 7. 비기능 요구사항
 
-- 성능: 콤보 페이지 LCP < 2.0s(모바일 4G), JS < 150KB(계산기 제외 페이지 — 모듈 스크립트 gzip 전송량 기준, Lighthouse `resource-summary:script:size`. P1-1 기준선 131KB: React·Next 런타임만, next-intl 클라이언트 번들 미포함), 광고 도입 후에도 CLS < 0.1(슬롯 고정 높이).
+- 성능: 콤보 페이지 LCP < 2.0s(모바일 4G), JS < 150KB(계산기 제외 페이지 — 모듈 스크립트 gzip 전송량 기준, Lighthouse `resource-summary:script:size`. P1-1 기준선 131KB: React·Next 런타임만, next-intl 클라이언트 번들 미포함), 광고 도입 후에도 CLS < 0.1(슬롯 고정 높이). **계산기(`/calculator`)는 별도 캡 180,224B**(=176KiB — P1-3 첫 실측 median 152,686B × 1.15를 KiB 올림, PROGRESS §4 09-29 D34); 콤보·허브 아일랜드(ctx/KV·가격 정렬)는 150KB 캡 안(콤보 135.1KB·모델 허브 134.3KB; 계산기 최종 153.4KB). export 테스트가 3,304페이지 전부의 스크립트 gzip 합을 바이트 기준으로 검사한다(`05` §6).
 - 접근성: 판정을 색+아이콘+텍스트 3중 표기(색맹 대응).
 - 정확성 거버넌스: 엔진 상수 변경은 반드시 출처 커밋(`02-engine-spec.md` §8), 스펙 데이터는 `sources` 필드 필수(`03-data-spec.md`).
 - 모든 페이지에 데이터 기준일 표시("Data updated: 2026-08-09") — 신뢰 + freshness 신호.
@@ -121,6 +123,6 @@
 - 통합 메모리(Mac/Strix Halo): "VRAM" 대신 사용 가능 메모리 = RAM × 기본 0.7 (macOS wired limit 안내 툴팁).
 - 노트북 GPU: 데스크톱과 별개 SKU로 취급(예: "RTX 4090 Laptop"은 16GB·576GB/s — 혼동 방지 경고 배지).
 - iGPU/구형 GPU(FP16 미지원 GTX 10 등): ~~CPU 추론 권장 판정으로 폴백~~ → P1-1: GPU 판정 유지 + theoretical(±30%) 라벨 + "FP16 성능 낮음 — 프롬프트 처리 매우 느림" 주의 배지(`fp16Tflops` < 1). tg는 대역폭 지배라 Pascal에서도 GPU가 CPU보다 빠르다 — CPU 폴백은 사용자를 더 느린 경로로 보낸다(PROGRESS §4 09-29).
-- 카탈로그에 없는 신모델: HF repo id 입력 경로(F4) + "모델 추가 요청" 링크(GitHub issue).
+- 카탈로그에 없는 신모델: HF repo id 입력 경로(F4 — **P2로 이관**, PROGRESS §4 09-29 D35) + "모델 추가 요청" 링크(GitHub issue `new-model` 라벨 — P1-3 계산기 결과 하단에 구현).
 - Ollama 기본 컨텍스트(VRAM 24GB 미만이면 4k)로 인한 체감 차이: 콤보 페이지 커맨드 스니펫에 항상 `OLLAMA_CONTEXT_LENGTH` 명시 — **P1-2 구현 완료**: 서버 env(`OLLAMA_CONTEXT_LENGTH` — PowerShell `$env:…; ollama serve` / bash) + REPL `/set parameter num_ctx` 병기. Ollama는 분할 GGUF·전문가 오프로드(`--n-cpu-moe`) 미지원이라 그 경우 Ollama 블록은 생략 사유만 표시.
 - 실행 커맨드의 오프로드 플래그(P1-2, PROGRESS §4 09-29): dense 부분 오프로드 `-ngl` = `floor(gpuFrac × layers)` — llama.cpp는 출력층을 먼저 올리고 입력층은 항상 CPU라 floor가 안전(4,183 partial 조합에서 엔진 예산 초과 0), 각주 "실제로는 ±1~2층 직접 조정". MoE cpu-moe는 `--n-cpu-moe N`에 **N = layers(엔진 `02` §3.3 가정 — 추정치 기준)와 N_min(VRAM에 맞는 최소 N, 더 빠름)**을 함께 표시. **네이티브 quant(MXFP4) 파일과 Unsloth Dynamic(UD) 파일은 N_min에 +1층 여유(D23)**: gpt-oss는 비전문가 텐서가 Q8_0이라 bpw 균등 유도 `nonExpertGB`(0.65/0.81GB)가 실제 GPU 상주분(1.30/1.69GB)보다 작아 최소값이 1층 OOM, UD 파일도 어텐션·공유 텐서를 평균 bpw보다 높게 둬 같은 방향 — 정확한 해결(GGUF 텐서 목록 기반)은 백로그 「엔진 후속」④.

@@ -267,3 +267,19 @@ describe('twinGpus (D22) / titleVerdict (D14)', () => {
     expect(titleVerdict(combo('rtx-4060', 'llama-3.3-70b'))).toEqual({ kind: 'none', verdict: 'F' });
   });
 });
+
+describe('ctxMatrix planRow — 콤보 아일랜드 props (P1-3 결정 D28)', () => {
+  it('셀마다 그 조건의 llama.cpp·Ollama 명령이 붙는다 (rtx-4060 × qwen3-14b, 16k·q8_0)', () => {
+    const g = gpu('rtx-4060');
+    const r = row('qwen3-14b', 'Q4_K_M');
+    const matrix = ctxMatrix(g, hardwareConfigs(g, seed.gpus)[0]!, model('qwen3-14b'), r, { planRow: r });
+    const cell = matrix.rows[matrix.ctxs.indexOf(16384)]![matrix.kvQuants.indexOf('q8_0')]!;
+    expect(cell.plan?.llamaCpp?.command).toContain('-c 16384');
+    expect(cell.plan?.llamaCpp?.command).toContain('--cache-type-k q8_0 --cache-type-v q8_0');
+    expect(cell.plan?.ollama?.serve).toContain('OLLAMA_CONTEXT_LENGTH="16384"');
+    expect(cell.plan?.ollama?.replSet).toBe('/set parameter num_ctx 16384');
+    // planRow 없이는 붙지 않는다 (기존 콤보 표 경로)
+    const plain = ctxMatrix(g, hardwareConfigs(g, seed.gpus)[0]!, model('qwen3-14b'), r);
+    expect(plain.rows[0]![0]!.plan).toBeUndefined();
+  });
+});

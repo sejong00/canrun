@@ -20,3 +20,7 @@ export const modelHref = (id: string) => `/model/${id}`;
 /** 콤보 페이지 (docs/04 §2) — 모델이 앞, GPU 가 뒤 */
 export const comboHref = (modelId: string, gpuId: string) => `/can-i-run/${modelId}/on/${gpuId}`;
 export const hfUrl = (repo: string) => `https://huggingface.co/${repo}`;
+/** 계산기 (docs/04 §2) — 쿼리는 이미 직렬화된 `?…` 문자열 (lib/calc/url.ts) */
+export const calculatorHref = (query = '') => `/calculator${query}`;
+/** 카탈로그 밖 모델 요청 — new-model 이슈 (P1-3 D35) */
+export const NEW_MODEL_ISSUE_URL = 'https://github.com/sejong00/canrun/issues/new?labels=new-model';

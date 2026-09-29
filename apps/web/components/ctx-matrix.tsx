@@ -39,7 +39,11 @@ export function CtxMatrixTable({ matrix, caption }: { matrix: CtxMatrix; caption
                   {formatCtx(row[0]!.ctx)}
                 </th>
                 {row.map((cell) => (
-                  <td key={cell.kvQuant} className="align-top">
+                  <td
+                    key={cell.kvQuant}
+                    data-ctx-cell={`${cell.ctx}:${cell.kvQuant}`}
+                    className="align-top aria-[current=true]:bg-muted"
+                  >
                     <div className="flex flex-col gap-1 tabular-nums">
                       <span className="whitespace-nowrap">{tCommon('gb', { value: formatGB(locale, cell.needGB) })}</span>
                       {cell.fits ? (

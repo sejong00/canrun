@@ -4,9 +4,9 @@ import type { ReactNode } from 'react';
 import { SpeedCell } from '@/components/estimate';
 import { VerdictBadge } from '@/components/verdict';
 import type { Locale } from '@/i18n/routing';
-import { formatCtx, formatGB, formatInt, formatTokS } from '@/lib/format';
+import { formatCtx, formatTokS } from '@/lib/format';
 import { gpuHref, localeHref, modelHref } from '@/lib/links';
-import { modeKey } from '@/lib/phrases';
+import { memoryText, modeKey, noteLines } from '@/lib/phrases';
 import { cn } from '@/lib/utils';
 
 /**
@@ -39,56 +39,10 @@ export const TABLE_CLASS = cn(
 function MemoryText({ combo, gpu }: { combo: ComboAssessment; gpu: Gpu }) {
   const locale = useLocale();
   const t = useTranslations('Memory');
-  const q = combo.display;
-  const m = q.memory;
-  if (q.fReason === 'no-fit') return <>{t('need', { need: formatGB(locale, m.needGB) })}</>;
-  const total = gpu.kind === 'dgpu' ? (gpu.vramGB ?? 0) : m.gpuUsableGB;
-  switch (q.result.mode) {
-    case 'full-gpu':
-      return <>{t('gpu', { used: formatGB(locale, m.gpuGB), total: formatGB(locale, total) })}</>;
-    case 'cpu-moe':
-    case 'partial-offload':
-      return (
-        <>
-          {t('gpuPlusRam', {
-            used: formatGB(locale, m.gpuGB),
-            total: formatGB(locale, total),
-            ram: formatGB(locale, m.ramGB),
-          })}
-        </>
-      );
-    case 'cpu-only':
-      return <>{t('ram', { ram: formatGB(locale, m.ramGB) })}</>;
-  }
+  return <>{memoryText(t, locale, combo.display, gpu)}</>;
 }
 
-/** 미탑재 사유 — 필요량과 가용량을 함께 (docs/01 §3 "필요 메모리 vs 가용") */
-function noFitText(
-  tReason: ReturnType<typeof useTranslations>,
-  locale: string,
-  q: ComboAssessment['display'],
-  gpu: Gpu,
-): string {
-  const m = q.memory;
-  const need = formatGB(locale, m.needGB);
-  if (gpu.kind === 'dgpu') {
-    return tReason('noFitDgpu', {
-      need,
-      gpu: formatGB(locale, m.gpuUsableGB),
-      ram: formatGB(locale, m.ramUsableGB),
-    });
-  }
-  if (gpu.kind === 'unified') {
-    return tReason('noFitUnified', {
-      need,
-      ram: formatGB(locale, m.ramUsableGB),
-      gpu: formatGB(locale, m.gpuUsableGB),
-    });
-  }
-  return tReason('noFitCpu', { need, ram: formatGB(locale, m.ramUsableGB) });
-}
-
-/** 판정 사유(실제로 걸린 규칙)·추천·최후 수단·RAM 힌트 (결정 D4) — 콤보 quant 표도 재사용 */
+/** 판정 사유(실제로 걸린 규칙)·추천·최후 수단·RAM 힌트 (결정 D4) — 문장은 `noteLines`(계산기 카드 공용) */
 export function Notes({
   combo,
   gpu,
@@ -99,48 +53,19 @@ export function Notes({
   showReasoning: boolean;
 }) {
   const locale = useLocale();
-  const tReason = useTranslations('VerdictReason');
-  const tHint = useTranslations('Hint');
-  const tVerdict = useTranslations('Verdict');
   const tCommon = useTranslations('Common');
-  const q = combo.display;
-  const lines: string[] = [];
-
-  if (q.fReason === 'no-fit') {
-    lines.push(noFitText(tReason, locale, q, gpu));
-  } else if (q.fReason === 'too-slow') {
-    lines.push(tReason('tooSlow'));
-  } else if (q.verdictReason === 'cap-full-gpu-only') {
-    lines.push(tReason('capFullGpuOnly'));
-  } else if (q.verdictReason === 'cap-partial') {
-    lines.push(tReason('capPartial'));
-  } else if (q.verdictReason === 'cap-cpu-moe') {
-    lines.push(tReason('capCpuMoe', { min: formatInt(locale, q.capMinTokS ?? 0) }));
-  } else if (q.verdictReason === 'cap-cpu-only') {
-    lines.push(tReason('capCpuOnly'));
-  }
-  if (combo.recommended && combo.recommended.quant !== q.quant) {
-    lines.push(
-      tHint(combo.recommended.tier === 'desperate' ? 'recommendedDesperate' : 'recommended', {
-        quant: combo.recommended.quant,
-        verdict: tVerdict(combo.recommended.result.verdict),
-      }),
-    );
-  }
-  if (combo.lastResort) {
-    lines.push(
-      tHint('lastResort', {
-        quant: combo.lastResort.quant,
-        verdict: tVerdict(combo.lastResort.result.verdict),
-      }),
-    );
-  }
-  if (combo.ramHint) {
-    lines.push(
-      tHint('ramHint', { ram: formatInt(locale, combo.ramHint.ramGB), verdict: tVerdict(combo.ramHint.verdict) }),
-    );
-  }
-  if (showReasoning && combo.reasoning) lines.push(tCommon('reasoningMark'));
+  const lines = noteLines(
+    {
+      reason: useTranslations('VerdictReason'),
+      hint: useTranslations('Hint'),
+      verdict: useTranslations('Verdict'),
+      common: tCommon,
+    },
+    locale,
+    combo,
+    gpu.kind,
+    showReasoning,
+  );
 
   if (lines.length === 0) return <span className="text-muted-foreground">{tCommon('none')}</span>;
   return (

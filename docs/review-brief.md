@@ -12,7 +12,7 @@
 ## 1. 프로젝트 컨텍스트
 
 LLM 하드웨어 계산기("Can You Run It"의 AI판). GPU/RAM 선택 → 구동 가능 모델·quant·예상 tok/s. en 루트 + `/ko/` 이중언어 **정적 사이트**(Next.js 16 static export → Cloudflare Pages), 계산은 방문자 브라우저에서 실행.
-현재 마일스톤(P1-2)은 **콤보 페이지 템플릿** `/can-i-run/{model}/on/{gpu}`(+`/ko/`): 카탈로그 전 조합(1,566 × 2언어 = 3,132p)을 생성하고 인덱싱은 `data/publish.json`(`currentBatch: 0` — 출시 시점 콤보 전부 noindex)으로 게이트한다(`docs/04` §3). **`docs/00~07` + `CLAUDE.md`가 스펙**이고 코드는 이를 따라야 한다. 문서↔코드 불일치를 찾으면 어느 쪽을 고쳐야 하는지까지 판정하라 — 단, `docs/PROGRESS.md` §4에 "코드가 정본"으로 기록된 스펙 이탈은 문서 쪽 미갱신으로 본다. 현재 상태와 결정 기록은 `docs/PROGRESS.md`.
+직전 마일스톤(P1-2)은 **콤보 페이지 템플릿** `/can-i-run/{model}/on/{gpu}`(+`/ko/`): 카탈로그 전 조합(1,566 × 2언어 = 3,132p)을 생성하고 인덱싱은 `data/publish.json`(`currentBatch: 0` — 출시 시점 콤보 전부 noindex)으로 게이트한다(`docs/04` §3). 현재 마일스톤(P1-3)은 **계산기·홈** — `/calculator`(+`/ko/`, index): 첫 클라이언트 컴포넌트("아일랜드", `apps/web/components/islands/`)로 카탈로그 GPU·커스텀 하드웨어 × 모델 29종 판정을 브라우저에서 계산(`@canrun/data/client` — zod 없는 엔트리, `docs/05` §5), 상태는 URL 쿼리(`docs/01` F4 D31), GPU 감지(WebGL/WebGPU, 실패 시 무소음 폴백 — `docs/05` §5 D30), 홈은 no-JS GET 폼, 콤보 페이지 ctx/KV 아일랜드(엔진 미탑재 — 서버 셀 뷰 props, D28), 모델 허브 가격 정렬. 결정 D24~D36은 `docs/PROGRESS.md` §4. **`docs/00~07` + `CLAUDE.md`가 스펙**이고 코드는 이를 따라야 한다. 문서↔코드 불일치를 찾으면 어느 쪽을 고쳐야 하는지까지 판정하라 — 단, `docs/PROGRESS.md` §4에 "코드가 정본"으로 기록된 스펙 이탈은 문서 쪽 미갱신으로 본다. 현재 상태와 결정 기록은 `docs/PROGRESS.md`.
 
 ## 2. 검증 항목 (변경분에 해당하는 것 우선)
 
@@ -21,7 +21,8 @@ LLM 하드웨어 계산기("Can You Run It"의 AI판). GPU/RAM 선택 → 구동
 3. **데이터 거버넌스**: `sources[]`·`priceAsOf` 규칙, 엔진 상수 `// source:` 규칙, 배지(라이선스·GGUF 출처) 판별 로직의 정확성.
 4. **보안**: 히스토리 포함 시크릿 0 (gitleaks 등 방법 자유), `.gitleaks.toml` allowlist 과대 여부, 워크플로 시크릿 최소 전달·로그 노출, 클라이언트 번들로 비공개 값 유입.
 5. **CI 게이트 실효성**: 위반 시 실제로 실패하는가 — 거짓 초록불 가능성.
-6. **성능·접근성**: 페이지 JS 예산(`docs/01` §7 — 계산기 외 <150KB, 콤보는 클라이언트 JS 0 — `docs/05` §3), LHCI `assertMatrix`(콤보 LCP 랩 게이트 2.5s·noindex 페이지 개별 SEO 감사 — `docs/05` §6), 광고 슬롯 CLS 예약, verdict 색+아이콘+텍스트 3중 표기. **빌드 산출물**: postbuild RSC 프루닝(`docs/05` §3 D18)이 클라이언트 요청을 깨뜨리지 않는지(`<a>`만 사용, 뒤로가기 포함), 파일 수 < 16,000.
+6. **성능·접근성**: 페이지 JS 예산(`docs/01` §7 — 계산기 외 ≤150KB, 계산기 ≤180,224B, 콤보·허브 아일랜드 +≤3KB — `docs/05` §6의 export 바이트 게이트가 실제로 3,304페이지를 검사하는지), LHCI `assertMatrix`(콤보 LCP 랩 게이트 2.5s·noindex 페이지 개별 SEO 감사·계산기 별도 캡 — `docs/05` §6), 광고 슬롯 CLS 예약, verdict 색+아이콘+텍스트 3중 표기. **빌드 산출물**: postbuild RSC 프루닝(`docs/05` §3 D18)이 클라이언트 요청을 깨뜨리지 않는지(`<a>`만 사용, 뒤로가기 포함 — 아일랜드의 `history.replaceState`가 Next `__NA` 상태를 보존하는지), 파일 수 < 16,000.
+7. **계산기·아일랜드(P1-3)**: ① 브라우저 계산이 서버 조립(`assessCombo`)과 동일한가 — 기본 인자(8k·f16·허브 가정 RAM)에서 허브·콤보와 판정·quant·밴드가 바이트 동일해야 한다(`apps/web/test/calc-run.test.ts`), 실측 조인은 8k·f16에서만(D33), 커스텀 하드웨어는 전부 theoretical(D32); ② 하이드레이션: SSR = 첫 클라이언트 렌더(콤보박스 승격·감지 버튼·결과는 플래그 이후), 콘솔 에러 0; ③ URL 상태(D31): 기본값 생략·미지 키 삭제·`popstate` 복원·스위처 href 쿼리 유지·캐노니컬은 쿼리 없이; ④ GPU 감지(D30): 소프트웨어 렌더러·vendor 불일치·타임아웃·예외에서 **시각 변화 0**, 메모리 변형(4060 Ti 8/16GB)은 추측하지 않고 후보 제시; ⑤ 클라이언트 그래프: zod·next-intl·tailwind-merge·`node:*`·`@canrun/data` 배럴 도달 0(`client-graph.test.ts`), i18n-lite가 next-intl과 동치(`i18n-lite.test.ts`), 하드코딩 문자열 0; ⑥ 콤보 아일랜드가 엔진 없이 서버 셀 뷰만 쓰는지(추가 청크 0), 선택 ctx가 llama.cpp `-c`·Ollama `OLLAMA_CONTEXT_LENGTH`에 반영되는지; ⑦ 홈 GET 폼이 JS 없이 `/calculator?gpu=`로 가고 계산기가 자유 텍스트를 캐노니컬 id로 해석하는지.
 
 ## 3. 출력 형식
 

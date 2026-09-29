@@ -101,7 +101,8 @@ export function getCombo(modelId: string, gpuId: string): ComboPage | undefined 
     qConfig,
     qRow,
     usesRamHint,
-    matrix: ctxMatrix(gpu, qConfig, model, q),
+    // 셀마다 실행 계획도 붙인다 — 콤보 아일랜드가 선택 셀의 명령으로 스니펫을 바꾼다 (P1-3 D28)
+    matrix: ctxMatrix(gpu, qConfig, model, q, { planRow: qRow }),
     breakdown: vramBreakdown(q),
     ...(ppRange(q) ? { pp: ppRange(q) } : {}),
     plan,

@@ -22,7 +22,7 @@ import {
   type Os,
 } from '@canrun/engine';
 import { toModelQuant, type HwConfig, type QuantAssessment } from './assess';
-import type { Gpu, Model, ModelQuantRecord } from './schema';
+import type { GpuCore, ModelCore, ModelQuantCore } from './core';
 
 const SHARD_RE = /-(\d{5})-of-(\d{5})\.gguf$/i;
 
@@ -96,8 +96,8 @@ export type CommandPlan = {
 /** 엔진 §3.3 cpu-moe 가정(전문가 전량 CPU)에 대한 최소 N — VRAM 여유만큼 층을 GPU 로 되돌린다. */
 export function nCpuMoeMin(
   config: HwConfig,
-  model: Model,
-  row: Pick<ModelQuantRecord, 'quant' | 'fileGB' | 'fileName'>,
+  model: ModelCore,
+  row: Pick<ModelQuantCore, 'quant' | 'fileGB' | 'fileName'>,
   opts: { ctx: number; kvQuant: KvQuant },
 ): number | undefined {
   if (model.nonExpertGB === undefined) return undefined;
@@ -127,10 +127,10 @@ function serveCommand(os: Os, ctx: number): string {
  * 조합(구성, 모델, quant 평가)의 실행 계획. `q` 는 보통 display quant; F 페이지는 RAM 힌트의 `q`.
  */
 export function commandPlan(
-  gpu: Gpu,
+  gpu: Pick<GpuCore, 'kind'>,
   config: HwConfig,
-  model: Model,
-  row: ModelQuantRecord,
+  model: ModelCore,
+  row: ModelQuantCore,
   q: Pick<QuantAssessment, 'fits' | 'result' | 'gpuFrac'>,
   opts: { ctx?: number; kvQuant?: KvQuant } = {},
 ): CommandPlan {

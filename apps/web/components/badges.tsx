@@ -1,47 +1,19 @@
 import { classifyLicense, type GgufPublisher, type LicenseClass } from '@canrun/data';
 import { useTranslations } from 'next-intl';
-import type { ReactNode } from 'react';
+import { Pill, type PillTone } from '@/components/pill';
 import { hfUrl } from '@/lib/links';
-import { cn } from '@/lib/utils';
 
-type Tone = 'neutral' | 'info' | 'caution' | 'strong';
+export { Pill } from '@/components/pill';
 
-const TONE: Record<Tone, string> = {
-  neutral: 'border-border text-muted-foreground',
-  info: 'border-verdict-a-fg/40 text-verdict-a-fg',
-  caution: 'border-verdict-b-fg/50 bg-verdict-b-bg text-verdict-b-fg',
-  strong: 'border-verdict-f-fg/50 bg-verdict-f-bg text-verdict-f-fg',
-};
-
-/** 정보 배지 (판정 배지와 달리 등급이 아닌 속성 표시) */
-export function Pill({
-  tone = 'neutral',
-  children,
-  className,
-}: {
-  tone?: Tone;
-  children: ReactNode;
-  className?: string;
-}) {
-  return (
-    <span
-      className={cn(
-        'inline-flex items-center rounded-md border px-1.5 py-0.5 text-xs font-medium',
-        TONE[tone],
-        className,
-      )}
-    >
-      {children}
-    </span>
-  );
-}
-
-const LICENSE_TONE: Record<LicenseClass, Tone> = {
+const LICENSE_TONE: Record<LicenseClass, PillTone> = {
   permissive: 'neutral',
   custom: 'caution',
   nonCommercial: 'strong',
   unknown: 'caution',
 };
+
+/** 라이선스 분류별 배지 톤 — 계산기 카드(축약 배지)와 공유 */
+export const licenseTone = (cls: LicenseClass): PillTone => LICENSE_TONE[cls];
 
 /**
  * 라이선스 배지 — NC·별도 약관을 강조한다. 권리 판단이 아니라 "약관 확인 필요도" 표시이며
@@ -57,7 +29,7 @@ export function LicenseBadge({ license, hfId }: { license: string; hfId: string 
   );
 }
 
-const PUBLISHER_TONE: Record<GgufPublisher['kind'], Tone> = {
+const PUBLISHER_TONE: Record<GgufPublisher['kind'], PillTone> = {
   official: 'info',
   llamacpp: 'info',
   community: 'neutral',

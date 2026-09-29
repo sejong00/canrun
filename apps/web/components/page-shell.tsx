@@ -27,9 +27,15 @@ export function PageShell({
       <VerdictSprite />
       <header className="border-b border-border">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
-          <a href={localeHref(locale, '/')} className="font-semibold tracking-tight">
-            {tSite('name')}
-          </a>
+          <div className="flex items-center gap-4">
+            <a href={localeHref(locale, '/')} className="font-semibold tracking-tight">
+              {tSite('name')}
+            </a>
+            {/* 계산기는 전 페이지에서 인바운드 링크를 갖는다 (docs/04 §2 고아 0, P1-3 D36) */}
+            <a href={localeHref(locale, '/calculator')} data-nav-calculator className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">
+              {tSite('navCalculator')}
+            </a>
+          </div>
           <nav aria-label={tSwitcher('label')} className="flex items-center gap-3 text-sm">
             {routing.locales.map((target) =>
               target === locale ? (

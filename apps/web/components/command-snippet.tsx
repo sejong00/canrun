@@ -1,12 +1,14 @@
 import type { CommandPlan } from '@canrun/data';
 import { useLocale, useTranslations } from 'next-intl';
 import { formatGB, formatInt } from '@/lib/format';
+import { llamaNotes, ollamaNotes } from '@/lib/snippet-phrases';
 
 /**
  * 실행 커맨드 (docs/04 §4 ⑦, docs/01 §9) — llama.cpp / Ollama 블록. 명령 문자열은 데이터 레이어(snippet.ts)
  * 가 만들고 여기서는 설명(각주)만 번역한다. <pre> 는 가로 스크롤 영역이라 region + tabindex (a11y).
+ * `data-snippet-code`·`data-snippet-notes` 는 콤보 아일랜드(ctx/KV 토글)가 셀별 텍스트로 교체하는 지점 (P1-3 D28).
  */
-function CodeBlock({ code, label }: { code: string; label: string }) {
+function CodeBlock({ code, label, name }: { code: string; label: string; name: string }) {
   return (
     <div
       role="region"
@@ -15,7 +17,7 @@ function CodeBlock({ code, label }: { code: string; label: string }) {
       className="overflow-x-auto rounded-md border border-border bg-muted p-3 focus-visible:outline-2 focus-visible:outline-ring"
     >
       <pre className="text-xs leading-5 whitespace-pre">
-        <code>{code}</code>
+        <code data-snippet-code={name}>{code}</code>
       </pre>
     </div>
   );
@@ -45,18 +47,7 @@ export function CommandSnippet({
   }
 
   const llama = plan.llamaCpp;
-  const notes: string[] = [];
-  if (llama.ngl === 'all') notes.push(t('nglAll'));
-  else if (llama.ngl === 0) notes.push(t('nglZero'));
-  else notes.push(t('nglN', { n: llama.ngl, layers: plan.layers }));
-  if (llama.nCpuMoe !== undefined) {
-    notes.push(t('cpuMoe', { n: llama.nCpuMoe }));
-    if (llama.nCpuMoeMin !== undefined && llama.nCpuMoeMin < llama.nCpuMoe) {
-      notes.push(t('cpuMoeMin', { min: llama.nCpuMoeMin }));
-    }
-  }
-  notes.push(t('fa'));
-  notes.push(t('kv', { kv: gb(kvGB) }));
+  const notes = llamaNotes(t, locale, plan, kvGB);
 
   const fileText =
     plan.file.shards > 1
@@ -68,8 +59,7 @@ export function CommandSnippet({
         })
       : t('file', { file: plan.file.name ?? plan.file.tag, size: gb(plan.file.fileGB), repo: plan.file.repo });
 
-  const ollamaNotes: string[] = [t('ctx')];
-  if (plan.ollama?.autoOffload) ollamaNotes.push(t('ollamaAutoOffload'));
+  const oNotes = ollamaNotes(t, plan);
 
   return (
     <div className="flex flex-col gap-4">
@@ -81,10 +71,12 @@ export function CommandSnippet({
 
       <figure data-snippet="llama.cpp" className="flex flex-col gap-2">
         <figcaption className="font-medium">{t('llamaCpp')}</figcaption>
-        <CodeBlock code={llama.command} label={t('llamaCpp')} />
-        <ul className="list-disc pl-5 text-xs text-muted-foreground">
+        <CodeBlock code={llama.command} label={t('llamaCpp')} name="llama.cpp" />
+        <ul data-snippet-notes="llama.cpp" className="list-disc pl-5 text-xs text-muted-foreground">
           {notes.map((note) => (
-            <li key={note}>{note}</li>
+            <li key={note.key} data-snippet-note={note.key}>
+              {note.text}
+            </li>
           ))}
         </ul>
       </figure>
@@ -96,13 +88,13 @@ export function CommandSnippet({
             <p className="text-xs text-muted-foreground">
               {plan.os === 'windows' ? t('serveWindows') : t('serveUnix')}
             </p>
-            <CodeBlock code={`${plan.ollama.serve}\n${plan.ollama.run}`} label={t('ollama')} />
-            <ul className="list-disc pl-5 text-xs text-muted-foreground">
-              {ollamaNotes.map((note) => (
+            <CodeBlock code={`${plan.ollama.serve}\n${plan.ollama.run}`} label={t('ollama')} name="ollama" />
+            <ul data-snippet-notes="ollama" className="list-disc pl-5 text-xs text-muted-foreground">
+              {oNotes.map((note) => (
                 <li key={note}>{note}</li>
               ))}
               <li>
-                <code>{plan.ollama.replSet}</code>
+                <code data-snippet-code="ollama-repl">{plan.ollama.replSet}</code>
               </li>
             </ul>
           </>

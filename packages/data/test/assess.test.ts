@@ -7,6 +7,7 @@ import {
   assessCombo,
   baselineRow,
   classifyLicense,
+  ctxMatrix,
   ggufPublisher,
   hardwareConfigs,
   HUB_POLICY,
@@ -459,5 +460,70 @@ describe('전 카탈로그 불변식', () => {
       }
     }
     expect(combos).toBeGreaterThan(2000);
+  });
+});
+
+describe('계산기 평가 옵션 (P1-3 결정 D33) — 기본 인자는 허브와 동일', () => {
+  it('32k·q8_0 의 assessCombo 기준 quant = ctxMatrix 같은 셀, 실측 조인은 8k·f16 에서만', () => {
+    const g = gpu('rtx-4060');
+    const config = hardwareConfigs(g, seed.gpus)[0]!;
+    const m = model('llama-3.1-8b');
+    const c = assessCombo(seed, g, config, m, { ctx: 32768, kvQuant: 'q8_0' });
+    const matrix = ctxMatrix(g, config, m, c.baseline);
+    const cell = matrix.rows[matrix.ctxs.indexOf(32768)]![matrix.kvQuants.indexOf('q8_0')]!;
+    expect(c.baseline.result.tgTokS).toEqual(cell.result.tgTokS);
+    expect(c.baseline.result.verdict).toBe(cell.verdict);
+    expect(c.baseline.memory.needGB).toBeCloseTo(cell.needGB, 9);
+    expect(c.baseline.measured).toBeUndefined();
+    // 같은 구성의 8k·f16 은 실측 조인 (D4 앵커)
+    expect(combo('rtx-4060', 'llama-3.1-8b').baseline.result.confidence).toBe('measured');
+  });
+
+  it('theoretical 강제 (커스텀 하드웨어, D32) — 전 quant 이론 추정 ±30%', () => {
+    const g = gpu('rtx-4090');
+    const c = assessCombo(seed, g, hardwareConfigs(g, seed.gpus)[0]!, model('llama-3.1-8b'), { theoretical: true });
+    for (const q of c.perQuant) {
+      // 실측이 조인된 quant 는 result 가 measured 지만, 추정은 전부 이론 밴드 (커스텀 하드웨어엔 실측이 없다)
+      expect(q.estimate.confidence).toBe('theoretical');
+      expect(q.estimate.tgTokS.low).toBeCloseTo(q.estimate.tgTokS.est * 0.7, 6);
+      if (!q.measured) expect(q.result.confidence).toBe('theoretical');
+    }
+  });
+
+  it('사용자 RAM 구성(16GB·linux·화면 출력 아님)은 assumedRam=false, RAM 힌트는 옵션일 때만·사용자 RAM 초과 후보·같은 os', () => {
+    const g = gpu('rtx-4060');
+    const [config] = hardwareConfigs(g, seed.gpus, { ramGB: 16, os: 'linux', isDisplayGpu: false });
+    expect(config!.assumedRam).toBe(false);
+    expect(config!.hw).toMatchObject({ os: 'linux', isDisplayGpu: false, ramGB: 16 });
+    const big = model('gpt-oss-120b');
+    expect(assessCombo(seed, g, config!, big).ramHint).toBeUndefined();
+    const hinted = assessCombo(seed, g, config!, big, { ramHint: true });
+    expect(hinted.ramHint).toBeDefined();
+    expect(hinted.ramHint!.ramGB).toBeGreaterThan(16);
+    // 후보는 32/64/96/128 중 사용자 RAM 초과분을 작은 순으로 — 16GB 사용자에게 32 가 후보에 든다 (허브 32GB 는 64 부터)
+    expect([32, 64, 96, 128]).toContain(hinted.ramHint!.ramGB);
+    const [at32] = hardwareConfigs(g, seed.gpus, { ramGB: 32, os: 'linux', isDisplayGpu: false });
+    const improvedAt32 = verdictRank(assessCombo(seed, g, at32!, big).baseline.result.verdict) > verdictRank(hinted.baseline.result.verdict);
+    expect(hinted.ramHint!.ramGB === 32).toBe(improvedAt32);
+    expect(hinted.ramHint!.config.hw).toMatchObject({ os: 'linux', isDisplayGpu: false });
+    expect(hinted.ramHint!.config.hw.ramBandwidthGBs).toBe(config!.hw.ramBandwidthGBs);
+  });
+
+  it('RAM 대역폭 옵션(DDR 종류)은 dGPU 시스템 RAM 대역폭이 된다', () => {
+    const g = gpu('rtx-4060');
+    const ddr4 = gpu('cpu-ddr4-3200-2ch').memBandwidthGBs;
+    const [config] = hardwareConfigs(g, seed.gpus, { ramBandwidthGBs: ddr4 });
+    expect(config!.hw.ramBandwidthGBs).toBe(ddr4);
+    expect(config!.assumedRam).toBe(true);
+  });
+
+  it('통합·CPU 에 ramGB 를 지정하면 그 구성 1개, apple 은 os 지정을 무시하고 macos', () => {
+    const m4 = hardwareConfigs(gpu('apple-m4'), seed.gpus, { ramGB: 24, os: 'windows' });
+    expect(m4).toHaveLength(1);
+    expect(m4[0]!.hw).toMatchObject({ ramGB: 24, os: 'macos' });
+    const strix = hardwareConfigs(gpu('amd-strix-halo'), seed.gpus, { ramGB: 64, os: 'windows' });
+    expect(strix[0]!.hw.os).toBe('windows');
+    const cpu = hardwareConfigs(gpu('cpu-ddr5-5600-2ch'), seed.gpus, { ramGB: 32 });
+    expect(cpu[0]!.hw).toMatchObject({ kind: 'cpu', ramGB: 32, os: 'linux' });
   });
 });

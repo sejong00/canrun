@@ -3,8 +3,8 @@
  * 모든 속도 문장은 est. + 밴드 + 신뢰 라벨을 동반한다 (CLAUDE.md 규칙 3).
  */
 import type { Mode, Result } from '@canrun/engine';
-import type { Gpu, MeasuredJoin, QuantAssessment } from '@canrun/data';
-import { formatCtx, formatSpeed, formatTokS } from './format';
+import type { ComboAssessment, GpuCore, MeasuredJoin, QuantAssessment } from '@canrun/data/client';
+import { formatCtx, formatGB, formatInt, formatSpeed, formatTokS } from './format';
 
 /** next-intl translator 의 최소 형태 (네임스페이스가 이미 바인딩된 t) */
 export type Translate = (key: string, values?: Record<string, string | number>) => string;
@@ -65,7 +65,7 @@ export function quantText(tHint: Translate, q: Pick<QuantAssessment, 'quant' | '
 }
 
 /** 실행 방식 라벨 — 통합 메모리의 full-gpu 는 "통합 메모리" */
-export function modeKey(mode: Mode, gpuKind: Gpu['kind']): string {
+export function modeKey(mode: Mode, gpuKind: GpuCore['kind']): string {
   switch (mode) {
     case 'full-gpu':
       return gpuKind === 'unified' ? 'fullUnified' : 'fullGpu';
@@ -79,8 +79,118 @@ export function modeKey(mode: Mode, gpuKind: Gpu['kind']): string {
 }
 
 /** GPU 표시 이름 — CPU 프로필처럼 설명형 이름은 messages 오버라이드 (규칙 4) */
-export function gpuName(tGpuName: Translate & { has?: (key: string) => boolean }, gpu: Gpu): string {
+export function gpuName(
+  tGpuName: Translate & { has?: (key: string) => boolean },
+  gpu: Pick<GpuCore, 'id' | 'name'>,
+): string {
   return tGpuName.has?.(gpu.id) ? tGpuName(gpu.id) : gpu.name;
+}
+
+/** 메모리 셀 — "7.2 / 8 GB" · "+ RAM" · "RAM 6.0 GB" · 미탑재 "needs N GB" (허브 표·계산기 카드 공용) */
+export function memoryText(
+  tMemory: Translate,
+  locale: string,
+  q: Pick<QuantAssessment, 'memory' | 'result' | 'fReason'>,
+  gpu: Pick<GpuCore, 'kind' | 'vramGB'>,
+): string {
+  const m = q.memory;
+  if (q.fReason === 'no-fit') return tMemory('need', { need: formatGB(locale, m.needGB) });
+  const total = gpu.kind === 'dgpu' ? (gpu.vramGB ?? 0) : m.gpuUsableGB;
+  switch (q.result.mode) {
+    case 'full-gpu':
+      return tMemory('gpu', { used: formatGB(locale, m.gpuGB), total: formatGB(locale, total) });
+    case 'cpu-moe':
+    case 'partial-offload':
+      return tMemory('gpuPlusRam', {
+        used: formatGB(locale, m.gpuGB),
+        total: formatGB(locale, total),
+        ram: formatGB(locale, m.ramGB),
+      });
+    case 'cpu-only':
+      return tMemory('ram', { ram: formatGB(locale, m.ramGB) });
+  }
+}
+
+/** 미탑재 사유 — 필요량과 가용량을 함께 (docs/01 §3 "필요 메모리 vs 가용") */
+export function noFitText(
+  tReason: Translate,
+  locale: string,
+  q: Pick<QuantAssessment, 'memory'>,
+  gpuKind: GpuCore['kind'],
+): string {
+  const m = q.memory;
+  const need = formatGB(locale, m.needGB);
+  if (gpuKind === 'dgpu') {
+    return tReason('noFitDgpu', {
+      need,
+      gpu: formatGB(locale, m.gpuUsableGB),
+      ram: formatGB(locale, m.ramUsableGB),
+    });
+  }
+  if (gpuKind === 'unified') {
+    return tReason('noFitUnified', {
+      need,
+      ram: formatGB(locale, m.ramUsableGB),
+      gpu: formatGB(locale, m.gpuUsableGB),
+    });
+  }
+  return tReason('noFitCpu', { need, ram: formatGB(locale, m.ramUsableGB) });
+}
+
+export type NoteTranslators = {
+  reason: Translate;
+  hint: Translate;
+  verdict: Translate;
+  common: Translate;
+};
+
+/** 판정 사유(실제로 걸린 규칙)·추천·최후 수단·RAM 힌트 (결정 D4) — 허브 표 `Notes`·계산기 카드 공용 */
+export function noteLines(
+  t: NoteTranslators,
+  locale: string,
+  combo: Pick<ComboAssessment, 'display' | 'recommended' | 'lastResort' | 'ramHint' | 'reasoning'>,
+  gpuKind: GpuCore['kind'],
+  showReasoning: boolean,
+): string[] {
+  const q = combo.display;
+  const lines: string[] = [];
+
+  if (q.fReason === 'no-fit') {
+    lines.push(noFitText(t.reason, locale, q, gpuKind));
+  } else if (q.fReason === 'too-slow') {
+    lines.push(t.reason('tooSlow'));
+  } else if (q.verdictReason === 'cap-full-gpu-only') {
+    lines.push(t.reason('capFullGpuOnly'));
+  } else if (q.verdictReason === 'cap-partial') {
+    lines.push(t.reason('capPartial'));
+  } else if (q.verdictReason === 'cap-cpu-moe') {
+    lines.push(t.reason('capCpuMoe', { min: formatInt(locale, q.capMinTokS ?? 0) }));
+  } else if (q.verdictReason === 'cap-cpu-only') {
+    lines.push(t.reason('capCpuOnly'));
+  }
+  if (combo.recommended && combo.recommended.quant !== q.quant) {
+    lines.push(
+      t.hint(combo.recommended.tier === 'desperate' ? 'recommendedDesperate' : 'recommended', {
+        quant: combo.recommended.quant,
+        verdict: t.verdict(combo.recommended.result.verdict),
+      }),
+    );
+  }
+  if (combo.lastResort) {
+    lines.push(
+      t.hint('lastResort', {
+        quant: combo.lastResort.quant,
+        verdict: t.verdict(combo.lastResort.result.verdict),
+      }),
+    );
+  }
+  if (combo.ramHint) {
+    lines.push(
+      t.hint('ramHint', { ram: formatInt(locale, combo.ramHint.ramGB), verdict: t.verdict(combo.ramHint.verdict) }),
+    );
+  }
+  if (showReasoning && combo.reasoning) lines.push(t.common('reasoningMark'));
+  return lines;
 }
 
 /**

@@ -24,10 +24,19 @@ import {
   type KvQuant,
   type Mode,
   type ModelQuant,
+  type Os,
   type QuantId,
   type Result,
   type Verdict,
 } from '@canrun/engine';
+import type {
+  BenchPointCore,
+  CatalogCore,
+  GpuCore,
+  ModelCore,
+  ModelQuantCore,
+  QuantDefCore,
+} from './core';
 import type { BenchPoint, Gpu, Model, ModelQuantRecord, QuantDef } from './schema';
 
 /**
@@ -63,7 +72,7 @@ export const HUB_POLICY = Object.freeze({
   referenceGpuIds: ['rtx-4060', 'rtx-5060-ti-16gb', 'rtx-3090'] as readonly string[],
 });
 
-export type QuantTier = QuantDef['tier'];
+export type QuantTier = QuantDefCore['tier'];
 
 /** 판정 서열: F < B < A < S */
 const VERDICT_RANK: Readonly<Record<Verdict, number>> = Object.freeze({ F: 0, B: 1, A: 2, S: 3 });
@@ -94,7 +103,7 @@ export type HwConfig = {
   hw: Hardware;
 };
 
-function dgpuRamBandwidth(gpus: readonly Gpu[]): number {
+export function dgpuRamBandwidth(gpus: readonly GpuCore[]): number {
   const profile = gpus.find((gpu) => gpu.id === HUB_POLICY.dgpuRamProfileId);
   if (!profile) {
     throw new Error(`RAM profile '${HUB_POLICY.dgpuRamProfileId}' missing from gpus.json`);
@@ -102,40 +111,68 @@ function dgpuRamBandwidth(gpus: readonly Gpu[]): number {
   return profile.memBandwidthGBs;
 }
 
+/** dGPU 구성 옵션 — 허브는 정책 기본값(D2), 계산기는 사용자 입력 (P1-3 D33). */
+export type DgpuOptions = {
+  os?: Os;
+  /** 이 GPU 가 화면 출력을 담당하는가 (OS 예약 VRAM, docs/02 §2.3) */
+  isDisplayGpu?: boolean;
+};
+
 /** dGPU + 지정 시스템 RAM 의 엔진 하드웨어 (RAM 힌트 계산에도 쓴다). */
-export function dgpuHardware(gpu: Gpu, ramGB: number, ramBandwidthGBs: number): Hardware {
+export function dgpuHardware(
+  gpu: GpuCore,
+  ramGB: number,
+  ramBandwidthGBs: number,
+  opts: DgpuOptions = {},
+): Hardware {
   return {
     kind: 'dgpu',
-    os: HUB_POLICY.dgpuOs,
+    os: opts.os ?? HUB_POLICY.dgpuOs,
     vramGB: gpu.vramGB,
     memBandwidthGBs: gpu.memBandwidthGBs,
     fp16Tflops: gpu.fp16Tflops,
     ramGB,
     ramBandwidthGBs,
     effClass: gpu.effClass,
-    isDisplayGpu: true,
+    isDisplayGpu: opts.isDisplayGpu ?? true,
   };
 }
 
-/** 카탈로그 GPU → 허브 평가 구성들. */
-export function hardwareConfigs(gpu: Gpu, gpus: readonly Gpu[]): HwConfig[] {
+export type HardwareConfigOptions = DgpuOptions & {
+  /** 지정 시 그 RAM 1개 구성만 (dGPU: 사용자 RAM → assumedRam=false, 통합·CPU: 옵션 밖 값도 허용) */
+  ramGB?: number;
+  /** dGPU 시스템 RAM 대역폭 (계산기의 DDR 종류) — 기본은 정책 프로필 */
+  ramBandwidthGBs?: number;
+};
+
+/** 카탈로그 GPU → 평가 구성들. 허브는 옵션 없이(D2·D4), 계산기는 사용자 선택을 넘긴다. */
+export function hardwareConfigs(
+  gpu: GpuCore,
+  gpus: readonly GpuCore[],
+  opts: HardwareConfigOptions = {},
+): HwConfig[] {
   if (gpu.kind === 'dgpu') {
+    const ramGB = opts.ramGB ?? HUB_POLICY.dgpuRamGB;
+    const bandwidth = opts.ramBandwidthGBs ?? dgpuRamBandwidth(gpus);
     return [
       {
         gpuId: gpu.id,
-        ramGB: HUB_POLICY.dgpuRamGB,
-        assumedRam: true,
-        hw: dgpuHardware(gpu, HUB_POLICY.dgpuRamGB, dgpuRamBandwidth(gpus)),
+        ramGB,
+        assumedRam: opts.ramGB === undefined,
+        hw: dgpuHardware(gpu, ramGB, bandwidth, opts),
       },
     ];
   }
-  return (gpu.ramOptionsGB ?? []).map((ramGB) => ({
+  const ramOptions = opts.ramGB !== undefined ? [opts.ramGB] : (gpu.ramOptionsGB ?? []);
+  // Apple 실리콘은 macOS 고정, 그 외 통합·CPU 는 기본 linux (계산기가 windows 를 고를 수 있다)
+  const os: Os = gpu.vendor === 'apple' ? 'macos' : opts.os === 'windows' ? 'windows' : 'linux';
+  return ramOptions.map((ramGB) => ({
     gpuId: gpu.id,
     ramGB,
     assumedRam: false,
     hw: {
       kind: gpu.kind,
-      os: gpu.vendor === 'apple' ? 'macos' : 'linux',
+      os,
       memBandwidthGBs: gpu.memBandwidthGBs,
       fp16Tflops: gpu.fp16Tflops,
       ramGB,
@@ -162,8 +199,8 @@ export function unifiedCpuBandwidth(gpu: Pick<Gpu, 'effClass' | 'memBandwidthGBs
 
 /** 카탈로그 모델 (+ 등록 quant 행) → 엔진 ModelQuant. 행이 없으면 bpw 폴백 경로. */
 export function toModelQuant(
-  model: Model,
-  row?: Pick<ModelQuantRecord, 'quant' | 'fileGB'>,
+  model: ModelCore,
+  row?: Pick<ModelQuantCore, 'quant' | 'fileGB'>,
 ): ModelQuant {
   return {
     paramsB: model.paramsB,
@@ -178,7 +215,7 @@ export function toModelQuant(
 }
 
 /** 리즈닝 모델 → 판정 임계 ×1.5 (docs/02 §5). 운영 정의는 category (결정 D5). */
-export function isReasoning(model: Model): boolean {
+export function isReasoning(model: Pick<ModelCore, 'category'>): boolean {
   return model.category.includes('reasoning');
 }
 
@@ -187,10 +224,10 @@ export function isReasoning(model: Model): boolean {
 // ---------------------------------------------------------------------------
 
 /** 기준 quant: Q4_K_M → MXFP4 → Q4_K_M bpw 최근접 등록 quant (docs/01 §3 "Q4_K_M 기준"). */
-export function baselineRow(
-  rows: readonly ModelQuantRecord[],
+export function baselineRow<R extends Pick<ModelQuantCore, 'quant' | 'fileGB'>>(
+  rows: readonly R[],
   quantBpw: Readonly<Record<string, number>>,
-): ModelQuantRecord | undefined {
+): R | undefined {
   for (const quant of HUB_POLICY.baselineOrder) {
     const row = rows.find((r) => r.quant === quant);
     if (row) return row;
@@ -205,7 +242,7 @@ export function baselineRow(
 }
 
 /** 이론 추정(±30%) 판정 — docs/02 §4 "검증 밖 조합", 데이터 레이어 규칙 (결정 D4). */
-export function isTheoretical(gpu: Gpu, model: Model, mode: Mode): boolean {
+export function isTheoretical(gpu: GpuCore, model: ModelCore, mode: Mode): boolean {
   // MoE 계수가 검증되지 않은 클래스 (constants.ts EFF: intel-arc)
   if (model.moe && EFF[gpu.effClass].moe === undefined) return true;
   // cpu-moe 속도는 검증점이 없다 (docs/02 §3.3 앵커 대비 과소 — PROGRESS §5)
@@ -273,7 +310,7 @@ export type MemoryNeed = {
 
 export type MeasuredJoin = {
   values: number[];
-  points: BenchPoint[];
+  points: BenchPointCore[];
 };
 
 export type QuantAssessment = {
@@ -295,14 +332,21 @@ export type QuantAssessment = {
   memory: MemoryNeed;
 };
 
-export type AssessQuantInput = {
-  gpu: Gpu;
-  config: HwConfig;
-  model: Model;
-  row: ModelQuantRecord;
-  tier: QuantTier;
-  benchmarks: readonly BenchPoint[];
+/** 평가 조건 — 허브·콤보는 기본값(8k·f16), 계산기는 사용자 선택 (P1-3 D33). */
+export type AssessOptions = {
   ctx?: number;
+  kvQuant?: KvQuant;
+  /** 강제 theoretical (커스텀 하드웨어, D32) — 생략 시 `isTheoretical` 규칙 */
+  theoretical?: boolean;
+};
+
+export type AssessQuantInput = AssessOptions & {
+  gpu: GpuCore;
+  config: HwConfig;
+  model: ModelCore;
+  row: ModelQuantCore;
+  tier: QuantTier;
+  benchmarks: readonly BenchPointCore[];
 };
 
 function memoryNeed(
@@ -311,9 +355,10 @@ function memoryNeed(
   result: Result,
   fits: boolean,
   ctx: number,
+  kvQuant: KvQuant,
 ): MemoryNeed {
   const weights = weightsGB(mq);
-  const kv = kvGB(mq.kvBytesPerToken, ctx);
+  const kv = kvGB(mq.kvBytesPerToken, ctx, kvQuant);
   const hw = config.hw;
   const cpuPath = hw.kind === 'cpu' || (fits && result.mode === 'cpu-only');
   const base = {
@@ -335,12 +380,12 @@ function memoryNeed(
 }
 
 /** (gpuId, modelId, quant) 정확 일치 실측 (`Q4_K_XL` ≠ `Q4_K_M`). */
-export function measuredPoints(
-  benchmarks: readonly BenchPoint[],
+export function measuredPoints<B extends BenchPointCore>(
+  benchmarks: readonly B[],
   gpuId: string,
   modelId: string,
   quant: string,
-): BenchPoint[] {
+): B[] {
   return benchmarks.filter(
     (bp) => bp.gpuId === gpuId && bp.modelId === modelId && bp.quant === quant,
   );
@@ -348,25 +393,30 @@ export function measuredPoints(
 
 /**
  * quant 1개 평가. 실측 조인은 정확 일치 + 페이지 가정에서 fit 성립 + dGPU 는 full-gpu 일 때만
- * (호스트 RAM·오프로드 플래그가 조인 키에 없다 — 결정 D4).
+ * (호스트 RAM·오프로드 플래그가 조인 키에 없다 — 결정 D4) + **기준 조건(8k·f16)일 때만**
+ * (실측 ctx 조건이 다르다 — P1-3 D33; 다른 조건은 순수 추정).
  */
 export function assessQuant(input: AssessQuantInput): QuantAssessment {
   const { gpu, config, model, row, tier } = input;
   const ctx = input.ctx ?? HUB_POLICY.referenceCtx;
+  const kvQuant = input.kvQuant ?? 'f16';
   const mq = toModelQuant(model, row);
   const reasoning = isReasoning(model);
 
-  const fitResult = fit(config.hw, mq, { ctx });
-  const theoretical = isTheoretical(gpu, model, fitResult.mode);
-  const estimate = evaluate(config.hw, mq, { ctx, reasoning, theoretical });
+  const fitResult = fit(config.hw, mq, { ctx, kvQuant });
+  const theoretical = input.theoretical ?? isTheoretical(gpu, model, fitResult.mode);
+  const estimate = evaluate(config.hw, mq, { ctx, kvQuant, reasoning, theoretical });
 
   const joinable =
-    fitResult.fits && (config.hw.kind !== 'dgpu' || fitResult.mode === 'full-gpu');
+    fitResult.fits &&
+    (config.hw.kind !== 'dgpu' || fitResult.mode === 'full-gpu') &&
+    ctx === HUB_POLICY.referenceCtx &&
+    kvQuant === 'f16';
   const points = joinable ? measuredPoints(input.benchmarks, gpu.id, model.id, row.quant) : [];
   const values = points.map((bp) => bp.tgTokS);
   const result =
     values.length > 0
-      ? evaluate(config.hw, mq, { ctx, reasoning, theoretical, measuredTgTokS: values })
+      ? evaluate(config.hw, mq, { ctx, kvQuant, reasoning, theoretical, measuredTgTokS: values })
       : estimate;
 
   let verdictReason: VerdictReason = 'speed';
@@ -404,7 +454,7 @@ export function assessQuant(input: AssessQuantInput): QuantAssessment {
     verdictReason,
     ...(capMinTokS !== undefined ? { capMinTokS } : {}),
     ...(values.length > 0 ? { measured: { values, points } } : {}),
-    memory: memoryNeed(config, mq, result, fitResult.fits, ctx),
+    memory: memoryNeed(config, mq, result, fitResult.fits, ctx, kvQuant),
   };
 }
 
@@ -427,11 +477,11 @@ export type RamHint = {
  * 실측 조인은 하지 않는다(실측 ctx 조건이 다름).
  */
 export function estimateAt(
-  gpu: Gpu,
+  gpu: GpuCore,
   config: HwConfig,
-  model: Model,
-  row: Pick<ModelQuantRecord, 'quant' | 'fileGB'>,
-  opts: { ctx: number; kvQuant?: KvQuant },
+  model: ModelCore,
+  row: Pick<ModelQuantCore, 'quant' | 'fileGB'>,
+  opts: { ctx: number; kvQuant?: KvQuant; theoretical?: boolean },
 ): { fit: FitResult; result: Result } {
   const mq = toModelQuant(model, row);
   const fitResult = fit(config.hw, mq, { ctx: opts.ctx, kvQuant: opts.kvQuant });
@@ -439,7 +489,7 @@ export function estimateAt(
     ctx: opts.ctx,
     kvQuant: opts.kvQuant,
     reasoning: isReasoning(model),
-    theoretical: isTheoretical(gpu, model, fitResult.mode),
+    theoretical: opts.theoretical ?? isTheoretical(gpu, model, fitResult.mode),
   });
   return { fit: fitResult, result };
 }
@@ -465,11 +515,11 @@ export type ComboAssessment = {
   ramHint?: RamHint;
 };
 
-function tierMap(quantDefs: readonly QuantDef[]): Map<string, QuantTier> {
+function tierMap(quantDefs: readonly QuantDefCore[]): Map<string, QuantTier> {
   return new Map(quantDefs.map((q) => [q.id, q.tier]));
 }
 
-function bpwMap(quantDefs: readonly QuantDef[]): Record<string, number> {
+function bpwMap(quantDefs: readonly QuantDefCore[]): Record<string, number> {
   return Object.fromEntries(quantDefs.map((q) => [q.id, q.bpw]));
 }
 
@@ -516,16 +566,23 @@ export function pickRecommended(
 }
 
 function maxCtxSameMode(
-  gpu: Gpu,
+  gpu: GpuCore,
   config: HwConfig,
-  model: Model,
+  model: ModelCore,
   display: QuantAssessment,
+  opts: AssessOptions,
 ): number | undefined {
   if (display.estimate.verdict === 'F') return undefined;
+  const from = opts.ctx ?? HUB_POLICY.referenceCtx;
   let best: number | undefined;
   for (const ctx of HUB_POLICY.ctxLadder) {
+    if (ctx < from) continue;
     if (ctx > model.maxContext) break;
-    const { fit: f, result: r } = estimateAt(gpu, config, model, display, { ctx });
+    const { fit: f, result: r } = estimateAt(gpu, config, model, display, {
+      ctx,
+      kvQuant: opts.kvQuant,
+      theoretical: opts.theoretical,
+    });
     if (!f.fits || f.mode !== display.estimate.mode) break;
     if (r.verdict !== display.estimate.verdict) break;
     best = ctx;
@@ -533,31 +590,48 @@ function maxCtxSameMode(
   return best;
 }
 
+/**
+ * RAM 업그레이드 힌트 — 후보(32/64/96/128) 중 현재 구성의 RAM 보다 큰 것을 작은 순으로, 힌트 구성은 현재 구성의
+ * os·디스플레이·RAM 대역폭을 그대로 쓴다 (허브 = 정책 기본값 32GB → 64 부터, 계산기 = 사용자 선택 — 16GB 사용자에겐
+ * 32GB 로 충분하면 32 를 권한다, D33).
+ */
 function ramHintFor(
-  gpu: Gpu,
-  gpus: readonly Gpu[],
-  model: Model,
+  gpu: GpuCore,
+  config: HwConfig,
+  model: ModelCore,
   baseline: QuantAssessment,
-  row: ModelQuantRecord,
-  benchmarks: readonly BenchPoint[],
+  row: ModelQuantCore,
+  benchmarks: readonly BenchPointCore[],
+  opts: AssessOptions,
 ): RamHint | undefined {
   if (gpu.kind !== 'dgpu') return undefined;
-  const bandwidth = dgpuRamBandwidth(gpus);
-  for (const ramGB of HUB_POLICY.ramHintGB) {
-    const config: HwConfig = {
+  for (const ramGB of [HUB_POLICY.dgpuRamGB, ...HUB_POLICY.ramHintGB]) {
+    if (ramGB <= config.ramGB) continue;
+    const hintConfig: HwConfig = {
       gpuId: gpu.id,
       ramGB,
       assumedRam: false,
-      hw: dgpuHardware(gpu, ramGB, bandwidth),
+      hw: dgpuHardware(gpu, ramGB, config.hw.ramBandwidthGBs, {
+        os: config.hw.os,
+        isDisplayGpu: config.hw.isDisplayGpu,
+      }),
     };
-    const assessed = assessQuant({ gpu, config, model, row, tier: baseline.tier, benchmarks });
+    const assessed = assessQuant({
+      gpu,
+      config: hintConfig,
+      model,
+      row,
+      tier: baseline.tier,
+      benchmarks,
+      ...opts,
+    });
     if (verdictRank(assessed.result.verdict) > verdictRank(baseline.result.verdict)) {
       return {
         ramGB,
         verdict: assessed.result.verdict,
         mode: assessed.result.mode,
         result: assessed.result,
-        config,
+        config: hintConfig,
         q: assessed,
       };
     }
@@ -565,16 +639,27 @@ function ramHintFor(
   return undefined;
 }
 
+export type AssessComboOptions = AssessOptions & {
+  /** 가정 RAM 이 아니어도 RAM 힌트를 계산 (계산기: 사용자 RAM 보다 큰 후보만) */
+  ramHint?: boolean;
+};
+
 export function assessCombo(
-  catalog: SeedCatalog,
-  gpu: Gpu,
+  catalog: CatalogCore,
+  gpu: GpuCore,
   config: HwConfig,
-  model: Model,
+  model: ModelCore,
+  opts: AssessComboOptions = {},
 ): ComboAssessment {
   const rows = catalog.modelQuants.filter((mq) => mq.modelId === model.id);
   const baseRow = baselineRow(rows, bpwMap(catalog.quantDefs));
   if (!baseRow) throw new Error(`model '${model.id}' has no model-quants rows`);
   const tiers = tierMap(catalog.quantDefs);
+  const conditions: AssessOptions = {
+    ...(opts.ctx !== undefined ? { ctx: opts.ctx } : {}),
+    ...(opts.kvQuant !== undefined ? { kvQuant: opts.kvQuant } : {}),
+    ...(opts.theoretical !== undefined ? { theoretical: opts.theoretical } : {}),
+  };
 
   const perQuant = [...rows]
     .sort((a, b) => a.fileGB - b.fileGB)
@@ -586,15 +671,17 @@ export function assessCombo(
         row,
         tier: tiers.get(row.quant) ?? 'ok',
         benchmarks: catalog.benchmarks,
+        ...conditions,
       }),
     );
   const baseline = perQuant.find((q) => q.quant === baseRow.quant)!;
   const { recommended, lastResort } = pickRecommended(baseline, perQuant);
   const display = baseline.result.verdict === 'F' && recommended ? recommended : baseline;
-  const maxCtx = maxCtxSameMode(gpu, config, model, display);
-  const ramHint = config.assumedRam
-    ? ramHintFor(gpu, catalog.gpus, model, baseline, baseRow, catalog.benchmarks)
-    : undefined;
+  const maxCtx = maxCtxSameMode(gpu, config, model, display, conditions);
+  const ramHint =
+    config.assumedRam || opts.ramHint
+      ? ramHintFor(gpu, config, model, baseline, baseRow, catalog.benchmarks, conditions)
+      : undefined;
 
   return {
     gpuId: gpu.id,
@@ -629,8 +716,8 @@ function countVerdicts(combos: readonly ComboAssessment[]): VerdictCounts {
   return counts;
 }
 
-/** 판정 높은 순 → tok/s 높은 순 → 모델 id (결정론). */
-function compareCombos(a: ComboAssessment, b: ComboAssessment): number {
+/** 판정 높은 순 → tok/s 높은 순 → 모델 id (결정론). 허브 행·계산기 카드 공용. */
+export function compareCombos(a: ComboAssessment, b: ComboAssessment): number {
   return (
     verdictRank(b.baseline.result.verdict) - verdictRank(a.baseline.result.verdict) ||
     b.display.result.tgTokS.est - a.display.result.tgTokS.est ||
@@ -728,7 +815,7 @@ export type MemoryMatrix = {
 };
 
 /** quant × ctx 필요 메모리 (가중치 + KV f16 + 버퍼, OS 예약 제외) — 등록 행만 (MXFP4 bpw 환산 금지). */
-export function memoryMatrix(model: Model, rows: readonly ModelQuantRecord[]): MemoryMatrix {
+export function memoryMatrix(model: ModelCore, rows: readonly ModelQuantCore[]): MemoryMatrix {
   const ctxs = HUB_POLICY.matrixCtx.filter((ctx) => ctx <= model.maxContext);
   return {
     ctxs,

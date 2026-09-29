@@ -35,6 +35,42 @@ export function faqJsonLd(items: readonly QA[]) {
   };
 }
 
+/** `/calculator` — 무료 웹 도구 (docs/04 §5, P1-3 D24) */
+export function softwareApplicationJsonLd(input: {
+  name: string;
+  url: string;
+  description: string;
+  inLanguage: string;
+  version: string;
+}) {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'SoftwareApplication',
+    name: input.name,
+    applicationCategory: 'UtilitiesApplication',
+    operatingSystem: 'Any',
+    browserRequirements: 'Requires JavaScript',
+    url: input.url,
+    inLanguage: input.inLanguage,
+    isAccessibleForFree: true,
+    offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+    description: input.description,
+    softwareVersion: input.version,
+  };
+}
+
+/** 홈 — WebSite (SearchAction 은 두지 않는다: 사이트링크 검색창 종료, P1-3 D25) */
+export function webSiteJsonLd(input: { name: string; url: string; inLanguage: string; description: string }) {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    name: input.name,
+    url: input.url,
+    inLanguage: input.inLanguage,
+    description: input.description,
+  };
+}
+
 /** `<script type="application/ld+json">` 본문 — `<` 이스케이프로 스크립트 탈출 차단. */
 export function serializeJsonLd(data: unknown): string {
   return JSON.stringify(data).replace(/</g, '\\u003c');

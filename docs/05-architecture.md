@@ -38,13 +38,13 @@ canrun/
 │  ├─ engine/                   # 계산 엔진 (의존성 0)
 │  │  ├─ src/{memory,speed,verdict,constants}.ts
 │  │  └─ test/  ← 02 §8 케이스 + verify 회귀
-│  └─ data/                     # zod 스키마 + JSON 로더 + 파생 계산(kvBytesPerToken 등)
+│  └─ data/                     # zod 스키마 + JSON 로더 + 파생 계산(kvBytesPerToken 등) — 서브패스 `@canrun/data/client`(zod 없는 클라이언트 엔트리, P1-3 D26)
 ├─ data/
 │  ├─ gpus.json  models.json  model-quants.json  quants.json
 │  ├─ benchmarks.json  prices.json  aliases.json
 ├─ apps/web/                    # Next.js
 │  ├─ app/[locale]/(pages…)     # 라우트는 01-prd §5
-│  ├─ components/  lib/  messages/{en,ko}.json
+│  ├─ components/  lib/  messages/{en,ko}.json   # components/islands/ = 클라이언트 아일랜드, lib/calc/ = 계산기 순수 로직 (P1-3, §5)
 │  └─ content/{en,ko}/guides/*.mdx
 ├─ scripts/
 │  ├─ sync-models.ts  new-model-alert.ts  build-sitemaps.ts  og-images.ts
@@ -53,8 +53,8 @@ canrun/
 ```
 
 ## 3. 페이지 생성 흐름
-`data/*.json` → zod 파싱 → `generateStaticParams`로 콤보/허브 열거 → 페이지 컴포넌트는 엔진 호출 결과를 빌드 시 계산해 HTML에 박음. **인덱싱 게이트는 `data/publish.json`**(`currentBatch` + `batches[{batch, gpuIds, modelIds}]` — 메커니즘 `04` §3, 스키마 `03` §1, P1-2 D9): 콤보는 카탈로그 **전 조합을 생성**하고, 개방된 배치 밖의 콤보는 `robots noindex, follow` 메타로만 구분한다(생성 여부는 게이트와 무관). **콤보 페이지는 클라이언트 JS 0** — 컨텍스트 × KV quant(f16/q8_0/q4_0) 변화는 정적 표(메모리·tg 밴드·판정)로 싣고, 토글·재계산은 P1-3 계산기 아일랜드로 미룬다(D11, JS 예산 D6).
-규모: 허브 168(GPU 54 + 모델 29 × 2언어) + 콤보 1,566 × 2 = 3,132 → 홈 포함 **3,302페이지 전부 생성**, 인덱싱만 게이트(계획 시점 "1,400페이지"는 GPU 30 × 모델 20 시절 수치 — PROGRESS §4 09-29). 허브·콤보 조립 로직(기준·추천 quant, 실측 조인, 신뢰 라벨, ctx×KV 표, 대안, 커맨드 스니펫, 공개 상태)은 `packages/data/src/{assess,combo,snippet,publish}.ts`(순수·엔진 무변경), 페이지는 서버 컴포넌트만 — 내부 링크는 `<a>`, next-intl 클라이언트 프로바이더 없음(JS 예산 `01` §7). 20분 초과 시 콤보 분할 빌드 도입.
+`data/*.json` → zod 파싱 → `generateStaticParams`로 콤보/허브 열거 → 페이지 컴포넌트는 엔진 호출 결과를 빌드 시 계산해 HTML에 박음. **인덱싱 게이트는 `data/publish.json`**(`currentBatch` + `batches[{batch, gpuIds, modelIds}]` — 메커니즘 `04` §3, 스키마 `03` §1, P1-2 D9): 콤보는 카탈로그 **전 조합을 생성**하고, 개방된 배치 밖의 콤보는 `robots noindex, follow` 메타로만 구분한다(생성 여부는 게이트와 무관). **콤보 페이지의 ctx × KV quant(f16/q8_0/q4_0) 표는 정적**(메모리·tg 밴드·판정 — 색인 콘텐츠). P1-2는 클라이언트 JS 0(D11)이었고, **P1-3에서 엔진 미탑재 아일랜드 `CtxKvControls`**(슬라이더·KV 라디오 → 셀 강조·요약·실행 명령 교체, 서버가 21셀 뷰를 props로 — D28, §5)를 얹었다(콤보 스크립트 135.1KB gz, 캡 150KB).
+규모: 허브 168(GPU 54 + 모델 29 × 2언어) + 콤보 1,566 × 2 = 3,132 + 계산기 2 → 홈 포함 **3,304페이지 전부 생성**, 인덱싱만 게이트(계획 시점 "1,400페이지"는 GPU 30 × 모델 20 시절 수치 — PROGRESS §4 09-29). 허브·콤보 조립 로직(기준·추천 quant, 실측 조인, 신뢰 라벨, ctx×KV 표, 대안, 커맨드 스니펫, 공개 상태)은 `packages/data/src/{assess,combo,snippet,publish}.ts`(순수·엔진 무변경 — P1-3부터 계산기가 같은 함수를 `{ctx, kvQuant, theoretical, ramHint}` 옵션으로 브라우저에서 호출, D33), 페이지는 서버 컴포넌트 + **클라이언트 아일랜드 3종**(`components/islands/` — 계산기·콤보 ctx/KV·모델 허브 가격 정렬, 번역·카탈로그는 props, §5) — 내부 링크는 `<a>`, next-intl 클라이언트 프로바이더 없음(JS 예산 `01` §7). 20분 초과 시 콤보 분할 빌드 도입.
 
 빌드 후처리 `scripts/postbuild.ts`(P1-2 D18·D21, PROGRESS §4 09-29) — 순서가 중요하다:
 1. **RSC 페이로드 프루닝(평탄화 전)**: Cloudflare Pages 파일 한도 20,000개 — 페이지당 html + RSC `.txt` 3 + `__next.*` 디렉터리 = 5파일이라 3,302페이지면 ~16,500(82%). `__next.*` 디렉터리를 재귀 삭제하고 허용목록(`robots.txt|ads.txt|llms.txt` — P1-5 대비) 외 `*.txt`를 전부 삭제한다(~17% 감소). 안전 근거: 사이트는 `<a>`만 쓰고 next/link·router가 없어 Next 16.3.6 클라이언트가 `.txt`를 요청하는 경로(`fetchServerResponse` — navigate/prefetch/refresh)가 실행되지 않고, HTML에 `.txt` 참조 0건, 뒤로가기(`pageshow`/`popstate`) 복원은 기존 CacheNode를 재사용한다. 안전망: export 테스트(허용목록 외 `.txt` 0 · `__next` 0 · 총 파일 < 16,000 · 최대 파일 < 25MiB) + E2E 실패 요청 0(인접 링크 이동 후 `goBack()` + networkidle 포함 — 유일한 history 경로).
@@ -71,12 +71,14 @@ alias→canonical 301(`04` §2)은 Next redirects가 정적 export에서 미지�
 - 가격 연동(P3): Workers cron → 어필리에이트 API/피드 → `prices.json` PR.
 - 계정/저장 기능이 필요해지는 시점에만 auth 도입(설계상 어디에도 세션 전제 없음).
 
-## 5. 계산기 클라이언트 설계
-- 엔진+카탈로그 요약(모델·GPU 스펙만, ~100KB gzip)을 계산기 페이지에서 lazy load. 콤보 페이지는 해당 조합 데이터만 인라인(<5KB).
-- WebGPU 감지: `navigator.gpu.requestAdapter()` → adapter info 매핑 테이블(aliases.json) — 실패/미지원 시 UI 노출 없이 수동 검색만. HF repo 직접 입력 모드: 클라이언트에서 HF API fetch(CORS 허용됨) → config 파싱 → 엔진.
+## 5. 계산기 클라이언트 설계 (P1-3 구현 — PROGRESS §4 09-29 D26~D36; 계획 시점 문구는 취소선)
+- ~~엔진+카탈로그 요약(모델·GPU 스펙만, ~100KB gzip)을 계산기 페이지에서 lazy load.~~ → **단일 아일랜드 + props**: 서버 페이지가 `toCatalogLite(seed)`(sources·note·hfId 등 제거한 코어 필드만, ≈8KB gz)와 `pickMessages(CALC_MESSAGE_SPEC)`(계산기가 쓰는 네임스페이스·키만)을 `<CalculatorIsland>` props로 넘긴다 — Flight 인라인이라 HTML 계정(스크립트 예산 밖), 런타임 JSON fetch 없음(export 위생: 비-HTML은 `_next/static/**`만). 엔진 + 조립 로직은 **`@canrun/data/client`**(`packages/data/src/client.ts` — core·assess·combo·snippet·publish·license·derive 재수출, zod·schema·index 미포함, `sideEffects:false`)로 아일랜드 청크에 포함(≈19KB gz). 서버는 계속 `@canrun/data`(zod). 콤보 페이지는 ~~해당 조합 데이터만 인라인~~ → **엔진 미탑재 아일랜드**(D28): 서버가 ctx×KV 21셀 뷰(필요량·판정 라벨·속도 문장·llama.cpp 명령·Ollama 블록·각주)를 props로, `CtxKvControls`는 셀 강조·요약·명령(Ollama 포함 — 명령 없는 셀은 블록 숨김) 교체만(+1.7KB gz). 모델 허브 가격 정렬(`PriceSort`)은 DOM 재배치만(+0.9KB gz).
+- **클라이언트 규약**: next-intl 클라이언트 프로바이더 없음(D6) → 번역은 `lib/i18n-lite.ts`(의존성 0, ICU 부분집합 `{x}`·`{n, plural, =k one other}`·`#`)로 서버 사전을 포맷 — `createTranslator` 대조 유닛 테스트(양 로케일 × 아일랜드 전 키)가 동치를 강제. `next/link`·router·`useSearchParams` 금지(RSC 프루닝 D18) → URL 상태는 `history.replaceState(history.state, …)` 300ms 디바운스 + `popstate`(Next 16 `HistoryUpdater`가 `useInsertionEffect`로 `__NA` 상태를 써 두므로 `history.state`를 그대로 넘긴다 — null·새 객체면 뒤로가기가 `location.reload()`). 하이드레이션 플래그·URL 스냅샷은 `useSyncExternalStore`, 상태 갱신은 핸들러·`popstate` 콜백에서만, SSR = 첫 클라이언트 렌더(datalist 입력의 콤보박스 승격·결과 영역·감지 버튼 활성은 플래그 이후 렌더 분기 — React 19 프로덕션은 속성 불일치를 패치하지 않는다). eslint `no-restricted-imports`(클라이언트 파일에 next-intl·`@canrun/data` 배럴·`@/lib/utils`(tailwind-merge)·catalog/hubs·`ui/button`·`next/*`·zod·`node:*` 금지) + 전이적 import 그래프 테스트(`apps/web/test/client-graph.test.ts`)가 강제.
+- ~~WebGPU 감지: `navigator.gpu.requestAdapter()` → adapter info 매핑 테이블(aliases.json)~~ → **GPU 감지(D30)**: 버튼은 SSR에 항상(disabled, 고정 박스) → 마운트 후 `navigator.gpu || WebGLRenderingContext` 있으면 활성, 없으면 `visibility:hidden`(CLS 0). 클릭 시에만 `import('@/lib/calc/detect-gpu')` → WebGL `UNMASKED_RENDERER_WEBGL` + WebGPU `adapter.info`(vendor·architecture) 병행 수집(1.5s 타임아웃, 예외 전부 삼킴, SwiftShader 등 소프트웨어 렌더러 거부, WebGL·WebGPU vendor 불일치(Optimus)면 추측 금지). 매핑 테이블은 별도 파일이 아니라 **`data/gpus.json` `aliases` + 토큰 매처 코드**(`apps/web/lib/calc/gpu-match.ts`: ANGLE 언랩 → 괄호·`(0x…)`·`vs_5_0` 제거 → 토큰화 → id/이름 100 · 별칭 90 · 토큰 집합 80 · 부분 60(라벨의 나머지가 시리즈 접두·메모리 용량·DDR 구성뿐일 때) · 약한 부분 50(Ti/Super/XT/Laptop/Pro 같은 SKU 토큰이 남음 — 콤보박스 목록엔 뜨지만 확정 금지), 메모리 변형 형제(4060 Ti 8/16GB 등)는 숫자 근거 없으면 ambiguous, 이름에 용량이 박힌 단일 변형(3060 12GB·9060 XT 16GB)은 감지 문자열에 용량이 없으면 확정 대신 확인 후보). 결과 4상태: exact(값 세팅) / ambiguous(후보 목록 제시) / apple-unknown(Safari "Apple GPU" — Apple 그룹 열기) / none(시각 변화 0, sr-only 상태 문구). 실패/미지원 시 UI 노출 없이 수동 검색만 — AC "무소음 폴백". ~~HF repo 직접 입력 모드~~ → P2(D35).
+- 코드 표: `app/[locale]/calculator/page.tsx`(서버 — 메타·JSON-LD·FAQ·noscript) · `components/islands/{calculator-island,hardware-form,custom-hardware-fields,detect-button,result-list,result-card,share-button,ctx-kv-controls,price-sort}.tsx` · `lib/calc/{state,url,hardware,run,gpu-match,detect-gpu,sort}.ts`(순수, DOM 없음 — `detect-gpu`만 브라우저 전용) · `lib/{i18n-lite,client-messages,calc-catalog,hydration,snippet-phrases}.ts` · 훅·`cn` 없는 뷰 코어 `components/{verdict-chip,pill,speed-text}.tsx`·`ui/button-variants.ts` · `types/webgpu.d.ts`(최소 앰비언트 — 의존성 추가 없음).
 
 ## 6. 품질·성능 가드
-- CI: typecheck + vitest(엔진 회귀 = 실측 대조 케이스) + zod 데이터 검증(**출처 없는 레코드 실패**) + Playwright 스모크(대표 페이지 × 2언어 — 허브·콤보 포함) + Lighthouse CI(`assertMatrix` — P1-2 D19, PROGRESS §4 09-29): 전 URL 공통 performance·accessibility·best-practices ≥0.9 · script ≤150KB · CLS ≤0.1 / 비콤보 SEO ≥0.9 + LCP warn 2.0s / **콤보 템플릿 LCP 랩 게이트 = error 2.5s**(web.dev "good"). 근거: Lighthouse Lantern 비관 그래프가 131KB Next 런타임을 렌더블로킹으로 취급해 5KB 홈도 ~2.0s가 바닥이라 콤보에 2.0s error는 걸 수 없다 — **`01` §7 "LCP < 2s"는 필드(RUM) 목표로 유지**. noindex 콤보는 `is-crawlable`(가중치 4)이 실패해 SEO 카테고리 ≈0.69라, 콤보 URL은 카테고리 대신 개별 감사(document-title·meta-description·canonical·hreflang·crawlable-anchors·link-text·image-alt·http-status-code = 1)를 단언한다.
+- CI: typecheck + vitest(엔진 회귀 = 실측 대조 케이스) + zod 데이터 검증(**출처 없는 레코드 실패**) + Playwright(대표 페이지 6종 × 2언어 스모크 + 계산기·아일랜드 시나리오 — 하이드레이션 콘솔 에러 0·URL 동기·감지 스텁 양성/애매/음성·모바일 375px) + Lighthouse CI(`assertMatrix` — P1-2 D19·P1-3 D34, PROGRESS §4 09-29, 8 URL): 전 URL 공통 performance·accessibility·best-practices ≥0.9 · CLS ≤0.1 / **비계산기 script ≤153,600B** / **계산기(`/calculator$`) script ≤180,224B** + is-crawlable·canonical·hreflang·label = 1 + LCP warn 2.5s / 비콤보 SEO ≥0.9 + LCP warn 2.0s / **콤보 템플릿 LCP 랩 게이트 = error 2.5s**(web.dev "good"). LHCI는 8 URL만 보므로 **export 테스트가 3,304페이지 전부의 모듈 스크립트 gzip 합을 바이트 기준으로 검사**(비계산기 ≤150,000 · 계산기 ≤176,000 · 페이지 청크집합 − 홈 청크집합 ≤3,072 · 초기 집합 밖 청크 preload 0). 근거: Lighthouse Lantern 비관 그래프가 131KB Next 런타임을 렌더블로킹으로 취급해 5KB 홈도 ~2.0s가 바닥이라 콤보에 2.0s error는 걸 수 없다 — **`01` §7 "LCP < 2s"는 필드(RUM) 목표로 유지**. noindex 콤보는 `is-crawlable`(가중치 4)이 실패해 SEO 카테고리 ≈0.69라, 콤보 URL은 카테고리 대신 개별 감사(document-title·meta-description·canonical·hreflang·crawlable-anchors·link-text·image-alt·http-status-code = 1)를 단언한다.
 - 광고 도입 후: 슬롯 고정 높이 예약으로 CLS 방어(`07` §3).
 - 접근성: verdict 색+아이콘+텍스트, 키보드 콤보 탐색.
 

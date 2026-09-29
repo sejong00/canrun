@@ -1,21 +1,16 @@
 import type { Verdict } from '@canrun/engine';
 import { useTranslations } from 'next-intl';
+import { VerdictChip } from '@/components/verdict-chip';
 import { cn } from '@/lib/utils';
 
 /**
  * 판정 배지 — docs/01 §3 "사이트 전체 공통 언어", §7 접근성: 색 + 아이콘 + 텍스트 3중 표기.
+ * 마크업은 훅 없는 `VerdictChip` 이 정본이고 여기서는 번역만 붙인다 (클라이언트 아일랜드와 공유, P1-3).
  *
  * 아이콘은 페이지당 한 번 그리는 `<symbol>` 스프라이트를 `<use>` 로 참조한다 — 행마다 SVG 경로를
  * 반복하면 HTML 과 RSC 페이로드에 두 번씩 실린다(성능 예산 docs/01 §7). 경로는 lucide(ISC) 아이콘.
  */
 const VERDICTS: readonly Verdict[] = ['S', 'A', 'B', 'F'];
-
-const TONE: Record<Verdict, string> = {
-  S: 'bg-verdict-s-bg text-verdict-s-fg',
-  A: 'bg-verdict-a-bg text-verdict-a-fg',
-  B: 'bg-verdict-b-bg text-verdict-b-fg',
-  F: 'bg-verdict-f-bg text-verdict-f-fg',
-};
 
 /** 페이지 셸이 한 번 렌더하는 아이콘 스프라이트 */
 export function VerdictSprite() {
@@ -48,49 +43,13 @@ export function VerdictSprite() {
   );
 }
 
-function VerdictIcon({ verdict, className }: { verdict: Verdict; className?: string }) {
-  return (
-    <svg
-      aria-hidden="true"
-      focusable="false"
-      viewBox="0 0 24 24"
-      className={cn('size-3.5 shrink-0', className)}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2.25}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <use href={`#verdict-icon-${verdict}`} />
-    </svg>
-  );
-}
-
 /**
  * compact: 행렬 셀용 — 아이콘 + 등급 글자만 보이고 전체 라벨은 스크린리더 텍스트로
  * (가시 범례 `VerdictLegend` 와 함께 쓴다).
  */
 export function VerdictBadge({ verdict, compact = false }: { verdict: Verdict; compact?: boolean }) {
   const t = useTranslations('Verdict');
-  return (
-    <span
-      data-verdict={verdict}
-      className={cn(
-        'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-semibold whitespace-nowrap',
-        TONE[verdict],
-      )}
-    >
-      <VerdictIcon verdict={verdict} />
-      {compact ? (
-        <>
-          <span aria-hidden="true">{verdict}</span>
-          <span className="sr-only">{t(verdict)}</span>
-        </>
-      ) : (
-        t(verdict)
-      )}
-    </span>
-  );
+  return <VerdictChip verdict={verdict} label={t(verdict)} compact={compact} />;
 }
 
 /** 판정 기준 범례 (docs/01 §3 표) */

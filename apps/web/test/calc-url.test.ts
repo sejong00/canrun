@@ -1,0 +1,130 @@
+/** 계산기 URL 코덱 (P1-3 D31) — 라운드트립·정규형·무효값. */
+import { HUB_POLICY, toCatalogLite } from '@canrun/data/client';
+import { describe, expect, it } from 'vitest';
+import { loadSeed } from '../../../packages/data/test/seed';
+import { parseCalcQuery, serializeCalcQuery } from '../lib/calc/url';
+import { defaultState, normalize, type CalcState } from '../lib/calc/state';
+
+const catalog = toCatalogLite(loadSeed());
+
+const roundTrip = (state: CalcState) => parseCalcQuery(serializeCalcQuery(state, catalog), catalog);
+
+describe('serializeCalcQuery / parseCalcQuery', () => {
+  it('empty state serialises to "" and parses back to defaults', () => {
+    expect(serializeCalcQuery(defaultState(), catalog)).toBe('');
+    expect(parseCalcQuery('', catalog)).toEqual(defaultState());
+    expect(parseCalcQuery('?', catalog)).toEqual(defaultState());
+  });
+
+  it('omits defaults: a dGPU with default RAM/OS/ctx/kv is just ?gpu=id', () => {
+    const s: CalcState = { ...defaultState(), hardware: { kind: 'catalog', gpuId: 'rtx-4060' }, ramGB: 32, os: 'windows' };
+    expect(serializeCalcQuery(s, catalog)).toBe('?gpu=rtx-4060');
+    const m4: CalcState = { ...defaultState(), hardware: { kind: 'catalog', gpuId: 'apple-m4' }, ramGB: 32, os: 'macos' };
+    expect(serializeCalcQuery(m4, catalog)).toBe('?gpu=apple-m4');
+  });
+
+  it('round-trips every catalog GPU × RAM option × os × kv × ctx (canonical form is a fixed point)', () => {
+    let n = 0;
+    for (const gpu of catalog.gpus) {
+      const rams = gpu.kind === 'dgpu' ? [16, 32, 64] : (gpu.ramOptionsGB ?? []);
+      for (const ramGB of rams) {
+        for (const os of ['windows', 'linux', 'macos'] as const) {
+          for (const kv of ['f16', 'q8_0', 'q4_0'] as const) {
+            for (const ctx of HUB_POLICY.matrixCtx) {
+              const state = normalize({ ...defaultState(), hardware: { kind: 'catalog', gpuId: gpu.id }, ramGB, os, kv, ctx }, catalog);
+              const qs = serializeCalcQuery(state, catalog);
+              expect(roundTrip(state), qs).toEqual(state);
+              expect(serializeCalcQuery(parseCalcQuery(qs, catalog), catalog)).toBe(qs);
+              n += 1;
+            }
+          }
+        }
+      }
+    }
+    expect(n).toBeGreaterThan(3000);
+  });
+
+  it('keeps a fixed key order and never emits a combo href', () => {
+    const state: CalcState = {
+      ...defaultState(),
+      hardware: { kind: 'catalog', gpuId: 'rtx-4060' },
+      ramGB: 64,
+      ddr: 'ddr4-3200',
+      os: 'linux',
+      display: false,
+      ctx: 32768,
+      kv: 'q8_0',
+      cat: ['coding', 'chat'],
+      min: 'A',
+      size: ['m', 's'],
+      sort: 'speed',
+      focus: 'qwen3-14b',
+    };
+    const qs = serializeCalcQuery(state, catalog);
+    expect(qs).toBe('?gpu=rtx-4060&ram=64&ddr=ddr4-3200&os=linux&display=0&ctx=32768&kv=q8_0&cat=chat%2Ccoding&min=A&size=s%2Cm&sort=speed&m=qwen3-14b');
+    expect(qs).not.toContain('/can-i-run/');
+    expect(roundTrip(state)).toEqual(normalize(state, catalog));
+  });
+
+  it('drops invalid values field by field, keeps the rest', () => {
+    const s = parseCalcQuery('?gpu=rtx-4060&ram=abc&ctx=99999999&kv=q2&os=beos&min=Z&sort=nope&cat=chat,zzz&size=xl,huge&m=ghost', catalog);
+    expect(s.hardware).toEqual({ kind: 'catalog', gpuId: 'rtx-4060' });
+    expect(s.ramGB).toBeUndefined();
+    expect(s.ctx).toBe(8192);
+    expect(s.kv).toBe('f16');
+    expect(s.os).toBeUndefined();
+    expect(s.min).toBeUndefined();
+    expect(s.sort).toBe('verdict');
+    expect(s.cat).toEqual(['chat']);
+    expect(s.size).toEqual(['xl']);
+    expect(s.focus).toBeUndefined();
+  });
+
+  it('resolves names and aliases from the home form to the canonical id, unknown text stays unresolved', () => {
+    expect(parseCalcQuery('?gpu=4060', catalog).hardware).toEqual({ kind: 'catalog', gpuId: 'rtx-4060' });
+    expect(parseCalcQuery('?gpu=GeForce%20RTX%204060', catalog).hardware).toEqual({ kind: 'catalog', gpuId: 'rtx-4060' });
+    expect(parseCalcQuery('?gpu=4060+laptop', catalog).hardware).toEqual({ kind: 'catalog', gpuId: 'rtx-4060-laptop' });
+    expect(parseCalcQuery('?gpu=M4%20Pro', catalog).hardware).toEqual({ kind: 'catalog', gpuId: 'apple-m4-pro' });
+    expect(parseCalcQuery('?gpu=nope&ram=64', catalog)).toMatchObject({ hardware: { kind: 'unresolved', text: 'nope' }, ramGB: 64 });
+    // 모호한 텍스트(4060 ti)는 확정하지 않는다
+    expect(parseCalcQuery('?gpu=4060%20ti', catalog).hardware).toEqual({ kind: 'unresolved', text: '4060 ti' });
+    // 해석된 뒤 직렬화하면 캐노니컬 id
+    expect(serializeCalcQuery(parseCalcQuery('?gpu=4060', catalog), catalog)).toBe('?gpu=rtx-4060');
+  });
+
+  it('unified/CPU RAM snaps to the catalog options and the CPU profile follows the DDR choice', () => {
+    expect(parseCalcQuery('?gpu=apple-m4&ram=20', catalog).ramGB).toBe(24);
+    expect(parseCalcQuery('?gpu=apple-m4&ram=999', catalog).ramGB).toBeUndefined(); // 최대 = 기본값
+    expect(parseCalcQuery('?gpu=cpu-ddr4-3200-2ch', catalog).ddr).toBe('ddr4-3200');
+    expect(parseCalcQuery('?gpu=apple-m4&os=windows', catalog).os).toBeUndefined(); // apple 은 macOS 고정
+  });
+
+  it('custom hardware: gpu=custom with kind/class/vram|mem/bw/fp16', () => {
+    const s = parseCalcQuery('?gpu=custom&kind=dgpu&class=amd&vram=20&bw=800&fp16=61.4&ram=64', catalog);
+    expect(s.hardware).toEqual({ kind: 'custom', custom: { kind: 'dgpu', effClass: 'amd', vramGB: 20, bandwidthGBs: 800, fp16Tflops: 61.4 } });
+    expect(serializeCalcQuery(s, catalog)).toBe('?gpu=custom&kind=dgpu&class=amd&vram=20&bw=800&fp16=61.4&ram=64');
+    const u = parseCalcQuery('?gpu=custom&kind=unified&class=apple&mem=48&bw=273', catalog);
+    expect(u.hardware).toMatchObject({ kind: 'custom', custom: { kind: 'unified', effClass: 'apple', memGB: 48, bandwidthGBs: 273 } });
+    expect(roundTrip(u)).toEqual(u);
+    // 범위 밖은 버린다
+    expect(parseCalcQuery('?gpu=custom&kind=dgpu&vram=9999&bw=5', catalog).hardware).toMatchObject({ custom: { vramGB: undefined, bandwidthGBs: undefined } });
+  });
+
+  it('OS is coerced to what the hardware kind allows — macOS only on Apple silicon (review fix)', () => {
+    // dGPU 에 macOS 를 주면 OS 예약이 0 이 되어 숫자가 바뀌는데 폼은 Windows 를 보였다
+    expect(parseCalcQuery('?gpu=rtx-4060&os=macos', catalog).os).toBeUndefined();
+    expect(serializeCalcQuery(parseCalcQuery('?gpu=rtx-4060&os=macos', catalog), catalog)).toBe('?gpu=rtx-4060');
+    expect(parseCalcQuery('?gpu=amd-strix-halo&os=macos', catalog).os).toBeUndefined();
+    expect(parseCalcQuery('?gpu=amd-strix-halo&os=windows', catalog).os).toBe('windows');
+    expect(parseCalcQuery('?gpu=cpu-ddr5-5600-2ch&os=macos', catalog).os).toBeUndefined();
+    expect(parseCalcQuery('?gpu=custom&kind=unified&class=strix&mem=64&bw=256&os=macos', catalog).os).toBeUndefined();
+    expect(parseCalcQuery('?gpu=custom&kind=unified&class=apple&mem=64&bw=256&os=windows', catalog).os).toBeUndefined();
+  });
+
+  it('custom kind ↔ class coupling holds for URLs too (review fix)', () => {
+    expect(parseCalcQuery('?gpu=custom&kind=unified&class=nvidia&mem=64&bw=500', catalog).hardware).toMatchObject({ custom: { kind: 'unified', effClass: 'apple' } });
+    expect(parseCalcQuery('?gpu=custom&kind=dgpu&class=apple&vram=24&bw=800', catalog).hardware).toMatchObject({ custom: { kind: 'dgpu', effClass: 'nvidia' } });
+    expect(parseCalcQuery('?gpu=custom&kind=unified&class=strix&mem=64&bw=256', catalog).hardware).toMatchObject({ custom: { kind: 'unified', effClass: 'strix' } });
+    expect(parseCalcQuery('?gpu=custom&kind=dgpu&class=intel-arc&vram=16&bw=560', catalog).hardware).toMatchObject({ custom: { kind: 'dgpu', effClass: 'intel-arc' } });
+  });
+});

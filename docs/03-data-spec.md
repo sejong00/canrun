@@ -9,7 +9,8 @@
 ```ts
 // 공통: sources = URL[] (min 1 — Gpu·Model·ModelQuant·attnOverrides. BenchPoint는 sourceUrl 단일, QuantDef·Alias·PublishPlan은 없음)
 //       날짜 = 'YYYY-MM-DD' · id = slug /^[a-z0-9][a-z0-9.-]*$/
-Gpu { id, name, aliases[], vendor:'nvidia'|'amd'|'intel'|'apple'|'amd-apu'|'nvidia-dgx'|'generic',
+Gpu { id, name, aliases[],  // 검색 별칭 + P1-3 계산기 콤보박스·GPU 감지 매칭 토큰(예 'radeon 8060s' — 렌더러 문자열 대응, PROGRESS §4 09-29 D30)
+     vendor:'nvidia'|'amd'|'intel'|'apple'|'amd-apu'|'nvidia-dgx'|'generic',
      kind:'dgpu'|'unified'|'cpu', form:'desktop'|'laptop',
      vramGB?,            // dgpu 필수 (decimal GB)
      ramOptionsGB?: number[],   // unified/cpu 필수 — 선택 가능한 RAM 구성 GB (min 1)

@@ -9,7 +9,7 @@
  */
 
 export type Locale = 'en' | 'ko';
-export type PageKind = 'home' | 'gpu' | 'model' | 'combo' | 'other';
+export type PageKind = 'home' | 'gpu' | 'model' | 'combo' | 'calculator' | 'other';
 
 export type GpuRecord = { id: string; name: string; aliases?: string[] };
 export type ModelRecord = { id: string; name: string };
@@ -66,6 +66,25 @@ export type PageFacts = {
   textUnitIds: number[];
   /** 보유 단위의 글자 수 합 (비율의 분모) */
   textChars: number;
+  /** `<form action>` 전부 (홈 GET 폼·계산기 폼 — P1-3) */
+  formActions: string[];
+  /** 첫 `<datalist>` 의 `<option>` 수 */
+  datalistOptionCount: number;
+  /** P1-3 마커: `[data-calculator]` · `form[data-calc-form]` · `input[list]` · `[data-result-card]` 수 · `[data-ctx-controls]` · `[data-sort-control]` */
+  markers: {
+    calculator: boolean;
+    calcForm: boolean;
+    inputList: boolean;
+    resultCards: number;
+    ctxControls: boolean;
+    sortControl: boolean;
+    navCalculator?: string;
+    openCalculator?: string;
+  };
+  /** `<script src>` 중 nomodule 이 아닌 것 (초기 모듈 스크립트 집합 — D34 예산 게이트) */
+  scriptSrcs: string[];
+  /** `<link rel="preload|modulepreload">` 가 가리키는 스크립트 */
+  preloadSrcs: string[];
 };
 
 // ---------------------------------------------------------------------------
@@ -120,6 +139,7 @@ export function localePath(locale: Locale, bare: string): string {
 export function kindOf(urlPath: string): PageKind {
   const bare = stripLocale(urlPath);
   if (bare === '/') return 'home';
+  if (bare === '/calculator') return 'calculator';
   if (/^\/gpu\/[^/]+$/.test(bare)) return 'gpu';
   if (/^\/model\/[^/]+$/.test(bare)) return 'model';
   if (COMBO_RE.test(bare)) return 'combo';
@@ -409,6 +429,8 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
   const links: PageFacts['links'] = [];
   const adjacentHrefs: string[] = [];
   const comboLinkHrefs: string[] = [];
+  let navCalculator: string | undefined;
+  let openCalculator: string | undefined;
   for (const m of html.matchAll(/<a\b[^>]*>/g)) {
     const tag = m[0];
     const href = tag.match(HREF_RE)?.[1];
@@ -416,7 +438,29 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
     links.push({ href, localeSwitch: hasAttr(tag, 'data-locale-switch') });
     if (hasAttr(tag, 'data-adjacent')) adjacentHrefs.push(href);
     if (hasAttr(tag, 'data-combo-link')) comboLinkHrefs.push(href);
+    if (hasAttr(tag, 'data-nav-calculator')) navCalculator = href;
+    if (hasAttr(tag, 'data-open-calculator')) openCalculator = href;
   }
+  const formActions = [...html.matchAll(/<form\b[^>]*\baction="([^"]*)"/g)].map((m) => decodeEntities(m[1]!));
+  const datalist = html.match(/<datalist\b[^>]*>([\s\S]*?)<\/datalist>/)?.[1] ?? '';
+  const datalistOptionCount = (datalist.match(/<option\b/g) ?? []).length;
+  const markers: PageFacts['markers'] = {
+    calculator: elementsWithAttr(noScript, 'data-calculator').length > 0,
+    calcForm: elementsWithAttr(noScript, 'data-calc-form').length > 0,
+    inputList: /<input\b[^>]*\blist="/.test(noScript),
+    resultCards: elementsWithAttr(noScript, 'data-result-card').length,
+    ctxControls: elementsWithAttr(noScript, 'data-ctx-controls').length > 0,
+    sortControl: elementsWithAttr(noScript, 'data-sort-control').length > 0,
+    ...(navCalculator === undefined ? {} : { navCalculator }),
+    ...(openCalculator === undefined ? {} : { openCalculator }),
+  };
+  const scriptSrcs = [...html.matchAll(/<script\b([^>]*)\bsrc="([^"]+)"([^>]*)>/g)]
+    .filter((m) => !/\bnomodule\b/i.test(`${m[1]} ${m[3]}`))
+    .map((m) => m[2]!);
+  const preloadSrcs = [...html.matchAll(/<link\b[^>]*\brel="(?:modulepreload|preload)"[^>]*>/g)]
+    .map((m) => m[0].match(/\bhref="([^"]+)"/)?.[1])
+    .filter((h): h is string => h !== undefined && h.endsWith('.js'));
+  const liveSummary = elementsWithAttr(noScript, 'data-live-summary').map((e) => elementText(e.inner))[0];
 
   const faq = visibleFaq(html);
   const description = metaContent(html, /<meta name="description" content="([^"]*)"/);
@@ -456,6 +500,7 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
     ...faq.map((q) => q.answer),
     verdictSentence ?? '',
     twinText ?? '',
+    liveSummary ?? '',
     ...altCardTexts,
     ...ddTexts,
   ].filter((text) => text !== '');
@@ -476,7 +521,7 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
     ...(jsonLdError === undefined ? {} : { jsonLdError }),
     faq,
     links,
-    enPrefixedLinkCount: (html.match(/href="\/en(\/|")/g) ?? []).length,
+    enPrefixedLinkCount: (html.match(/(?:href|action)="\/en(\/|")/g) ?? []).length,
     hangulWords: locale === 'en' ? (visible.match(HANGUL_RE) ?? []) : [],
     speedTexts,
     robotsNoindex: robotsNoindexOf(html),
@@ -489,6 +534,11 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
     numberFingerprint: fingerprint,
     textUnitIds,
     textChars,
+    formActions,
+    datalistOptionCount,
+    markers,
+    scriptSrcs,
+    preloadSrcs,
   };
 }
 

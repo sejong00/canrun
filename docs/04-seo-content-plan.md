@@ -26,6 +26,7 @@
 ```
 - 내부링크 규칙(스팸 방어 필수): 콤보 페이지는 항상 ①GPU 허브 ②모델 허브 ③관련 가이드 1개 ④인접 콤보 4개(같은 GPU 다른 모델 2, 같은 모델 다른 GPU 2)에서 링크 받도록 템플릿화 — 고아 페이지 0.
 - 정규화: 대체 GPU 표기(4060 Ti 16GB 등) alias → canonical 슬러그 301/캐노니컬. **콤보 URL엔 alias 301을 만들지 않는다**(`_redirects` 정적 룰 2,000줄 한도 — `05` §3; 1,566쌍 × 2언어 × 별칭이 한도를 넘는다) — 콤보는 캐노니컬 태그만(P1-2, PROGRESS §4 09-29).
+- **계산기는 index**(P1-3 D24): 캐노니컬 `/calculator`·`/ko/calculator`(쿼리 무시 — 공유 URL `?gpu=…`는 상태만 실어 나르고 캐노니컬은 청결). 인바운드 = 전 페이지 헤더 nav + 홈 GET 폼·인기 GPU 링크(고아 0, export 테스트 강제). 정적 HTML은 폼·FAQ·범례만이라 결과 문장은 색인 콘텐츠가 아니다.
 
 ## 3. 인덱싱 단계 계획 (게이트 통과 전 다음 배치 금지)
 | 배치 | 페이지 | 시점 | 게이트 |
@@ -37,6 +38,7 @@
 - **게이트 메커니즘(P1-2, PROGRESS §4 09-29 D9)**: 콤보는 **카탈로그 전 조합을 생성**하고 인덱싱만 `data/publish.json`으로 제어한다 — `{ currentBatch, batches: [{ batch, gpuIds[], modelIds[], plannedAt?, note? }] }`(스키마 `03` §1, 조회 `packages/data/src/publish.ts`). 콤보의 배치 = gpuIds·modelIds가 **둘 다** 그 쌍을 포함하는 항목들의 **최소 batch**(GPU 배치와 모델 배치의 min이 아님 — 4060이 배치 1이고 qwen3-14b가 배치 2 항목에만 있으면 그 쌍은 배치 2), 어느 항목에도 없으면 배치 없음. **indexable ⇔ batch가 있고 batch ≤ currentBatch.** 배치 확대 = `currentBatch`를 올리는 커밋(규칙 5 — 게이트 승인 필요). 출시 값: `currentBatch: 0`(콤보 전부 noindex), 배치 1 항목 등록.
 - **미공개 콤보** = `<meta name="robots" content="noindex, follow">` + 허브·홈에서 링크 0 — 계산기 딥링크·미공개 콤보끼리의 인접 링크로만 도달한다. 내부 nofollow는 쓰지 않는다: 3.3K는 크롤 예산 우려 규모 미만이고, 공개 페이지에서 미공개 섬으로 가는 링크가 0이라 발견 자체가 안 된다. 실제 위험은 공개 콤보의 "발견됨-미색인"이라 허브 "상세" 링크·사이트맵·공개 전용 인접 링크로 대응.
 - **링크 규칙**: 허브·홈·**공개 콤보는 공개 콤보로만** 링크(허브 판정 셀의 `data-combo-link` "상세" 링크는 공개 콤보에만 붙는다). **미공개 콤보는 전 카탈로그로** 링크할 수 있다. 공개 콤보의 인접 4개(§2)는 공개 풀 안에서 채운다 — 배치 1은 GPU당 모델 6·모델당 GPU 10이라 충족. export 테스트가 강제.
+- **계산기 딥링크**(P1-3 D33): 결과 카드의 "상세" 링크는 **전 카탈로그 콤보로** 간다(사용자 세션 결과 — 클라이언트 렌더라 정적 HTML엔 콤보 링크 0, 링크 규칙은 정적 HTML만 검사). 8k·f16이 아닌 조건이면 `?ctx=&kv=`를 붙여 콤보 아일랜드가 그 셀을 프리셋한다 — 콤보의 캐노니컬·robots 메타는 쿼리와 무관.
 - **sitemap-combos(P1-5)는 공개 콤보만** 수록(인터페이스 `indexableCombos`). **robots.txt는 `/can-i-run/`을 절대 Disallow하지 않는다** — 크롤이 막히면 noindex를 읽지 못해 URL만 색인될 수 있다.
 - **배치 1 후보(10 GPU × 6 모델 = 60쌍, en+ko 120p — 정본은 `data/publish.json` `batches[0]`, `plannedAt` 2026-09-29)**: GPU `rtx-4060`·`rtx-3060-12gb`·`rtx-4070`·`rtx-5070`·`rtx-5060-ti-16gb`·`rtx-4090`·`rtx-3090`·`rtx-5090`·`apple-m4`·`apple-m4-pro` / 모델 `llama-3.1-8b`·`qwen3-14b`·`qwen3-30b-a3b-2507`·`gpt-oss-20b`·`gpt-oss-120b`·`gemma-3-12b`(`popular` GPU·인기 모델 중 검색 수요 상위 — 통합 메모리 2종 포함). 쌍둥이 GPU(아래)는 한쪽만.
 - **P1-6 개방 절차** = `currentBatch: 1` 커밋·배포 + sitemap-combos 제출·GSC 색인 요청 → 이후 배치도 같은 방법. 주의: 오래 noindex였던 URL은 재크롤이 느리다 — **4주 게이트는 GSC에서 재크롤이 확인된 시점부터 기산**한다.
@@ -49,6 +51,7 @@
 
 ## 5. 구조화 데이터 (JSON-LD, 템플릿 레벨)
 - `/calculator` `SoftwareApplication`(무료) · 콤보/허브 `FAQPage`(3문항, 수치 포함 답) + `BreadcrumbList` · 실측 섹션 `Dataset`(P2: 공개 데이터셋 — 백링크 자석) · 가이드 `Article`+`author`(실명 E-E-A-T).
+- P1-3 구현 메모: `/calculator` = `SoftwareApplication`(`applicationCategory` UtilitiesApplication · `isAccessibleForFree` + `Offer` price 0 · `softwareVersion` = 엔진 스펙 버전) + `BreadcrumbList` 2단(홈 › 계산기) + `FAQPage` 3문항(답은 화면 FAQ 텍스트, tok/s 수치 없음 — 결과는 클라이언트 렌더). 홈 = `WebSite`(SearchAction 없음 — 사이트링크 검색창은 종료된 기능). export 테스트가 두 페이지의 타입 집합을 강제.
 - P1-1 구현 메모: 허브 브레드크럼은 2단(홈 › 허브) — Google은 마지막 외 항목에 URL을 요구하는데 `/gpu`·`/model` 인덱스 페이지가 없다. **콤보는 3단(홈 › 모델 허브 › 콤보=캐노니컬)** — P1-2 D10(PROGRESS §4 09-29). FAQPage 답 텍스트 = 화면 FAQ 텍스트(export 테스트가 강제). FAQ 리치 결과는 2023년부터 정부·보건 사이트 한정이라 노출은 기대하지 않고 스펙대로만 둔다.
 
 ## 6. i18n·hreflang (동시 출시 스펙)

@@ -30,8 +30,10 @@ import {
   type QuantAssessment,
   type SeedCatalog,
 } from './assess';
+import type { GpuCore, ModelCore, ModelQuantCore } from './core';
 import { comboKey, comboPublishState, indexableCombos } from './publish';
 import type { Gpu, Model, PublishPlan } from './schema';
+import { commandPlan, type CommandPlan } from './snippet';
 
 // ---------------------------------------------------------------------------
 // pp — docs/02 §3.5
@@ -66,6 +68,8 @@ export type CtxCell = {
   gpuFrac?: number;
   verdict: Verdict;
   result: Result;
+  /** 이 셀 조건의 실행 계획 (콤보 아일랜드 props 정본, P1-3 D28) — `opts.planRow` 를 넘겼을 때만 */
+  plan?: CommandPlan;
 };
 
 export type CtxMatrix = {
@@ -78,11 +82,16 @@ export type CtxMatrix = {
 const DEFAULT_KV: readonly KvQuant[] = ['f16', 'q8_0', 'q4_0'];
 
 export function ctxMatrix(
-  gpu: Gpu,
+  gpu: GpuCore,
   config: HwConfig,
-  model: Model,
+  model: ModelCore,
   q: Pick<QuantAssessment, 'quant' | 'fileGB'> & Partial<Pick<QuantAssessment, 'result'>>,
-  opts: { ctxs?: readonly number[]; kvQuants?: readonly KvQuant[] } = {},
+  opts: {
+    ctxs?: readonly number[];
+    kvQuants?: readonly KvQuant[];
+    /** 셀마다 `commandPlan` 을 붙인다 (콤보 페이지 아일랜드용) */
+    planRow?: ModelQuantCore;
+  } = {},
 ): CtxMatrix {
   const ctxs = (opts.ctxs ?? HUB_POLICY.matrixCtx).filter((ctx) => ctx <= model.maxContext);
   const kvQuants = [...(opts.kvQuants ?? DEFAULT_KV)];
@@ -96,6 +105,16 @@ export function ctxMatrix(
           : estimated;
       const kv = kvGB(model.arch.kvBytesPerTokenF16, ctx, kvQuant);
       const cpuPath = gpu.kind === 'cpu' || (fit.fits && fit.mode === 'cpu-only');
+      const plan = opts.planRow
+        ? commandPlan(
+            gpu,
+            config,
+            model,
+            opts.planRow,
+            { fits: fit.fits, result, ...(fit.gpuFrac !== undefined ? { gpuFrac: fit.gpuFrac } : {}) },
+            { ctx, kvQuant },
+          )
+        : undefined;
       return {
         ctx,
         kvQuant,
@@ -108,6 +127,7 @@ export function ctxMatrix(
         ...(fit.gpuFrac !== undefined ? { gpuFrac: fit.gpuFrac } : {}),
         verdict: result.verdict,
         result,
+        ...(plan ? { plan } : {}),
       };
     }),
   );
@@ -169,8 +189,8 @@ export function vramBreakdown(q: QuantAssessment): VramBreakdown {
 // ---------------------------------------------------------------------------
 
 /** 메모리 구성(kind·VRAM/RAM 옵션·대역폭·클래스)이 같아 생성 속도가 동일한 GPU — FP16 만 다르다. */
-export function twinGpus(gpu: Gpu, gpus: readonly Gpu[]): Gpu[] {
-  const key = (g: Gpu) =>
+export function twinGpus<G extends GpuCore>(gpu: G, gpus: readonly G[]): G[] {
+  const key = (g: GpuCore) =>
     [g.kind, g.vramGB ?? '', (g.ramOptionsGB ?? []).join('/'), g.memBandwidthGBs, g.effClass].join('|');
   const mine = key(gpu);
   return gpus.filter((g) => g.id !== gpu.id && key(g) === mine).sort((a, b) => a.id.localeCompare(b.id));

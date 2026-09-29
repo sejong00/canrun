@@ -13,6 +13,7 @@ import {
   ScrollTable,
   TABLE_CLASS,
 } from '@/components/hub-table';
+import { PriceSort } from '@/components/islands/price-sort';
 import { PageShell } from '@/components/page-shell';
 import { VerdictBadge, VerdictLegend } from '@/components/verdict';
 import type { Locale } from '@/i18n/routing';
@@ -175,6 +176,11 @@ export default async function ModelHubPage({ params }: Props) {
   const tAttention = await getTranslations({ locale, namespace: 'Attention' });
   const tCategory = await getTranslations({ locale, namespace: 'Category' });
   const tGpuHub = await getTranslations({ locale, namespace: 'GpuHub' });
+  const tSort = await getTranslations({ locale, namespace: 'Sort' });
+  /** 가격 순위 대상 = dGPU 실거래가(priceAsOf 동반)만 — MSRP·통합 메모리 기기는 순위 밖 (docs/01 §3, 규칙 2) */
+  const rankablePrice = (gpu: (typeof hub.gpuRows)[number]['gpu']): number | undefined =>
+    gpu.kind === 'dgpu' && gpu.streetUSD !== undefined && gpu.priceAsOf ? gpu.streetUSD : undefined;
+  const unpricedRows = hub.gpuRows.filter((r) => rankablePrice(r.gpu) === undefined).length;
 
   const { model } = hub;
   const href = modelHref(model.id);
@@ -342,9 +348,22 @@ export default async function ModelHubPage({ params }: Props) {
               {tGpuHub('partialWarning')}
             </p>
           )}
+          {/* 정렬 컨트롤 (docs/01 F2, P1-3 이월) — 서버 기본 순서는 판정→속도, 가격 순위는 dGPU 실거래가만 (docs/01 §3) */}
+          <PriceSort
+            tableId="gpu-table"
+            labels={{
+              label: tSort('label'),
+              verdict: tSort('verdict'),
+              price: tSort('price'),
+              bandwidth: tSort('bandwidth'),
+              announceVerdict: tSort('announceVerdict'),
+              announcePrice: tSort('announcePrice', { count: unpricedRows }),
+              announceBandwidth: tSort('announceBandwidth'),
+            }}
+          />
           <p className="text-xs text-muted-foreground sm:hidden">{tTable('scrollHint')}</p>
           <ScrollTable label={t.hub('gpuTitle', { model: model.name })}>
-            <table className={TABLE_CLASS}>
+            <table id="gpu-table" data-gpu-table className={TABLE_CLASS}>
               <caption>
                 {t.hub('gpuCaption', { total: hub.gpuRows.length, quant: hub.baselineQuant })}
               </caption>
@@ -356,7 +375,7 @@ export default async function ModelHubPage({ params }: Props) {
                 </tr>
               </thead>
               <tbody>
-                {hub.gpuRows.map((row) => {
+                {hub.gpuRows.map((row, index) => {
                   const { gpu } = row;
                   const price =
                     gpu.streetUSD !== undefined && gpu.priceAsOf
@@ -368,7 +387,13 @@ export default async function ModelHubPage({ params }: Props) {
                         ? tGpuHub('priceMsrp', { price: formatUSD(locale, gpu.msrpUSD) })
                         : t.common('none');
                   return (
-                    <tr key={gpu.id}>
+                    <tr
+                      key={gpu.id}
+                      data-gpu-id={gpu.id}
+                      data-sort-index={index}
+                      data-bandwidth={gpu.memBandwidthGBs}
+                      {...(rankablePrice(gpu) !== undefined ? { 'data-price': rankablePrice(gpu) } : {})}
+                    >
                       <th scope="row">
                         <a href={localeHref(locale, gpuHref(gpu.id))}>{rowLabel(t, row, locale)}</a>
                       </th>

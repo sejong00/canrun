@@ -9,6 +9,8 @@ import { GgufSourceBadge, LicenseBadge, Pill } from '@/components/badges';
 import { Breadcrumbs } from '@/components/breadcrumbs';
 import { CommandSnippet } from '@/components/command-snippet';
 import { CtxMatrixTable } from '@/components/ctx-matrix';
+import { CtxKvControls, type CtxCellView } from '@/components/islands/ctx-kv-controls';
+import { llamaNotes, ollamaNotes } from '@/lib/snippet-phrases';
 import { SpeedCell } from '@/components/estimate';
 import { Faq } from '@/components/faq';
 import { BenchTable, ScrollTable, TABLE_CLASS } from '@/components/hub-table';
@@ -105,6 +107,7 @@ export default async function ComboPage({ params }: Props) {
   const tReason = await getTranslations({ locale, namespace: 'VerdictReason' });
   const tCommonNs = await getTranslations({ locale, namespace: 'Common' });
   const tMemory = await getTranslations({ locale, namespace: 'Memory' });
+  const tCtx = await getTranslations({ locale, namespace: 'CtxControls' });
 
   const { gpu, model, combo, q } = page;
   const name = gpuName(t.names, gpu);
@@ -118,6 +121,48 @@ export default async function ComboPage({ params }: Props) {
   const publisher = ggufPublisher(model, page.qRow);
   const kvQ8 = kvGB(model.arch.kvBytesPerTokenF16, 8192, 'q8_0');
   const configLabel = comboMemoryLabel(t, page, locale);
+
+  // ctx×KV 셀 뷰 — 아일랜드(D28)가 쓸 완성 문장·명령. 헤드라인 셀(8k·f16)이 실측이면 그 문장을 그대로 쓴다
+  const cells: CtxCellView[] = page.matrix.rows.flat().map((cell) => {
+    const headline = cell.ctx === 8192 && cell.kvQuant === 'f16';
+    const speedQ = headline && q.result.confidence === 'measured' ? q : { result: cell.result, estimate: cell.result };
+    const summary = cell.fits
+      ? tCtx('summary', {
+          ctx: formatCtx(cell.ctx),
+          kv: cell.kvQuant,
+          quant: q.quant,
+          need: gb(cell.needGB),
+          verdict: t.verdict(cell.verdict),
+          speed: speedPhrase(t.common, t.confidence, locale, speedQ),
+        })
+      : tCtx('summaryNoFit', {
+          ctx: formatCtx(cell.ctx),
+          kv: cell.kvQuant,
+          quant: q.quant,
+          need: gb(cell.needGB),
+          usable: gb(usableGBFor(page, q)),
+        });
+    const plan = cell.plan;
+    return {
+      ctx: cell.ctx,
+      kv: cell.kvQuant,
+      need: gb(cell.needGB),
+      fits: cell.fits,
+      verdict: cell.verdict,
+      summary,
+      ...(plan?.llamaCpp ? { command: plan.llamaCpp.command } : {}),
+      ...(plan?.ollama
+        ? {
+            ollama: {
+              code: `${plan.ollama.serve}\n${plan.ollama.run}`,
+              replSet: plan.ollama.replSet,
+              notes: ollamaNotes(tSnippet, plan),
+            },
+          }
+        : {}),
+      notes: plan ? llamaNotes(tSnippet, locale, plan, kvGB(model.arch.kvBytesPerTokenF16, cell.ctx, 'q8_0')) : [],
+    };
+  });
   // 메모리 열의 분모 — dGPU 는 VRAM 전체, 통합은 GPU 사용 가능량 (허브 표와 동일)
   const memTotal = gpu.kind === 'dgpu' ? (gpu.vramGB ?? 0) : q.memory.gpuUsableGB;
 
@@ -335,6 +380,21 @@ export default async function ComboPage({ params }: Props) {
           <h2 id="ctx-heading" className="text-xl font-semibold tracking-tight">
             {t.combo('ctxTitle')}
           </h2>
+          <CtxKvControls
+            cells={cells}
+            ctxs={page.matrix.ctxs}
+            ctxLabels={page.matrix.ctxs.map(formatCtx)}
+            kvQuants={page.matrix.kvQuants}
+            initial={{ ctx: 8192, kv: 'f16' }}
+            labels={{
+              title: tCtx('title'),
+              ctx: tCtx('ctx'),
+              kv: tCtx('kv'),
+              reset: tCtx('reset'),
+              commandNone: tCtx('commandNone'),
+              commandFollows: tCtx('commandFollows'),
+            }}
+          />
           <CtxMatrixTable matrix={page.matrix} caption={t.combo('ctxCaption', { quant: q.quant })} />
           <p className="text-sm text-muted-foreground">
             {hintPrefix}
