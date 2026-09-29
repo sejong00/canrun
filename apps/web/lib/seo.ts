@@ -39,6 +39,8 @@ export function buildPageMetadata(opts: {
   absoluteTitle?: boolean;
   /** 인덱싱 배치 밖의 콤보 (docs/04 §3, 결정 D9) — noindex,follow. 캐노니컬·hreflang 은 그대로 */
   noindex?: boolean;
+  /** 가이드 (P1-4 D41) — og type article + 게시·수정일(YYYY-MM-DD) */
+  article?: { publishedTime: string; modifiedTime: string };
 }): Metadata {
   const { href, locale, title, description } = opts;
   return {
@@ -47,7 +49,9 @@ export function buildPageMetadata(opts: {
     alternates: buildAlternates(href, locale),
     ...(opts.noindex ? { robots: { index: false, follow: true } } : {}),
     openGraph: {
-      type: 'website',
+      ...(opts.article
+        ? { type: 'article' as const, publishedTime: opts.article.publishedTime, modifiedTime: opts.article.modifiedTime, authors: ['CanRun'] }
+        : { type: 'website' as const }),
       siteName: 'CanRun',
       title,
       description,

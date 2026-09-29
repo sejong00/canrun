@@ -24,14 +24,14 @@
 /methodology           방법론·오차 공개 (E-E-A-T + 백링크 유인)
 /ko/...                동일 트리
 ```
-- 내부링크 규칙(스팸 방어 필수): 콤보 페이지는 항상 ①GPU 허브 ②모델 허브 ③관련 가이드 1개 ④인접 콤보 4개(같은 GPU 다른 모델 2, 같은 모델 다른 GPU 2)에서 링크 받도록 템플릿화 — 고아 페이지 0.
+- 내부링크 규칙(스팸 방어 필수): 콤보 페이지는 항상 ①GPU 허브 ②모델 허브 ③관련 가이드 1개 ④인접 콤보 4개(같은 GPU 다른 모델 2, 같은 모델 다른 GPU 2)에서 링크 받도록 템플릿화 — 고아 페이지 0. ③의 구현(P1-4 D44): 가이드의 `<ComboGrid>`(레지스트리 그리드가 커버리지 단일 출처)가 공개 콤보로만 링크하고, 콤보는 자기를 커버하는 published 가이드로 `a[data-related-guide]` 역링크. export 테스트가 "indexable 콤보마다 published 가이드 인바운드 ≥1"을 강제(currentBatch 0 에선 공회전 단언).
 - 정규화: 대체 GPU 표기(4060 Ti 16GB 등) alias → canonical 슬러그 301/캐노니컬. **콤보 URL엔 alias 301을 만들지 않는다**(`_redirects` 정적 룰 2,000줄 한도 — `05` §3; 1,566쌍 × 2언어 × 별칭이 한도를 넘는다) — 콤보는 캐노니컬 태그만(P1-2, PROGRESS §4 09-29).
 - **계산기는 index**(P1-3 D24): 캐노니컬 `/calculator`·`/ko/calculator`(쿼리 무시 — 공유 URL `?gpu=…`는 상태만 실어 나르고 캐노니컬은 청결). 인바운드 = 전 페이지 헤더 nav + 홈 GET 폼·인기 GPU 링크(고아 0, export 테스트 강제). 정적 HTML은 폼·FAQ·범례만이라 결과 문장은 색인 콘텐츠가 아니다.
 
 ## 3. 인덱싱 단계 계획 (게이트 통과 전 다음 배치 금지)
 | 배치 | 페이지 | 시점 | 게이트 |
 |---|---|---|---|
-| 0 | 에디토리얼 20편(en10+ko10) + 허브 전체(현 GPU 54 + 모델 29 = 83 — P1-1 결정, PROGRESS §4 09-29) + 방법론 | 출시 주 | GSC 등록, 도메인 크롤 신뢰 웜업 |
+| 0 | 에디토리얼(출시 12편 = 6쌍 en+ko, 4주 내 20편 — `docs/06` P1-4; 감수 전 초안은 noindex — P1-4 D40) + 허브 전체(현 GPU 54 + 모델 29 = 83 — P1-1 결정, PROGRESS §4 09-29) + 방법론 | 출시 주 | GSC 등록, 도메인 크롤 신뢰 웜업 |
 | 1 | 콤보 상위 60 (인기 GPU 10 × 모델 6, en+ko 120p — 후보 목록은 아래) | +2주 (P1-6) | **4주 내 인덱싱 ≥80%** 아니면 중단·개선 |
 | 2 | 콤보 240 | 게이트 통과 후 | 동일 |
 | 3 | 콤보 나머지 전체(현 카탈로그 1,566쌍) + 확장 | 〃 | 주간 GSC 커버리지 점검 |
@@ -50,7 +50,7 @@
 페이지당 **고유 데이터 ≥8개**: ①quant×fit 표(수치 전부 조합 고유) ②VRAM 분해 바 ③ctx별 메모리/속도 곡선 ④예상 pp/tg±밴드 ⑤실측 표(있으면) ⑥대안 3종 추천 로직 결과 ⑦실행 커맨드(플래그가 조합 의존: -ngl, --n-cpu-moe N 값) ⑧FAQ(수치 삽입형). "깊이 테스트": GPU명 가리고도 페이지 구분 가능해야 함 — P1-2 구현(D15): GPU명·id·별칭 마스킹 후 숫자 다중집합 지문이 로케일 내 전 콤보에서 유일 + 시드 PRNG 3페이지 기록(쌍둥이 GPU는 FP16·pp·가격·인접 GPU로 구분, §3 D22). 보일러플레이트 문장 비율 < 60% — 측정(D16): 콤보의 ≥50%에 나타나는 문장 단위(p/li/h/td/th/dt/dd/caption/code, 이름 마스킹) 글자 비율 < 0.6.
 
 ## 5. 구조화 데이터 (JSON-LD, 템플릿 레벨)
-- `/calculator` `SoftwareApplication`(무료) · 콤보/허브 `FAQPage`(3문항, 수치 포함 답) + `BreadcrumbList` · 실측 섹션 `Dataset`(P2: 공개 데이터셋 — 백링크 자석) · 가이드 `Article`+`author`(실명 E-E-A-T).
+- `/calculator` `SoftwareApplication`(무료) · 콤보/허브 `FAQPage`(3문항, 수치 포함 답) + `BreadcrumbList` · 실측 섹션 `Dataset`(P2: 공개 데이터셋 — 백링크 자석) · 가이드 `Article`+`author`(실명 E-E-A-T — P1-4 사용자 결정으로 우선 브랜드 Organization "CanRun", 레지스트리 한 줄로 실명 전환 가능, D41) + 3단 `BreadcrumbList`(홈 › 가이드 › 글).
 - P1-3 구현 메모: `/calculator` = `SoftwareApplication`(`applicationCategory` UtilitiesApplication · `isAccessibleForFree` + `Offer` price 0 · `softwareVersion` = 엔진 스펙 버전) + `BreadcrumbList` 2단(홈 › 계산기) + `FAQPage` 3문항(답은 화면 FAQ 텍스트, tok/s 수치 없음 — 결과는 클라이언트 렌더). 홈 = `WebSite`(SearchAction 없음 — 사이트링크 검색창은 종료된 기능). export 테스트가 두 페이지의 타입 집합을 강제.
 - P1-1 구현 메모: 허브 브레드크럼은 2단(홈 › 허브) — Google은 마지막 외 항목에 URL을 요구하는데 `/gpu`·`/model` 인덱스 페이지가 없다. **콤보는 3단(홈 › 모델 허브 › 콤보=캐노니컬)** — P1-2 D10(PROGRESS §4 09-29). FAQPage 답 텍스트 = 화면 FAQ 텍스트(export 테스트가 강제). FAQ 리치 결과는 2023년부터 정부·보건 사이트 한정이라 노출은 기대하지 않고 스펙대로만 둔다.
 
@@ -68,6 +68,7 @@
 릴리스 감지(파이프라인 알림) → ①config.json·GGUF 크기 수집(자동 PR) ②모델 허브 + 인기 GPU 15종 콤보 페이지 생성·배포 ③en/ko 요구사양 가이드 1편(30분 템플릿) ④sitemap ping + GSC 색인 요청 ⑤(선택) 자체 리그(5060 Ti 16GB)에서 돌아가는 신모델이면 실측 1점 추가 → "실측 포함" 차별화 ⑥r/LocalLLaMA·아카라이브 스레드에 계산기 링크(질문 답변 형태). 목표: 48h 내 라이브, 서지 2주 수확.
 
 ## 9. 에디토리얼 캘린더 (출시분 — AdSense 승인·웜업·T1 커버)
+**P1-4 확정(PROGRESS §4 D37)** — hreflang 대칭 때문에 가이드는 **같은 슬러그의 en/ko 쌍**(같은 질문·같은 범위, 각 언어 별도 집필). 출시 6쌍(우선순위 순): `vram-requirements`(VRAM 8~32GB로 돌릴 수 있는 모델 — 배치1 dGPU 48쌍 그리드) · `ollama-context-length`(Ollama가 느리거나 앞 내용을 잊을 때) · `gguf-quantization`(Q4_K_M·IQ4_XS·Q8_0 무엇을 받을까) · `korean-open-llms`(EXAONE·Kanana·HyperCLOVA X SEED·Solar) · `mac-local-llm`(M4·M5 통합 메모리 — 배치1 Apple 12쌍 그리드) · `kv-cache-context`. 보류(해제 조건): run-120b(엔진 후속 ①④ — cpu-moe 교정·gpt-oss nonExpertGB) · 예산 GPU·중고 3090(streetKRW·중고가 데이터) · 5060 Ti 전수 실측(P0-5) · 입문(소유자 설치 스크린샷). 아래 목록은 이후 쌍을 고르는 주제 풀이다. 집필 규칙: `apps/web/content/AUTHORING.md`.
 en (10): How much VRAM do LLMs need (2026) / Best GPU for local LLM 2026 by budget / Best LLMs for 8GB VRAM / …16GB / Run 120B on a 12GB card (--n-cpu-moe) / GGUF quant quality guide / KV cache & context explained / Mac vs PC for local AI / Why is Ollama slow (context defaults) / Used RTX 3090 in 2026
 ko (10): 로컬 LLM 입문 2026 (Ollama/LM Studio) / VRAM별 추천 모델 (8/12/16/24GB) / 로컬 LLM GPU 추천 (신품·중고·맥) / 양자화(GGUF) 등급 정리 / 12GB로 120B MoE 돌리기 / RTX 5060 Ti 16GB 로컬 LLM 전수 실측 (자체 데이터) / 맥으로 LLM 돌리기 (M4/M5) / EXAONE·한국 오픈모델 사양 정리 / Ollama 느릴 때 (컨텍스트 기본값) / 중고 3090 아직 살 만한가
 이후 주 1회 en+ko 각 1편(신모델 대응 우선). 모든 가이드에 계산기 위젯 임베드(도구 유입 전환).

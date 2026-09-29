@@ -55,6 +55,9 @@ const PAGES: readonly PageSpec[] = [
     structured: true,
     combo: true,
   },
+  // P1-4 — 가이드 1편(초안이면 noindex·미링크, URL 로는 열린다) + 목차
+  { name: 'guide', path: '/guides/ollama-context-length', structured: false, combo: false },
+  { name: 'guides index', path: '/guides', structured: false, combo: false },
 ];
 
 for (const locale of LOCALES) {
@@ -127,6 +130,25 @@ for (const locale of LOCALES) {
               true,
             );
           }
+        });
+      }
+
+      if (spec.name === 'guide') {
+        test('guide: Article + 3-level breadcrumb, own-data block, calculator widget submits to the calculator (P1-4)', async ({ page }) => {
+          const problems = collectProblems(page);
+          await open(page, path);
+          const blocks = await readJsonLd(page);
+          expect([...jsonLdTypes(blocks)]).toEqual(expect.arrayContaining(['Article', 'BreadcrumbList']));
+          expect(breadcrumbItems(blocks)).toHaveLength(3);
+          await expect(page.locator('[data-guide-body] [data-guide-data]').first()).toBeVisible();
+          const widget = page.locator('form[data-calc-widget]');
+          await expect(widget).toHaveCount(1);
+          await widget.locator('input[name="gpu"]').fill('rtx-4060');
+          await widget.locator('button[type="submit"]').click();
+          await page.waitForURL((u) => u.pathname === localePath(locale, '/calculator') && u.searchParams.get('gpu') === 'rtx-4060');
+          await page.waitForLoadState('networkidle');
+          await expect(page.locator('[data-result-card]').first()).toBeVisible();
+          expect(problems, 'console errors / failed requests').toEqual([]);
         });
       }
 

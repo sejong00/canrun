@@ -1,0 +1,162 @@
+Out of the box, <RuntimeFact id="ollama-default-ctx" />. That puts 8GB, 12GB and 16GB graphics cards on a 4k window, and when a chat grows past it Ollama quietly drops the oldest messages, so the model seems to forget what you told it. On 24GB cards the 32k default can instead push a dense 32B model out of VRAM: Qwen3 32B at Q4_K_M, a 4-bit quant, needs <Num kind="needGB" model="qwen3-32b" ctx="8192" /> at 8k, which fits in the <Num kind="usableGB" gpu="rtx-3090" /> a 24GB card can use.<Expect model="qwen3-32b" gpu="rtx-3090" verdict="S" /> At 32k the KV cache (the memory that holds the conversation so far) is four times larger and the total reaches <Num kind="needGB" model="qwen3-32b" ctx="32768" />, so the overflow goes to system RAM, and that is where the slowdown comes from. The fix in both cases is to set the context yourself with `OLLAMA_CONTEXT_LENGTH` or `num_ctx`, choose the largest size that still fits in VRAM, and check the result with `ollama ps`.
+
+## Ollama's default context depends on your GPU memory
+
+Ollama has no single fixed context length. <RuntimeFact id="ollama-default-ctx" />. The help text for `OLLAMA_CONTEXT_LENGTH` lists the same three tiers, and nothing in a normal chat tells you which one you got.
+
+Among the graphics cards in our catalog, the <HubLink gpu="rtx-4060" /> (8GB), the <HubLink gpu="rtx-3060-12gb" /> and the <HubLink gpu="rtx-5060-ti-16gb" /> land in the 4k tier. The <HubLink gpu="rtx-3090" /> and the <HubLink gpu="rtx-4090" /> (24GB each) and the <HubLink gpu="rtx-5090" /> (32GB) land in the 32k tier. No card we list reaches the 256k tier; the largest has 32GB. We have not verified how Ollama detects memory on a Mac with unified memory, so Macs are left out of this mapping.
+
+A 4k window is small next to what current models support. Llama 3.1 8B handles <Num kind="maxContext" model="llama-3.1-8b" /> and Qwen3 14B handles <Num kind="maxContext" model="qwen3-14b" /> natively (Qwen's model card describes going further with YaRN).
+
+### What happens when a chat outgrows the window
+
+Ollama does not stop with an error. By default its server drops the oldest messages until the rest fits, and it always keeps the system messages and your latest message. If the reply itself fills the window, Ollama shifts the window forward and keeps generating, again by default. Nothing shows up in the chat: dropped messages are logged only at debug level, so instructions you gave early on, or a document you pasted a few turns back, quietly leave the model's view. A single message longer than the window is cut from the start as well, with only a warning in the server log.
+
+Reasoning models fill the window quickly. Their thinking takes up the same window as your messages, and Qwen3's model card recommends an output length of 32k tokens for most queries, far more than a 4k window holds.
+
+Some older guides still give a flat 2k or 4k default (see the FAQ below). To see what you actually have, run `ollama ps` while a model is loaded: the CONTEXT column shows the context allocated, and PROCESSOR shows the split between GPU and CPU.
+
+## What a longer context costs in memory
+
+A model's memory need has three parts: the model file at the quant our tables use as a baseline (Q4_K_M for every model below except gpt-oss-20b, which uses MXFP4), the KV cache, and a small compute buffer, the working memory the runtime needs during inference. The file does not change with context. The KV cache holds keys and values for every token in the window, so for a model with full attention on every layer it grows in step with the context: double the context, double the cache.
+
+How fast it grows depends on the architecture. With an f16 KV cache, Ollama's default type, 32k takes <Num kind="kvGB" model="llama-3.1-8b" ctx="32768" /> for Llama 3.1 8B but only <Num kind="kvGB" model="gpt-oss-20b" ctx="32768" /> for gpt-oss-20b, whose sliding-window layers keep only a short stretch of recent tokens. EXAONE 4.0 32B mixes sliding-window (local) and global attention layers in a 3:1 ratio, according to its model card, so its 32k total sits closer to Gemma 3 27B's than to Qwen3 32B's. The mechanics are explained in <GuideLink slug="kv-cache-context" />.
+
+Here are the totals at 32k, the context Ollama picks by default on 24GB and 32GB cards.
+
+<ModelMemoryTable models="llama-3.1-8b,gemma-3-12b,qwen3-14b,gpt-oss-20b,gemma-3-27b,qwen3-30b-a3b-2507,exaone-4.0-32b,qwen3-32b" ctx="32768" />
+
+Compare each total with what your card can use, not the number on the box: a card driving a Windows display keeps some VRAM back (see the note under the table), so an 8GB card has <Num kind="usableGB" gpu="rtx-4060" /> in our model.
+
+### An 8GB card from 4k to 32k
+
+Take <ComboLink model="llama-3.1-8b" gpu="rtx-4060" />, a common first setup. At Ollama's 4k default it needs <Num kind="needGB" model="llama-3.1-8b" ctx="4096" />, and at 8k it needs <Num kind="needGB" model="llama-3.1-8b" ctx="8192" />. Both fit in the <Num kind="usableGB" gpu="rtx-4060" /> the card can use, and at the 8k baseline it Runs great.<Expect model="llama-3.1-8b" gpu="rtx-4060" verdict="S" />
+
+At 16k with an f16 KV cache the need rises to <Num kind="needGB" model="llama-3.1-8b" ctx="16384" />, just over the usable amount, and 32k takes it to <Num kind="needGB" model="llama-3.1-8b" ctx="32768" />. Past that line our model moves part of the weights to system RAM (partial offload). In the 64k f16 cell and the 128k f16 and q8_0 cells, the KV cache alone is larger than the card's usable memory, so our model runs those on the CPU only. The table shows what each does to the verdict and the speed band, and its q8_0 and q4_0 columns show the other way out, a smaller KV cache.
+
+<CtxTable model="llama-3.1-8b" gpu="rtx-4060" />
+
+A 12GB card has more headroom. For <ComboLink model="gemma-3-12b" gpu="rtx-3060-12gb" />, 32k with an f16 KV cache needs <Num kind="needGB" model="gemma-3-12b" ctx="32768" />, still inside the <Num kind="usableGB" gpu="rtx-3060-12gb" /> the card can use, and at the 8k baseline it Runs great.<Expect model="gemma-3-12b" gpu="rtx-3060-12gb" verdict="S" /> Every card we cover for Llama 3.1 8B is listed on the <HubLink model="llama-3.1-8b" /> page.
+
+## Why Ollama slows down: the 32k default on 24GB cards
+
+A 24GB card already gets 32k by default, and for a dense 32B model with full attention on every layer, such as <HubLink model="qwen3-32b" />, that is more than the card can hold. At Q4_K_M and 8k, Qwen3 32B needs <Num kind="needGB" model="qwen3-32b" ctx="8192" />, which fits in the <Num kind="usableGB" gpu="rtx-3090" /> an RTX 3090 can use, and at that baseline it Runs great.<Expect model="qwen3-32b" gpu="rtx-3090" verdict="S" /> At 32k with an f16 KV cache, the KV cache alone is <Num kind="kvGB" model="qwen3-32b" ctx="32768" /> and the total is <Num kind="needGB" model="qwen3-32b" ctx="32768" />, so part of the weights have to sit in system RAM.
+
+Ollama makes that split on its own, loading what fits onto the GPU and running the remaining layers on the CPU; `ollama ps` then shows a CPU/GPU percentage under PROCESSOR instead of 100% GPU. Ollama's documentation advises the largest context that avoids offloading to the CPU. The table below shows where that line falls on the RTX 3090, and the <HubLink model="qwen3-32b" /> page compares other cards.
+
+<CtxTable model="qwen3-32b" gpu="rtx-3090" />
+
+Not every model hits this wall. At 32k with an f16 KV cache, Gemma 3 27B needs <Num kind="needGB" model="gemma-3-27b" ctx="32768" />, Qwen3 30B-A3B (2507) needs <Num kind="needGB" model="qwen3-30b-a3b-2507" ctx="32768" /> and EXAONE 4.0 32B needs <Num kind="needGB" model="exaone-4.0-32b" ctx="32768" />, all under the RTX 3090's usable memory, and each Runs great at the 8k baseline.<Expect model="gemma-3-27b" gpu="rtx-3090" verdict="S" /><Expect model="qwen3-30b-a3b-2507" gpu="rtx-3090" verdict="S" /><Expect model="exaone-4.0-32b" gpu="rtx-3090" verdict="S" /> Our page for <ComboLink model="qwen3-30b-a3b-2507" gpu="rtx-3090" /> shows how that MoE model fares at longer contexts. The <HubLink gpu="rtx-4090" /> has the same 24GB and the same default, so the same arithmetic applies. The RTX 5090 is in the same tier, but its <Num kind="usableGB" gpu="rtx-5090" /> of usable memory covers the <Num kind="needGB" model="qwen3-32b" ctx="32768" /> Qwen3 32B needs at 32k, so in our model Qwen3 32B stays fully on the GPU there at 32k (check PROCESSOR in `ollama ps`); its 8k baseline also Runs great.<Expect model="qwen3-32b" gpu="rtx-5090" verdict="S" />
+
+### Two fixes that keep the model on the GPU
+
+The first fix is a smaller context for that model. At 16k, Qwen3 32B needs <Num kind="needGB" model="qwen3-32b" ctx="16384" />, still over the RTX 3090's usable memory; 8k fits.<Expect model="qwen3-32b" gpu="rtx-3090" verdict="S" />
+
+The second fix is a smaller KV cache. <RuntimeFact id="ollama-kv-cache-type" />. According to the Ollama FAQ, q8_0 costs very little precision, while q4_0 costs more and the loss may be more noticeable at long contexts; how much it matters depends on the model and the task, and the FAQ adds that models with many query heads per KV head, such as Qwen2, may be more affected. In our tables q8_0 and q4_0 KV caches take about 54% and 29% of the f16 size, slightly more than a half and a quarter, because the block scales are stored too. For Qwen3 32B at 32k, q8_0 brings the need to <Num kind="needGB" model="qwen3-32b" ctx="32768" kv="q8_0" />, still over, and q4_0 brings it to <Num kind="needGB" model="qwen3-32b" ctx="32768" kv="q4_0" />, just under in our model, with little margin, so confirm 100% GPU in `ollama ps` after starting. The two fixes also combine: 16k with a q8_0 KV cache needs <Num kind="needGB" model="qwen3-32b" ctx="16384" kv="q8_0" />, which fits in our model. A one-off start in PowerShell looks like this:
+
+```powershell
+$env:OLLAMA_CONTEXT_LENGTH="32768"; $env:OLLAMA_FLASH_ATTENTION="1"; $env:OLLAMA_KV_CACHE_TYPE="q4_0"; ollama serve
+```
+
+Inside VRAM, the estimated speed eases down row by row as the context grows, because each new token reads the whole KV cache. The rows assume the window is filled to that length. A larger window that you never fill still reserves the memory, but it does not slow each token as much as its row shows. The sharp drop comes where the need passes the card's usable memory.
+
+## How to change the context length in Ollama
+
+Ollama documents five ways to set the context:
+
+- **Ollama app:** the context length slider in Settings.
+- **Server-wide default:** the environment variable `OLLAMA_CONTEXT_LENGTH`, for example `OLLAMA_CONTEXT_LENGTH=16384 ollama serve` on macOS or Linux.
+- **One interactive session:** type `/set parameter num_ctx 16384` inside `ollama run`.
+- **One API request:** put `num_ctx` inside `options`, as below.
+- **One model, every time:** add `PARAMETER num_ctx 16384` to a Modelfile and build it with `ollama create`.
+
+On macOS or Linux, a request looks like this (on Windows, run it in WSL or Git Bash; Windows PowerShell treats `curl` as a different command):
+
+```shell
+curl http://localhost:11434/api/chat -d '{
+  "model": "llama3.1:8b",
+  "messages": [{ "role": "user", "content": "Why is the sky blue?" }],
+  "options": { "num_ctx": 16384 }
+}'
+```
+
+`OLLAMA_CONTEXT_LENGTH` only replaces the automatic default. A `num_ctx` set in a Modelfile or sent with a request overrides it, and a request overrides the Modelfile. If `ollama ps` shows a smaller CONTEXT than you set on the server, look for a `num_ctx` in the Modelfile or the client sending requests.
+
+### Setting the variable on Windows, macOS and Linux
+
+Ollama reads the variable when the server starts, so restart Ollama after any change.
+
+- **Windows:** quit Ollama from its taskbar icon, open Settings and search for environment variables, edit the variables for your account, add `OLLAMA_CONTEXT_LENGTH` with a value such as `16384`, save, and start Ollama again from the Start menu. For a one-off test with the app closed, run `$env:OLLAMA_CONTEXT_LENGTH="16384"; ollama serve` in PowerShell, the form our combo pages print.
+- **macOS app:** run `launchctl setenv OLLAMA_CONTEXT_LENGTH 16384`, then restart the Ollama app.
+- **Linux with systemd:** run `systemctl edit ollama.service`, add the lines below, then run `systemctl daemon-reload` and `systemctl restart ollama`.
+
+```ini
+[Service]
+Environment="OLLAMA_CONTEXT_LENGTH=16384"
+```
+
+### Picking a size that fits
+
+Aim for the largest context whose total need stays under your card's usable memory, using the tables above or each combo page. Ollama's docs suggest at least 64k for agents, web search and coding tools. For scale, Llama 3.1 8B at 64k with an f16 KV cache needs <Num kind="needGB" model="llama-3.1-8b" ctx="65536" />.
+
+The 4k default can also leave memory unused. Running <ComboLink model="qwen3-14b" gpu="rtx-5060-ti-16gb" /> at its full 32k with an f16 KV cache needs <Num kind="needGB" model="qwen3-14b" ctx="32768" /> against <Num kind="usableGB" gpu="rtx-5060-ti-16gb" /> usable, so in our model it only just fits, with little margin; check `ollama ps` for 100% GPU. At the 8k baseline it Runs great.<Expect model="qwen3-14b" gpu="rtx-5060-ti-16gb" verdict="S" /> Other cards are compared on the <HubLink model="qwen3-14b" /> page.
+
+Going past a model's own limit does not help. Qwen3 32B's native limit is <Num kind="maxContext" model="qwen3-32b" />; its model card describes extending it with YaRN, which is outside this guide. Parallel requests multiply the context memory: the Ollama FAQ notes that the memory needed scales with `OLLAMA_NUM_PARALLEL` times `OLLAMA_CONTEXT_LENGTH`, while our tables assume one request slot.
+
+Each combo page prints an Ollama command whose `OLLAMA_CONTEXT_LENGTH` follows the context you pick in its table, and for q8_0 or q4_0 cells it adds `OLLAMA_FLASH_ATTENTION=1` and `OLLAMA_KV_CACHE_TYPE`. Our page for <ComboLink model="llama-3.1-8b" gpu="rtx-4060" /> is an 8GB example.
+
+Where to go next:
+
+- <GuideLink slug="kv-cache-context" />: how the KV cache works and what q8_0 and q4_0 save.
+- <GuideLink slug="vram-requirements" />: which models fit on each memory tier.
+- <GuideLink slug="gguf-quantization" />: how a smaller model quant frees memory for context.
+
+## How sure are these numbers?
+
+The memory figures (file, KV cache, compute buffer) are deterministic: they are calculated from real GGUF file sizes and each model's published configuration. The speeds in the tables are estimates, each with a band and a confidence label. Calibrated means ±12% for dense models running fully on an NVIDIA or AMD card, and ±20% for partial offload, MoE models and other hardware; theoretical means ±30%. Every cell in this guide's two context tables is calibrated (±12% when fully on the GPU, ±20% for partial-offload or CPU-only cells), except the 8k f16 cell for Llama 3.1 8B on the RTX 4060, which is measured.
+
+That measurement is one public data point for the <HubLink gpu="rtx-4060" />. It comes from LocalScore at a 4k context, not from an Ollama run, and it is shown next to our 8k estimate band.
+
+<Measured model="llama-3.1-8b" gpu="rtx-4060" />
+
+Ollama makes its own memory estimate and picks its own GPU/CPU split, so the SIZE and PROCESSOR values in `ollama ps` will not match our figures exactly. On your machine, `ollama ps` is the ground truth. Our tables assume Windows with the card driving the display, 32GB of DDR5 system RAM, one model loaded, one request slot (Ollama's default for `OLLAMA_NUM_PARALLEL`, per its FAQ) and flash attention for the quantized KV columns. Every combo page, including our page for <ComboLink model="llama-3.1-8b" gpu="rtx-4060" />, lists the same assumptions.
+
+Verdict names in the text of this guide refer to the 8k context, f16 KV baseline; for other context lengths, read the tables. The thresholds:
+
+<Threshold />
+
+## FAQ
+
+### Why does Ollama forget what I said earlier in a long chat?
+
+The context window is full. <RuntimeFact id="ollama-default-ctx" />, so 8GB, 12GB and 16GB cards start at only 4k. Once a chat outgrows it, Ollama by default drops the oldest messages, keeping the system prompt and your latest message, with no error. Raise the context with `OLLAMA_CONTEXT_LENGTH`, the app slider or `num_ctx` as far as memory allows, then check CONTEXT in `ollama ps`.
+
+### Does a longer context make Ollama slower?
+
+The big slowdown comes when the larger KV cache no longer fits in VRAM and Ollama moves part of the model to system RAM; `ollama ps` then shows a CPU/GPU split. Qwen3 32B at Q4_K_M, for example, needs <Num kind="needGB" model="qwen3-32b" ctx="32768" /> at 32k with an f16 KV cache, against <Num kind="usableGB" gpu="rtx-3090" /> usable on a 24GB card, where 32k is already the default. On the GPU alone, the estimated speed falls only gradually as the window fills.
+
+### How much extra memory does a 32k context need?
+
+It depends on the model's KV cache per token. With an f16 KV cache, 32k costs <Num kind="kvGB" model="llama-3.1-8b" ctx="32768" /> for Llama 3.1 8B and <Num kind="kvGB" model="qwen3-32b" ctx="32768" /> for Qwen3 32B, but only <Num kind="kvGB" model="gpt-oss-20b" ctx="32768" /> for gpt-oss-20b with its sliding-window layers. Add the model file and a compute buffer for the total, as in the 32k memory table, and compare it with your card's usable memory.
+
+### Should I turn on q8_0 or q4_0 KV cache in Ollama?
+
+Only when you need the memory: `OLLAMA_KV_CACHE_TYPE` is server-wide, needs flash attention and applies to every model the server runs. q8_0 roughly halves the KV cache with a very small precision loss; q4_0 saves more, but the Ollama FAQ notes its loss may show at long contexts. A memory-based rule: try q8_0 first when f16 does not fit, and use q4_0 only if q8_0 still spills. It can decide whether a model fits: on a 24GB card such as the RTX 3090, Qwen3 32B at 32k needs <Num kind="needGB" model="qwen3-32b" ctx="32768" /> with f16 and <Num kind="needGB" model="qwen3-32b" ctx="32768" kv="q8_0" /> with q8_0, both over the <Num kind="usableGB" gpu="rtx-3090" /> the card can use, and <Num kind="needGB" model="qwen3-32b" ctx="32768" kv="q4_0" /> with q4_0, just under.
+
+### Why do other guides say Ollama's default is 2k or 4k tokens?
+
+Older Ollama versions and some reference pages list one flat default: the Modelfile parameter table shows 2k and the FAQ mentions 4k. The context-length documentation now ties it to VRAM. <RuntimeFact id="ollama-default-ctx" />. The CONTEXT column of `ollama ps` shows what your machine actually allocated.
+
+## Sources
+
+- [Ollama docs: context length](https://docs.ollama.com/context-length): VRAM-based default tiers, the app slider, `OLLAMA_CONTEXT_LENGTH`, the 64k suggestion for agents and coding tools, `ollama ps` columns, and the advice to avoid CPU offload.
+- [Ollama FAQ](https://docs.ollama.com/faq): `num_ctx` via `/set parameter` and the API, environment variables on Windows, macOS and Linux, the PROCESSOR column, flash attention, `OLLAMA_KV_CACHE_TYPE` precision notes (including models with a high GQA count), and `OLLAMA_NUM_PARALLEL`.
+- [Ollama Modelfile reference](https://docs.ollama.com/modelfile): `PARAMETER num_ctx` (its table shows an older default).
+- [Ollama source: server/prompt.go](https://github.com/ollama/ollama/blob/main/server/prompt.go): dropping the oldest messages while keeping system messages and the latest one, logged at debug level.
+- [Ollama source: llm/llama_server.go](https://github.com/ollama/ollama/blob/main/llm/llama_server.go): cutting a single prompt that is longer than the window, logged as a warning.
+- [Ollama source: server/routes.go](https://github.com/ollama/ollama/blob/main/server/routes.go): truncate and shift on when unset, the VRAM-tier default, and the order of request, Modelfile and default settings.
+- [Ollama source: api/types.go](https://github.com/ollama/ollama/blob/main/api/types.go): the Truncate and Shift request fields.
+- [Ollama source: envconfig/config.go](https://github.com/ollama/ollama/blob/main/envconfig/config.go): `OLLAMA_CONTEXT_LENGTH` as the context used unless otherwise specified, with the 4k, 32k and 256k tiers in its help text.
+- [Qwen3-14B model card](https://huggingface.co/Qwen/Qwen3-14B): native context, YaRN extension, recommended output length.
+- [Qwen3-32B model card](https://huggingface.co/Qwen/Qwen3-32B): native context, layer count and KV heads.
+- [EXAONE 4.0 32B model card](https://huggingface.co/LGAI-EXAONE/EXAONE-4.0-32B): hybrid sliding-window and global attention in a 3:1 ratio, maximum context.

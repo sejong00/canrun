@@ -1,0 +1,196 @@
+A model runs fully on the GPU when its file, its KV cache (the memory that holds the context) and a small compute buffer (the runtime's working memory) fit in the VRAM your card can use. Llama 3.1 8B at Q4_K_M, a 4-bit quant, needs <Num kind="needGB" model="llama-3.1-8b" /> with an 8k-token context, just inside the <Num kind="usableGB" gpu="rtx-4060" /> an 8GB RTX 4060 can use (little margin, so check `ollama ps`), and it Runs great.<Expect model="llama-3.1-8b" gpu="rtx-4060" verdict="S" /> At 8k, 12GB holds 12B to 14B models (Qwen3 14B with little margin<Expect model="qwen3-14b" gpu="rtx-3060-12gb" verdict="S" />), 16GB holds gpt-oss-20b,<Expect model="gpt-oss-20b" gpu="rtx-5060-ti-16gb" verdict="S" /> 24GB holds 30B-class models such as Qwen3 30B-A3B<Expect model="qwen3-30b-a3b-2507" gpu="rtx-3090" verdict="S" /> and 32GB mainly adds room for longer context. With 32GB of system RAM, gpt-oss-120b fits on none of these cards;<Expect model="gpt-oss-120b" gpu="rtx-5090" fits="false" /> in CanRun's calculation it needs 96GB of system RAM.
+
+## How much VRAM a model needs: file, KV cache and buffer
+
+Three things share a graphics card's memory while a model runs: the model file at the quant you downloaded (Q4_K_M, a 4-bit GGUF quant, is the usual default), the KV cache, which holds keys and values for every token in the context, and a compute buffer, the runtime's working memory, which grows slightly with the context. CanRun's verdicts use Q4_K_M (MXFP4 for gpt-oss, its native format), an 8k context and an f16 (unquantized 16-bit) KV cache. These are the totals for the models this guide follows:
+
+<ModelMemoryTable models="llama-3.1-8b,gemma-3-12b,qwen3-14b,gpt-oss-20b,gemma-3-27b,qwen3-30b-a3b-2507,qwen3-32b,llama-3.3-70b,gpt-oss-120b" />
+
+Compare the Total column with the VRAM your card can use, not the number on the box. When the card also drives a Windows display, CanRun sets some VRAM aside for the desktop (the note under the table gives the amount). That leaves an 8GB card such as the RTX 4060 with <Num kind="usableGB" gpu="rtx-4060" /> and a 12GB card such as the RTX 3060 12GB with <Num kind="usableGB" gpu="rtx-3060-12gb" />.
+
+The file is the largest part. CanRun takes file sizes from the real GGUF files on Hugging Face. The quantize table in llama.cpp gives a rule of thumb: Q4_K_M averages a little under five bits per weight, so a Q4_K_M file in gigabytes is about three-fifths of the parameter count in billions. Llama 3.1 8B comes to <Num kind="fileGB" model="llama-3.1-8b" /> and Qwen3 14B to <Num kind="fileGB" model="qwen3-14b" />. Q8_0 is roughly one gigabyte per billion parameters, so Qwen3 14B at Q8_0 is <Num kind="fileGB" model="qwen3-14b" quant="Q8_0" />.
+
+At 8k the KV cache is small next to the file (<Num kind="kvGB" model="llama-3.1-8b" /> for Llama 3.1 8B, <Num kind="kvGB" model="qwen3-14b" /> for Qwen3 14B), but it grows with the context, as the section on context length shows.
+
+Qwen3 14B on the RTX 3060 12GB shows how the parts fill a 12GB card: it needs <Num kind="needGB" model="qwen3-14b" /> at 8k against <Num kind="usableGB" gpu="rtx-3060-12gb" /> usable, so in CanRun's calculation it Runs great with an f16 KV cache,<Expect model="qwen3-14b" gpu="rtx-3060-12gb" verdict="S" /> with less than a gigabyte free. Check `ollama ps` after loading it: PROCESSOR should read 100% GPU. Our page for <ComboLink model="qwen3-14b" gpu="rtx-3060-12gb" /> has the commands.
+
+<MemoryBreakdown model="qwen3-14b" gpu="rtx-3060-12gb" />
+
+Active parameters do not set the memory need: mixture-of-experts (MoE) models such as gpt-oss-20b use only a few billion parameters per token, but the whole file must be in memory (the Parameters column shows both counts). Macs use unified memory instead, of which the GPU gets about 70% by default in CanRun's calculation; see <GuideLink slug="mac-local-llm" />.
+
+## What fits on 8, 12, 16, 24 and 32 GB graphics cards
+
+The grid crosses six popular models with eight NVIDIA cards. Every verdict assumes an 8k context, an f16 KV cache, 32GB of DDR5 system RAM and Windows. Each cell shows a verdict, an estimated speed band and a confidence label; cells labelled theoretical get an extra note under the grid.
+
+<ComboGrid grid="tiers" />
+
+### 8GB: RTX 4060
+
+On the <HubLink gpu="rtx-4060" />, Llama 3.1 8B fits fully with less than a gigabyte to spare (<Num kind="needGB" model="llama-3.1-8b" /> against <Num kind="usableGB" gpu="rtx-4060" /> usable; confirm 100% GPU in `ollama ps`) and Runs great, a measured cell.<Expect model="llama-3.1-8b" gpu="rtx-4060" verdict="S" /> Our page for <ComboLink model="llama-3.1-8b" gpu="rtx-4060" /> covers longer contexts.
+
+The next size up does not fit. Gemma 3 12B needs <Num kind="needGB" model="gemma-3-12b" /> and Qwen3 14B needs <Num kind="needGB" model="qwen3-14b" />, both more than the card can use, so part of their weights go to system RAM (partial offload). Both are rated Runs slowly, as calibrated estimates.<Expect model="gemma-3-12b" gpu="rtx-4060" verdict="B" /><Expect model="qwen3-14b" gpu="rtx-4060" verdict="B" /> Our page for <ComboLink model="gemma-3-12b" gpu="rtx-4060" /> shows what a smaller quant changes.
+
+Two of the MoE models, gpt-oss-20b and Qwen3 30B-A3B, run on this card only with their expert weights in system RAM. They are rated Runs slowly too, but those cells are theoretical estimates and likely conservative (see the MoE section).<Expect model="gpt-oss-20b" gpu="rtx-4060" verdict="B" /><Expect model="qwen3-30b-a3b-2507" gpu="rtx-4060" verdict="B" /> gpt-oss-120b is rated Won't run.<Expect model="gpt-oss-120b" gpu="rtx-4060" verdict="F" />
+
+The <HubLink gpu="rtx-5060-ti-8gb" /> shares its name with a 16GB card, so check the memory on the box. It gets the same fit results as the <HubLink gpu="rtx-4060" />: Llama 3.1 8B Runs great<Expect model="llama-3.1-8b" gpu="rtx-5060-ti-8gb" verdict="S" /> and Qwen3 14B Runs slowly.<Expect model="qwen3-14b" gpu="rtx-5060-ti-8gb" verdict="B" />
+
+### 12GB: RTX 3060 12GB, RTX 4070 and RTX 5070
+
+The grid has three 12GB cards: the <HubLink gpu="rtx-3060-12gb" />, the <HubLink gpu="rtx-4070" /> and the <HubLink gpu="rtx-5070" />. Each can use <Num kind="usableGB" gpu="rtx-3060-12gb" />, so in CanRun's calculation they fit the same models.
+
+Gemma 3 12B needs <Num kind="needGB" model="gemma-3-12b" />, leaving room to spare, and Runs great on all three.<Expect model="gemma-3-12b" gpu="rtx-3060-12gb" verdict="S" /><Expect model="gemma-3-12b" gpu="rtx-4070" verdict="S" /><Expect model="gemma-3-12b" gpu="rtx-5070" verdict="S" /> Qwen3 14B fits at 8k with little margin (see the bar in the first section, and check `ollama ps`) and Runs great there too.<Expect model="qwen3-14b" gpu="rtx-3060-12gb" verdict="S" /> At 16k with an f16 KV cache it spills over; see the context table further down. gpt-oss-20b needs <Num kind="needGB" model="gpt-oss-20b" />, more than a 12GB card can use, so its expert weights go to system RAM and the cell reads Runs slowly as a theoretical estimate.<Expect model="gpt-oss-20b" gpu="rtx-3060-12gb" verdict="B" />
+
+Memory bandwidth largely sets the speed. The RTX 3060 12GB has <Num kind="bandwidth" gpu="rtx-3060-12gb" />, the RTX 4070 <Num kind="bandwidth" gpu="rtx-4070" /> and the RTX 5070 <Num kind="bandwidth" gpu="rtx-5070" />. <HubLink model="phi-4" /> needs <Num kind="needGB" model="phi-4" /> at 8k and fits on all three with almost no margin (check `ollama ps`), yet it is rated Runs well on the RTX 3060 12GB<Expect model="phi-4" gpu="rtx-3060-12gb" verdict="A" /> and Runs great on the RTX 4070.<Expect model="phi-4" gpu="rtx-4070" verdict="S" /> The gap comes from the reasoning rule: CanRun counts Phi-4 as a reasoning model and holds it to 1.5× stricter speed thresholds, which the faster RTX 4070 clears and the RTX 3060 12GB does not.
+
+### 16GB: RTX 5060 Ti 16GB
+
+On the <HubLink gpu="rtx-5060-ti-16gb" />, gpt-oss-20b needs <Num kind="needGB" model="gpt-oss-20b" /> against <Num kind="usableGB" gpu="rtx-5060-ti-16gb" /> usable, so it fits fully on the GPU, in line with its model card, which says it runs within 16GB of memory. It Runs great, a measured cell.<Expect model="gpt-oss-20b" gpu="rtx-5060-ti-16gb" verdict="S" /> Our page for <ComboLink model="gpt-oss-20b" gpu="rtx-5060-ti-16gb" /> has the full breakdown.
+
+Qwen3 14B Runs great here as well,<Expect model="qwen3-14b" gpu="rtx-5060-ti-16gb" verdict="S" /> and the extra memory goes to context: at 32k with an f16 KV cache it needs <Num kind="needGB" model="qwen3-14b" ctx="32768" />, still inside the <Num kind="usableGB" gpu="rtx-5060-ti-16gb" /> this card can use but with very little margin (check `ollama ps`).
+
+At Q4_K_M, models larger than gpt-oss-20b do not fit fully; the table further down names the largest one that does at IQ4_XS. Qwen3 30B-A3B needs <Num kind="needGB" model="qwen3-30b-a3b-2507" />, so its experts go to system RAM and the cell reads Runs slowly as a theoretical estimate.<Expect model="qwen3-30b-a3b-2507" gpu="rtx-5060-ti-16gb" verdict="B" /> Gemma 3 27B, outside the grid, needs <Num kind="needGB" model="gemma-3-27b" />; it runs with part of its weights in system RAM and is rated Runs slowly, a calibrated estimate.<Expect model="gemma-3-27b" gpu="rtx-5060-ti-16gb" verdict="B" />
+
+### 24GB: RTX 3090 and RTX 4090
+
+The <HubLink gpu="rtx-3090" /> and the <HubLink gpu="rtx-4090" /> can each use <Num kind="usableGB" gpu="rtx-3090" />. That is enough for Qwen3 30B-A3B, which needs <Num kind="needGB" model="qwen3-30b-a3b-2507" />: it runs fully on the GPU and Runs great on both.<Expect model="qwen3-30b-a3b-2507" gpu="rtx-3090" verdict="S" /><Expect model="qwen3-30b-a3b-2507" gpu="rtx-4090" verdict="S" /> Our page for <ComboLink model="qwen3-30b-a3b-2507" gpu="rtx-3090" /> shows how it holds up at longer contexts.
+
+The dense <HubLink model="qwen3-32b" /> needs <Num kind="needGB" model="qwen3-32b" /> at 8k, so it fits on the RTX 3090 with less than a gigabyte to spare (confirm 100% GPU in `ollama ps`) and Runs great there.<Expect model="qwen3-32b" gpu="rtx-3090" verdict="S" /> A longer context with an f16 KV cache pushes it partly off the GPU, and Ollama's default on 24GB cards is already 32k; for that case, see <GuideLink slug="ollama-context-length" />.
+
+Speed can still separate two cards with the same memory. <HubLink model="deepseek-r1-distill-32b" />, a reasoning model, is rated Runs well on the RTX 3090<Expect model="deepseek-r1-distill-32b" gpu="rtx-3090" verdict="A" /> but Runs great on the RTX 4090.<Expect model="deepseek-r1-distill-32b" gpu="rtx-4090" verdict="S" /> gpt-oss-120b is rated Won't run on both.<Expect model="gpt-oss-120b" gpu="rtx-3090" verdict="F" /><Expect model="gpt-oss-120b" gpu="rtx-4090" verdict="F" />
+
+### 32GB: RTX 5090
+
+For the six grid models, the RTX 5090 gets the same 8k verdicts as the 24GB cards. Its extra memory goes to context: Qwen3 32B at 32k with an f16 KV cache needs <Num kind="needGB" model="qwen3-32b" ctx="32768" />, inside the <Num kind="usableGB" gpu="rtx-5090" /> this card can use but over the <Num kind="usableGB" gpu="rtx-3090" /> of a 24GB card. At the 8k baseline it Runs great on the RTX 5090.<Expect model="qwen3-32b" gpu="rtx-5090" verdict="S" />
+
+At Q4_K_M, 32GB still does not hold a dense 70B model. <HubLink model="llama-3.3-70b" /> needs <Num kind="needGB" model="llama-3.3-70b" /> at that quant, so it runs with part of its weights in system RAM and is rated Runs slowly on the RTX 5090.<Expect model="llama-3.3-70b" gpu="rtx-5090" verdict="B" /> On the RTX 4090 it is rated Won't run at Q4_K_M because partial offload is too slow.<Expect model="llama-3.3-70b" gpu="rtx-4090" verdict="F" /> Only Heavy loss quants fit Llama 3.3 70B fully on the RTX 5090. gpt-oss-120b is still rated Won't run with 32GB of system RAM, even here.<Expect model="gpt-oss-120b" gpu="rtx-5090" verdict="F" />
+
+### The whole catalog, card by card
+
+The table below counts every model in CanRun's catalog by verdict for each of the eight cards (the caption gives the total) and names the largest model that fits on the GPU alone, with its quant.
+
+<GpuTierSummary gpus="rtx-4060,rtx-3060-12gb,rtx-4070,rtx-5070,rtx-5060-ti-16gb,rtx-3090,rtx-4090,rtx-5090" />
+
+At 8k, the set of models that fit fully on the GPU grows at each step from 8GB to 24GB; the 32GB RTX 5090 adds none at the baseline. Its extra memory goes to longer context and to running Llama 3.3 70B at Q4_K_M partly from system RAM, as the 32GB section explains. Between cards of the same size, only speed moves models from one verdict to another. The counts change as models join the catalog.
+
+### Other cards with the same memory
+
+In CanRun's calculation, fit depends only on the memory a card can use. Another 16GB card such as the <HubLink gpu="rx-9060-xt-16gb" /> gets the same fit result for gpt-oss-20b as the <HubLink gpu="rtx-5060-ti-16gb" /> and Runs great there too;<Expect model="gpt-oss-20b" gpu="rx-9060-xt-16gb" verdict="S" /> only the speeds differ.
+
+A laptop GPU can carry a desktop card's name with less VRAM: the <HubLink gpu="rtx-4090-laptop" /> has <Num kind="vramGB" gpu="rtx-4090-laptop" /> and the <HubLink gpu="rtx-5090-laptop" /> has <Num kind="vramGB" gpu="rtx-5090-laptop" />. Look up the laptop chip itself.
+
+### Memory targets by model size
+
+- 8B-class models: 8GB of VRAM.
+- 12B to 14B models: 12GB, or 16GB for longer context.
+- gpt-oss-20b fully on the GPU: 16GB.
+- 30B-class models: 24GB, or 32GB for longer context.
+
+## MoE models: the whole file counts, but experts can sit in system RAM
+
+In a mixture-of-experts (MoE) model, the bulk of each layer is split into many expert blocks, and a router picks a few for every token. Qwen3 30B-A3B has 128 experts with 8 active per token, according to its model card; <HubLink model="gpt-oss-20b" /> and <HubLink model="gpt-oss-120b" /> work the same way. Fit needs the whole file, because the router can pick any expert; speed depends mostly on the active part.
+
+When the model does not fit fully in VRAM (file, KV cache and buffer together), CanRun's calculation keeps the shared and attention weights, the KV cache and the buffer on the GPU and moves the expert weights to system RAM, as llama.cpp's `--cpu-moe` and `--n-cpu-moe N` options do. <HubLink model="qwen3-30b-a3b-2507" /> needs <Num kind="needGB" model="qwen3-30b-a3b-2507" />, against <Num kind="usableGB" gpu="rtx-3060-12gb" /> usable on the RTX 3060 12GB, so the bar shows a small GPU part and most of the weights in system RAM:
+
+<MemoryBreakdown model="qwen3-30b-a3b-2507" gpu="rtx-3060-12gb" />
+
+In this mode the verdict follows a stricter rule, shown in the verdict legend further down: the best verdict is Runs well, which needs the speed Runs great needs on a full GPU; slower than that is Runs slowly, and very slow is Won't run. The gpt-oss models are reasoning models, so their thresholds are 1.5× stricter again. <ComboLink model="qwen3-30b-a3b-2507" gpu="rtx-3060-12gb" /> is rated Runs slowly by that rule, as a theoretical estimate.<Expect model="qwen3-30b-a3b-2507" gpu="rtx-3060-12gb" verdict="B" />
+
+Treat these speeds with care: they are theoretical estimates (±30%) and likely conservative. Against CanRun's one public data point for this setup, an RTX 3060 12GB with DDR5 running a 35B-A3B MoE model, the estimate is about 2.5 times too low. Read the Runs slowly cells for gpt-oss-20b and Qwen3 30B-A3B on the 8GB to 16GB cards as "experts in system RAM, speed not yet validated", not as proof that MoE models are slow on small cards.
+
+For the largest MoE model in the grid, system RAM becomes the limit. The gpt-oss-120b file is <Num kind="fileGB" model="gpt-oss-120b" />. With 32GB of system RAM the experts have nowhere to go, so it is rated Won't run on every card in the grid, from the 8GB RTX 4060<Expect model="gpt-oss-120b" gpu="rtx-4060" verdict="F" /> to the 32GB RTX 5090.<Expect model="gpt-oss-120b" gpu="rtx-5090" fits="false" /> In CanRun's calculation, which keeps every expert weight in system RAM, 64GB is still short; 96GB is the first size checked where it fits, and the grid cells already show this as "With 96 GB RAM: Runs slowly", a theoretical estimate. Its model card targets a single 80GB GPU.
+
+Runtimes differ here. Ollama picks its own GPU/CPU split and documents no switch for keeping experts in RAM; `ollama ps` shows what it chose under PROCESSOR. Combo pages print the full llama.cpp command; for the setup above, see our page for <ComboLink model="qwen3-30b-a3b-2507" gpu="rtx-3060-12gb" />.
+
+## How quantization and context length change the answer
+
+On a given card, two settings move a model across the lines above: the quant you download and the context you run it at.
+
+### Quantization: a smaller file, at a cost in quality
+
+A quant stores each weight in fewer bits, which makes the file smaller. CanRun sorts quants into four quality groups: Near-lossless (Q5_K_M, Q6_K, Q8_0, and MXFP4, gpt-oss's native format), Good balance (Q4_K_M and IQ4_XS), Noticeable loss (3-bit quants such as Q3_K_M and IQ3_XS) and Heavy loss (2-bit quants such as Q2_K and IQ2_M). A Q8_0 file is well over one and a half times the Q4_K_M file: <HubLink model="gemma-3-12b" /> is <Num kind="fileGB" model="gemma-3-12b" quant="Q8_0" /> at Q8_0 against <Num kind="fileGB" model="gemma-3-12b" /> at Q4_K_M. The ladder below shows each step for <ComboLink model="gemma-3-12b" gpu="rtx-4060" />; every cell is calibrated.
+
+<QuantLadder model="gemma-3-12b" gpu="rtx-4060" />
+
+At Q8_0 and Q4_K_M the model spills into system RAM; Q4_K_M, the baseline, is rated Runs slowly.<Expect model="gemma-3-12b" gpu="rtx-4060" verdict="B" /> IQ4_XS needs <Num kind="needGB" model="gemma-3-12b" quant="IQ4_XS" />, still over the <Num kind="usableGB" gpu="rtx-4060" /> the card can use, so it remains partial offload, but with at least 90% on the GPU the table shows Runs well. Q2_K fits fully and the table shows Runs great, but it belongs to the Heavy loss group. CanRun suggests a Heavy loss quant only when every other quant is rated Won't run; the better first move is one level down within Good balance, from Q4_K_M to IQ4_XS. For a closer comparison of the levels, see <GuideLink slug="gguf-quantization" />.
+
+More VRAM lets you move up in quality instead, at a cost: a bigger file is slower per token and leaves less room for context, so CanRun does not suggest it on its own. Qwen3 14B at Q8_0 needs <Num kind="needGB" model="qwen3-14b" quant="Q8_0" />, more than the <Num kind="usableGB" gpu="rtx-5060-ti-16gb" /> of a 16GB card but inside the <Num kind="usableGB" gpu="rtx-3090" /> of a 24GB card, where in CanRun's calculation it stays fully on the GPU.
+
+### Context length: the KV cache grows
+
+In a model with full attention on every layer, such as Llama 3.1 8B, Qwen3 14B, Qwen3 32B and Qwen3 30B-A3B, the KV cache grows in step with the context: double the context, double the cache. Gemma 3 and gpt-oss mix in sliding-window layers that only see a short stretch of recent tokens (as the Gemma 3 technical report and the gpt-oss configuration files describe), so their cache stays much smaller. At 32k with an f16 cache, Llama 3.1 8B needs <Num kind="kvGB" model="llama-3.1-8b" ctx="32768" /> for the cache alone, gpt-oss-20b only <Num kind="kvGB" model="gpt-oss-20b" ctx="32768" />.
+
+<KvPerTokenTable models="llama-3.1-8b,gemma-3-12b,qwen3-14b,gpt-oss-20b,qwen3-30b-a3b-2507,qwen3-32b,gpt-oss-120b" />
+
+Qwen3 14B and Qwen3 32B support <Num kind="maxContext" model="qwen3-14b" /> natively, so their 128k column shows a dash. The context table for Qwen3 14B on a 12GB card shows where the line falls; every cell is calibrated.
+
+<CtxTable model="qwen3-14b" gpu="rtx-3060-12gb" />
+
+At 16k with an f16 KV cache, Qwen3 14B needs <Num kind="needGB" model="qwen3-14b" ctx="16384" />, over the <Num kind="usableGB" gpu="rtx-3060-12gb" /> the card can use, so part of the model moves to system RAM. A q8_0 (8-bit) KV cache brings 16k back onto the GPU, at <Num kind="needGB" model="qwen3-14b" ctx="16384" kv="q8_0" />, with little margin. At 32k only a q4_0 (4-bit) cache keeps it on the GPU, at <Num kind="needGB" model="qwen3-14b" ctx="32768" kv="q4_0" /> with very little margin; in both cases confirm 100% GPU in `ollama ps`. The 32k f16 and q8_0 cells are partial offload; the table gives each cell's verdict.
+
+Ollama adds its own default. <RuntimeFact id="ollama-default-ctx" />. So 8GB to 16GB cards start at 4k and 24GB and 32GB cards at 32k, while CanRun's verdicts use 8k. <RuntimeFact id="ollama-kv-cache-type" />. The Ollama FAQ puts q8_0 at about half and q4_0 at about a quarter of f16; CanRun's tables use about 54% and 29%. Parallel requests multiply context memory (`OLLAMA_NUM_PARALLEL`); the tables assume one slot. For the settings, see <GuideLink slug="ollama-context-length" /> and <GuideLink slug="kv-cache-context" />.
+
+### Where to go next
+
+- <GuideLink slug="kv-cache-context" />: how the KV cache works and what q8_0 and q4_0 save.
+- <GuideLink slug="gguf-quantization" />: quant levels, file sizes and quality groups.
+- <GuideLink slug="ollama-context-length" />: Ollama's default context and how to change it.
+- <GuideLink slug="mac-local-llm" />: the same questions for unified memory.
+- Card and model pages, such as the <HubLink gpu="rtx-4060" />, the <HubLink gpu="rtx-3090" /> and <HubLink model="qwen3-14b" />, list every combination.
+
+## How sure are these numbers?
+
+The memory figures are calculated by formula from real GGUF file sizes, each model's published configuration and the compute buffer. Where a real file size is missing, CanRun falls back to a weight-size formula, which matched eleven real GGUF files with a mean error of 0.7%. CanRun's KV formulas matched the published values on seven architectures.
+
+The speeds are estimates with a band and a label. Measured means a public benchmark for that card, model and quant. Calibrated means ±12% for dense models fully on an NVIDIA or AMD card and ±20% for MoE models, partial offload and other hardware. Theoretical means ±30%, for setups no measurement backs yet; for MoE experts in system RAM these estimates are likely conservative. Against 12 public measurements, the speed formula has a mean error of 6.3% and a maximum of 17.1%.
+
+In the grid, about half the cells are calibrated and several are measured; the cells with MoE experts in system RAM, including the 96GB hint for gpt-oss-120b, are theoretical.
+
+Below is one public measurement, for gpt-oss-20b on the <HubLink gpu="rtx-5060-ti-16gb" />, from llama.cpp's gpt-oss guide thread (llama-bench, llama.cpp's benchmark tool, at a 2k context; not a CanRun run), next to CanRun's own 8k estimate band.
+
+<Measured model="gpt-oss-20b" gpu="rtx-5060-ti-16gb" />
+
+All of this assumes Windows with the card driving the display, 32GB of DDR5-5600 dual-channel system RAM, an 8k context, an f16 KV cache, one model loaded, one request slot and a llama.cpp-class runtime. Ollama and llama.cpp make their own estimates, so on your PC the PROCESSOR column of `ollama ps` is the ground truth: 100% GPU, or a CPU/GPU split.
+
+Verdict names in the text of this guide refer to the 8k, f16 KV baseline; for other contexts and quants, read the tables. Models CanRun tags as reasoning models, such as gpt-oss, Phi-4 and the DeepSeek R1 distills, face 1.5× stricter speed thresholds, which the legend does not show. The thresholds:
+
+<Threshold />
+
+## FAQ
+
+### Is 8GB of VRAM enough to run a local LLM?
+
+Yes, for 8B-class models at Q4_K_M with an 8k context. Llama 3.1 8B needs <Num kind="needGB" model="llama-3.1-8b" /> against the <Num kind="usableGB" gpu="rtx-4060" /> an 8GB card can use, and it Runs great on the RTX 4060;<Expect model="llama-3.1-8b" gpu="rtx-4060" verdict="S" /> the margin is small, so check `ollama ps`. At Q4_K_M, the 12B to 14B dense models in the catalog do not fit fully: Qwen3 14B needs <Num kind="needGB" model="qwen3-14b" />, so part of it runs from system RAM and it Runs slowly.<Expect model="qwen3-14b" gpu="rtx-4060" verdict="B" /> Longer context makes it tighter: at 16k with an f16 KV cache, Llama 3.1 8B needs <Num kind="needGB" model="llama-3.1-8b" ctx="16384" />, already over, and a q8_0 (8-bit) KV cache or a shorter context keeps it on the GPU.
+
+### How do I work out how much VRAM a model needs?
+
+Add the GGUF file size at your quant, the KV cache for your context and a small compute buffer, then compare the total with the VRAM your card can use: the number on the box minus what the OS keeps for the display. At Q4_K_M a file in gigabytes is about three-fifths of the parameter count in billions, at Q8_0 roughly one gigabyte per billion; the real file size is better still. For Qwen3 14B, a <Num kind="fileGB" model="qwen3-14b" /> file plus <Num kind="kvGB" model="qwen3-14b" /> of KV cache at 8k, plus the buffer, comes to <Num kind="needGB" model="qwen3-14b" />.
+
+### Does a longer context need more VRAM?
+
+Yes. The KV cache stores every token in the context, so for models with full attention on every layer, doubling the context doubles the cache. How much depends on the architecture: at 32k with an f16 cache it is <Num kind="kvGB" model="llama-3.1-8b" ctx="32768" /> for Llama 3.1 8B but <Num kind="kvGB" model="gpt-oss-20b" ctx="32768" /> for gpt-oss-20b, whose sliding-window layers keep only recent tokens. Mind the runtime default as well: <RuntimeFact id="ollama-default-ctx" />. A q8_0 or q4_0 (8-bit or 4-bit) KV cache shrinks it; see <GuideLink slug="kv-cache-context" />.
+
+### Do MoE models like gpt-oss-20b or Qwen3 30B-A3B need less VRAM than dense models of the same size?
+
+Not to fit. The whole file has to be in memory; the small number of active parameters reduces the work per token, not the file size. gpt-oss-20b needs <Num kind="needGB" model="gpt-oss-20b" /> at 8k, so it fits fully on a 16GB card such as the RTX 5060 Ti 16GB and Runs great there,<Expect model="gpt-oss-20b" gpu="rtx-5060-ti-16gb" verdict="S" /> in line with its model card. What MoE does allow is keeping the expert weights in system RAM (llama.cpp's `--cpu-moe`); CanRun marks that setup's speed as a theoretical estimate for now.
+
+### Can system RAM make up for too little VRAM?
+
+Partly. Runtimes put whatever does not fit into system RAM, so the model still runs, but slower, and for dense models the drop is steep: Qwen3 14B on an 8GB RTX 4060 Runs slowly.<Expect model="qwen3-14b" gpu="rtx-4060" verdict="B" /> For large MoE models, system RAM itself becomes the limit. The gpt-oss-120b file is <Num kind="fileGB" model="gpt-oss-120b" />, and with 32GB of RAM it is rated Won't run even on the 32GB RTX 5090;<Expect model="gpt-oss-120b" gpu="rtx-5090" verdict="F" /> in CanRun's calculation it needs 96GB of RAM, and 64GB is not enough. `ollama ps` or the llama.cpp log shows what your runtime did.
+
+## Sources
+
+- [llama.cpp: quantize README](https://github.com/ggml-org/llama.cpp/blob/master/tools/quantize/README.md): bits per weight and file sizes for Q4_K_M, IQ4_XS, Q8_0 and other quants of Llama 3.1 8B, the basis of the file-size rule of thumb.
+- [llama.cpp: server README](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md): `-ngl`/`--n-gpu-layers`, `--cpu-moe` (all MoE weights on the CPU), `--n-cpu-moe N` (MoE weights of the first N layers on the CPU), `-c`/`--ctx-size` and `--cache-type-k` (f16 by default, q8_0, q4_0).
+- [Ollama docs: context length](https://docs.ollama.com/context-length): the default context by VRAM tier, the advice to avoid offloading to the CPU, and checking with `ollama ps`.
+- [Ollama FAQ](https://docs.ollama.com/faq): the PROCESSOR column of `ollama ps`, KV cache quantization (q8_0 about half and q4_0 about a quarter of f16, with flash attention), and memory scaling with `OLLAMA_NUM_PARALLEL`.
+- [gpt-oss-20b model card](https://huggingface.co/openai/gpt-oss-20b): total and active parameters, MoE weights in MXFP4, runs within 16GB of memory.
+- [gpt-oss-120b model card](https://huggingface.co/openai/gpt-oss-120b): total and active parameters, MXFP4, fits a single 80GB GPU.
+- [gpt-oss-20b configuration](https://huggingface.co/openai/gpt-oss-20b/blob/main/config.json) and [gpt-oss-120b configuration](https://huggingface.co/openai/gpt-oss-120b/blob/main/config.json): `layer_types` alternating sliding-window and full attention, with a short `sliding_window`.
+- [Qwen3-30B-A3B-Instruct-2507 model card](https://huggingface.co/Qwen/Qwen3-30B-A3B-Instruct-2507): total and activated parameters, 128 experts with 8 activated, 48 layers, native context.
+- [Qwen3-14B model card](https://huggingface.co/Qwen/Qwen3-14B): parameters, layers, KV heads and native context, with the YaRN extension.
+- [Qwen3-32B model card](https://huggingface.co/Qwen/Qwen3-32B): parameters, layers, KV heads and native context.
+- [Llama 3.1 8B Instruct model card](https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct): parameters, 128k context, grouped-query attention.
+- [Llama 3.3 70B Instruct model card](https://huggingface.co/meta-llama/Llama-3.3-70B-Instruct): parameters and 128k context, used for the 70B example in the 32GB section.
+- [Gemma 3 12B model card](https://huggingface.co/google/gemma-3-12b-it): 128k input context (downloading the files requires accepting Google's license; the card text is public).
+- [Gemma 3 Technical Report](https://arxiv.org/abs/2503.19786): more local than global attention layers with a short local span, to limit KV cache growth at long context.
+- [llama.cpp: guide to running gpt-oss](https://github.com/ggml-org/llama.cpp/discussions/15396): llama-bench results on RTX cards, the source of the measured gpt-oss-20b point on the RTX 5060 Ti 16GB.

@@ -71,7 +71,7 @@
 - GPU 허브 페이지(`/gpu/{slug}`), 모델 허브(`/model/{slug}`), 콤보 페이지 생성(카탈로그 전 조합 — 인덱싱은 배치 게이트, `04` §3)
 - en/ko 전체 i18n(라우팅·문자열·SEO 태그), 다크모드
 - 공유 카드(빌드 타임 og:image, 상위 페이지), 사이트맵 자동 생성, JSON-LD
-- 에디토리얼 섹션 `/guides/` (MDX, 출시 시 en 10편 + ko 10편)
+- 에디토리얼 섹션 `/guides/` (MDX, 출시 시 6쌍 = en 6 + ko 6, 4주 내 20편 — `docs/06` P1-4, PROGRESS §4 D37)
 - "이번 주 신모델" 박스(데이터 JSON 갱신으로 자동)
 
 ### Phase 2 — 커뮤니티 실측 (백엔드 추가)
@@ -94,7 +94,7 @@
 | GPU 허브 | `/gpu/{slug}` | SSG from JSON | 카탈로그 전체 (현 54 — CPU 프로필 포함) |
 | 모델 허브 | `/model/{slug}` | SSG | 카탈로그 전체 (현 29) |
 | 콤보 | `/can-i-run/{model}/on/{gpu}` | SSG | 카탈로그 전 조합(현 1,566 = GPU 54 × 모델 29) 생성 — 인덱싱은 `data/publish.json` 배치 게이트(`04` §3, P1-2) |
-| 가이드 | `/guides/{slug}` | MDX | 10 |
+| 가이드 | `/guides/{slug}` (+ 목차 `/guides`) | MDX(`apps/web/content/{en,ko}/guides`) + 서버 데이터 컴포넌트 | 출시 6쌍 |
 | 방법론 | `/methodology` | 정적 | 1 |
 | 벤치마크(P2) | `/benchmarks` | 동적 | — |
 | about/privacy/contact | 정적 | AdSense 필수 | 3 |

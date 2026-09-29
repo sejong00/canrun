@@ -1,0 +1,160 @@
+In CanRun's calculation, a Mac's GPU can use about 70% of its unified memory, so a 16GB Mac runs Llama 3.1 8B<Expect model="llama-3.1-8b" gpu="apple-m4" fits="true" /> and Gemma 3 12B at Q4_K_M fully on the GPU.<Expect model="gemma-3-12b" gpu="apple-m4" fits="true" /> To keep gpt-oss-20b on the GPU, you need at least the 24GB configuration.<Expect model="gpt-oss-20b" gpu="apple-m4" fits="true" /> Among M4 and M5 Macs, gpt-oss-120b needs a 128GB M4 Max or M5 Max with the 40-core GPU,<Expect model="gpt-oss-120b" gpu="apple-m4-max-40c" fits="true" /> and no 64GB Mac holds it.<Expect model="gpt-oss-120b" gpu="apple-m4-pro" fits="false" /> Memory size decides what fits on the GPU; the chip's memory bandwidth decides how fast it runs there.
+
+## How much unified memory the GPU can use
+
+A Mac has no separate graphics memory: the CPU and GPU share one pool, unified memory, and macOS limits how much of it the GPU may take. Apple's Metal documentation reports a related value, `recommendedMaxWorkingSetSize`: an approximation of how much memory the GPU can allocate without affecting performance. CanRun uses one figure: about 70% of unified memory is usable by the GPU.
+
+Take a 16GB M4. Qwen3 14B at Q4_K_M, the 4-bit quant CanRun uses as its baseline, needs <Num kind="needGB" model="qwen3-14b" /> at an 8k context with an f16 (unquantized 16-bit) KV cache. That covers the model file, the KV cache (the memory holding the conversation so far) and a compute buffer, the runtime's working memory.
+
+<MemoryBreakdown model="qwen3-14b" gpu="apple-m4" />
+
+The bar shows the 16GB configuration (its caption names only the chip); its last segment is the memory the GPU cannot use. The need sits just inside about 70% of 16GB, so the model fits with little margin — check `ollama ps` for 100% GPU. At the 8k baseline, <ComboLink model="qwen3-14b" gpu="apple-m4" /> Runs slowly.<Expect model="qwen3-14b" gpu="apple-m4" verdict="B" />
+
+Parameter count alone does not decide whether a model fits. <HubLink model="phi-4" /> has slightly fewer parameters than Qwen3 14B, <Num kind="params" model="phi-4" /> against <Num kind="params" model="qwen3-14b" />, but its KV cache is larger, <Num kind="kvGB" model="phi-4" /> against <Num kind="kvGB" model="qwen3-14b" />, so at Q4_K_M and 8k it needs <Num kind="needGB" model="phi-4" />, just over the GPU share of a 16GB M4. CanRun does not model a GPU/CPU split on a Mac, so it moves the model off the GPU entirely: CPU-only, a theoretical estimate capped at Runs slowly.<Expect model="phi-4" gpu="apple-m4" verdict="B" /> Ollama itself may split the layers instead; PROCESSOR in `ollama ps` shows what it did.
+
+The share for every memory size of six chips:
+
+<UnifiedTierTable gpus="apple-m4,apple-m5,apple-m4-pro,apple-m5-pro,apple-m4-max-40c,apple-m5-max-40c" />
+
+Compare a model's need with the "Usable by the GPU" column, not the memory size: a 16GB Mac gives its GPU about as much as a <HubLink gpu="rtx-3060-12gb" /> can use on Windows, <Num kind="usableGB" gpu="rtx-3060-12gb" />. The verdict columns count catalog models per verdict; the <HubLink gpu="apple-m4" /> page and the other chip pages list them.
+
+### When macOS keeps back more or less
+
+The 70% figure is CanRun's single approximation, not a macOS rule. According to code quoted in llama.cpp discussion #2182, macOS keeps back about a third of unified memory on Macs with up to 32GB and a quarter on larger ones. Apple's memory sizes are binary, so a 16GB Mac holds about 7% more bytes than the 16 decimal GB CanRun counts. Measured that way, the default gives the GPU slightly more than CanRun's figure on 16GB to 32GB Macs and noticeably more on larger ones, so CanRun leans conservative. Other open apps still take memory from the same pool, so check `ollama ps`.
+
+The same discussion describes raising the limit in macOS Terminal with `sudo sysctl iogpu.wired_limit_mb=` plus a value in megabytes; it resets at restart unless added to `/etc/sysctl.conf`, and participants warn that leaving macOS too little memory causes heavy swapping. CanRun's tables assume the default limit.
+
+## Which Mac runs which model
+
+The table lists the six models on CanRun's Mac grid at 8k with an f16 KV cache, each at its default quant: Q4_K_M, or MXFP4, the 4-bit format the gpt-oss models ship in.
+
+<ModelMemoryTable models="llama-3.1-8b,gemma-3-12b,qwen3-14b,gpt-oss-20b,qwen3-30b-a3b-2507,gpt-oss-120b" ctx="8192" />
+
+Compare each total with the "Usable by the GPU" column above. In the grid, each Mac cell names the smallest memory size ("with N GB") that reaches the highest verdict that chip gets for the model, and the row header lists every size. A Won't run cell names the largest size, meaning even that one does not hold the model.
+
+<ComboGrid grid="apple" />
+
+OpenAI's gpt-oss-20b needs <Num kind="needGB" model="gpt-oss-20b" /> at 8k, and its MXFP4 file alone, <Num kind="fileGB" model="gpt-oss-20b" />, is larger than a 16GB Mac's GPU share, so 24GB is the smallest configuration that holds it. With 24GB, <ComboLink model="gpt-oss-20b" gpu="apple-m4" /> Runs well,<Expect model="gpt-oss-20b" gpu="apple-m4" verdict="A" /> and on the 24GB M4 Pro and M5 Pro it Runs great.<Expect model="gpt-oss-20b" gpu="apple-m4-pro" verdict="S" /><Expect model="gpt-oss-20b" gpu="apple-m5-pro" verdict="S" /> The model card says it runs within 16GB of memory; a 16GB Mac gives its GPU only part of that, so in CanRun's calculation the file alone does not fit.
+
+Qwen3 30B-A3B (2507) is a mixture-of-experts (MoE) model: each token uses only about 3B of its parameters, but all of them must sit in memory, <Num kind="needGB" model="qwen3-30b-a3b-2507" /> at 8k. It Runs well on the 32GB M4<Expect model="qwen3-30b-a3b-2507" gpu="apple-m4" verdict="A" /> and Runs great on the 48GB M4 Pro and M5 Pro.<Expect model="qwen3-30b-a3b-2507" gpu="apple-m4-pro" verdict="S" /><Expect model="qwen3-30b-a3b-2507" gpu="apple-m5-pro" verdict="S" /> At 24GB it exceeds the GPU share, so CanRun moves it to CPU-only, a theoretical estimate capped at Runs slowly; the grid omits that cell, but the chip pages show it. Our page for <ComboLink model="qwen3-30b-a3b-2507" gpu="apple-m4-pro" /> covers the 48GB configuration.
+
+The largest model here needs <Num kind="needGB" model="gpt-oss-120b" />, more than the <Num kind="usableGB" gpu="apple-m4-pro" /> the GPU of a 64GB Mac can use, so <ComboLink model="gpt-oss-120b" gpu="apple-m4-pro" /> Won't run,<Expect model="gpt-oss-120b" gpu="apple-m4-pro" verdict="F" /> and neither will the 64GB M5 Pro.<Expect model="gpt-oss-120b" gpu="apple-m5-pro" verdict="F" /> On the 128GB M4 Max with the 40-core GPU, the GPU can use <Num kind="usableGB" gpu="apple-m4-max-40c" />, and the model Runs great fully on the GPU,<Expect model="gpt-oss-120b" gpu="apple-m4-max-40c" verdict="S" /> as it does on the 128GB M5 Max with the 40-core GPU, not in the grid.<Expect model="gpt-oss-120b" gpu="apple-m5-max-40c" verdict="S" />
+
+Each chip's page covers every memory size: <HubLink gpu="apple-m4-pro" />, <HubLink gpu="apple-m5-pro" />, <HubLink gpu="apple-m4-max-40c" /> and <HubLink gpu="apple-m5-max-40c" />.
+
+## Why memory bandwidth, not memory size, sets the speed
+
+Each generated token reads the model's active weights and the whole KV cache from memory, so CanRun estimates generation speed as efficiency times memory bandwidth, divided by the bytes read per token. The public llama.cpp thread on Apple silicon performance (#4167) tracks the same relationship.
+
+Bandwidth varies widely: the M4 has <Num kind="bandwidth" gpu="apple-m4" />, the M5 <Num kind="bandwidth" gpu="apple-m5" />, the M4 Pro <Num kind="bandwidth" gpu="apple-m4-pro" /> and the M5 Pro <Num kind="bandwidth" gpu="apple-m5-pro" />, and with the 40-core GPU the M4 Max has <Num kind="bandwidth" gpu="apple-m4-max-40c" /> and the M5 Max <Num kind="bandwidth" gpu="apple-m5-max-40c" />. The M4 Pro has more than twice the M4's bandwidth, and the 40-core M4 Max twice the M4 Pro's.
+
+A faster chip can lift the verdict for the same model. <ComboLink model="llama-3.1-8b" gpu="apple-m4-pro" /> Runs great,<Expect model="llama-3.1-8b" gpu="apple-m4-pro" verdict="S" /> while the same model Runs well on the base M4.<Expect model="llama-3.1-8b" gpu="apple-m4" verdict="A" />
+
+Qwen3 14B Runs slowly on a 16GB <HubLink gpu="apple-m4" /><Expect model="qwen3-14b" gpu="apple-m4" verdict="B" /> but Runs well on a 16GB <HubLink gpu="apple-m5" />, with little margin on both (check `ollama ps`),<Expect model="qwen3-14b" gpu="apple-m5" verdict="A" /> and it also Runs well on the <HubLink gpu="apple-m4-pro" />.<Expect model="qwen3-14b" gpu="apple-m4-pro" verdict="A" />
+
+In CanRun's calculation, once a model fits fully on the GPU, every memory size of that chip gets the same estimate. More memory changes which models and contexts fit on the GPU, not the speed of a model already there, and Apple lists a single bandwidth for the M4 Pro at every memory size.
+
+The exception: the M4 Max and M5 Max each come with a 32-core or a 40-core GPU of different bandwidth, <Num kind="bandwidth" gpu="apple-m4-max-32c" /> against <Num kind="bandwidth" gpu="apple-m4-max-40c" /> for the M4 Max and <Num kind="bandwidth" gpu="apple-m5-max-32c" /> against <Num kind="bandwidth" gpu="apple-m5-max-40c" /> for the M5 Max. Apple sells the 36GB configuration only with the 32-core GPU; this guide uses the 40-core versions.
+
+### MoE and dense models on a Mac
+
+A dense model reads all of its weights for every token; an MoE model reads only the parameters it activates for that token. On a 48GB M4 Pro, Qwen3 30B-A3B (2507) Runs great,<Expect model="qwen3-30b-a3b-2507" gpu="apple-m4-pro" verdict="S" /> while the dense <HubLink model="qwen3-32b" />, which needs a similar <Num kind="needGB" model="qwen3-32b" /> against <Num kind="needGB" model="qwen3-30b-a3b-2507" />, also fits fully but Runs slowly.<Expect model="qwen3-32b" gpu="apple-m4-pro" verdict="B" /> At 24GB on the M4 Pro, gpt-oss-20b Runs great<Expect model="gpt-oss-20b" gpu="apple-m4-pro" verdict="S" /> and the dense Qwen3 14B Runs well,<Expect model="qwen3-14b" gpu="apple-m4-pro" verdict="A" /> even though gpt-oss-20b has the larger file and, as a reasoning model, faces speed thresholds 1.5 times stricter.
+
+### A newer generation at the same tier
+
+In the grid, the M5 Pro gets the same verdicts as the M4 Pro for all six models, but not for every model in the catalog. Qwen3 32B at 48GB Runs slowly on the M4 Pro<Expect model="qwen3-32b" gpu="apple-m4-pro" verdict="B" /> and Runs well on the M5 Pro.<Expect model="qwen3-32b" gpu="apple-m5-pro" verdict="A" /> Check your model on the chip's page before comparing generations.
+
+## Longer contexts on a Mac
+
+The KV cache grows with the context and comes out of the same GPU share as the weights. A Mac has no second memory pool to spill into, so when the total passes the share, CanRun's only fallback is CPU-only.
+
+The table is <ComboLink model="llama-3.1-8b" gpu="apple-m4" /> at Q4_K_M in the 16GB configuration; the caption names only the chip. At 8k with an f16 KV cache it needs <Num kind="needGB" model="llama-3.1-8b" /> and Runs well,<Expect model="llama-3.1-8b" gpu="apple-m4" verdict="A" /> and 16k with f16 still fits with plenty of room.
+
+<CtxTable model="llama-3.1-8b" gpu="apple-m4" />
+
+At 32k with f16, the KV cache alone is <Num kind="kvGB" model="llama-3.1-8b" ctx="32768" />. The total still fits, but the cell drops a verdict level because the whole KV cache is read for every token; with a q8_0 (8-bit) KV cache, 32k shows no drop. At 64k with f16, the KV cache is <Num kind="kvGB" model="llama-3.1-8b" ctx="65536" /> and the cell does not fit at all, not even CPU-only. A q8_0 KV cache brings the 64k need down to <Num kind="needGB" model="llama-3.1-8b" ctx="65536" kv="q8_0" />, and both the q8_0 and q4_0 (4-bit) cells stay on the GPU, the q8_0 one with little margin — check `ollama ps`.
+
+At 128k only the q4_0 cell runs, and only CPU-only: a theoretical estimate (±30%), with `-ngl 0` (no layers on the GPU) in the combo page's command. CPU-only cells show weights plus KV cache without the compute buffer, so that figure looks as if it fits the GPU share; the buffer pushes it past. Don't compare CPU-only cells with GPU cells directly.
+
+Context costs differ by model. At 32k with f16, the KV cache of gpt-oss-20b is <Num kind="kvGB" model="gpt-oss-20b" ctx="32768" /> against <Num kind="kvGB" model="llama-3.1-8b" ctx="32768" /> for Llama 3.1 8B, because its sliding-window layers keep only recent tokens. For the mechanism, see <GuideLink slug="kv-cache-context" />.
+
+### Setting the context and KV cache type on a Mac
+
+Three ways to set the context in Ollama on a Mac:
+
+- **Ollama app:** the context length slider in Settings.
+- **Mac app, until the Mac restarts:** in macOS Terminal, run `launchctl setenv OLLAMA_CONTEXT_LENGTH 16384`, then restart the Ollama app. Run it again after each reboot.
+- **One-off server:** in macOS Terminal, with the app closed, run `OLLAMA_CONTEXT_LENGTH=16384 ollama serve`.
+
+For the KV cache type: <RuntimeFact id="ollama-kv-cache-type" />. In CanRun's tables, q8_0 and q4_0 take about 54% and 29% of the f16 size. With the Mac app, set both variables in macOS Terminal, then restart the app:
+
+```shell
+launchctl setenv OLLAMA_FLASH_ATTENTION 1
+launchctl setenv OLLAMA_KV_CACHE_TYPE q8_0
+```
+
+Like the context setting, these reset when the Mac restarts.
+
+llama.cpp's macOS builds use Metal, Apple's GPU interface, by default. In macOS Terminal, the command from our page for <ComboLink model="llama-3.1-8b" gpu="apple-m4" />, set to a 16k context, looks like this; for a q8_0 KV cache, add `--cache-type-k q8_0 --cache-type-v q8_0` alongside `-fa on`.
+
+```shell
+llama-server -hf bartowski/Meta-Llama-3.1-8B-Instruct-GGUF:Q4_K_M -c 16384 -ngl all -fa on
+```
+
+If you leave the context alone, <RuntimeFact id="ollama-default-ctx" />. We have not verified which tier a Mac lands in, so check CONTEXT in `ollama ps` while a model is loaded; PROCESSOR should read 100% GPU. For more on these settings, see <GuideLink slug="ollama-context-length" />.
+
+Where to go next:
+
+- <GuideLink slug="vram-requirements" />: the same memory arithmetic for graphics cards.
+- <GuideLink slug="gguf-quantization" />: how a smaller quant frees memory.
+
+## How sure are these numbers?
+
+Memory figures are calculated with a formula: real GGUF file sizes, KV cache sizes from each model's configuration, and a compute-buffer formula. The approximation is the GPU share: 70% stands in for macOS's default limit, which varies with memory size and sits at or above CanRun's figure (see the first section).
+
+Speeds on a Mac running fully on the GPU are calibrated estimates with a ±20% band unless a cell is labelled measured; the ±12% band applies only to dense models on NVIDIA and AMD cards. CPU-only cells on a Mac are theoretical (±30%), never checked against measurements.
+
+CanRun applies the same efficiency factors (one for dense models, one for MoE) to every base, Pro and Max chip, so its estimates rise in step with bandwidth. In the public llama.cpp Apple silicon thread, the M4 Max doubles the M4 Pro's bandwidth but lifts measured generation speed by clearly less than double, so Max-chip estimates may run high; read them with the band in mind.
+
+Not modelled: models for MLX, Apple's machine-learning framework (CanRun's estimates are for GGUF files, calibrated on llama.cpp results), a GPU/CPU layer split, other open apps' memory, laptop thermal limits, a raised GPU memory limit, and more than one model or request at a time.
+
+On your own Mac, `ollama ps` is the ground truth: SIZE, PROCESSOR (100% GPU) and CONTEXT. For llama.cpp, read the load log.
+
+Verdict names in this guide's text refer to the 8k context, f16 KV baseline. The thresholds:
+
+<Threshold />
+
+## FAQ
+
+### Is 16GB of unified memory enough for local LLMs?
+
+For 8B to 12B models at Q4_K_M, yes, in CanRun's calculation: Llama 3.1 8B and Gemma 3 12B fit fully on the GPU of a 16GB M4.<Expect model="llama-3.1-8b" gpu="apple-m4" fits="true" /><Expect model="gemma-3-12b" gpu="apple-m4" fits="true" /> Qwen3 14B fits with little margin,<Expect model="qwen3-14b" gpu="apple-m4" fits="true" /> Phi-4 does not fit on the GPU, and gpt-oss-20b needs 24GB to stay on the GPU. Longer contexts shrink the headroom, so check `ollama ps` for 100% GPU.
+
+### Can I let the GPU use more than about 70% of unified memory?
+
+Yes, with `sudo sysctl iogpu.wired_limit_mb=` as described in the first section, but leaving macOS too little memory causes heavy swapping. CanRun's tables assume the default limit and sit at or below it at every memory size; other open apps share the same memory, so close them and check `ollama ps`.
+
+### Does more unified memory make a model run faster?
+
+No, not once the model fits fully on the GPU. In CanRun's calculation, speed then depends on the chip's memory bandwidth, and every memory size of that chip gets the same estimate. More memory can still move a model from CPU-only onto the GPU, which lifts its verdict because CanRun caps CPU-only estimates at Runs slowly: Qwen3 30B-A3B (2507) on the M4 Pro goes from Runs slowly at 24GB to Runs great at 48GB.<Expect model="qwen3-30b-a3b-2507" gpu="apple-m4-pro" verdict="S" />
+
+### How does a Mac's unified memory compare with a graphics card's VRAM?
+
+In CanRun's calculation, a 16GB Mac's GPU gets about as much memory as a GeForce RTX 3060 12GB can use on Windows, though the card has about three times the base M4's memory bandwidth. Where Macs pull ahead is size: the 128GB M4 Max with the 40-core GPU runs gpt-oss-120b fully on the GPU,<Expect model="gpt-oss-120b" gpu="apple-m4-max-40c" fits="true" /> while no graphics card in CanRun's catalog has more than 32GB.
+
+## Sources
+
+- [llama.cpp discussion #2182: Adjust VRAM/RAM split on Apple Silicon](https://github.com/ggml-org/llama.cpp/discussions/2182): code keeping back about a third of unified memory on Macs with up to 32GB and a quarter on larger ones, `sudo sysctl iogpu.wired_limit_mb`, the reset at restart unless the setting is in `/etc/sysctl.conf`, and the warning about swapping. Also the source cited for CanRun's 70% figure.
+- [Apple Metal docs: recommendedMaxWorkingSetSize](https://developer.apple.com/documentation/metal/mtldevice/recommendedmaxworkingsetsize): an approximation of how much memory the GPU can allocate without affecting performance.
+- [llama.cpp discussion #4167: Performance of llama.cpp on Apple Silicon M-series](https://github.com/ggml-org/llama.cpp/discussions/4167): public generation-speed measurements by chip, with speed tracking bandwidth, less than proportionally at the top end. Source of CanRun's Apple efficiency data.
+- [llama.cpp build docs](https://github.com/ggml-org/llama.cpp/blob/master/docs/build.md): Metal enabled by default on macOS, running computation on the GPU; `--n-gpu-layers 0` disables GPU inference.
+- [llama.cpp README](https://github.com/ggml-org/llama.cpp): Apple silicon as a first-class target through ARM NEON, Accelerate and Metal.
+- [Ollama docs: context length](https://docs.ollama.com/context-length): default context tiers by GPU memory, the app slider, `OLLAMA_CONTEXT_LENGTH`, and the CONTEXT column in `ollama ps`.
+- [Ollama FAQ](https://docs.ollama.com/faq): setting environment variables on a Mac with `launchctl setenv` and restarting the app, the PROCESSOR column and its CPU/GPU split values, `OLLAMA_KV_CACHE_TYPE` and flash attention.
+- [Apple newsroom: M4 Pro and M4 Max](https://www.apple.com/newsroom/2024/10/apple-introduces-m4-pro-and-m4-max/): memory bandwidth of the M4, M4 Pro and M4 Max, and their maximum memory sizes.
+- [Apple tech specs: MacBook Pro 14-inch, M4 Pro or M4 Max, 2024](https://support.apple.com/en-us/121553): 36GB only with the 32-core GPU M4 Max, the 40-core version with 48GB, 64GB or 128GB, and the 410GB/s and 546GB/s bandwidth of the two versions.
+- [Apple newsroom: M5](https://www.apple.com/newsroom/2025/10/apple-unleashes-m5-the-next-big-leap-in-ai-performance-for-apple-silicon/): M5 unified memory bandwidth and maximum memory.
+- [Apple tech specs: MacBook Pro 16-inch, M5 Pro or M5 Max](https://support.apple.com/en-us/126319): M5 Pro bandwidth, the M5 Max with a 32-core GPU (36GB option) or a 40-core GPU (48GB, 64GB or 128GB), and the bandwidth of both M5 Max versions.
+- [gpt-oss-20b model card](https://huggingface.co/openai/gpt-oss-20b): total and active parameters of gpt-oss-20b and gpt-oss-120b, and the statement that gpt-oss-20b runs within 16GB of memory.
+- [Qwen3-30B-A3B-Instruct-2507 model card](https://huggingface.co/Qwen/Qwen3-30B-A3B-Instruct-2507): total and activated parameters, number of experts, native context.
+- [MLX](https://github.com/ml-explore/mlx): Apple's array framework for machine learning on Apple silicon, which CanRun does not model.

@@ -1,0 +1,170 @@
+받을 GGUF 파일은 Q4_K_M에서 시작하면 됩니다. `llama-server -hf`와 Hugging Face의 Ollama 연동이 양자화를 지정하지 않을 때 받는 파일이고, CanRun 판정의 기준도 Q4_K_M입니다. IQ4_XS는 대개 10분의 1가량 작으면서 같은 ‘균형’ 등급이고, Q8_0은 보통 1.7배쯤인 크기라 컨텍스트에 쓸 메모리까지 남을 때만 고를 만합니다. 예를 들어 <HubLink model="mistral-small-3.2-24b" />는 Q4_K_M·8k에서 <Num kind="needGB" model="mistral-small-3.2-24b" />가 필요해, RTX 5060 Ti 16GB에서 쓸 수 있는 <Num kind="usableGB" gpu="rtx-5060-ti-16gb" />를 넘고 일부가 시스템 RAM으로 갑니다(판정은 원활<Expect model="mistral-small-3.2-24b" gpu="rtx-5060-ti-16gb" verdict="A" />). IQ4_XS면 <Num kind="needGB" model="mistral-small-3.2-24b" quant="IQ4_XS" />라 CanRun 계산으로는 아슬아슬하게 GPU 안에 들어갑니다(`ollama ps`로 확인).
+
+## 양자화 이름 읽는 법 — Q4_K_M·IQ4_XS·Q8_0
+
+GGUF 파일은 모델 가중치를 낮은 정밀도로 저장하고, 파일 이름 끝의 양자화 이름이 그 방식을 알려 줍니다(종류는 Hugging Face Hub의 GGUF 문서 참고). 아래 표는 <HubLink model="qwen3-14b" />의 실제 GGUF 파일(unsloth 저장소)입니다.
+
+<QuantSizeTable model="qwen3-14b" />
+
+### 이름의 각 부분
+
+- **K-quant(Q4_K_M 등)**: 가중치를 작은 블록으로 나눠 블록마다 스케일을 두고, 이 블록들을 슈퍼블록으로 묶습니다(llama.cpp k-quant PR, Hugging Face GGUF 문서). 앞의 숫자는 명목 비트 수입니다.
+- **`_S`·`_M`·`_L`**: 크기가 다른 조합입니다. k-quant PR은 Q3_K_M·Q4_K_M이 일부 텐서(`attention.wv`·`feed_forward.w2` 등)에 더 높은 비트 타입을 쓴다고 설명합니다(정확히 어느 텐서인지는 이후 PR에서 바뀌었습니다).
+- **IQ4_XS**: i-quant 계열로, 이 형식을 추가한 PR에 따르면 IQ4_NL을 가중치 256개짜리 슈퍼블록에 담고 블록 스케일을 6비트로 둔 형식입니다. IQ4 안에서는 XS가 IQ4_NL보다 작은 변형이고, i-quant 가중치는 슈퍼블록 스케일과 중요도 행렬(importance matrix)로 구합니다(Hugging Face 문서).
+- **Q8_0**: 가중치 32개 블록마다 스케일 하나를 두는 단순한 8비트 양자화입니다.
+- **MXFP4**: 4비트 마이크로스케일링 블록 부동소수점 형식입니다. gpt-oss 모델은 MoE 가중치를 MXFP4로 둔 채 후학습됐고(gpt-oss-20b 모델 카드), CanRun 데이터의 gpt-oss 파일도 MXFP4뿐입니다. <HubLink model="gpt-oss-20b" /> 파일은 <Num kind="fileGB" model="gpt-oss-20b" />이고, 공개된 정밀도 그대로라 ‘준무손실’로 분류합니다.
+- **UD- 접두사**(예: UD-Q2_K_XL, 품질 손실 큼): 층마다 양자화 타입을 따로 고르는 Unsloth Dynamic 양자화입니다(Unsloth 문서). 모델마다 크기가 달라서 가중치당 비트로 환산하지 않고 실제 파일 크기만 씁니다.
+
+### 단계별 파일 크기
+
+표의 ‘가중치당 비트’ 열은 llama.cpp quantize README가 Llama 3.1 8B 파일에서 잰 값이라, 모델마다 실제 파일과 조금씩 다릅니다. 파일 크기(GB)는 대략 ‘파라미터 수(십억) × 가중치당 비트 ÷ 8’이지만, 네이티브 형식인 MXFP4와 UD 파일에는 이 어림을 쓰지 않습니다.
+
+Qwen3 14B 파일은 Q4_K_M <Num kind="fileGB" model="qwen3-14b" />, IQ4_XS <Num kind="fileGB" model="qwen3-14b" quant="IQ4_XS" />, Q8_0 <Num kind="fileGB" model="qwen3-14b" quant="Q8_0" />, Q2_K(품질 손실 큼) <Num kind="fileGB" model="qwen3-14b" quant="Q2_K" />입니다. Q4_K_M을 기준으로 IQ4_XS는 10분의 1가량 작고, Q8_0은 1.7배쯤이며, Q2_K는 3분의 2 정도입니다. 이 비율은 Qwen3 14B·Mistral Small 3.2 24B·Gemma 3 12B에서 확인한 것이고, Kanana 1.5 15.7B-A3B처럼 비율이 다른 모델도 있습니다.
+
+### 기본값과 원하는 파일 받기
+
+`llama-server -hf`는 양자화를 지정하지 않으면 Q4_K_M을, 그 파일이 없으면 저장소의 첫 번째 파일을 받습니다(llama.cpp 서버 README). Hugging Face의 Ollama 연동도 저장소에 Q4_K_M이 있으면 그 파일을 씁니다. CanRun 판정의 기준도 Q4_K_M(gpt-oss는 MXFP4)입니다.
+
+다른 파일은 `ollama run hf.co/{user}/{repo}:IQ4_XS`, `llama-server -hf {user}/{repo}:IQ4_XS`처럼 양자화를 태그로 붙여 받습니다. 태그는 대소문자를 가리지 않고, 두 명령 모두 환경 변수가 필요 없어 Windows PowerShell에서도 그대로 실행됩니다.
+
+## 품질 등급 네 가지와 2비트 양자화
+
+CanRun은 양자화 종류마다 품질 등급을 붙입니다.
+
+- **준무손실**: Q8_0, Q6_K, Q5_K_M, 네이티브 MXFP4, F16
+- **균형**: Q4_K_M, IQ4_XS
+- **손실 체감**: Q3_K_M, IQ3_XS (3비트)
+- **손실 큼**: Q2_K, IQ2_M, UD-Q2_K_XL, UD-IQ2_M (2비트)
+
+이 등급은 양자화 종류만 보고 정한 CanRun의 기준이며, 모델마다 품질을 잰 결과가 아닙니다. 이 가이드의 표에 나오는 모델에는 3비트(손실 체감) 파일이 없습니다.
+
+### 순서의 근거
+
+llama.cpp quantize README는 양자화가 정확도를 떨어뜨릴 수 있고, 그 손실을 퍼플렉서티(perplexity)나 KL 발산으로 재며, 중요도 행렬(imatrix)로 줄일 수 있다고 설명합니다. 2023년 k-quant PR은 LLaMA 7B~65B에서 퍼플렉서티가 양자화된 파일 크기에 따라 꽤 매끄럽게 변하고, 6비트의 퍼플렉서티가 fp16과 거의 같다고 보고했습니다. 다만 같은 PR에서 상대 양자화 오차는 모델이 커질수록 계속 줄지 않고, 30B·65B에서 다시 7B 수준으로 돌아왔습니다. 큰 모델이라고 2비트를 잘 견딘다고 가정하지 않는 이유입니다.
+
+### 2비트가 있는 이유
+
+2비트 양자화는 주로 큰 모델 때문에 있습니다. <HubLink model="llama-3.3-70b" />는 Q4_K_M 파일이 <Num kind="fileGB" model="llama-3.3-70b" />이고, 2비트인 IQ2_M(품질 손실 큼)도 <Num kind="fileGB" model="llama-3.3-70b" quant="IQ2_M" />로 24GB 카드가 쓸 수 있는 <Num kind="usableGB" gpu="rtx-3090" />보다 큽니다.
+
+<QuantSizeTable model="llama-3.3-70b" />
+
+이 모델은 기본 양자화 Q4_K_M 기준으로 <HubLink gpu="rtx-3090" />에서는 불가입니다<Expect model="llama-3.3-70b" gpu="rtx-3090" verdict="F" />. 메모리에 안 들어가서가 아니라 너무 느려서입니다. 필요량 <Num kind="needGB" model="llama-3.3-70b" />가 사용 가능 메모리의 두 배쯤이라, 모델 가중치의 절반가량이 시스템 RAM에 놓입니다.
+
+### CanRun이 양자화를 제안하는 규칙
+
+- 판정은 기본 양자화(Q4_K_M, gpt-oss는 MXFP4)로 냅니다.
+- 더 작은 양자화는 판정이 올라갈 때만 제안합니다.
+- 2비트는 2비트가 아닌 파일이 모두 불가일 때만 추천하고, 그 밖에는 추천 양자화보다 판정이 높을 때만 ‘최후 수단’으로 따로 보여 줍니다. 어느 쪽이든 ‘품질 손실 큼’을 붙입니다.
+- 판정이 같으면 더 큰 양자화를 권하지 않습니다(속도가 느려지고 컨텍스트에 쓸 메모리가 줄어듭니다).
+
+## 한 단계 낮추기 — RTX 5060 Ti 16GB·RTX 4060에서 달라지는 것
+
+Q4_K_M에서 IQ4_XS로 한 단계 낮춰 모델이 GPU에 모두 들어가는지는 공식으로 가늠할 수 있습니다. Q4_K_M 필요량이 사용 가능 메모리를 넘는 폭이 두 파일의 크기 차이(대개 Q4_K_M 파일의 10분의 1가량)보다 작으면 들어갑니다. 그보다 더 넘쳐도 GPU에 올라가는 가중치 비율이 90%를 넘기면 판정이 오를 수 있고(아래 Gemma 3 12B), 한참 넘치면 한 단계로는 부족합니다(아래 Qwen3 14B). 흔히 쓰는 16GB 카드와 8GB 카드로 하나씩 봅니다.
+
+### 16GB 카드: Mistral Small 3.2 24B
+
+<HubLink model="mistral-small-3.2-24b" />를 <HubLink gpu="rtx-5060-ti-16gb" />에 올리면 Q4_K_M·8k에서 <Num kind="needGB" model="mistral-small-3.2-24b" />가 필요해 사용 가능 메모리 <Num kind="usableGB" gpu="rtx-5060-ti-16gb" />를 넘습니다. 넘친 만큼 시스템 RAM으로 가는 부분 오프로드지만, 가중치의 90% 이상이 GPU에 올라가 기준 판정은 원활입니다<Expect model="mistral-small-3.2-24b" gpu="rtx-5060-ti-16gb" verdict="A" />. IQ4_XS는 <Num kind="needGB" model="mistral-small-3.2-24b" quant="IQ4_XS" />라 CanRun 계산으로는 아슬아슬하게 풀 GPU로 들어갑니다(`ollama ps`로 확인). 아래 표에서 IQ4_XS 행은 한 단계 높은 판정으로 계산되고(보정된 추정), Q8_0 행은 가중치 상당 부분이 시스템 RAM으로 넘어갑니다.
+
+<QuantLadder model="mistral-small-3.2-24b" gpu="rtx-5060-ti-16gb" />
+
+컨텍스트도 함께 봅니다. <RuntimeFact id="ollama-default-ctx" />. 그래서 16GB 카드에서 Ollama는 4k로 시작합니다. 16k로 늘리면 IQ4_XS도 <Num kind="needGB" model="mistral-small-3.2-24b" quant="IQ4_XS" ctx="16384" />가 필요해 사용 가능 메모리를 넘고, KV 캐시(컨텍스트를 담아 두는 메모리)를 q8_0으로 양자화하면 <Num kind="needGB" model="mistral-small-3.2-24b" quant="IQ4_XS" ctx="16384" kv="q8_0" />라 CanRun 계산으로는 아슬아슬하게 들어갑니다(`ollama ps`로 확인). KV 캐시 양자화는 가이드 ‘<GuideLink slug="kv-cache-context" />’에서 다룹니다.
+
+이 조합에서 CanRun이 보여 주는 실행 명령은 기본 양자화 Q4_K_M 기준이라, IQ4_XS를 쓰려면 태그를 직접 바꿉니다. CanRun은 기본 양자화가 ‘불가’일 때만 추천 양자화로 명령을 보여 줍니다.
+
+```
+ollama run hf.co/bartowski/mistralai_Mistral-Small-3.2-24B-Instruct-2506-GGUF:IQ4_XS
+```
+
+### 8GB 카드: Gemma 3 12B
+
+<ComboLink model="gemma-3-12b" gpu="rtx-4060" /> 조합은 Q4_K_M·8k에서 <Num kind="needGB" model="gemma-3-12b" />가 필요한데 사용 가능 메모리는 <Num kind="usableGB" gpu="rtx-4060" />입니다. 가중치 중 GPU에 올라가는 비율이 90%에 못 미쳐 기준 판정은 겨우 가능입니다<Expect model="gemma-3-12b" gpu="rtx-4060" verdict="B" />. IQ4_XS도 <Num kind="needGB" model="gemma-3-12b" quant="IQ4_XS" />로 사용 가능 메모리를 넘어 여전히 부분 오프로드지만, GPU에 올라가는 가중치 비율이 90%를 넘어서 아래 표의 IQ4_XS 행은 판정이 한 단계 올라갑니다. GPU 메모리에 다 들어가서 오르는 것은 아닙니다. Q2_K 행(<Num kind="needGB" model="gemma-3-12b" quant="Q2_K" />)은 GPU에 모두 들어가지만 품질 손실이 큰 2비트라, CanRun은 ‘품질 손실 큼’을 붙인 최후 수단으로만 보여 줍니다.
+
+<QuantLadder model="gemma-3-12b" gpu="rtx-4060" />
+
+### 한 단계로는 부족한 경우
+
+한 단계 낮추기가 늘 답은 아닙니다. <ComboLink model="qwen3-14b" gpu="rtx-4060" /> 조합은 기준 판정이 겨우 가능인데<Expect model="qwen3-14b" gpu="rtx-4060" verdict="B" />, IQ4_XS도 <Num kind="needGB" model="qwen3-14b" quant="IQ4_XS" />가 필요해 사용 가능 메모리 <Num kind="usableGB" gpu="rtx-4060" />를 한참 넘습니다. CanRun 계산으로는 한 단계 낮춰도 판정이 바뀌지 않습니다. 가장 작은 파일인 2비트 Q2_K(품질 손실 큼)도 <Num kind="needGB" model="qwen3-14b" quant="Q2_K" />로 사용 가능 메모리를 여전히 넘지만, 가중치의 90% 이상이 GPU에 올라가 판정이 오르므로 조합 페이지는 이 파일을 ‘품질 손실 큼’을 붙인 최후 수단으로 따로 보여 줍니다.
+
+MoE 모델은 따로 봐야 합니다. 한국 모델 <HubLink model="kanana-1.5-15.7b-a3b" />는 RTX 3060 12GB에서 Q4_K_M이면 <Num kind="needGB" model="kanana-1.5-15.7b-a3b" />로 사용 가능 메모리 <Num kind="usableGB" gpu="rtx-3060-12gb" />를 넘고, IQ4_XS면 <Num kind="needGB" model="kanana-1.5-15.7b-a3b" quant="IQ4_XS" />로 CanRun 계산으로는 그 안에 들어갑니다(여유는 크지 않습니다). 다만 이 조합의 Q4_K_M 칸이나 16GB 카드의 Qwen3 30B-A3B (2507)처럼 MoE 전문가를 시스템 RAM에 두는 칸은 이론 추정(±30%)이고 실제보다 느리게 나올 가능성이 커서, 여기서 생기는 판정 차이를 결론으로 삼지 않습니다.
+
+## Q8_0·Q6_K로 올릴 때 드는 비용
+
+준무손실 등급인 Q8_0·Q6_K는 파일이 큰 만큼 메모리를 더 쓰고, 추정 속도도 낮아집니다. <ComboLink model="qwen3-14b" gpu="rtx-5060-ti-16gb" /> 조합은 기본 양자화 Q4_K_M에서 판정이 쾌적입니다<Expect model="qwen3-14b" gpu="rtx-5060-ti-16gb" verdict="S" />. 같은 모델을 Q8_0으로 받으면 8k에서 <Num kind="needGB" model="qwen3-14b" quant="Q8_0" />가 필요해 이 카드의 사용 가능 메모리 <Num kind="usableGB" gpu="rtx-5060-ti-16gb" />를 넘고, 아래 표의 Q8_0 행은 부분 오프로드로 계산됩니다.
+
+<QuantLadder model="qwen3-14b" gpu="rtx-5060-ti-16gb" />
+
+24GB 카드라면 다릅니다. <ComboLink model="qwen3-14b" gpu="rtx-3090" /> 조합은 Q4_K_M 기준 판정이 쾌적이고<Expect model="qwen3-14b" gpu="rtx-3090" verdict="S" />, Q8_0 필요량 <Num kind="needGB" model="qwen3-14b" quant="Q8_0" />도 사용 가능 메모리 <Num kind="usableGB" gpu="rtx-3090" /> 안에 들어갑니다. 이처럼 기본 양자화가 쾌적이고 더 큰 양자화도 쾌적으로 계산되면 조합 페이지는 그 파일을 ‘다른 선택지’에 보여 줄 뿐, 자동으로 권하지 않습니다.
+
+### 대가 1: 속도
+
+dense 모델은 토큰 하나를 만들 때마다 가중치 전체를 읽습니다. 그래서 Qwen3 14B의 Q8_0처럼 Q4_K_M의 1.7배쯤인 파일은 눈에 띄게 느리게 추정됩니다. llama.cpp quantize README의 Llama 3.1 8B 표에서도 Q8_0의 생성 속도가 Q4_K_M보다 낮습니다. 위 사다리 표(RTX 5060 Ti 16GB)의 Q8_0 행은 부분 오프로드까지 겹쳐 더 크게 떨어집니다. 파일 크기만 달라질 때의 차이는 두 파일 모두 풀 GPU로 계산되는 <ComboLink model="qwen3-14b" gpu="rtx-3090" /> 페이지의 양자화 표에서 볼 수 있습니다.
+
+### 대가 2: 컨텍스트에 쓸 메모리
+
+<ComboLink model="llama-3.1-8b" gpu="rtx-3060-12gb" /> 조합은 기본 양자화 Q4_K_M·8k 기준 판정이 쾌적입니다<Expect model="llama-3.1-8b" gpu="rtx-3060-12gb" verdict="S" />. Q8_0으로 올리면 8k에서 <Num kind="needGB" model="llama-3.1-8b" quant="Q8_0" />로 사용 가능 메모리 <Num kind="usableGB" gpu="rtx-3060-12gb" /> 안에 들어가고, 16k에서는 <Num kind="needGB" model="llama-3.1-8b" quant="Q8_0" ctx="16384" />로 CanRun 계산으로는 아슬아슬하게 들어갑니다(`ollama ps`로 확인). 32k에서는 <Num kind="needGB" model="llama-3.1-8b" quant="Q8_0" ctx="32768" />가 필요해 넘치지만, Q4_K_M이면 32k에서도 <Num kind="needGB" model="llama-3.1-8b" ctx="32768" />로 들어갑니다. 같은 메모리에서 Q8_0을 고르면 쓸 수 있는 컨텍스트가 그만큼 짧아집니다.
+
+한국 모델도 마찬가지입니다. <HubLink model="kanana-1.5-8b" />를 Q8_0으로 받으면 8k에서 <Num kind="needGB" model="kanana-1.5-8b" quant="Q8_0" />가 필요해, RTX 3060 12GB의 사용 가능 메모리 <Num kind="usableGB" gpu="rtx-3060-12gb" /> 안에는 들어가지만 RTX 4060의 <Num kind="usableGB" gpu="rtx-4060" />는 넘습니다. Q4_K_M 기준 판정은 두 카드 모두 쾌적입니다<Expect model="kanana-1.5-8b" gpu="rtx-4060" verdict="S" /><Expect model="kanana-1.5-8b" gpu="rtx-3060-12gb" verdict="S" />.
+
+### 무엇을 고를까
+
+기준은 메모리입니다. 실제로 쓰는 컨텍스트에서 준무손실 파일의 필요량이 사용 가능 메모리보다 작을 때만 Q8_0·Q6_K를 고르고, 그렇지 않으면 Q4_K_M을 씁니다. Q4_K_M이 넘치면 IQ4_XS를 검토합니다. 넘는 폭이 두 파일의 크기 차이보다 작으면 CanRun 계산으로는 GPU에 모두 들어가고, 그보다 크더라도 조합 페이지의 양자화 표에서 IQ4_XS 행의 판정이 오르는지 확인합니다. 하드웨어를 고를 때도 쓰려는 양자화와 컨텍스트의 필요량보다 사용 가능 메모리가 큰 것을 목표로 잡습니다.
+
+더 읽을거리:
+
+- 메모리 구간별로 들어가는 모델: <GuideLink slug="vram-requirements" />
+- 컨텍스트가 쓰는 메모리: <GuideLink slug="kv-cache-context" />
+- 한국 모델의 파일과 사양: <GuideLink slug="korean-open-llms" />
+
+## 이 숫자는 얼마나 확실한가
+
+파일 크기는 Hugging Face 저장소에 올라온 실제 GGUF 파일 크기이고 단위는 10진 GB입니다. 필요 메모리(파일 + KV 캐시 + 연산 버퍼 — 계산 중간값을 담는 작업 메모리)는 추정이 아니라 공식으로 계산한 값입니다. 품질 등급은 양자화 종류마다 정해 둔 것이지 모델마다 잰 것이 아니며, 실제 손실은 모델과 작업에 따라 다릅니다.
+
+속도와 판정은 오차 범위와 신뢰 라벨을 붙인 추정치입니다. 보정된 추정은 NVIDIA·AMD 그래픽카드에서 dense 모델을 GPU에만 올릴 때 ±12%, 부분 오프로드·MoE·그 밖의 하드웨어에서 ±20%이고, 이론 추정은 ±30%입니다(MoE 전문가를 시스템 RAM에 두는 경우 등, 실제보다 느리게 나올 가능성이 큼). 이 가이드의 사다리 표 세 개는 모든 행이 보정된 추정입니다.
+
+실측은 양자화가 정확히 같을 때만 붙입니다(Q4_K_XL 실측을 Q4_K_M 칸에 쓰지 않음). 이 가이드의 실측은 <ComboLink model="gpt-oss-20b" gpu="rtx-5060-ti-16gb" /> 조합의 MXFP4 한 건으로, Ollama가 아니라 llama.cpp GitHub 토론에서 2k 컨텍스트로 잰 값이라 CanRun의 8k 추정 범위와 나란히 보여 줍니다. 이 조합의 기준 판정은 쾌적입니다<Expect model="gpt-oss-20b" gpu="rtx-5060-ti-16gb" verdict="S" />.
+
+<Measured model="gpt-oss-20b" gpu="rtx-5060-ti-16gb" />
+
+gpt-oss-20b는 리즈닝 모델이라 속도 기준을 1.5배 엄격하게 적용합니다. 이 카드에서 다른 모델의 결과는 <HubLink gpu="rtx-5060-ti-16gb" /> 페이지에 모아 두었습니다.
+
+표의 값은 Windows에서 그 카드가 화면 출력도 맡고, 시스템 RAM 32GB(DDR5), 8k 컨텍스트, f16 KV 캐시, 모델 하나, 요청 슬롯 하나인 환경을 가정합니다. 메모리 수치의 파일 몫에는 언어 모델 파일만 넣고 비전 프로젝터(mmproj) 파일은 넣지 않습니다. `llama-server -hf`는 저장소에 비전 프로젝터가 있으면 함께 내려받아 불러오므로(끄려면 `--no-mmproj`), Gemma 3·Mistral Small 같은 비전 모델은 실제 사용량이 이보다 클 수 있습니다. 문장 속 판정 이름은 모두 기본 양자화(Q4_K_M, gpt-oss는 MXFP4)·8k·f16 KV 기준이고, 다른 양자화의 결과는 사다리 표의 행에서 읽습니다.
+
+<Threshold />
+
+## 자주 묻는 질문
+
+### GGUF 양자화는 어떤 것을 받아야 하나요?
+
+Q4_K_M부터 받습니다. `llama-server -hf`와 Hugging Face의 Ollama 연동이 기본으로 고르는 파일이고 CanRun 판정의 기준입니다. 다른 파일로 바꿀지는 메모리를 보고 정합니다. 쓰려는 컨텍스트에서 Q4_K_M 필요량이 사용 가능 메모리를 넘으면, 대개 10분의 1가량 작고 같은 ‘균형’ 등급인 IQ4_XS를 검토합니다. 예를 들어 Mistral Small 3.2 24B는 8k에서 Q4_K_M이 <Num kind="needGB" model="mistral-small-3.2-24b" />, IQ4_XS가 <Num kind="needGB" model="mistral-small-3.2-24b" quant="IQ4_XS" />를 쓰고, 16GB 카드의 사용 가능 메모리는 <Num kind="usableGB" gpu="rtx-5060-ti-16gb" />입니다. Q8_0·Q6_K는 쓰려는 컨텍스트까지 들어갈 때만 고르며, 추정 속도가 낮아지고 컨텍스트에 쓸 메모리가 줄어듭니다. 파일은 `ollama run hf.co/{user}/{repo}:IQ4_XS`처럼 태그로 고릅니다(대소문자 무관).
+
+### IQ4_XS는 Q4_K_M보다 품질이 떨어지나요?
+
+정밀도는 조금 낮을 수 있지만, CanRun은 둘을 같은 ‘균형’ 등급으로 묶습니다. 그 대신 IQ4_XS는 파일이 대개 10분의 1가량 작습니다(Qwen3 14B: <Num kind="fileGB" model="qwen3-14b" quant="IQ4_XS" /> 대 <Num kind="fileGB" model="qwen3-14b" />). IQ4_XS를 추가한 llama.cpp PR의 작성자는 이 형식이 오차 대비 크기 곡선에서 좋은 위치에 있다고 보고했지만, CanRun은 모델별 품질을 재지 않았고 차이는 모델과 작업에 따라 다릅니다. 실제로 고르는 이유는 메모리입니다. Q4_K_M 필요량이 사용 가능 메모리를 넘는 폭이 두 파일의 크기 차이보다 작으면, CanRun 계산으로는 IQ4_XS에서 모델이 GPU에 모두 올라갑니다.
+
+### Q8_0은 Q4_K_M보다 받을 가치가 있나요?
+
+쓰려는 컨텍스트까지 들어갈 때만 그렇습니다. Q8_0은 보통 Q4_K_M의 1.7배쯤인 크기이고 ‘준무손실’ 등급입니다. Qwen3 14B는 Q8_0·8k에서 <Num kind="needGB" model="qwen3-14b" quant="Q8_0" />가 필요해 16GB 카드의 <Num kind="usableGB" gpu="rtx-5060-ti-16gb" />는 넘고, 24GB 카드의 <Num kind="usableGB" gpu="rtx-3090" /> 안에는 들어갑니다. 들어가더라도 토큰마다 더 큰 파일을 읽으니 추정 속도가 낮아지고, 컨텍스트에 쓸 메모리도 줄어듭니다.
+
+### 2비트 양자화(Q2_K·IQ2_M)도 쓸 만한가요?
+
+최후 수단으로 봅니다. ‘손실 큼’ 등급이라 2비트가 아닌 파일이 모두 불가일 때만 추천하고, 언제나 ‘품질 손실 큼’을 붙입니다. 2비트는 주로 큰 모델을 위해 있지만, Llama 3.3 70B의 IQ2_M 파일(품질 손실 큼, <Num kind="fileGB" model="llama-3.3-70b" quant="IQ2_M" />)조차 24GB 카드가 쓸 수 있는 <Num kind="usableGB" gpu="rtx-3090" />보다 큽니다. 2023년 k-quant 측정에서 모델이 커져도 상대 양자화 오차가 계속 줄지는 않았으므로, 모델이 크다고 2비트를 잘 견딘다고 가정하지 않습니다.
+
+### q8_0 KV 캐시와 Q8_0 모델 파일은 같은 건가요?
+
+아닙니다. 모델 양자화(Q8_0, Q4_K_M)는 가중치 파일의 크기를 정하고, KV 캐시 타입(f16, q8_0, q4_0)은 컨텍스트를 담는 메모리의 형식을 따로 정하는 실행 설정입니다. <RuntimeFact id="ollama-kv-cache-type" />. 두 설정은 필요량에 함께 반영됩니다. Mistral Small 3.2 24B를 IQ4_XS·16k로 쓰면 f16 KV 캐시에서 <Num kind="needGB" model="mistral-small-3.2-24b" quant="IQ4_XS" ctx="16384" />, q8_0에서 <Num kind="needGB" model="mistral-small-3.2-24b" quant="IQ4_XS" ctx="16384" kv="q8_0" />가 필요합니다. 자세한 내용은 가이드 ‘<GuideLink slug="kv-cache-context" />’에 있습니다.
+
+## 출처
+
+- [llama.cpp quantize README](https://github.com/ggml-org/llama.cpp/blob/master/tools/quantize/README.md) — Llama 3.1 8B 기준 가중치당 비트·크기·속도 표(양자화 표의 비트 열), 퍼플렉서티·KL 발산으로 재는 손실과 imatrix
+- [llama.cpp PR #1684 (k-quants)](https://github.com/ggml-org/llama.cpp/pull/1684) — 슈퍼블록 구조, `_S`·`_M`·`_L` 조합, 파일 크기와 퍼플렉서티의 관계, 모델 크기별 상대 오차
+- [llama.cpp PR #5747 (IQ4_XS)](https://github.com/ggml-org/llama.cpp/pull/5747) — IQ4_XS 구조(IQ4_NL·슈퍼블록·블록 스케일), 오차 대비 크기 곡선에서의 위치
+- [Hugging Face Hub 문서: GGUF](https://huggingface.co/docs/hub/gguf) — 양자화 종류(K-quant, i-quant, Q8_0 블록 스케일, MXFP4 마이크로스케일링 블록 부동소수점)
+- [Hugging Face 문서: Ollama](https://huggingface.co/docs/hub/ollama) — 저장소에 있으면 Q4_K_M 기본, 대소문자 무관 양자화 태그
+- [llama.cpp 서버 README](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md) — `llama-server -hf`의 양자화 태그(생략 가능·대소문자 무관, 기본 Q4_K_M, 없으면 첫 파일)와 mmproj 자동 다운로드(`--no-mmproj`로 끄기)
+- [gpt-oss-20b 모델 카드](https://huggingface.co/openai/gpt-oss-20b) — MoE 가중치를 MXFP4로 양자화한 후학습
+- [Unsloth 문서: Dynamic GGUF](https://unsloth.ai/docs/basics/dynamic-3.0-ggufs) — 층마다 양자화 타입을 고르는 UD- 파일
+- [Ollama FAQ](https://docs.ollama.com/faq) — `OLLAMA_KV_CACHE_TYPE` KV 캐시 양자화(플래시 어텐션 필요, 서버 전체 적용)
+- [unsloth/Qwen3-14B-GGUF](https://huggingface.co/unsloth/Qwen3-14B-GGUF) — 양자화 표·사다리 표의 Qwen3 14B 파일 크기
+- [bartowski/Llama-3.3-70B-Instruct-GGUF](https://huggingface.co/bartowski/Llama-3.3-70B-Instruct-GGUF) — 2비트 파일을 포함한 Llama 3.3 70B 파일 크기
+- [bartowski/mistralai_Mistral-Small-3.2-24B-Instruct-2506-GGUF](https://huggingface.co/bartowski/mistralai_Mistral-Small-3.2-24B-Instruct-2506-GGUF) — Mistral Small 3.2 24B의 Q4_K_M·IQ4_XS·Q8_0·Q2_K 파일 크기
+- [bartowski/google_gemma-3-12b-it-GGUF](https://huggingface.co/bartowski/google_gemma-3-12b-it-GGUF) — Gemma 3 12B 파일 크기

@@ -1,0 +1,63 @@
+# 가이드 집필 규칙 (P1-4 — 사람·AI 공통)
+
+가이드 본문은 `content/{en,ko}/guides/<slug>.mdx`, 메타(제목·설명·상태·날짜·그리드)는 `content/guides.ts`.
+결정 근거: `docs/PROGRESS.md` §4 D37~D46. 자동 검사: `apps/web/test/guides.test.ts`(MDX 스캔)·`test/export-invariants.spec.ts`(렌더 결과).
+
+## 1. 같은 페이지, 따로 쓴 두 언어
+- en·ko는 **같은 질문에 답하는 같은 범위의 페이지**다(hreflang 짝). 번역하지 않는다 — 같은 개요로 각 언어 독자에게 맞게 따로 쓴다(`docs/04` §6, 장문 기계번역 금지).
+- **데이터 블록(표 컴포넌트)의 종류·순서·prop 은 두 언어가 똑같다**, `##` 섹션 수도 같다(테스트가 강제). 문장·예시 설명·어순은 자유.
+- ko: 합니다체. 번역투 금지(“~하는 것이 가능합니다”, “당신”, “~에 대해” 남발, 과한 피동). 용어는 `messages/ko.json`을 따른다 — 판정 **쾌적·원활·겨우 가능·불가**, 신뢰 라벨 **실측·보정된 추정·이론 추정**, 실행 방식 **풀 GPU·부분 오프로드·MoE 전문가 RAM 배치·CPU 전용**, 양자화 등급 **준무손실·균형·손실 체감·손실 큼**. ko 독자 맥락(흔한 카드 RTX 4060·5060 Ti 16GB, 한국 모델)은 작은 보강으로.
+- en: plain, direct; verdict names **Runs great / Runs well / Runs slowly / Won't run**.
+
+## 2. 숫자는 컴포넌트만 (CLAUDE.md 규칙 2·3, D43)
+- 산문에 **tok/s·소수 GB·가격(달러·원)을 쓰지 않는다.** 속도는 표(`ComboGrid`·`QuantLadder`·`CtxTable`·`Measured`)가 밴드와 신뢰 라벨을 붙여 그린다. 단일 수치는 `<Num kind=… />`, 가격은 `<Price gpu=… />`(기준일 동반).
+- 산문에 써도 되는 숫자: 하드웨어 등급(8GB·12GB·16GB·24GB·32GB·64GB 같은 정수 용량), 컨텍스트 이름(4k·8k·32k·128k), 양자화 이름(Q4_K_M 등), 연도, “두 배·절반” 같은 비율 표현.
+- 산문에서 특정 조합의 판정을 말하면 **바로 뒤에 `<Expect model="…" gpu="…" verdict="S|A|B|F" />`** 를 붙인다(렌더 안 됨 — 데이터가 바뀌면 빌드가 실패해 문장을 고치게 한다). fit 만 말하면 `fits="true|false"`.
+- 단정 금지: en “guaranteed / definitely / will run / runs perfectly / no problem / best GPU / fastest / future-proof”, ko “무조건 / 확실히 / 완벽하게 / 문제없이 / 최고의 / 끝판왕 / 사세요”. 추정은 “we estimate / expected / 추정 / 예상”. 조건(8k 컨텍스트·f16 KV·시스템 RAM 32GB DDR5·Windows)을 밝힌다. 조언은 “메모리 N GB 이상을 목표로”처럼 메모리 기준으로 — 특정 제품 구매 권유 금지.
+- 제목·요지(첫 문단)·설명·FAQ 답은 **메모리·fit 같은 결정적 사실과 보정·실측 값만**. 이론 추정(±30%) 셀은 표·예시에서만, 라벨과 함께.
+- 엔진 한계를 정직하게: MoE 전문가를 시스템 RAM 에 두는 경로(cpu-moe)는 아직 실측 검증이 없어 **이론 추정이고 보수적(실제보다 느리게)으로 나올 가능성이 크다**. gpt-oss-120b 는 우리 모델상 “시스템 RAM 96GB 에서 겨우 가능” — 64GB 로 된다고 쓰지 않는다.
+- 미출시·루머 하드웨어(RTX 50 Super·M5 Ultra 등) 언급 금지. 외부 벤치 표 전재 금지 — 공개 실측은 `<Measured>`로 1~2점만.
+
+## 3. 링크
+- 내부 링크는 컴포넌트로: `<HubLink gpu="…" />`·`<HubLink model="…" />`, `<GuideLink slug="…" />`(초안이면 텍스트만), `<ComboLink model="…" gpu="…" />`(공개 콤보만 링크). 마크다운 `[..](/..)` 내부 링크 금지.
+- 외부 링크는 `https://` 만, 권위 있는 1차 출처(Ollama·llama.cpp 문서, Hugging Face 모델 카드, 제조사 스펙 페이지).
+
+## 4. MDX 문법 제약 (플러그인 없음)
+- `#` 제목 금지(h1 은 템플릿). 섹션은 `##`, 하위는 `###`.
+- 파이프 표·`<table>`·HTML 주석·frontmatter·`import`/`export`·중괄호 `{ }` 금지. 산문의 `<` 는 “less than/미만”으로 쓴다.
+- 블록 컴포넌트(표 — `ComboGrid`·`GpuTierSummary`·`ModelMemoryTable`·`KvPerTokenTable`·`QuantSizeTable`·`QuantLadder`·`CtxTable`·`UnifiedTierTable`·`ModelFacts`·`MemoryBreakdown`·`Measured`·`Threshold`)는 **앞뒤 빈 줄을 둔 자기 줄**에만. 인라인(`Num`·`Price`·`RuntimeFact`·`HubLink`·`GuideLink`·`ComboLink`·`Expect`)은 문장 안에.
+- prop 은 따옴표 문자열만. 목록은 쉼표 구분(`gpus="rtx-4060,rtx-3090"`). id 는 `data/*.json` 의 id.
+- 코드(명령)는 백틱 코드 스팬/블록. 명령 속 숫자는 산문 검사에서 빠진다.
+
+## 5. 구성 (권장 골격)
+1. 요지 2~4문장 — 질문에 바로 답(메모리·fit 기반)
+2. 핵심 데이터 블록(자체 데이터 — 가이드마다 ≥1, 테스트 강제)
+3. 원리 설명 `##` 2~4개 (각 섹션에 근거 블록이나 `Num`)
+4. 예시 — 그리드·사다리·ctx 표
+5. “이 숫자는 얼마나 확실한가” — 신뢰 라벨 뜻, 엔진 한계, `<Threshold />`(판정 기준표)
+6. 다음 단계 — 허브·다른 가이드 링크(계산기 위젯은 템플릿이 붙인다)
+7. `## FAQ` / `## 자주 묻는 질문` — `###` 질문 3~5개(개념형, 카드별 질문 금지 — 허브·콤보 몫)
+8. `## Sources` / `## 출처` — 외부 1차 출처 목록
+
+분량: 필러(`vram-requirements`) en 2,500~3,500단어 / ko 7,000~9,500자, 나머지 en 1,200~2,500단어 / ko 3,500~7,000자. 표를 뺀 산문이 절반 이상.
+
+## 6. 데이터 확인 도구
+`cd apps/web && npx tsx scripts/guide-brief.ts guide <slug>` (그리드 셀 전부) · `combo <model> <gpu>` (quant·ctx·명령) · `gpu <id>` · `model <id>` · `kv`. 컴포넌트와 같은 조립이라 여기 값이 곧 페이지 값이다.
+검사: `pnpm exec vitest run apps/web/test/guides.test.ts` (MDX 스캔·짝 동등성·배치 1 커버리지).
+
+## 7. 감수와 게시
+초안(`status: 'draft'`)은 noindex·미링크로 배포된다(URL 로만 열림). **게시(`published`) 전환은 사람이 채팅으로 승인한 슬러그만** — `reviewedAt`·`datePublished`·`dateModified` 갱신과 함께(D40).
+
+## 8. 파일럿 교훈 (`ollama-context-length` 검사 지적 — 반복 금지)
+- **주장 범위 = 확인한 셀.** 한 모델·한 카드에서 본 결과를 “32GB 카드는”, “dense 32B 모델은”처럼 넓히지 않는다. 같은 급의 반례(EXAONE 4.0 32B, RTX 5090 등)가 브리프에 있으면 그 주장은 틀린 것이다. 문장마다 모델·카드를 특정하고 `guide-brief` 로 확인한다.
+- **`<Expect>` 는 그것이 뒷받침하는 절 바로 뒤**(8k·f16 기준 판정 절)에 둔다. 다른 컨텍스트 주장 뒤에 붙이면 그 주장을 보증하는 것처럼 읽힌다. 16k·32k·64k 결과는 판정 이름 대신 필요량 대 사용 가능 메모리 + “표 참고”로.
+- **정도 부사는 수치와 맞춘다.** 필요량이 사용 가능 메모리를 넘으면 “slightly/살짝”을 쓰지 않는다(표 셀이 부분 오프로드로 떨어진다). 여유가 1GB 미만이면 “with little margin — check `ollama ps`”/“아슬아슬하게 — `ollama ps` 로 확인”.
+- **CanRun 계산 ≠ 런타임 실제 동작.** Ollama·llama.cpp 가 실제로 어떻게 배치하는지는 “in our model/CanRun 계산으로는”으로 한정하고 `ollama ps` 확인을 붙인다.
+- **ctx 표 모드는 브리프로 확인.** 한도를 넘는 셀은 부분 오프로드만이 아니라 CPU 전용(KV 캐시만으로 사용 가능 메모리 초과)도 있다. 산문이 표와 다른 모드를 말하지 않게 한다.
+- **컴포넌트가 렌더하는 문구를 알고 쓴다.** `HubLink` = 카탈로그 전체 이름(예: “GeForce RTX 5060 Ti 16GB”) — 뒤에 “(16GB)”를 붙이지 않는다. `ComboLink` = en “{model} on the {gpu}”, ko “{gpu}에서 {model}” — 앞뒤에 같은 모델·카드 이름을 반복하지 않는다. 카드 이름은 한 문단 안에서 전부 `HubLink` 또는 전부 평문으로 통일한다.
+- **`ComboLink` 는 배치 1(`data/publish.json`) 조합에만.** 배치 1 밖 조합은 앞으로도 링크가 되지 않으므로 `HubLink`(모델 또는 GPU 허브)를 쓴다. 배치 1 조합도 지금(currentBatch 0)은 평문이라, 링크가 없어도 자연스러운 문장으로 쓴다(“our page for …”는 가능, “(조합 페이지: …)” 같은 라벨 금지).
+- **출처는 정확히.** 소스·문서가 실제로 말하는 것만(예: 디버그 로그는 “잘라 낸 개수”를 남길 뿐 내용이 아니다). 도구 동작의 숫자 임계값(GiB 등)은 산문에 쓰지 않고 `<RuntimeFact>` 로(테스트가 산문 `GiB` 숫자를 거부).
+- **명령은 Windows 우선.** 한국 독자 대다수가 Windows 다. POSIX 명령(`VAR=… cmd`, `curl -d '…'`)에는 “macOS·Linux”를 명시하고 PowerShell 형태(`$env:VAR="…"; cmd`)를 함께 준다. PowerShell 5.1 의 `curl` 은 다른 명령의 별칭이다. Windows 환경 변수는 “계정의 환경 변수 편집”(관리자 권한 불필요).
+- **섹션은 단독으로 읽혀도 성립.** 목차에서 바로 들어온 독자를 위해 섹션의 핵심 사실(예: 기본값 구간)은 그 섹션 안에서 다시 컴포넌트로 보여 준다. 전문 용어(Q4_K_M, KV 캐시, 연산 버퍼)는 처음 나올 때 한 구절로 풀어 쓴다. 요지 문장은 en 30단어·ko 100자 안팎.
+- **FAQ 는 첫 문장이 답.** “Should I…?/해야 하나요?”에는 첫 문장에서 조건부 답을 준다.
+- **ko 용어·문체**: “한국 모델”(국산 X), “dense 모델”, “컨텍스트”(‘창’ 단독 X — 다른 뜻과 겹친다), “CanRun 계산”(‘우리 모델’ X — LLM 으로 읽힌다), deterministic = “공식으로 계산한 값”(‘결정적’ X). 문어체(예컨대·견주다)·구어체(알아서)·중의적 수식(“작거나 중간 정도로 긴 컨텍스트”) 금지. “오류 없이”처럼 출처가 보증하지 않는 단정 금지.

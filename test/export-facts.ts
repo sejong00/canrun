@@ -9,7 +9,7 @@
  */
 
 export type Locale = 'en' | 'ko';
-export type PageKind = 'home' | 'gpu' | 'model' | 'combo' | 'calculator' | 'other';
+export type PageKind = 'home' | 'gpu' | 'model' | 'combo' | 'calculator' | 'guide' | 'guides-index' | 'other';
 
 export type GpuRecord = { id: string; name: string; aliases?: string[] };
 export type ModelRecord = { id: string; name: string };
@@ -85,7 +85,21 @@ export type PageFacts = {
     sortControl: boolean;
     navCalculator?: string;
     openCalculator?: string;
+    /** P1-4: 헤더 `a[data-nav-guides]` href (published 가이드 ≥1 일 때만 렌더) */
+    navGuides?: string;
+    /** `form[data-calc-widget]` 수 (홈·가이드 — D45) */
+    calcWidgets: number;
+    /** `[data-guide-data]` 수 — 가이드 자체 데이터 인용 (AC, D42) */
+    guideData: number;
+    /** `[data-guide-draft]` 초안 안내 */
+    guideDraft: boolean;
+    /** `[data-guides-empty]` 목차 빈 상태 */
+    guidesEmpty: boolean;
+    /** 가이드 본문 안 `<p>` 속 블록 요소 수 (하이드레이션 불일치 원인 — 0 이어야 한다) */
+    blockInParagraph: number;
   };
+  /** `a[data-related-guide]` href (콤보 → published 가이드, D44) */
+  relatedGuideHrefs: string[];
   /** `<script src>` 중 nomodule 이 아닌 것 (초기 모듈 스크립트 집합 — D34 예산 게이트) */
   scriptSrcs: string[];
   /** `<link rel="preload|modulepreload">` 가 가리키는 스크립트 */
@@ -148,6 +162,8 @@ export function kindOf(urlPath: string): PageKind {
   if (/^\/gpu\/[^/]+$/.test(bare)) return 'gpu';
   if (/^\/model\/[^/]+$/.test(bare)) return 'model';
   if (COMBO_RE.test(bare)) return 'combo';
+  if (bare === '/guides') return 'guides-index';
+  if (/^\/guides\/[^/]+$/.test(bare)) return 'guide';
   return 'other';
 }
 
@@ -280,6 +296,19 @@ function elementsWithAttr(html: string, attr: string): AttrElement[] {
 
 function attrValue(openTag: string, attr: string): string | undefined {
   return openTag.match(new RegExp(`\\s${attr}="([^"]*)"`))?.[1];
+}
+
+/** `<p>` 안에 블록 요소가 열린 횟수 — 브라우저가 `<p>` 를 닫아 DOM 이 서버 트리와 어긋난다(하이드레이션 오류) */
+function blockInParagraphCount(html: string): number {
+  let count = 0;
+  let depth = 0;
+  for (const m of html.matchAll(/<(\/?)(p|div|table|ul|ol|figure|section|dl|pre|blockquote|h[1-6])\b[^>]*>/g)) {
+    const closing = m[1] === '/';
+    const tag = m[2]!;
+    if (tag === 'p') depth = closing ? Math.max(0, depth - 1) : depth + 1;
+    else if (!closing && depth > 0) count += 1;
+  }
+  return count;
 }
 
 /** D16 문장 단위 요소 */
@@ -453,6 +482,8 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
   const comboLinkHrefs: string[] = [];
   let navCalculator: string | undefined;
   let openCalculator: string | undefined;
+  let navGuides: string | undefined;
+  const relatedGuideHrefs: string[] = [];
   for (const m of html.matchAll(/<a\b[^>]*>/g)) {
     const tag = m[0];
     const href = tag.match(HREF_RE)?.[1];
@@ -462,10 +493,13 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
     if (hasAttr(tag, 'data-combo-link')) comboLinkHrefs.push(href);
     if (hasAttr(tag, 'data-nav-calculator')) navCalculator = href;
     if (hasAttr(tag, 'data-open-calculator')) openCalculator = href;
+    if (hasAttr(tag, 'data-nav-guides')) navGuides = href;
+    if (hasAttr(tag, 'data-related-guide')) relatedGuideHrefs.push(href);
   }
   const formActions = [...html.matchAll(/<form\b[^>]*\baction="([^"]*)"/g)].map((m) => decodeEntities(m[1]!));
   const datalist = html.match(/<datalist\b[^>]*>([\s\S]*?)<\/datalist>/)?.[1] ?? '';
   const datalistOptionCount = (datalist.match(/<option\b/g) ?? []).length;
+  const guideBody = elementsWithAttr(noScript, 'data-guide-body')[0]?.inner ?? '';
   const markers: PageFacts['markers'] = {
     calculator: elementsWithAttr(noScript, 'data-calculator').length > 0,
     calcForm: elementsWithAttr(noScript, 'data-calc-form').length > 0,
@@ -475,7 +509,20 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
     sortControl: elementsWithAttr(noScript, 'data-sort-control').length > 0,
     ...(navCalculator === undefined ? {} : { navCalculator }),
     ...(openCalculator === undefined ? {} : { openCalculator }),
+    ...(navGuides === undefined ? {} : { navGuides }),
+    calcWidgets: elementsWithAttr(noScript, 'data-calc-widget').length,
+    guideData: elementsWithAttr(noScript, 'data-guide-data').length,
+    guideDraft: elementsWithAttr(noScript, 'data-guide-draft').length > 0,
+    guidesEmpty: elementsWithAttr(noScript, 'data-guides-empty').length > 0,
+    blockInParagraph: blockInParagraphCount(guideBody),
   };
+  // 가이드 본문의 문장 단위 — 규칙 3 검사 대상(임계값 범례 `[data-threshold]` 는 밴드 없는 정책 문장이라 제외)
+  const thresholdTexts = new Set(
+    elementsWithAttr(guideBody, 'data-threshold').flatMap((e) => collectElements(e.inner, UNIT_TAGS).map((u) => elementText(u.inner))),
+  );
+  const guideTexts = collectElements(guideBody, UNIT_TAGS)
+    .map((u) => elementText(u.inner))
+    .filter((text) => !thresholdTexts.has(text));
   const scriptSrcs = [...html.matchAll(/<script\b([^>]*)\bsrc="([^"]+)"([^>]*)>/g)]
     .filter((m) => !/\bnomodule\b/i.test(`${m[1]} ${m[3]}`))
     .map((m) => m[2]!);
@@ -523,6 +570,7 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
     verdictSentence ?? '',
     twinText ?? '',
     liveSummary ?? '',
+    ...guideTexts,
     ...altCardTexts,
     ...ddTexts,
   ].filter((text) => text !== '');
@@ -559,6 +607,7 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
     textChars,
     formActions,
     datalistOptionCount,
+    relatedGuideHrefs,
     markers,
     scriptSrcs,
     preloadSrcs,

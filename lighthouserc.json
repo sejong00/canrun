@@ -11,7 +11,9 @@
         "http://127.0.0.1:4173/can-i-run/qwen3-14b/on/rtx-4060",
         "http://127.0.0.1:4173/ko/can-i-run/qwen3-30b-a3b-2507/on/rtx-3060-12gb",
         "http://127.0.0.1:4173/calculator",
-        "http://127.0.0.1:4173/ko/calculator"
+        "http://127.0.0.1:4173/ko/calculator",
+        "http://127.0.0.1:4173/guides/vram-requirements",
+        "http://127.0.0.1:4173/ko/guides/vram-requirements"
       ],
       "numberOfRuns": 3
     },
@@ -32,14 +34,14 @@
           }
         },
         {
-          "matchingUrlPattern": "^(?!.*/can-i-run/).*$",
+          "matchingUrlPattern": "^(?!.*/(can-i-run|guides)/).*$",
           "assertions": {
             "categories:seo": ["error", { "minScore": 0.9, "aggregationMethod": "median-run" }],
             "largest-contentful-paint": ["warn", { "maxNumericValue": 2000, "aggregationMethod": "median-run" }]
           }
         },
         {
-          "matchingUrlPattern": "/can-i-run/",
+          "matchingUrlPattern": "/(can-i-run|guides)/",
           "assertions": {
             "largest-contentful-paint": ["error", { "maxNumericValue": 2500, "aggregationMethod": "median-run" }],
             "document-title": ["error", { "minScore": 1 }],

@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
+import { CalcWidget } from '@/components/calc-widget';
 import { JsonLd } from '@/components/json-ld';
 import { PageShell } from '@/components/page-shell';
 import type { Locale } from '@/i18n/routing';
@@ -51,7 +52,6 @@ export default async function HomePage({ params }: Props) {
     .filter((model) => model.popularity >= POPULAR_MODEL_MIN)
     .sort((a, b) => b.popularity - a.popularity || a.name.localeCompare(b.name));
   const quickPicks = QUICK_PICKS.map((id) => catalog.gpus.find((g) => g.id === id)).filter((g): g is (typeof catalog.gpus)[number] => g !== undefined);
-  const options = [...new Set(catalog.gpus.flatMap((gpu) => [gpuName(tNames, gpu), ...gpu.aliases]))];
   const benchCount = catalog.benchmarks.length;
   const calcAction = localeHref(locale, calculatorHref());
 
@@ -69,40 +69,7 @@ export default async function HomePage({ params }: Props) {
         <h1 className="text-4xl font-semibold tracking-tight text-balance">{t('heading')}</h1>
         <p className="text-lg text-muted-foreground">{t('intro')}</p>
 
-        <form data-home-form action={calcAction} method="get" role="search" className="flex flex-col gap-3 rounded-lg border border-border p-4 sm:p-6">
-          <label htmlFor="home-gpu" className="text-sm font-medium">
-            {t('gpuLabel')}
-          </label>
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <input
-              id="home-gpu"
-              name="gpu"
-              list="home-gpu-list"
-              required
-              inputMode="search"
-              enterKeyHint="go"
-              autoComplete="off"
-              autoCapitalize="off"
-              spellCheck={false}
-              placeholder={t('gpuPlaceholder')}
-              className="h-11 min-w-0 flex-1 rounded-md border border-border bg-background px-3 text-base sm:text-sm"
-            />
-            <datalist id="home-gpu-list">
-              {options.map((value) => (
-                <option key={value} value={value} />
-              ))}
-            </datalist>
-            <button type="submit" className="h-11 rounded-md bg-primary px-5 text-sm font-medium text-primary-foreground">
-              {t('submit')}
-            </button>
-          </div>
-          <p className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
-            <a href={`${calcAction}?gpu=cpu-ddr5-5600-2ch`}>{t('noGpu')}</a>
-            <a href={calcAction} data-open-calculator>
-              {t('openCalculator')}
-            </a>
-          </p>
-        </form>
+        <CalcWidget locale={locale} idPrefix="home" home />
 
         <section aria-labelledby="quick-picks" className="flex flex-col gap-3">
           <h2 id="quick-picks" className="text-xl font-semibold tracking-tight">

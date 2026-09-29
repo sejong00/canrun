@@ -1,0 +1,160 @@
+A longer context needs more memory because, on top of the fixed-size model file, the KV cache stores a key and a value for every token in every attention layer. For Llama 3.1 8B at Q4_K_M, a 4-bit quant, the file is <Num kind="fileGB" model="llama-3.1-8b" />, while a 16-bit (f16) KV cache at 128k takes <Num kind="kvGB" model="llama-3.1-8b" ctx="131072" />, more than three times the size of the file. How steeply the cache grows depends on the attention design: sliding-window and hybrid models need a fraction of that. Storing the cache as q8_0 or q4_0 shrinks it to roughly a half or a quarter, at some cost in quality.
+
+## Why a longer context costs memory
+
+The memory a model needs has three parts. The model file is fixed by the weight quant you download, Q4_K_M in the examples here unless noted. The KV cache grows with the context you set. The compute buffer is the working memory the runtime needs during inference; CanRun approximates it from llama.cpp logs, and it grows with context too, but more slowly than the KV cache.
+
+In the KV cache, each attention layer keeps a key and a value per KV head (the heads that store keys and values; several query heads can share one) for every token already in the context, so new tokens can look back at them without recomputing them. The size per token follows from the model's configuration:
+
+`2 (key + value) × layers × KV heads × head size × bytes per value`
+
+With an f16 cache, the default in llama.cpp and Ollama, each value takes 16 bits. The whole cache is this per-token size times the context length, so doubling the context, as each column below does, doubles the cache.
+
+<KvPerTokenTable models="llama-3.1-8b,qwen3-14b,qwen3-32b" ctxs="4096,8192,16384,32768" />
+
+In their published configurations, these three models share the same KV-head layout (the same number of KV heads, each the same size), so their per-token cost differs only by the number of layers: <Num kind="layers" model="llama-3.1-8b" /> for Llama 3.1 8B, <Num kind="layers" model="qwen3-14b" /> for Qwen3 14B and <Num kind="layers" model="qwen3-32b" /> for Qwen3 32B. At 32k with an f16 cache, that works out to <Num kind="kvGB" model="llama-3.1-8b" ctx="32768" />, <Num kind="kvGB" model="qwen3-14b" ctx="32768" /> and <Num kind="kvGB" model="qwen3-32b" ctx="32768" /> of KV cache. By 128k, the f16 cache of <HubLink model="llama-3.1-8b" /> is more than three times the size of its Q4_K_M file.
+
+A model's native limit caps what is useful: Qwen3 14B and Qwen3 32B handle <Num kind="maxContext" model="qwen3-14b" /> natively and Llama 3.1 8B handles <Num kind="maxContext" model="llama-3.1-8b" /> (the Qwen model cards describe extending this with YaRN, which is outside this guide).
+
+## Why the KV cost differs so much between models
+
+The table below covers the whole catalog at 8k, 32k and 128k (a dash means the model does not support that context). The order does not follow parameter count; three design choices explain most of it.
+
+<KvPerTokenTable />
+
+### Grouped-query attention
+
+In grouped-query attention (GQA), many query heads share one KV head, so the cache stores fewer keys and values per token; the Llama 3.1 model card says all its versions use GQA. For a model with full attention on every layer, the cost follows layers × KV heads × head size, not the total parameter count, which is why Phi-4, a 14B model, costs more per token than Qwen3 14B.
+
+### Sliding-window attention
+
+Gemma 3, Gemma 4, gpt-oss, EXAONE 4.0 32B and EXAONE 4.5 33B mix local layers, which attend only to a short window of recent tokens, with global (full-attention) layers; only the global layers keep growing with the context. The Gemma 3 technical report uses more local layers per global one and a short local span to cut KV-cache memory, the gpt-oss configuration alternates the two with a 128-token window, and the EXAONE 4.0 model card gives the 32B model a 3:1 ratio of local to global layers. In the table, Gemma 3 12B costs less than half as much per token as Qwen3 14B.
+
+The effect is easiest to see at the same size. In CanRun's figures, <HubLink model="exaone-4.0-32b" />, a Korean model from LG AI Research, needs <Num kind="kvGB" model="exaone-4.0-32b" ctx="32768" /> of f16 KV cache at 32k, a quarter of the <Num kind="kvGB" model="qwen3-32b" ctx="32768" /> Qwen3 32B needs; the fixed sliding-window part, left out of that figure (see below), narrows the gap somewhat.
+
+### Hybrid linear attention
+
+The Qwen3.5 9B model card lists eight blocks of three Gated DeltaNet layers followed by one Gated Attention layer, so only one layer in four keeps a KV cache; the linear layers carry a fixed-size state instead. At 32k with f16, <HubLink model="qwen3.5-9b" /> needs <Num kind="kvGB" model="qwen3.5-9b" ctx="32768" /> of KV cache, about a quarter of the <Num kind="kvGB" model="qwen3-8b" ctx="32768" /> Qwen3 8B needs.
+
+### MoE and model size are poor guides
+
+A mixture-of-experts (MoE) design does not shrink the KV cache by itself: the cache depends on the attention layout, not on the parameters active per token. The MoE Kanana 1.5 15.7B-A3B costs the same per token as the dense Llama 3.1 8B, and Qwen3 30B-A3B (2507) costs four times as much per token as gpt-oss-20b. Total size does not predict it either: at 32k with f16, <HubLink model="gpt-oss-120b" /> needs <Num kind="kvGB" model="gpt-oss-120b" ctx="32768" /> of KV cache, well under the <Num kind="kvGB" model="llama-3.1-8b" ctx="32768" /> Llama 3.1 8B needs.
+
+### How CanRun counts these models
+
+For sliding-window and hybrid models, CanRun's figure includes only the full-attention layers. It leaves out the part whose size does not grow with the context: the sliding windows and the linear layers' recurrent state. These figures therefore run low, most visibly at short contexts and for models with wider windows (EXAONE 4.0 32B's window is far wider than gpt-oss's); next to the model file the gap is small. The counted part still grows linearly with the context, so the cache is not flat: <HubLink model="gemma-3-12b" /> at 128k with f16 still needs <Num kind="kvGB" model="gemma-3-12b" ctx="131072" /> of KV cache.
+
+## Will a longer context fit on your card?
+
+To see whether a context fits, compare the total need (file, KV cache and compute buffer) with the memory your card can actually use, not the VRAM on the box. A card that drives a Windows display keeps some VRAM back (see the note under the table below), so in CanRun's calculation the <HubLink gpu="rtx-5060-ti-16gb" /> has <Num kind="usableGB" gpu="rtx-5060-ti-16gb" /> to work with.
+
+At 128k, the smallest file does not mean the smallest need.
+
+<ModelMemoryTable models="llama-3.1-8b,qwen3.5-9b,gemma-3-12b,gpt-oss-20b,qwen3-30b-a3b-2507" ctx="131072" />
+
+Llama 3.1 8B needs <Num kind="needGB" model="llama-3.1-8b" ctx="131072" /> at 128k with f16, more than Gemma 3 12B at <Num kind="needGB" model="gemma-3-12b" ctx="131072" /> and gpt-oss-20b at <Num kind="needGB" model="gpt-oss-20b" ctx="131072" />. Yet gpt-oss-20b has roughly two and a half times as many parameters as Llama 3.1 8B (its default file is MXFP4, the 4-bit format gpt-oss is released in). Qwen3.5 9B needs <Num kind="needGB" model="qwen3.5-9b" ctx="131072" />, about half of what Llama 3.1 8B needs. Qwen3 30B-A3B (2507) needs <Num kind="needGB" model="qwen3-30b-a3b-2507" ctx="131072" />, more than even the <Num kind="usableGB" gpu="rtx-5090" /> an RTX 5090 can use.
+
+### A 16GB card: sliding window against full attention
+
+Take <ComboLink model="gemma-3-12b" gpu="rtx-5060-ti-16gb" />. At 8k with an f16 KV cache it Runs great.<Expect model="gemma-3-12b" gpu="rtx-5060-ti-16gb" verdict="S" /> At 64k with f16 it needs <Num kind="needGB" model="gemma-3-12b" ctx="65536" />, inside the card's usable memory with room left. At 128k with f16 it needs <Num kind="needGB" model="gemma-3-12b" ctx="131072" />, over the limit, so in CanRun's calculation part of the weights moves to system RAM (partial offload) and the estimated speed in that cell drops sharply. A q8_0 KV cache brings 128k down to <Num kind="needGB" model="gemma-3-12b" ctx="131072" kv="q8_0" />, which fits (see the next section).
+
+<CtxTable model="gemma-3-12b" gpu="rtx-5060-ti-16gb" />
+
+A full-attention model on the same card tells a different story. <ComboLink model="qwen3-14b" gpu="rtx-5060-ti-16gb" /> also Runs great at the 8k baseline.<Expect model="qwen3-14b" gpu="rtx-5060-ti-16gb" verdict="S" /> At its native maximum of 32k with an f16 cache it needs <Num kind="needGB" model="qwen3-14b" ctx="32768" /> against the same <Num kind="usableGB" gpu="rtx-5060-ti-16gb" />: in CanRun's calculation it fits with little margin, so check that PROCESSOR in `ollama ps` shows 100% GPU. At the same 32k, Gemma 3 12B needs <Num kind="needGB" model="gemma-3-12b" ctx="32768" />, and it reaches 64k on this card with memory to spare.
+
+### What context does to speed
+
+While everything stays in VRAM, the estimated speed falls steadily row by row (by about a third from 4k to 64k in the f16 column of the Gemma 3 12B table), because in CanRun's speed model each generated token reads the whole KV cache, and each row assumes the context is filled to that length. The sharp drop comes where the need passes the card's usable memory: in CanRun's calculation the 128k f16 cell of that table becomes a partial offload.
+
+In Ollama, the default context follows your GPU memory, not the model's native maximum. <RuntimeFact id="ollama-default-ctx" />. For how to check and change it, see our guide: <GuideLink slug="ollama-context-length" />.
+
+## KV cache quantization: what q8_0 and q4_0 save and cost
+
+KV cache quantization stores the keys and values in blocks of 8-bit (q8_0) or 4-bit (q4_0) numbers instead of 16-bit ones. In CanRun's tables a q8_0 cache takes about 54% of the f16 size and a q4_0 cache about 29%, a little more than a half and a quarter, because each block also stores a scale. The Ollama FAQ gives approximately a half and a quarter.
+
+This is separate from weight quantization. Q4_K_M or Q8_0, in capitals, name the model file you download, whose size is fixed; a q8_0 or q4_0 KV cache, in lower case, is a runtime setting that shrinks the memory the context takes, so its savings grow with the context. The two combine. For choosing the file itself, see our guide: <GuideLink slug="gguf-quantization" />.
+
+On quality, the Ollama FAQ describes the loss as very small for q8_0 and small-medium for q4_0 (more in this guide's FAQ below). CanRun does not measure quality, so the rule here is based on memory alone: when f16 does not fit, try q8_0 first, and q4_0 only if q8_0 still spills over, or shorten the context.
+
+### A 12GB card where the KV type decides
+
+Take <ComboLink model="qwen3-14b" gpu="rtx-3060-12gb" />. At 8k with an f16 KV cache it Runs great.<Expect model="qwen3-14b" gpu="rtx-3060-12gb" verdict="S" /> At 16k with f16 it needs <Num kind="needGB" model="qwen3-14b" ctx="16384" /> against <Num kind="usableGB" gpu="rtx-3060-12gb" /> of usable memory, so in CanRun's calculation it becomes a partial offload; see the drop in that cell. A q8_0 cache brings 16k down to <Num kind="needGB" model="qwen3-14b" ctx="16384" kv="q8_0" />, which fits with little margin. At the model's native 32k, q8_0 needs <Num kind="needGB" model="qwen3-14b" ctx="32768" kv="q8_0" />, still over, and q4_0 needs <Num kind="needGB" model="qwen3-14b" ctx="32768" kv="q4_0" />, just under with little margin. In both close cases, check that `ollama ps` shows 100% GPU.
+
+<CtxTable model="qwen3-14b" gpu="rtx-3060-12gb" />
+
+Compare other cards on the <HubLink model="qwen3-14b" /> page and other models on the <HubLink gpu="rtx-3060-12gb" /> page.
+
+### Turning it on
+
+<RuntimeFact id="ollama-kv-cache-type" />. On Windows, quit the Ollama app from its taskbar icon, then run this in PowerShell for a one-off start that matches the 16k q8_0 cell above:
+
+```powershell
+$env:OLLAMA_CONTEXT_LENGTH="16384"; $env:OLLAMA_FLASH_ATTENTION="1"; $env:OLLAMA_KV_CACHE_TYPE="q8_0"; ollama serve
+```
+
+Then, in a second PowerShell window, load the model with `ollama run hf.co/unsloth/Qwen3-14B-GGUF:Q4_K_M`. To keep the KV cache settings permanently, add `OLLAMA_FLASH_ATTENTION` and `OLLAMA_KV_CACHE_TYPE` (and `OLLAMA_CONTEXT_LENGTH` if you want 16k by default) under Edit environment variables for your account (no admin rights needed), then restart Ollama. On macOS, quit the Ollama app first; on Linux, stop the service with `sudo systemctl stop ollama`. The one-off form on both is `OLLAMA_CONTEXT_LENGTH=16384 OLLAMA_FLASH_ATTENTION=1 OLLAMA_KV_CACHE_TYPE=q8_0 ollama serve`.
+
+In llama.cpp, add `-fa on --cache-type-k q8_0 --cache-type-v q8_0` to `llama-server`; the server README lists the allowed cache types and gives f16 as the default. For the 16k q8_0 cell above, the combo page gives this command when you choose 16k and q8_0:
+
+```shell
+llama-server -hf unsloth/Qwen3-14B-GGUF:Q4_K_M -c 16384 -ngl all -fa on --cache-type-k q8_0 --cache-type-v q8_0
+```
+
+Treat KV cache quantization as a memory tool, not as a speed-up: where f16 also fits in VRAM, the extra speed the q8_0 and q4_0 cells show comes from CanRun's formula alone, since no measurement behind CanRun's calibration uses a quantized KV cache.
+
+## How sure are these numbers?
+
+The file sizes are those of the real GGUF files, and the KV figures are calculated with a formula from each model's published configuration; the formula reproduces the known per-token sizes of the seven full-attention architectures checked in CanRun's engine tests. The compute buffer is an approximation drawn from llama.cpp logs. For sliding-window and hybrid models the KV figure is a simplification: CanRun leaves out the fixed window part and the recurrent state, so these figures run low, most visibly at short contexts; next to the model file the gap is small. llama.cpp's server documents a `--swa-full` switch, off by default, that keeps a full-size cache for the sliding-window layers.
+
+Ollama makes its own memory estimate and GPU/CPU split, so on your machine `ollama ps` is the ground truth: SIZE for the memory in use, PROCESSOR for the GPU/CPU split, CONTEXT for the context allocated. CanRun's tables assume Windows with the card driving the display, 32GB of DDR5 system RAM, one model loaded and one request slot; the Ollama FAQ notes that the memory needed scales with `OLLAMA_NUM_PARALLEL` times `OLLAMA_CONTEXT_LENGTH`.
+
+Speeds are estimates, each with a band and a confidence label. Calibrated means ±12% for dense models running fully on an NVIDIA or AMD card, and ±20% for partial offload, MoE models and other hardware; theoretical means ±30%. Every speed cell in this guide's two context tables is calibrated. The q8_0 and q4_0 cells carry the same label, but the effect of the smaller KV cache on their speed rests on the formula alone, since no public measurement CanRun calibrates against records a quantized KV cache. On combo pages for MoE models at long contexts, cells that keep the experts in system RAM carry the theoretical label, and their estimates are likely lower than real speeds, so do not read them as results.
+
+Verdict names in the text of this guide refer to the 8k context, f16 KV baseline; for other contexts, read the tables. The thresholds:
+
+<Threshold />
+
+Where to go next:
+
+- <GuideLink slug="ollama-context-length" />: setting the context length in Ollama.
+- <GuideLink slug="vram-requirements" />: which models fit each memory tier.
+- <GuideLink slug="gguf-quantization" />: how a smaller model file frees room for context.
+- <GuideLink slug="mac-local-llm" />: on a Mac, the KV cache shares unified memory with everything else.
+
+## FAQ
+
+### Does a longer context use more memory even before the chat gets long?
+
+Yes. Memory follows the context length you set, not how much of it you have used: Ollama's context-length documentation says a larger context length increases the memory required. With an f16 cache, Llama 3.1 8B's KV cache is <Num kind="kvGB" model="llama-3.1-8b" ctx="8192" /> at 8k and <Num kind="kvGB" model="llama-3.1-8b" ctx="131072" /> at 128k. Set the context you actually need, then check CONTEXT and SIZE in `ollama ps`. While everything stays on the GPU, an unfilled context slows each token less than its table row shows, since the rows assume a full context; a spill to system RAM slows it regardless.
+
+### Why can a bigger model need less memory for its context than a smaller one?
+
+Because the KV cache depends on the attention design (the layers, the KV heads, and whether some layers use sliding windows or linear attention), not on the parameter count. At 32k with f16, gpt-oss-120b needs <Num kind="kvGB" model="gpt-oss-120b" ctx="32768" /> of KV cache while Llama 3.1 8B needs <Num kind="kvGB" model="llama-3.1-8b" ctx="32768" />. MoE alone does not help: the MoE Kanana 1.5 15.7B-A3B costs the same per token as the dense Llama 3.1 8B.
+
+### Is KV cache quantization the same as choosing a Q4_K_M model file?
+
+No. Q4_K_M is weight quantization and fixes the size of the model file; a q8_0 or q4_0 KV cache shrinks the memory the context takes at run time, so its savings grow with the context. The two are independent and combine. Turn it on with `OLLAMA_KV_CACHE_TYPE` in Ollama (server-wide, with flash attention on) or with `-fa on --cache-type-k q8_0 --cache-type-v q8_0` in llama.cpp.
+
+### How much quality do q8_0 and q4_0 KV caches cost?
+
+According to the Ollama FAQ, q8_0 has a very small loss in precision, and q4_0 a small-medium loss that may be more noticeable at higher context sizes; the impact depends on the model and the task, and models with a high GQA count (its example is Qwen2) may be affected more. CanRun does not measure quality, so test your own prompts at your target context.
+
+## Sources
+
+- [Ollama FAQ](https://docs.ollama.com/faq): K/V cache quantization (f16, q8_0 and q4_0 memory use and precision notes, a server-wide option that needs flash attention, impact that depends on the model and task, the high-GQA note with Qwen2), `OLLAMA_FLASH_ATTENTION`, and memory scaling with `OLLAMA_NUM_PARALLEL` times `OLLAMA_CONTEXT_LENGTH`.
+- [Ollama docs: context length](https://docs.ollama.com/context-length): a larger context length increases the memory required, the default context by VRAM, the `ollama ps` columns (SIZE, PROCESSOR, CONTEXT), and the advice to avoid CPU offload.
+- [llama.cpp server README](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md): `--cache-type-k` and `--cache-type-v` with the allowed types and the f16 default, `-fa`, `-c`, and `--swa-full` (a full-size sliding-window cache, off by default).
+- [Llama 3.1 8B Instruct model card](https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct): grouped-query attention in all Llama 3.1 versions, 128k context.
+- [Llama 3.1 8B Instruct configuration](https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct/blob/main/config.json): layers, attention and KV heads, and the hidden size the head size follows from (a gated repository: the file opens once you accept the license on Hugging Face).
+- [Qwen3-8B model card](https://huggingface.co/Qwen/Qwen3-8B): layers, query and KV heads, native context and YaRN extension.
+- [Qwen3-14B model card](https://huggingface.co/Qwen/Qwen3-14B): layers, query and KV heads, native context and YaRN extension.
+- [Qwen3-14B configuration](https://huggingface.co/Qwen/Qwen3-14B/blob/main/config.json): layers, KV heads, head size.
+- [Qwen3-32B model card](https://huggingface.co/Qwen/Qwen3-32B): layers, query and KV heads, native context.
+- [Qwen3-32B configuration](https://huggingface.co/Qwen/Qwen3-32B/blob/main/config.json): layers, KV heads, head size.
+- [Qwen3-30B-A3B-Instruct-2507 model card](https://huggingface.co/Qwen/Qwen3-30B-A3B-Instruct-2507): layers, query and KV heads, experts, native context.
+- [Qwen3.5-9B model card](https://huggingface.co/Qwen/Qwen3.5-9B): the hybrid layout of Gated DeltaNet and Gated Attention layers, KV heads of the attention layers, native context.
+- [Gemma 3 Technical Report](https://arxiv.org/abs/2503.19786): cutting long-context KV-cache memory by raising the ratio of local to global attention layers and keeping the local span short.
+- [Gemma 4 12B configuration](https://huggingface.co/google/gemma-4-12B-it/blob/main/config.json): sliding-window and full-attention layers, 1024-token window.
+- [gpt-oss-20b configuration](https://huggingface.co/openai/gpt-oss-20b/blob/main/config.json): sliding-attention layers with a 128-token window alternating with full-attention layers, KV heads, head size, maximum context.
+- [EXAONE 4.0 32B model card](https://huggingface.co/LGAI-EXAONE/EXAONE-4.0-32B): hybrid attention for the 32B model, with local (sliding-window) and global layers in a 3:1 ratio, layers, GQA, maximum context.
+- [EXAONE 4.5 33B configuration](https://huggingface.co/LGAI-EXAONE/EXAONE-4.5-33B/blob/main/config.json): local and global layers in a 3:1 pattern, 4096-token window.

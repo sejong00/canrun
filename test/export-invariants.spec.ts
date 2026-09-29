@@ -17,6 +17,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { GUIDES, GUIDE_SLUGS, type GuideSlug } from '../apps/web/content/guides';
 import { CF_PAGES_REDIRECT_LINE_LIMIT } from '../scripts/build-redirects';
 import {
   comboIndexable,
@@ -126,6 +127,15 @@ beforeAll(() => {
 const isHub = (page: PageFacts) => page.kind === 'gpu' || page.kind === 'model';
 const isCalculator = (page: PageFacts) => page.kind === 'calculator';
 const isStructured = (page: PageFacts) => isHub(page) || page.kind === 'combo' || isCalculator(page);
+const isGuide = (page: PageFacts) => page.kind === 'guide';
+const isGuidesIndex = (page: PageFacts) => page.kind === 'guides-index';
+/** 가이드 URL → 슬러그 (레지스트리 밖이면 undefined) */
+const guideSlugOf = (urlPath: string): GuideSlug | undefined => {
+  const slug = /\/guides\/([^/]+)$/.exec(urlPath)?.[1];
+  return slug && (GUIDE_SLUGS as readonly string[]).includes(slug) ? (slug as GuideSlug) : undefined;
+};
+const guidePublished = (slug: GuideSlug) => GUIDES[slug].status === 'published';
+const PUBLISHED_GUIDES = GUIDE_SLUGS.filter(guidePublished);
 /** 계산기 페이지 (P1-3) — 없으면 명확히 실패 */
 function requireCalculators(): PageFacts[] {
   const calcs = pages.filter(isCalculator);
@@ -278,6 +288,8 @@ describe('structured data (docs/04 §5)', () => {
       const types = page.jsonLd.map((b) => b['@type']);
       if (page.kind === 'home') expect(types, page.file).toContain('WebSite');
       if (isCalculator(page)) expect(types, page.file).toContain('SoftwareApplication');
+      if (isGuide(page)) expect(types, page.file).toEqual(expect.arrayContaining(['Article', 'BreadcrumbList']));
+      if (isGuidesIndex(page)) expect(types, page.file).toContain('BreadcrumbList');
       if (!isStructured(page)) continue;
       expect(types, page.file).toContain('BreadcrumbList');
       expect(types, page.file).toContain('FAQPage');
@@ -302,6 +314,28 @@ describe('structured data (docs/04 §5)', () => {
           hubPath(page.locale, 'model', page.combo.modelId),
         );
       }
+    }
+  });
+
+  it('guides: 3-level breadcrumb (home › /guides › guide), index 2 levels; Article fields equal the registry (P1-4 D41)', () => {
+    const guides = pages.filter(isGuide);
+    expect(guides.length, 'guide pages exported (en + ko)').toBe(GUIDE_SLUGS.length * 2);
+    for (const page of [...guides, ...pages.filter(isGuidesIndex)]) {
+      const items = page.jsonLd.find((b) => b['@type'] === 'BreadcrumbList')!.itemListElement as Array<{ item: string }>;
+      expect(items.length, page.file).toBe(isGuide(page) ? 3 : 2);
+      expect(urlToPath(items[0]!.item), `${page.file} crumb 1`).toBe(localePath(page.locale, '/'));
+      if (isGuide(page)) expect(urlToPath(items[1]!.item), `${page.file} crumb 2`).toBe(localePath(page.locale, '/guides'));
+      expect(items.at(-1)!.item, page.file).toBe(page.canonical);
+    }
+    for (const page of guides) {
+      const entry = GUIDES[guideSlugOf(page.urlPath)!];
+      const article = page.jsonLd.find((b) => b['@type'] === 'Article')!;
+      expect(article.headline, page.file).toBe(entry.locales[page.locale].title);
+      expect(article.description, page.file).toBe(entry.locales[page.locale].description);
+      expect(article.url, page.file).toBe(page.canonical);
+      expect(article.inLanguage, page.file).toBe(page.locale);
+      expect([article.datePublished, article.dateModified], page.file).toEqual([entry.datePublished, entry.dateModified]);
+      expect((article.author as { name: string }).name, page.file).toBe(entry.author);
     }
   });
 
@@ -362,7 +396,10 @@ describe('internal linking (docs/04 §2 — 고아 페이지 0)', () => {
         inbound.set(href, (inbound.get(href) ?? 0) + 1);
       }
     }
-    for (const page of pages.filter((p) => isHub(p) || isCalculator(p))) {
+    // 가이드: published 만 링크 대상(초안은 URL 로만 — D40). 목차는 published ≥1 일 때만
+    const linkedGuides = (p: PageFacts) =>
+      (isGuide(p) && guidePublished(guideSlugOf(p.urlPath)!)) || (isGuidesIndex(p) && PUBLISHED_GUIDES.length > 0);
+    for (const page of pages.filter((p) => isHub(p) || isCalculator(p) || linkedGuides(p))) {
       expect(inbound.get(page.urlPath) ?? 0, `orphan ${page.kind} ${page.urlPath}`).toBeGreaterThan(0);
     }
   });
@@ -370,6 +407,35 @@ describe('internal linking (docs/04 §2 — 고아 페이지 0)', () => {
   it('every page links to the locale-correct calculator from the header (P1-3 D36)', () => {
     for (const page of pages) {
       expect(page.markers.navCalculator, `${page.file} a[data-nav-calculator]`).toBe(localePath(page.locale, '/calculator'));
+    }
+  });
+
+  it('header guides link appears iff ≥1 guide is published, and no page links a draft guide (P1-4 D40)', () => {
+    for (const page of pages) {
+      expect(page.markers.navGuides, `${page.file} a[data-nav-guides]`).toBe(
+        PUBLISHED_GUIDES.length > 0 ? localePath(page.locale, '/guides') : undefined,
+      );
+      for (const { href, localeSwitch } of page.links) {
+        if (localeSwitch || href === page.urlPath) continue;
+        const slug = guideSlugOf(href);
+        if (slug) expect(guidePublished(slug), `${page.file} links draft guide ${href}`).toBe(true);
+        // 가이드 본문의 브레드크럼은 목차로 간다 — 목차가 비어 있으면(published 0) 그 가이드도 초안이라 미링크·noindex
+        if (stripLocale(href) === '/guides' && !isGuide(page)) expect(PUBLISHED_GUIDES.length, `${page.file} links the empty guides index`).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it('a[data-related-guide] on a combo points to a published guide in the same locale whose grid covers that combo (D44)', () => {
+    for (const page of pages.filter((p) => p.combo)) {
+      for (const href of page.relatedGuideHrefs) {
+        const slug = guideSlugOf(href);
+        expect(slug !== undefined && guidePublished(slug), `${page.file} related guide ${href}`).toBe(true);
+        const covers = Object.values(GUIDES[slug!].grids).some(
+          (g) => g.gpus.includes(page.combo!.gpuId) && g.models.includes(page.combo!.modelId),
+        );
+        expect(covers, `${page.file} related guide ${href} does not cover this combo`).toBe(true);
+        expect(isKoPath(href), `${page.file} related guide locale`).toBe(page.locale === 'ko');
+      }
     }
   });
 
@@ -477,8 +543,18 @@ describe('combo indexing gate (data/publish.json — 결정 D9, docs/04 §3)', (
         !indexableOf(page),
       );
     }
-    for (const page of pages.filter((p) => p.kind !== 'combo')) {
+    for (const page of pages.filter((p) => p.kind !== 'combo' && !isGuide(p) && !isGuidesIndex(p))) {
       expect(page.robotsNoindex, `${page.file} must not be noindex`).toBe(false);
+    }
+    // 가이드 감수 게이트 (P1-4 D40 — D24 의 '비콤보 noindex 금지'를 가이드·목차에 한해 대체)
+    for (const page of pages.filter(isGuide)) {
+      const draft = !guidePublished(guideSlugOf(page.urlPath)!);
+      expect(page.robotsNoindex, `${page.file} noindex ⇔ draft`).toBe(draft);
+      expect(page.markers.guideDraft, `${page.file} draft notice ⇔ draft`).toBe(draft);
+    }
+    for (const page of pages.filter(isGuidesIndex)) {
+      expect(page.robotsNoindex, `${page.file} index noindex ⇔ no published guide`).toBe(PUBLISHED_GUIDES.length === 0);
+      expect(page.markers.guidesEmpty, `${page.file} empty state`).toBe(PUBLISHED_GUIDES.length === 0);
     }
   });
 
@@ -496,7 +572,8 @@ describe('combo linking rules (docs/04 §3 — 공개 페이지는 공개 콤보
   it('home, calculator, hub pages and indexable combos link only to indexable combos', () => {
     requireCombos();
     const publicPages = pages.filter(
-      (p) => p.kind === 'home' || isCalculator(p) || isHub(p) || (p.kind === 'combo' && indexableOf(p)),
+      (p) =>
+        p.kind === 'home' || isCalculator(p) || isHub(p) || isGuide(p) || isGuidesIndex(p) || (p.kind === 'combo' && indexableOf(p)),
     );
     for (const page of publicPages) {
       for (const { href } of page.links) {
@@ -543,6 +620,19 @@ describe('combo linking rules (docs/04 §3 — 공개 페이지는 공개 콤보
       }
     },
   );
+
+  it('every indexable combo is linked from ≥1 published guide in the same locale (docs/04 §2 ③, P1-4 D44)', () => {
+    const indexable = requireCombos().filter(indexableOf);
+    if (indexable.length === 0) {
+      expect(loadPublish().currentBatch, 'no indexable combo although the publish gate is open').toBe(0);
+      return;
+    }
+    const guideInbound = new Set<string>();
+    for (const page of pages.filter((p) => isGuide(p) && !p.robotsNoindex)) for (const href of page.comboLinkHrefs) guideInbound.add(href);
+    for (const page of indexable) {
+      expect(guideInbound.has(page.urlPath), `${page.urlPath} has no inbound link from a published guide`).toBe(true);
+    }
+  });
 });
 
 describe('depth test (결정 D15 — GPU명을 가려도 수치로 구분된다)', () => {
@@ -653,6 +743,21 @@ describe('home form (P1-3 D25)', () => {
   });
 });
 
+describe('guide pages (P1-4)', () => {
+  it('one h1, ≥1 own-data block (AC — D42), the calculator widget, no block element inside a <p>', () => {
+    const guides = pages.filter(isGuide);
+    expect(guides.length).toBeGreaterThan(0);
+    for (const page of guides) {
+      expect(page.h1Count, `${page.file} h1`).toBe(1);
+      expect(page.markers.guideData, `${page.file} [data-guide-data]`).toBeGreaterThan(0);
+      expect(page.markers.calcWidgets, `${page.file} calculator widget`).toBe(1);
+      expect(page.formActions, page.file).toContain(localePath(page.locale, '/calculator'));
+      expect(page.datalistOptionCount, `${page.file} datalist options`).toBeGreaterThanOrEqual(gpus.length);
+      expect(page.markers.blockInParagraph, `${page.file} block inside <p> (hydration mismatch)`).toBe(0);
+    }
+  });
+});
+
 describe('islands SSR (P1-3 D28 · price sort)', () => {
   it('every combo page renders the ctx/KV controls and keeps the static ctx table; every model hub renders the sort control', () => {
     for (const page of requireCombos()) {
@@ -661,7 +766,7 @@ describe('islands SSR (P1-3 D28 · price sort)', () => {
     for (const page of pages.filter((p) => p.kind === 'model')) {
       expect(page.markers.sortControl, `${page.file} [data-sort-control]`).toBe(true);
     }
-    for (const page of pages.filter((p) => p.kind === 'gpu' || p.kind === 'home')) {
+    for (const page of pages.filter((p) => p.kind === 'gpu' || p.kind === 'home' || isGuide(p) || isGuidesIndex(p))) {
       expect(page.markers.sortControl || page.markers.ctxControls, `${page.file} has no island`).toBe(false);
     }
   });

@@ -71,6 +71,36 @@ export function webSiteJsonLd(input: { name: string; url: string; inLanguage: st
   };
 }
 
+/**
+ * 가이드 — Article (docs/04 §5, P1-4 D41). 저자·발행처는 브랜드 Organization(사용자 결정 — 실명 전환은 레지스트리 한 줄).
+ * headline 은 Google 권장 110자 이하(레지스트리 제목 길이 테스트가 보장), 날짜는 레지스트리 `YYYY-MM-DD` 그대로.
+ */
+export function articleJsonLd(input: {
+  headline: string;
+  description: string;
+  url: string;
+  inLanguage: string;
+  datePublished: string;
+  dateModified: string;
+  author: string;
+  siteUrl: string;
+}) {
+  const org = { '@type': 'Organization', name: input.author, url: input.siteUrl };
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'Article',
+    headline: input.headline,
+    description: input.description,
+    url: input.url,
+    mainEntityOfPage: input.url,
+    inLanguage: input.inLanguage,
+    datePublished: input.datePublished,
+    dateModified: input.dateModified,
+    author: org,
+    publisher: org,
+  };
+}
+
 /** `<script type="application/ld+json">` 본문 — `<` 이스케이프로 스크립트 탈출 차단. */
 export function serializeJsonLd(data: unknown): string {
   return JSON.stringify(data).replace(/</g, '\\u003c');

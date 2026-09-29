@@ -1,0 +1,196 @@
+로컬 LLM 사양은 VRAM이 좌우합니다. 4비트 양자화(Q4_K_M)·8k 컨텍스트 기준으로 8GB는 8B급, 12GB는 12B~14B급, 16GB는 gpt-oss-20b(MXFP4), 24GB는 30B급 모델까지 GPU에 모두 올라갑니다. 모델 파일, 컨텍스트를 담는 KV 캐시, 계산 중간값을 담는 연산 버퍼를 합친 양이 카드의 사용 가능 메모리 안에 들어가야 합니다. Llama 3.1 8B는 <Num kind="needGB" model="llama-3.1-8b" />로 RTX 4060의 <Num kind="usableGB" gpu="rtx-4060" /> 안에 아슬아슬하게 들어가 쾌적입니다<Expect model="llama-3.1-8b" gpu="rtx-4060" verdict="S" />. RTX 3060 12GB의 Qwen3 14B도 아슬아슬하게 들어가 쾌적이고<Expect model="qwen3-14b" gpu="rtx-3060-12gb" verdict="S" />, RTX 5060 Ti 16GB의 gpt-oss-20b와 RTX 3090의 Qwen3 30B-A3B는 여유 있게 들어가 쾌적입니다<Expect model="gpt-oss-20b" gpu="rtx-5060-ti-16gb" verdict="S" /><Expect model="qwen3-30b-a3b-2507" gpu="rtx-3090" verdict="S" />. gpt-oss-120b는 시스템 RAM이 32GB면 이 글의 8~32GB 카드 어디에도 들어가지 않고<Expect model="gpt-oss-120b" gpu="rtx-5090" fits="false" />, CanRun이 확인하는 RAM 용량 중에서는 96GB부터 들어갑니다.
+
+## 필요한 VRAM 계산법: 파일 + KV 캐시 + 연산 버퍼
+
+GPU에만 올려 돌리려면 세 가지가 VRAM에 함께 들어가야 합니다. 양자화한 GGUF 모델 파일, 컨텍스트의 토큰마다 키(key)와 값(value)을 저장하는 KV 캐시, 계산 중간값을 담는 연산 버퍼입니다. 연산 버퍼는 작지만 컨텍스트가 길수록 조금 커집니다. CanRun 판정은 Q4_K_M(흔히 기본값으로 쓰는 4비트 GGUF 양자화), 8k 컨텍스트, f16 KV 캐시가 기준이고, gpt-oss는 원래 배포 형식인 MXFP4가 기준입니다.
+
+<ModelMemoryTable models="llama-3.1-8b,gemma-3-12b,qwen3-14b,gpt-oss-20b,gemma-3-27b,qwen3-30b-a3b-2507,qwen3-32b,llama-3.3-70b,gpt-oss-120b" />
+
+합계는 제품 사양에 적힌 VRAM이 아니라 실제로 쓸 수 있는 메모리와 비교합니다. Windows에서 화면을 출력하는 카드는 OS가 VRAM 일부를 쓰기 때문입니다(표 아래 설명). CanRun 계산으로 사용 가능 메모리는 RTX 4060(8GB) <Num kind="usableGB" gpu="rtx-4060" />, RTX 3060 12GB <Num kind="usableGB" gpu="rtx-3060-12gb" />, RTX 5060 Ti 16GB <Num kind="usableGB" gpu="rtx-5060-ti-16gb" />, RTX 3090(24GB) <Num kind="usableGB" gpu="rtx-3090" />, RTX 5090(32GB) <Num kind="usableGB" gpu="rtx-5090" />입니다.
+
+파일 크기는 Hugging Face의 실제 GGUF 파일에서 가져옵니다. 어림할 때는 llama.cpp 양자화 표를 기준으로, Q4_K_M 파일 크기(GB)가 파라미터 수(B, 10억 개 단위)의 절반을 조금 넘는다고 보면 됩니다. Llama 3.1 8B는 <Num kind="fileGB" model="llama-3.1-8b" />, Qwen3 14B는 <Num kind="fileGB" model="qwen3-14b" />입니다. Q8_0은 10억 개당 대략 1GB라 Qwen3 14B Q8_0은 <Num kind="fileGB" model="qwen3-14b" quant="Q8_0" />입니다.
+
+KV 캐시는 8k에서는 파일보다 훨씬 작아 Llama 3.1 8B가 <Num kind="kvGB" model="llama-3.1-8b" />, Qwen3 14B가 <Num kind="kvGB" model="qwen3-14b" />이지만, 컨텍스트에 비례해 커집니다(아래 ‘양자화와 컨텍스트 길이’ 절). 12GB 카드에 Qwen3 14B를 올리면 메모리는 이렇게 나뉩니다.
+
+<MemoryBreakdown model="qwen3-14b" gpu="rtx-3060-12gb" />
+
+가중치, KV 캐시, 연산 버퍼에 OS 몫까지 더하면 12GB가 거의 다 찹니다. 필요량 <Num kind="needGB" model="qwen3-14b" />와 사용 가능 메모리 <Num kind="usableGB" gpu="rtx-3060-12gb" />의 차이가 1GB도 안 됩니다. <ComboLink model="qwen3-14b" gpu="rtx-3060-12gb" />는 8k·f16 KV에서 쾌적이지만<Expect model="qwen3-14b" gpu="rtx-3060-12gb" verdict="S" />, 여유가 적으니 `ollama ps`의 PROCESSOR 열이 `100% GPU`인지 확인합니다(PowerShell에서도 같은 명령). 다른 카드의 결과는 <HubLink model="qwen3-14b" /> 모델 페이지에 있습니다.
+
+파라미터 수가 곧 필요 메모리는 아닙니다. gpt-oss-20b나 Qwen3 30B-A3B 같은 MoE(전문가 혼합) 모델은 토큰마다 일부 파라미터만 쓰지만 파일 전체가 메모리에 있어야 합니다. 표의 파라미터 열에 전체와 활성 파라미터를 함께 적었습니다.
+
+맥은 CPU와 GPU가 통합 메모리를 나눠 쓰고, CanRun 계산으로는 기본 설정에서 GPU가 약 70%를 씁니다. 이 글은 그래픽카드를 다루므로, 맥 사용자는 가이드 ‘<GuideLink slug="mac-local-llm" />’를 참고하세요.
+
+## VRAM 8·12·16·24·32GB에 들어가는 모델
+
+아래 그리드는 많이 쓰는 모델 6개를 NVIDIA 카드 8종에서 판정한 결과입니다. 조건은 8k 컨텍스트, f16 KV 캐시, 시스템 RAM 32GB(DDR5), Windows입니다. 칸마다 판정·속도 범위·신뢰 라벨이 나오고, 이론 추정 칸의 설명은 그리드 아래에 있습니다.
+
+<ComboGrid grid="tiers" />
+
+### 8GB: RTX 4060
+
+흔히 쓰는 8GB 카드인 <HubLink gpu="rtx-4060" />의 사용 가능 메모리 <Num kind="usableGB" gpu="rtx-4060" /> 안에 Llama 3.1 8B(<Num kind="needGB" model="llama-3.1-8b" />)가 모두 들어갑니다. 판정은 쾌적(실측)이지만<Expect model="llama-3.1-8b" gpu="rtx-4060" verdict="S" />, 여유가 1GB 미만이라 `ollama ps`의 PROCESSOR 열이 `100% GPU`인지 확인합니다.
+
+Gemma 3 12B(<Num kind="needGB" model="gemma-3-12b" />)와 Qwen3 14B(<Num kind="needGB" model="qwen3-14b" />)는 사용 가능 메모리를 넘어 가중치 일부를 시스템 RAM에 두는 부분 오프로드로 돌고, 둘 다 겨우 가능(보정된 추정)입니다<Expect model="gemma-3-12b" gpu="rtx-4060" verdict="B" /><Expect model="qwen3-14b" gpu="rtx-4060" verdict="B" />. MoE 모델인 gpt-oss-20b와 Qwen3 30B-A3B는 CanRun 계산으로는 전문가 가중치를 시스템 RAM에 두고 돌아 겨우 가능으로 나오지만<Expect model="gpt-oss-20b" gpu="rtx-4060" verdict="B" /><Expect model="qwen3-30b-a3b-2507" gpu="rtx-4060" verdict="B" />, 두 칸은 이론 추정이고 보수적으로 나왔을 가능성이 큽니다(아래 MoE 절). gpt-oss-120b는 불가입니다<Expect model="gpt-oss-120b" gpu="rtx-4060" verdict="F" />.
+
+RTX 5060 Ti는 8GB판과 16GB판이 따로 있으니 제품명과 사양의 VRAM부터 확인합니다.
+
+<HubLink gpu="rtx-5060-ti-8gb" />는 사용 가능 메모리가 <Num kind="usableGB" gpu="rtx-5060-ti-8gb" />로 앞의 8GB 카드와 같아서, Llama 3.1 8B는 쾌적<Expect model="llama-3.1-8b" gpu="rtx-5060-ti-8gb" verdict="S" />, Qwen3 14B는 겨우 가능입니다<Expect model="qwen3-14b" gpu="rtx-5060-ti-8gb" verdict="B" />.
+
+### 12GB: RTX 3060 12GB·RTX 4070·RTX 5070
+
+<HubLink gpu="rtx-3060-12gb" />, <HubLink gpu="rtx-4070" />, <HubLink gpu="rtx-5070" />은 사용 가능 메모리가 모두 <Num kind="usableGB" gpu="rtx-3060-12gb" />입니다.
+
+RTX 3060 12GB에서 Gemma 3 12B는 <Num kind="needGB" model="gemma-3-12b" />라 여유 있게 들어가 쾌적입니다<Expect model="gemma-3-12b" gpu="rtx-3060-12gb" verdict="S" />. Qwen3 14B도 8k에서 <Num kind="needGB" model="qwen3-14b" />로 들어가 쾌적이지만<Expect model="qwen3-14b" gpu="rtx-3060-12gb" verdict="S" />, 여유가 1GB 미만이니 `ollama ps`로 확인합니다. f16 KV 16k부터는 부분 오프로드로 떨어집니다(아래 컨텍스트 표). gpt-oss-20b는 <Num kind="needGB" model="gpt-oss-20b" />로 넘치므로 CanRun 계산으로는 전문가 가중치를 시스템 RAM에 두고, 겨우 가능(이론 추정)입니다<Expect model="gpt-oss-20b" gpu="rtx-3060-12gb" verdict="B" />.
+
+세 카드는 들어가는 모델이 같고, 속도는 메모리 대역폭이 가릅니다(RTX 3060 12GB <Num kind="bandwidth" gpu="rtx-3060-12gb" />, RTX 4070 <Num kind="bandwidth" gpu="rtx-4070" />, RTX 5070 <Num kind="bandwidth" gpu="rtx-5070" />). 속도가 판정 기준의 경계 근처인 모델은 카드에 따라 판정이 갈립니다. <HubLink model="phi-4" />는 RTX 3060 12GB에서 원활<Expect model="phi-4" gpu="rtx-3060-12gb" verdict="A" />, RTX 4070에서 쾌적입니다<Expect model="phi-4" gpu="rtx-4070" verdict="S" />. CanRun은 Phi-4를 리즈닝 모델로 분류해 속도 기준을 1.5배 엄격하게 적용하는데, Phi-4는 사고 토큰을 따로 내지 않아 이 기준이 실제보다 엄격할 수 있습니다. 또 Phi-4는 필요량이 <Num kind="needGB" model="phi-4" />로 세 카드 모두에 아슬아슬하게 들어가니 `ollama ps`로 확인합니다.
+
+### 16GB: RTX 5060 Ti 16GB
+
+<HubLink gpu="rtx-5060-ti-16gb" />의 사용 가능 메모리 <Num kind="usableGB" gpu="rtx-5060-ti-16gb" /> 안에 gpt-oss-20b(<Num kind="needGB" model="gpt-oss-20b" />)가 모두 들어가며, ‘16GB 메모리 안에서 구동’이라는 모델 카드 설명과 맞습니다. 판정은 쾌적이고<Expect model="gpt-oss-20b" gpu="rtx-5060-ti-16gb" verdict="S" /> 이 칸도 실측입니다.
+
+Qwen3 14B는 8k 판정이 쾌적이고<Expect model="qwen3-14b" gpu="rtx-5060-ti-16gb" verdict="S" />, f16 KV 32k에서도 <Num kind="needGB" model="qwen3-14b" ctx="32768" />로 사용 가능 메모리 안에 아슬아슬하게 들어가니 `ollama ps`의 PROCESSOR 열이 `100% GPU`인지 확인합니다. 반면 Qwen3 30B-A3B는 <Num kind="needGB" model="qwen3-30b-a3b-2507" />라 CanRun 계산으로는 전문가 가중치를 시스템 RAM에 두고 겨우 가능(이론 추정)이고<Expect model="qwen3-30b-a3b-2507" gpu="rtx-5060-ti-16gb" verdict="B" />, dense 모델인 Gemma 3 27B는 <Num kind="needGB" model="gemma-3-27b" />라 부분 오프로드로 겨우 가능(보정된 추정)입니다<Expect model="gemma-3-27b" gpu="rtx-5060-ti-16gb" verdict="B" />.
+
+### 24GB: RTX 3090·RTX 4090
+
+<HubLink gpu="rtx-3090" />과 <HubLink gpu="rtx-4090" />의 사용 가능 메모리는 <Num kind="usableGB" gpu="rtx-3090" />입니다.
+
+RTX 3090에서 <HubLink model="qwen3-30b-a3b-2507" />은 <Num kind="needGB" model="qwen3-30b-a3b-2507" />로 GPU에 모두 들어가 쾌적이고<Expect model="qwen3-30b-a3b-2507" gpu="rtx-3090" verdict="S" />, RTX 4090에서도 쾌적입니다<Expect model="qwen3-30b-a3b-2507" gpu="rtx-4090" verdict="S" />. dense 모델인 <HubLink model="qwen3-32b" />는 8k에서 <Num kind="needGB" model="qwen3-32b" />라 RTX 3090에서 쾌적이지만<Expect model="qwen3-32b" gpu="rtx-3090" verdict="S" />, f16 KV 16k부터는 사용 가능 메모리를 넘습니다. 같은 32B급이라도 리즈닝 모델인 <HubLink model="deepseek-r1-distill-32b" />는 RTX 3090에서 원활<Expect model="deepseek-r1-distill-32b" gpu="rtx-3090" verdict="A" />, RTX 4090에서 쾌적입니다<Expect model="deepseek-r1-distill-32b" gpu="rtx-4090" verdict="S" />. Qwen3 32B와 DeepSeek R1 Distill Qwen 32B는 둘 다 8k에서 여유가 1GB 미만이라 `ollama ps`로 확인합니다. gpt-oss-120b는 두 카드 모두 불가입니다<Expect model="gpt-oss-120b" gpu="rtx-3090" verdict="F" /><Expect model="gpt-oss-120b" gpu="rtx-4090" verdict="F" />.
+
+### 32GB: RTX 5090
+
+<HubLink gpu="rtx-5090" />의 사용 가능 메모리는 <Num kind="usableGB" gpu="rtx-5090" />입니다. 그리드의 6개 모델은 8k 판정이 24GB 카드와 같고, 늘어난 메모리는 주로 더 긴 컨텍스트에 쓸 수 있습니다.
+
+Qwen3 32B는 f16 KV 32k에서 <Num kind="needGB" model="qwen3-32b" ctx="32768" />가 필요해 RTX 5090에는 들어가지만 RTX 3090의 <Num kind="usableGB" gpu="rtx-3090" />는 넘습니다. RTX 5090에서 Qwen3 32B의 8k 판정은 쾌적입니다<Expect model="qwen3-32b" gpu="rtx-5090" verdict="S" />.
+
+Q4_K_M으로는 dense 70B 모델이 32GB에도 들어가지 않습니다. <HubLink model="llama-3.3-70b" />는 <Num kind="needGB" model="llama-3.3-70b" />가 필요해 RTX 5090에서 부분 오프로드로 겨우 가능이고<Expect model="llama-3.3-70b" gpu="rtx-5090" verdict="B" />, RTX 4090에서는 Q4_K_M 기준 불가입니다<Expect model="llama-3.3-70b" gpu="rtx-4090" verdict="F" />(IQ4_XS로 낮추면 겨우 가능). 여기서 불가는 메모리 부족이 아니라 시스템 RAM까지 나눠 쓰면 너무 느리다는 뜻입니다.
+
+메모리가 모자라서 불가인 조합도 있습니다. <ComboLink model="gpt-oss-120b" gpu="rtx-5090" />는 시스템 RAM 32GB에서는 GPU와 RAM을 합쳐도 들어가지 않아 불가입니다<Expect model="gpt-oss-120b" gpu="rtx-5090" verdict="F" />(아래 MoE 절).
+
+### 단계별로 정리하면
+
+아래 표는 카탈로그의 모든 모델을 카드별·판정별로 세고, GPU만으로 도는 가장 큰 모델을 보여 줍니다(전체 모델 수는 표 제목에 있습니다).
+
+<GpuTierSummary gpus="rtx-4060,rtx-3060-12gb,rtx-4070,rtx-5070,rtx-5060-ti-16gb,rtx-3090,rtx-4090,rtx-5090" />
+
+8GB에서 24GB까지는 단계가 오를 때마다 GPU만으로 도는 가장 큰 모델이 커지지만, 32GB인 RTX 5090은 그 모델이 24GB 카드와 같습니다. 같은 단계 안의 차이(RTX 3060 12GB와 RTX 4070·RTX 5070, RTX 3090과 RTX 4090)는 속도에서 나옵니다.
+
+CanRun 계산에서 들어가는지는 사용 가능 메모리로만 정해지므로, AMD 카드인 <HubLink gpu="rx-9060-xt-16gb" />에서도 gpt-oss-20b는 GPU에 모두 들어갑니다. 속도 범위는 앞의 16GB 카드와 다르지만 판정은 여기서도 쾌적입니다<Expect model="gpt-oss-20b" gpu="rx-9060-xt-16gb" verdict="S" />. 노트북 GPU는 모델 번호가 같아도 VRAM이 더 적을 수 있습니다. 예를 들어 <HubLink gpu="rtx-4090-laptop" />은 <Num kind="vramGB" gpu="rtx-4090-laptop" />, <HubLink gpu="rtx-5090-laptop" />은 <Num kind="vramGB" gpu="rtx-5090-laptop" />이니, 노트북은 노트북 GPU 항목으로 따로 확인합니다.
+
+메모리 기준으로는 다음을 목표로 잡습니다(Q4_K_M·8k 기준).
+
+- 8B급 모델: VRAM 8GB 이상
+- 12B~14B 모델: 12GB 이상, 긴 컨텍스트까지 쓰려면 16GB 이상
+- gpt-oss-20b를 GPU에만: 16GB 이상
+- 30B급 모델: 24GB 이상(모델마다 여유가 다르니 위 표 확인)
+- 32GB: 더 큰 모델보다 긴 컨텍스트를 위한 여유
+
+한국 모델도 같은 계산을 따릅니다. Kanana 1.5 8B는 RTX 4060에서 쾌적이지만<Expect model="kanana-1.5-8b" gpu="rtx-4060" verdict="S" /> 여유가 1GB 미만이라 `ollama ps`로 확인합니다. EXAONE 4.0 32B는 RTX 3090에서 쾌적이지만<Expect model="exaone-4.0-32b" gpu="rtx-3090" verdict="S" />, RTX 4060에서는 Q4_K_M 기준 부분 오프로드가 너무 느려 불가입니다<Expect model="exaone-4.0-32b" gpu="rtx-4060" verdict="F" />(IQ4_XS로 낮추면 겨우 가능). 자세한 내용은 가이드 ‘<GuideLink slug="korean-open-llms" />’에 있습니다.
+
+## MoE 모델과 시스템 RAM
+
+MoE(Mixture of Experts, 전문가 혼합) 모델은 ‘전문가’라는 가중치 묶음을 여럿 두고, 라우터가 토큰마다 몇 개만 골라 계산합니다. 모델 카드 기준으로 <HubLink model="qwen3-30b-a3b-2507" />은 전문가 128개 중 8개를 쓰고 층은 48개이며, <HubLink model="gpt-oss-20b" />와 <HubLink model="gpt-oss-120b" />도 토큰마다 파라미터 일부만 씁니다(메모리 표의 파라미터 열). 들어가느냐는 파일 전체 크기가, 속도는 주로 활성 부분이 정합니다.
+
+파일이 VRAM에 다 들어가지 않으면 CanRun 계산은 공유·어텐션 가중치, KV 캐시, 연산 버퍼를 GPU에 두고 전문가 가중치를 시스템 RAM에 둡니다. llama.cpp의 `--cpu-moe`(전문가 가중치를 모두 CPU에)와 같은 배치로, 조합 페이지의 명령은 `--n-cpu-moe`에 전체 층 수를 넣어 같은 효과를 냅니다. 예를 들어 <ComboLink model="qwen3-30b-a3b-2507" gpu="rtx-3060-12gb" />은 <Num kind="needGB" model="qwen3-30b-a3b-2507" />가 필요한데 사용 가능 메모리가 <Num kind="usableGB" gpu="rtx-3060-12gb" />라, 아래 막대처럼 GPU에는 작은 부분만 남습니다.
+
+<MemoryBreakdown model="qwen3-30b-a3b-2507" gpu="rtx-3060-12gb" />
+
+이 조합은 겨우 가능(이론 추정)입니다<Expect model="qwen3-30b-a3b-2507" gpu="rtx-3060-12gb" verdict="B" />. 판정 기준표에 따르면 전문가를 RAM에 둔 채 원활 판정을 받으려면 쾌적과 같은 속도 기준을 넘어야 합니다. 그리드의 gpt-oss-20b 칸은 리즈닝 모델이라 이 기준이 1.5배 더 엄격합니다.
+
+이 경로의 속도는 이론 추정(±30%)이고 보수적으로 나왔을 가능성이 큽니다. DDR5 PC에서 전문가를 RAM에 두는 이 구성의 공개 기준점 하나(RTX 3060 12GB에서 35B-A3B MoE 모델을 돌린 측정)와 비교하면 CanRun 추정이 약 2.5배 낮습니다. 그래서 8GB·12GB 카드의 gpt-oss-20b와 8~16GB 카드의 Qwen3 30B-A3B에 나온 겨우 가능은 ‘전문가를 RAM에 두고 돌지만 속도는 아직 검증되지 않음’으로 읽어 주세요.
+
+모델이 더 크면 시스템 RAM이 한계가 됩니다. gpt-oss-120b 파일은 <Num kind="fileGB" model="gpt-oss-120b" />라 시스템 RAM 32GB로는 전문가를 둘 자리가 모자랍니다. RTX 3060 12GB는 물론이고<Expect model="gpt-oss-120b" gpu="rtx-3060-12gb" verdict="F" /> 32GB인 RTX 5090에도 들어가지 않습니다<Expect model="gpt-oss-120b" gpu="rtx-5090" fits="false" />. CanRun이 확인하는 RAM 용량(64·96·128GB) 가운데 64GB로는 모자라고 96GB에서 처음 들어가며, 그리드의 ‘RAM 96GB라면: 겨우 가능’도 이론 추정입니다. 모델 카드는 80GB GPU 한 장을 대상으로 합니다.
+
+Ollama는 GPU·CPU 분할을 스스로 정하고 전문가만 RAM에 두는 설정은 문서에 없으니, 결과는 `ollama ps`의 PROCESSOR 열로 확인합니다(Ollama FAQ).
+
+## 양자화와 컨텍스트 길이
+
+### 양자화: 파일 크기와 품질을 맞바꾼다
+
+양자화는 가중치를 더 적은 비트로 저장해 파일을 줄입니다. Q4_K_M은 흔히 기본값으로 쓰는 4비트 GGUF 양자화입니다. CanRun의 품질 등급은 준무손실(Q8_0·Q6_K·Q5_K_M, gpt-oss 원래 형식인 MXFP4), 균형(Q4_K_M, IQ4_XS), 손실 체감(Q3_K_M, IQ3_XS), 손실 큼(Q2_K, IQ2_M) 네 가지입니다. Q8_0 파일은 Q4_K_M의 1.7배쯤 되어, Gemma 3 12B는 Q8_0이 <Num kind="fileGB" model="gemma-3-12b" quant="Q8_0" />, Q4_K_M이 <Num kind="fileGB" model="gemma-3-12b" />입니다. 아래 표는 <ComboLink model="gemma-3-12b" gpu="rtx-4060" />의 양자화별 결과입니다(모두 보정된 추정).
+
+<QuantLadder model="gemma-3-12b" gpu="rtx-4060" />
+
+기준인 Q4_K_M은 부분 오프로드로 겨우 가능이고<Expect model="gemma-3-12b" gpu="rtx-4060" verdict="B" />, Q8_0도 표에서 겨우 가능입니다. IQ4_XS는 <Num kind="needGB" model="gemma-3-12b" quant="IQ4_XS" />로 여전히 사용 가능 메모리 <Num kind="usableGB" gpu="rtx-4060" />를 넘지만, 90% 이상이 GPU에 남아 표에서 원활입니다. Q2_K는 GPU에 모두 들어가 쾌적이지만 손실 큼 등급입니다. CanRun은 다른 양자화가 모두 불가일 때만 손실 큼을 권하니, 양자화를 낮춘다면 균형 등급 안의 IQ4_XS부터 시도합니다. 자세한 내용은 가이드 ‘<GuideLink slug="gguf-quantization" />’와 <HubLink model="gemma-3-12b" /> 모델 페이지에 있습니다.
+
+VRAM이 넉넉하면 반대로 더 높은 품질 등급의 양자화를 쓸 수 있습니다. Qwen3 14B Q8_0은 <Num kind="needGB" model="qwen3-14b" quant="Q8_0" />가 필요해 RTX 5060 Ti 16GB의 <Num kind="usableGB" gpu="rtx-5060-ti-16gb" />는 넘고 RTX 3090의 <Num kind="usableGB" gpu="rtx-3090" /> 안에는 들어가므로, CanRun 계산으로 RTX 3090에서는 GPU에 모두 올라갑니다.
+
+### 컨텍스트 길이: KV 캐시가 커진다
+
+KV 캐시 크기는 모델 구조와 컨텍스트 길이로 정해집니다.
+
+<KvPerTokenTable models="llama-3.1-8b,gemma-3-12b,qwen3-14b,gpt-oss-20b,qwen3-30b-a3b-2507,qwen3-32b,gpt-oss-120b" />
+
+모든 층이 전체 어텐션(full attention)인 Llama 3.1 8B, Qwen3 14B·32B, Qwen3 30B-A3B는 컨텍스트에 비례해 KV 캐시가 커집니다. Gemma 3와 gpt-oss는 최근 토큰만 보는 슬라이딩 윈도(sliding window) 층을 섞어 토큰당 KV가 작습니다(Gemma 3 기술 보고서: 로컬 층을 글로벌 층보다 많이 두고 로컬 범위를 짧게 잡음). 32k에서 Llama 3.1 8B는 <Num kind="kvGB" model="llama-3.1-8b" ctx="32768" />, gpt-oss-20b는 <Num kind="kvGB" model="gpt-oss-20b" ctx="32768" />입니다. Qwen3 14B·32B는 네이티브 컨텍스트가 <Num kind="maxContext" model="qwen3-14b" />라 128k 칸이 대시입니다. 아래 표는 <ComboLink model="qwen3-14b" gpu="rtx-3060-12gb" />를 컨텍스트·KV 캐시 종류별로 본 결과입니다(모두 보정된 추정).
+
+<CtxTable model="qwen3-14b" gpu="rtx-3060-12gb" />
+
+8k·f16 KV에서는 GPU에 모두 올라가 쾌적입니다<Expect model="qwen3-14b" gpu="rtx-3060-12gb" verdict="S" />. f16 KV 16k는 <Num kind="needGB" model="qwen3-14b" ctx="16384" />로 사용 가능 메모리 <Num kind="usableGB" gpu="rtx-3060-12gb" />를 넘어 부분 오프로드가 되고, KV 캐시를 q8_0으로 양자화하면 <Num kind="needGB" model="qwen3-14b" ctx="16384" kv="q8_0" />로 아슬아슬하게 다시 GPU에 모두 올라갑니다. 32k에서는 f16·q8_0 칸이 부분 오프로드이고, q4_0만 <Num kind="needGB" model="qwen3-14b" ctx="32768" kv="q4_0" />로 GPU에 남습니다. 16k q8_0과 32k q4_0 모두 여유가 거의 없으니 `ollama ps`로 확인합니다. 8k 밖의 판정은 표를 보세요.
+
+Ollama라면 기본값도 확인합니다. <RuntimeFact id="ollama-default-ctx" />. 그래서 8GB·12GB·16GB 카드는 4k, 24GB·32GB 카드는 32k로 시작해 CanRun 기준인 8k와 다릅니다. <RuntimeFact id="ollama-kv-cache-type" />. Ollama FAQ는 q8_0을 f16의 약 절반, q4_0을 약 4분의 1로 설명하고, CanRun 표는 약 54%·29%로 계산합니다. 동시 요청 수(`OLLAMA_NUM_PARALLEL`)만큼 컨텍스트 메모리도 늘어나는데(Ollama FAQ), 표는 요청 슬롯 하나를 가정합니다.
+
+### 더 읽을거리
+
+- Ollama 컨텍스트 설정 방법: <GuideLink slug="ollama-context-length" />
+- KV 캐시가 커지는 원리: <GuideLink slug="kv-cache-context" />
+- 양자화 등급과 파일 크기: <GuideLink slug="gguf-quantization" />
+- 맥의 통합 메모리: <GuideLink slug="mac-local-llm" />
+- 전체 결과: <HubLink model="llama-3.1-8b" /> 같은 모델 페이지, <HubLink gpu="rtx-3060-12gb" /> 같은 GPU 페이지
+
+## 이 숫자는 얼마나 확실한가
+
+메모리 수치는 실제 GGUF 파일 크기, 모델 config로 구한 KV 캐시, 연산 버퍼를 더해 공식으로 계산한 값이라 오차 범위를 붙이지 않습니다. 실제 파일 크기가 없을 때 쓰는 어림 공식(파라미터 수 × 가중치당 비트 수 ÷ 8)은 실제 파일 11종과 평균 0.7% 차이였고, KV 캐시 공식은 7가지 구조에서 일치했습니다.
+
+속도는 오차 범위와 신뢰 라벨을 붙인 추정치입니다. 실측은 공개 측정값이고, 보정된 추정은 NVIDIA·AMD 카드에서 dense 모델을 GPU에만 올릴 때 ±12%, MoE·부분 오프로드·그 밖의 하드웨어에서 ±20%입니다. 이론 추정은 MoE 전문가를 RAM에 두는 경우처럼 실측 검증이 없는 구성의 ±30%로, 보수적으로 나올 가능성이 큽니다. 속도 공식은 공개 측정 12건과 비교해 평균 오차 6.3%, 최대 17.1%였습니다.
+
+이 글의 그리드는 대부분 보정된 추정입니다. 실측 칸은 Llama 3.1 8B(RTX 4060·RTX 3060 12GB·RTX 4090)와 gpt-oss-20b(RTX 5060 Ti 16GB·RTX 3090·RTX 4090·RTX 5090)이고, 이론 추정 칸은 8GB·12GB 카드의 gpt-oss-20b와 8~16GB 카드의 Qwen3 30B-A3B입니다. 양자화 표와 컨텍스트 표는 모두 보정된 추정입니다.
+
+아래는 <ComboLink model="gpt-oss-20b" gpu="rtx-5060-ti-16gb" />의 실측입니다.
+
+<Measured model="gpt-oss-20b" gpu="rtx-5060-ti-16gb" />
+
+이 값은 llama.cpp의 gpt-oss 안내 토론 글에 올라온 공개 측정 한 건(llama-bench, 2k 컨텍스트)이며 CanRun이 직접 잰 값은 아닙니다. 같은 칸에 CanRun의 8k 추정 범위도 함께 보여 줍니다. 이 카드의 다른 결과는 <HubLink gpu="rtx-5060-ti-16gb" /> 페이지에 있습니다.
+
+표는 Windows에서 해당 카드가 화면 출력을 맡고, 시스템 RAM 32GB(DDR5-5600 듀얼 채널), 8k 컨텍스트, f16 KV, 모델 하나, 요청 슬롯 하나, llama.cpp 계열 런타임을 가정합니다. Ollama와 llama.cpp는 메모리를 스스로 추정해 배치하므로, 내 PC의 실제 배치는 Ollama면 `ollama ps`의 PROCESSOR 열(`100% GPU`인지 CPU/GPU 분할인지), llama.cpp면 시작 로그로 확인합니다.
+
+문장 속 판정은 따로 밝히지 않으면 Q4_K_M(gpt-oss는 MXFP4)·8k·f16 KV 기준입니다. 이 글에 나오는 리즈닝 모델(gpt-oss-20b·gpt-oss-120b, Phi-4, DeepSeek R1 Distill Qwen 32B, EXAONE 4.0 32B)은 속도 기준을 1.5배 엄격하게 적용합니다. HyperCLOVA X SEED Think 14B, EXAONE 4.5 33B처럼 모델 페이지 분류에 ‘리즈닝’이 붙은 모델도 같습니다. 아래 기준표에는 이 점이 나오지 않습니다.
+
+<Threshold />
+
+## 자주 묻는 질문
+
+### VRAM 8GB로 로컬 LLM을 돌릴 수 있나요?
+
+8B급 모델은 Q4_K_M·8k 컨텍스트에서 돌릴 수 있습니다. <ComboLink model="llama-3.1-8b" gpu="rtx-4060" />는 필요량 <Num kind="needGB" model="llama-3.1-8b" />가 사용 가능 메모리 <Num kind="usableGB" gpu="rtx-4060" /> 안에 들어가 쾌적이지만<Expect model="llama-3.1-8b" gpu="rtx-4060" verdict="S" />, 여유가 적으니 `ollama ps`로 확인합니다. f16 KV 16k에서는 필요량이 <Num kind="needGB" model="llama-3.1-8b" ctx="16384" />로 늘어 넘치니, KV 캐시를 q8_0으로 양자화하거나 컨텍스트를 줄여야 GPU에 남습니다. 같은 카드에서 Qwen3 14B는 <Num kind="needGB" model="qwen3-14b" />가 필요해 일부가 시스템 RAM에서 돌고 겨우 가능입니다<Expect model="qwen3-14b" gpu="rtx-4060" verdict="B" />.
+
+### 모델에 필요한 VRAM은 어떻게 계산하나요?
+
+GGUF 파일 크기, 컨텍스트만큼의 KV 캐시, 작은 연산 버퍼를 더해 카드의 사용 가능 메모리(제품 사양의 용량에서 OS가 화면 출력에 쓰는 몫을 뺀 값)와 비교합니다. Q4_K_M 파일(GB)은 파라미터 수(B)의 절반을 조금 넘고 Q8_0은 10억 개당 대략 1GB지만, 가능하면 다운로드 페이지의 실제 크기를 씁니다. 예를 들어 Qwen3 14B는 파일 <Num kind="fileGB" model="qwen3-14b" />에 8k KV 캐시 <Num kind="kvGB" model="qwen3-14b" />와 연산 버퍼를 더해 <Num kind="needGB" model="qwen3-14b" />이고, 12GB 카드의 사용 가능 메모리는 <Num kind="usableGB" gpu="rtx-3060-12gb" />입니다.
+
+### 컨텍스트를 늘리면 VRAM이 더 필요한가요?
+
+그렇습니다. KV 캐시가 컨텍스트의 모든 토큰을 저장하므로, 전체 어텐션 모델은 컨텍스트가 두 배면 캐시도 두 배입니다. 구조에 따라 차이가 커서 f16 KV 32k에서 Llama 3.1 8B는 <Num kind="kvGB" model="llama-3.1-8b" ctx="32768" />, 슬라이딩 윈도 층이 있는 gpt-oss-20b는 <Num kind="kvGB" model="gpt-oss-20b" ctx="32768" />입니다. <RuntimeFact id="ollama-default-ctx" />. q8_0·q4_0 KV 캐시로 줄일 수 있지만, <RuntimeFact id="ollama-kv-cache-type" />.
+
+### gpt-oss-20b나 Qwen3 30B-A3B 같은 MoE 모델은 같은 크기의 dense 모델보다 VRAM이 적게 드나요?
+
+GPU에 올리는 데 필요한 메모리는 줄지 않습니다. 파일 전체가 메모리에 있어야 하고, 활성 파라미터가 적으면 토큰마다 하는 계산이 줄 뿐 파일은 작아지지 않습니다. gpt-oss-20b는 8k에서 <Num kind="needGB" model="gpt-oss-20b" />라 RTX 5060 Ti 16GB에 모두 들어가 쾌적이고<Expect model="gpt-oss-20b" gpu="rtx-5060-ti-16gb" verdict="S" />, ‘16GB 메모리 안에서 구동’이라는 모델 카드 설명과도 맞습니다. MoE라서 가능한 것은 전문가 가중치를 시스템 RAM에 두는 배치(llama.cpp `--cpu-moe`·`--n-cpu-moe`)이며, CanRun은 이 배치의 속도를 아직 이론 추정으로 표시합니다.
+
+### 시스템 RAM으로 부족한 VRAM을 메울 수 있나요?
+
+일부는 메울 수 있습니다. 런타임이 넘친 부분을 시스템 RAM에 두므로 돌아가긴 하지만 느려지고, dense 모델은 특히 크게 느려져 Qwen3 14B는 RTX 4060에서 겨우 가능입니다<Expect model="qwen3-14b" gpu="rtx-4060" verdict="B" />. 큰 MoE 모델은 시스템 RAM 자체가 한계입니다. gpt-oss-120b 파일은 <Num kind="fileGB" model="gpt-oss-120b" />라 시스템 RAM이 32GB면 RTX 5090에서도 불가이고<Expect model="gpt-oss-120b" gpu="rtx-5090" verdict="F" />, CanRun이 확인하는 RAM 용량(64·96·128GB) 중에서는 64GB로는 모자라고 96GB부터 들어갑니다. 실제 배치는 `ollama ps`의 PROCESSOR 열이나 llama.cpp 로그로 확인합니다.
+
+## 출처
+
+- [llama.cpp 양자화 도구 README](https://github.com/ggml-org/llama.cpp/blob/master/tools/quantize/README.md) — Llama-3.1-8B 기준 양자화별 가중치당 비트 수와 파일 크기(Q4_K_M·IQ4_XS·Q8_0 등), 파일 크기 어림 규칙의 근거
+- [llama.cpp 서버 README](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md) — `-ngl`, `--cpu-moe`(MoE 가중치를 모두 CPU에), `--n-cpu-moe N`(앞쪽 N개 층의 MoE 가중치를 CPU에), `-c`, `--cache-type-k`(기본 f16, q8_0·q4_0)
+- [Ollama 문서: 컨텍스트 길이](https://docs.ollama.com/context-length) — VRAM 구간별 기본 컨텍스트(4k·32k·256k), CPU 오프로드를 피하라는 권고, `ollama ps`로 확인
+- [Ollama FAQ](https://docs.ollama.com/faq) — `ollama ps`의 PROCESSOR 열(`100% GPU`·`100% CPU`·CPU/GPU 분할), KV 캐시 양자화(q8_0은 f16의 약 절반, q4_0은 약 4분의 1, 플래시 어텐션 필요), `OLLAMA_NUM_PARALLEL`에 따른 메모리 증가
+- [gpt-oss-20b 모델 카드](https://huggingface.co/openai/gpt-oss-20b) — 전체·활성 파라미터 수, MXFP4로 양자화한 MoE 가중치, 16GB 메모리 안에서 구동
+- [gpt-oss-120b 모델 카드](https://huggingface.co/openai/gpt-oss-120b) — 전체·활성 파라미터 수, MXFP4, 80GB GPU 한 장에 들어감
+- [Qwen3-30B-A3B-Instruct-2507 모델 카드](https://huggingface.co/Qwen/Qwen3-30B-A3B-Instruct-2507) — 전체·활성 파라미터 수, 전문가 128개 중 8개 활성, 48층, 네이티브 256k 컨텍스트
+- [Qwen3-14B 모델 카드](https://huggingface.co/Qwen/Qwen3-14B) — 40층, KV 헤드 8개, 네이티브 32k 컨텍스트
+- [Qwen3-32B 모델 카드](https://huggingface.co/Qwen/Qwen3-32B) — 64층, KV 헤드 8개, 네이티브 32k 컨텍스트
+- [Llama 3.1 8B Instruct 모델 카드](https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct) — 8B 파라미터, 128k 컨텍스트, 그룹 쿼리 어텐션(GQA)
+- [Llama 3.3 70B Instruct 모델 카드](https://huggingface.co/meta-llama/Llama-3.3-70B-Instruct) — 70B 파라미터, 128k 컨텍스트(Q4_K_M으로 32GB에도 들어가지 않는 예)
+- [Gemma 3 12B 모델 카드](https://huggingface.co/google/gemma-3-12b-it) — 128k 입력 컨텍스트(파일을 받으려면 Google 라이선스 동의가 필요하고, 카드 본문은 공개)
+- [Gemma 3 기술 보고서(arXiv)](https://arxiv.org/abs/2503.19786) — 로컬 어텐션 층을 글로벌 층보다 많이 두고 로컬 범위를 짧게 잡아 긴 컨텍스트의 KV 캐시 증가를 억제
+- [llama.cpp 토론: gpt-oss 실행 안내](https://github.com/ggml-org/llama.cpp/discussions/15396) — RTX 카드의 llama-bench 결과(RTX 5060 Ti 16GB에서 gpt-oss-20b 실측의 출처)

@@ -1,0 +1,178 @@
+Start with Q4_K_M: llama.cpp's `-hf` option and Hugging Face's Ollama integration pick it when you name no quant, and our verdicts use it as the baseline. For the dense models in this guide, IQ4_XS is about a tenth smaller and in the same quality group as Q4_K_M (Good balance); Q8_0 is roughly three quarters larger, worth it only when it fits with room for your context. One step down can decide the fit: on the RTX 5060 Ti 16GB with an 8k context, Mistral Small 3.2 24B at Q4_K_M needs <Num kind="needGB" model="mistral-small-3.2-24b" />, more than the <Num kind="usableGB" gpu="rtx-5060-ti-16gb" /> the card can use. At IQ4_XS it needs <Num kind="needGB" model="mistral-small-3.2-24b" quant="IQ4_XS" />, which in our calculation stays on the GPU, with little margin — check `ollama ps`.
+
+## What the parts of a GGUF quant name mean
+
+A quantized GGUF file stores a model's weights at reduced precision, and the quant name says which scheme was used. The table shows the four files we track for <HubLink model="qwen3-14b" />, from the unsloth repository.
+
+<QuantSizeTable model="qwen3-14b" />
+
+Taking Q4_K_M apart:
+
+- **Q4**: the digit is the nominal bit width.
+- **K**: a k-quant. Weights are stored in super-blocks that contain smaller blocks, and each block has its own scale (llama.cpp PR #1684).
+- **M**: the size mix, one of S, M or L. M uses a higher-bit type for some of the more sensitive tensors, and which tensors get it has changed since the original PR.
+
+Other names follow different schemes:
+
+- **IQ4_XS** is an i-quant, a type whose weights are derived using an importance matrix. Its PR (#5747) describes it as IQ4_NL in super-blocks of 256 weights with 6-bit block scales; XS is the smallest variant.
+- **Q8_0** is plain 8-bit quantization in blocks of 32 weights, with one scale per block.
+- **MXFP4** is a 4-bit microscaling block floating-point format. Per the gpt-oss-20b model card, the gpt-oss models were post-trained with MXFP4 quantization of their mixture-of-experts (MoE) weights, so it is the only file we list for <HubLink model="gpt-oss-20b" /> (<Num kind="fileGB" model="gpt-oss-20b" />) and sits in our Near-lossless group as the release precision.
+- **UD-** files, such as UD-Q2_K_XL, are Unsloth Dynamic quants, which choose a quant type per layer, so their bits per weight cannot be read from the name; as for every file, we use the real file size.
+
+The bits-per-weight column gives the file-level values llama.cpp's quantize README lists for Llama 3.1 8B. They are higher than the digit in the name because block scales and the higher-bit tensors add bits, and real files for another model differ a little. As a rough rule, file size in gigabytes is billions of parameters times bits per weight, divided by eight, except for MXFP4 and UD files.
+
+In the Qwen3 14B table, IQ4_XS is about a tenth smaller than Q4_K_M, Q8_0 roughly three quarters larger, and Q2_K, a 2-bit file in the Heavy loss group, about two thirds the size. The same ratios hold for Mistral Small 3.2 24B and Gemma 3 12B in our data, but not for every model, including some MoE models and models whose Q4_K_M row is a UD file, so check each model's own table.
+
+### Which file gets downloaded
+
+`llama-server -hf` picks Q4_K_M when you give no quant (or the first file in the repo if it has no Q4_K_M file), and Hugging Face's Ollama integration uses Q4_K_M when the repo has it.
+
+To get a different file, append the quant as a case-insensitive tag. Both commands run unchanged in PowerShell on Windows, and `-c 8192` matches the 8k context our numbers assume:
+
+```powershell
+ollama run hf.co/unsloth/Qwen3-14B-GGUF:IQ4_XS
+llama-server -hf unsloth/Qwen3-14B-GGUF:IQ4_XS -c 8192
+```
+
+The `ollama run` line does not set a context. <RuntimeFact id="ollama-default-ctx" />. To match our 8k, quit the Ollama tray app, start the server with `$env:OLLAMA_CONTEXT_LENGTH="8192"; ollama serve` as our combo pages do, and run the command from a second PowerShell window.
+
+## Quality groups, and why 2-bit files exist
+
+We sort every quant type into one of four quality groups:
+
+- **Near-lossless:** Q8_0, Q6_K, Q5_K_M, F16, and MXFP4 where it is the model's native format.
+- **Good balance:** Q4_K_M and IQ4_XS.
+- **Noticeable loss:** the 3-bit Q3_K_M and IQ3_XS.
+- **Heavy loss:** the 2-bit Q2_K, IQ2_M, UD-Q2_K_XL and UD-IQ2_M.
+
+The grouping is our policy by quant type, not a quality measurement for each model; real loss depends on the model and the task. No model in this guide's tables has a 3-bit file in our data, so Noticeable loss does not appear below.
+
+The ordering follows llama.cpp's evidence. Its quantize README says quantization may cost accuracy, measured with perplexity or KL divergence (scores of how far the quantized model's predictions drift from the original), and that an importance-matrix (imatrix) file can reduce the loss. The 2023 PR that introduced k-quants, tested on LLaMA models from 7B to 65B, found perplexity a fairly smooth function of file size, with the 6-bit type very close to fp16. Relative error also stopped shrinking as models grew, back to about the 7B level at 30B and 65B, so a large model is not automatically safe at 2-bit.
+
+### Why 2-bit quants exist
+
+The reason is file size. <HubLink model="llama-3.3-70b" /> at Q4_K_M is a <Num kind="fileGB" model="llama-3.3-70b" /> file, and even its 2-bit IQ2_M file, labeled Heavy loss, is <Num kind="fileGB" model="llama-3.3-70b" quant="IQ2_M" />, more than the <Num kind="usableGB" gpu="rtx-3090" /> a 24GB card can use.
+
+<QuantSizeTable model="llama-3.3-70b" />
+
+At the Q4_K_M baseline, Llama 3.3 70B Won't run on the <HubLink gpu="rtx-3090" />.<Expect model="llama-3.3-70b" gpu="rtx-3090" verdict="F" /> The reason is speed, not a failure to load: its need of <Num kind="needGB" model="llama-3.3-70b" /> is about twice the card's usable memory, so in our calculation roughly half the model would sit in system RAM, and that part sets the pace. One step down does not bring it onto the card either: IQ4_XS still needs <Num kind="needGB" model="llama-3.3-70b" quant="IQ4_XS" />, so in our calculation it stays a partial offload, though at IQ4_XS the pair moves up to Runs slowly, which is why our pages suggest IQ4_XS for this pair and print their commands with it.
+
+### How we suggest a different quant
+
+Our pages suggest trying a smaller quant only when it raises the verdict, and a 2-bit file only when every non-2-bit file Won't run. When a 2-bit file would reach a higher verdict than that suggestion, or than the baseline when there is none, the page mentions it separately as a last resort, marked as heavy quality loss. We never suggest a larger quant that gets the same verdict, since it costs speed and context room for the same outcome; a combo page may still name one as an option.
+
+## When one step down changes the result
+
+A rule of thumb follows from the file sizes: dropping from Q4_K_M to IQ4_XS brings a model fully onto the GPU only when the Q4_K_M need is over your usable memory by less than the gap between the two files, about a tenth of the file here.
+
+### Mistral Small 3.2 24B on the RTX 5060 Ti 16GB
+
+<HubLink model="mistral-small-3.2-24b" /> on the <HubLink gpu="rtx-5060-ti-16gb" /> is the case where one step is enough. At Q4_K_M and 8k it needs <Num kind="needGB" model="mistral-small-3.2-24b" /> against <Num kind="usableGB" gpu="rtx-5060-ti-16gb" /> usable, so in our calculation a small part is offloaded to system RAM (a partial offload), and at that baseline it Runs well.<Expect model="mistral-small-3.2-24b" gpu="rtx-5060-ti-16gb" verdict="A" /> At IQ4_XS it needs <Num kind="needGB" model="mistral-small-3.2-24b" quant="IQ4_XS" />, which in our calculation fits fully on the GPU, with little margin — check `ollama ps`. Mistral Small 3.2 is also a vision model, and our figures leave out its vision projector (mmproj) file, which `llama-server -hf` fetches and loads when the repo has one (add `--no-mmproj` to skip it); at this margin that can decide the fit. In the ladder, the IQ4_XS row moves up a verdict and the Q8_0 row goes the other way.
+
+<QuantLadder model="mistral-small-3.2-24b" gpu="rtx-5060-ti-16gb" />
+
+The fit is the same on every 16GB card in our catalog, but whether the IQ4_XS row also moves up a verdict depends on the card's speed, so check your own card in the calculator.
+
+Context changes the picture: at 16k, IQ4_XS needs <Num kind="needGB" model="mistral-small-3.2-24b" quant="IQ4_XS" ctx="16384" />, over the usable memory again. A q8_0 KV cache (the memory that holds the context, stored at 8-bit instead of f16) brings that to <Num kind="needGB" model="mistral-small-3.2-24b" quant="IQ4_XS" ctx="16384" kv="q8_0" />, which fits in CanRun's calculation, again with little margin — check `ollama ps`.
+
+For this pair, the commands CanRun prints use the Q4_K_M tag (they switch to a smaller quant only when Q4_K_M Won't run), so swap in IQ4_XS yourself. For our 8k context, quit the Ollama tray app, run the first line, then the second in another PowerShell window:
+
+```powershell
+$env:OLLAMA_CONTEXT_LENGTH="8192"; ollama serve
+ollama run hf.co/bartowski/mistralai_Mistral-Small-3.2-24B-Instruct-2506-GGUF:IQ4_XS
+```
+
+### Gemma 3 12B on the RTX 4060
+
+For <ComboLink model="gemma-3-12b" gpu="rtx-4060" />, Q4_K_M needs <Num kind="needGB" model="gemma-3-12b" /> against <Num kind="usableGB" gpu="rtx-4060" /> usable. In our calculation, less than 90% of the model stays on the GPU, so at the baseline it Runs slowly.<Expect model="gemma-3-12b" gpu="rtx-4060" verdict="B" />
+
+IQ4_XS needs <Num kind="needGB" model="gemma-3-12b" quant="IQ4_XS" />, still over the usable memory, so it is still a partial offload. What changes in our calculation is the split: more than 90% of the model now stays on the GPU, and the ladder row moves up one verdict. The Q2_K row needs <Num kind="needGB" model="gemma-3-12b" quant="Q2_K" /> and fits entirely, but as a 2-bit Heavy loss file it is only a last resort. Our pages suggest trying IQ4_XS instead.
+
+<QuantLadder model="gemma-3-12b" gpu="rtx-4060" />
+
+### When one step down is not enough
+
+For <ComboLink model="qwen3-14b" gpu="rtx-4060" />, the gap is too wide. At the baseline it Runs slowly,<Expect model="qwen3-14b" gpu="rtx-4060" verdict="B" /> and IQ4_XS still needs <Num kind="needGB" model="qwen3-14b" quant="IQ4_XS" />, far over the <Num kind="usableGB" gpu="rtx-4060" /> the card can use, so one step down does not change the verdict. Only the Heavy loss Q2_K comes close, and even it needs <Num kind="needGB" model="qwen3-14b" quant="Q2_K" />, still over.
+
+One caveat for MoE models: where a ladder row keeps the MoE experts in system RAM, as the Q4_K_M and IQ4_XS rows do for Qwen3 30B-A3B (2507) on the RTX 5060 Ti 16GB, those rows are theoretical (±30%) and likely conservative, since that path has no measurements to check against yet.
+
+## When a larger file is worth the memory
+
+A Near-lossless file such as Q8_0 or Q6_K keeps more precision, but only pays off when it fits with room for your context.
+
+<ComboLink model="qwen3-14b" gpu="rtx-5060-ti-16gb" /> shows the limit. At the Q4_K_M baseline it Runs great.<Expect model="qwen3-14b" gpu="rtx-5060-ti-16gb" verdict="S" /> Q8_0 needs <Num kind="needGB" model="qwen3-14b" quant="Q8_0" /> at 8k, over the <Num kind="usableGB" gpu="rtx-5060-ti-16gb" /> the card can use, so the ladder's Q8_0 row becomes a partial offload.
+
+<QuantLadder model="qwen3-14b" gpu="rtx-5060-ti-16gb" />
+
+On a 24GB card the same file has room. For <ComboLink model="qwen3-14b" gpu="rtx-3090" />, the Q8_0 need of <Num kind="needGB" model="qwen3-14b" quant="Q8_0" /> is under the <Num kind="usableGB" gpu="rtx-3090" /> the card can use, and the Q4_K_M baseline Runs great.<Expect model="qwen3-14b" gpu="rtx-3090" verdict="S" />
+
+### What it costs
+
+The first cost is speed. For a dense model, generating each token reads all of the weights, so a file roughly three quarters larger is estimated to be clearly slower. The quantize README's table for Llama 3.1 8B also shows Q8_0 slower than Q4_K_M, and the ladder rows show our band for each quant.
+
+The second cost is context room. For <ComboLink model="llama-3.1-8b" gpu="rtx-3060-12gb" />, the Q4_K_M baseline Runs great.<Expect model="llama-3.1-8b" gpu="rtx-3060-12gb" verdict="S" /> Q8_0 needs <Num kind="needGB" model="llama-3.1-8b" quant="Q8_0" /> at 8k, under the <Num kind="usableGB" gpu="rtx-3060-12gb" /> the card can use. At 16k it needs <Num kind="needGB" model="llama-3.1-8b" quant="Q8_0" ctx="16384" />, which fits with little margin — check `ollama ps`. At 32k it needs <Num kind="needGB" model="llama-3.1-8b" quant="Q8_0" ctx="32768" />, over the usable memory, while Q4_K_M at 32k needs <Num kind="needGB" model="llama-3.1-8b" ctx="32768" /> and fits.
+
+A memory-based rule: take a Near-lossless file only when its need at the context you actually use stays under your usable memory. Otherwise use Q4_K_M, and try IQ4_XS when Q4_K_M is just over.
+
+Where to go next:
+
+- <GuideLink slug="vram-requirements" />
+- <GuideLink slug="kv-cache-context" />
+- <GuideLink slug="korean-open-llms" />
+
+## How sure are these numbers?
+
+File sizes are the real GGUF sizes from the Hugging Face repos, in decimal GB. The memory needs add the file, the KV cache and a compute buffer (working memory for inference), and they are calculated with a formula, not estimated.
+
+Speeds are estimates, each with a band and a confidence label, and the verdicts follow from those estimates and from how much of the model stays on the GPU. Calibrated means ±12% for dense models running fully on an NVIDIA or AMD card, and ±20% for partial offload, MoE models and other hardware. Theoretical means ±30%; it marks setups such as MoE experts kept in system RAM, where our estimates are likely conservative. Every ladder row in this guide is calibrated.
+
+Measurements are joined only when the quant matches exactly, so a run of a Q4_K_XL file is never used for a Q4_K_M cell. The one measured point in this guide, shown below, comes from a llama.cpp GitHub discussion at a 2k context, not from an Ollama run, and sits next to our 8k estimate band.
+
+<Measured model="gpt-oss-20b" gpu="rtx-5060-ti-16gb" />
+
+At its MXFP4 baseline, <ComboLink model="gpt-oss-20b" gpu="rtx-5060-ti-16gb" /> Runs great.<Expect model="gpt-oss-20b" gpu="rtx-5060-ti-16gb" verdict="S" /> It is a reasoning model, so its speed thresholds are 1.5× stricter.
+
+Our figures assume Windows with the card driving the display, 32GB of DDR5 system RAM, an 8k context, an f16 KV cache, one model loaded and one request slot, and they cover the language-model file only, not a vision projector (mmproj) file. Ollama and llama.cpp make their own memory estimates, so check the real GPU/CPU split on your machine with `ollama ps` (or the load log in llama.cpp).
+
+Unless a sentence names another quant, verdict names in the text refer to the baseline quant (Q4_K_M, or MXFP4 for gpt-oss) at 8k with an f16 KV cache; for other quants, read the ladder rows. The thresholds:
+
+<Threshold />
+
+## FAQ
+
+### Which GGUF quant should I download?
+
+Start with Q4_K_M, the default for `llama-server -hf` and Hugging Face's Ollama integration, and switch only when memory says so. If its need at your context is over your usable memory, try IQ4_XS, in the same quality group (Good balance). At an 8k context, Mistral Small 3.2 24B needs <Num kind="needGB" model="mistral-small-3.2-24b" /> at Q4_K_M and <Num kind="needGB" model="mistral-small-3.2-24b" quant="IQ4_XS" /> at IQ4_XS, against <Num kind="usableGB" gpu="rtx-5060-ti-16gb" /> usable on an RTX 5060 Ti 16GB, so in our calculation IQ4_XS fits, with little margin — check `ollama ps`. Take Q8_0 or Q6_K only if it fits with room for your context, and choose the file with a quant tag, as in `ollama run hf.co/{user}/{repo}:IQ4_XS`.
+
+### Is IQ4_XS worse than Q4_K_M?
+
+It keeps a little less precision, but we put both in the same Good balance group. For Qwen3 14B the IQ4_XS file is <Num kind="fileGB" model="qwen3-14b" quant="IQ4_XS" /> against <Num kind="fileGB" model="qwen3-14b" /> for Q4_K_M. The llama.cpp PR that added IQ4_XS reported that it sits well on the error-versus-size curve; we have no per-model quality measurements, and the difference depends on the model and the task. The practical reason to pick it is fit, when Q4_K_M is just over.
+
+### Is Q8_0 worth it over Q4_K_M?
+
+Only when it fits with room for your context. For the dense models in this guide, Q8_0 is roughly three quarters larger than Q4_K_M. Qwen3 14B at Q8_0 needs <Num kind="needGB" model="qwen3-14b" quant="Q8_0" /> at 8k: over the <Num kind="usableGB" gpu="rtx-5060-ti-16gb" /> an RTX 5060 Ti 16GB can use, under the <Num kind="usableGB" gpu="rtx-3090" /> of an RTX 3090. Even where it fits, each token reads a larger file, so the estimated speed is lower, and less memory is left for context.
+
+### Are 2-bit quants like Q2_K and IQ2_M usable?
+
+Only as a last resort. Our pages suggest a 2-bit file only when every non-2-bit file Won't run. Otherwise a combo page mentions one separately when it would reach a higher verdict than the suggested quant (or the baseline), always marked as heavy quality loss. They exist mainly for large models, yet even Llama 3.3 70B's IQ2_M file (<Num kind="fileGB" model="llama-3.3-70b" quant="IQ2_M" />) is larger than the <Num kind="usableGB" gpu="rtx-3090" /> a 24GB card can use. llama.cpp's 2023 k-quant measurements found that relative error did not keep shrinking in larger models, so size alone does not make 2-bit safe.
+
+### Is a q8_0 KV cache the same as a Q8_0 model file?
+
+No. The model quant (Q8_0, Q4_K_M and so on) sets the size of the weights file you download. The KV cache type (f16, q8_0 or q4_0) is a separate runtime setting for the memory that holds the context, so you can lower both, and the savings add up. <RuntimeFact id="ollama-kv-cache-type" />.
+
+## Sources
+
+- [llama.cpp quantize README](https://github.com/ggml-org/llama.cpp/blob/master/tools/quantize/README.md): the bits-per-weight and size table for Llama 3.1 8B (the source of our bits-per-weight column), text-generation speed for each type (lower for Q8_0 than for Q4_K_M), and accuracy loss measured with perplexity or KL divergence and reduced with an imatrix.
+- [llama.cpp PR #1684: k-quants](https://github.com/ggml-org/llama.cpp/pull/1684): the super-block structure, the S, M and L mixes, perplexity as a smooth function of quantized size, the 6-bit type close to fp16, and relative error not shrinking at 30B and 65B.
+- [llama.cpp PR #5747: IQ4_XS](https://github.com/ggml-org/llama.cpp/pull/5747): IQ4_NL in super-blocks of 256 with 6-bit block scales, and its position on the error-versus-size curve.
+- [Hugging Face Hub docs: GGUF](https://huggingface.co/docs/hub/gguf): the quantization types, including k-quants, i-quants with an importance matrix, Q8_0 block scaling and MXFP4 microscaling block floating point.
+- [Hugging Face Hub docs: Ollama](https://huggingface.co/docs/hub/ollama): Q4_K_M by default when present, and choosing another quant with a case-insensitive tag.
+- [llama.cpp server README](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md): the `-hf` option, where the quant is optional and case-insensitive, defaults to Q4_K_M and falls back to the first file, the automatic mmproj download that `--no-mmproj` turns off, and the `-c` context-size option.
+- [gpt-oss-20b model card](https://huggingface.co/openai/gpt-oss-20b): post-training with MXFP4 quantization of the MoE weights, and total and active parameters.
+- [Unsloth docs: Dynamic GGUFs](https://unsloth.ai/docs/basics/dynamic-3.0-ggufs): UD- files with a quant type chosen per layer.
+- [Ollama docs: Context length](https://docs.ollama.com/context-length): the default context by GPU memory, and setting it with `OLLAMA_CONTEXT_LENGTH` when starting `ollama serve`.
+- [Ollama FAQ](https://docs.ollama.com/faq): KV cache quantization with `OLLAMA_KV_CACHE_TYPE`, which needs flash attention and applies server-wide.
+- [unsloth/Qwen3-14B-GGUF](https://huggingface.co/unsloth/Qwen3-14B-GGUF): the file listing behind the Qwen3 14B sizes.
+- [bartowski/Llama-3.3-70B-Instruct-GGUF](https://huggingface.co/bartowski/Llama-3.3-70B-Instruct-GGUF): the file listing behind the Llama 3.3 70B sizes, including the 2-bit files.
+- [bartowski/mistralai_Mistral-Small-3.2-24B-Instruct-2506-GGUF](https://huggingface.co/bartowski/mistralai_Mistral-Small-3.2-24B-Instruct-2506-GGUF): the file listing behind the Mistral Small 3.2 24B sizes.
+- [bartowski/google_gemma-3-12b-it-GGUF](https://huggingface.co/bartowski/google_gemma-3-12b-it-GGUF): the file listing behind the Gemma 3 12B sizes.

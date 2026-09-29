@@ -2,7 +2,8 @@ import { useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
 import { VerdictSprite } from '@/components/verdict';
 import { routing, type Locale } from '@/i18n/routing';
-import { localeHref } from '@/lib/links';
+import { publishedGuides } from '@/lib/guides';
+import { guidesHref, localeHref } from '@/lib/links';
 
 /**
  * 페이지 셸 — 헤더(홈 링크 + 로케일 전환) + 본문.
@@ -35,6 +36,12 @@ export function PageShell({
             <a href={localeHref(locale, '/calculator')} data-nav-calculator className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">
               {tSite('navCalculator')}
             </a>
+            {/* 가이드 목차는 published 가이드가 1편 이상일 때만 (초안은 URL 로만 — P1-4 D40) */}
+            {publishedGuides().length > 0 && (
+              <a href={localeHref(locale, guidesHref())} data-nav-guides className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">
+                {tSite('navGuides')}
+              </a>
+            )}
           </div>
           <nav aria-label={tSwitcher('label')} className="flex items-center gap-3 text-sm">
             {routing.locales.map((target) =>

@@ -1,7 +1,12 @@
+import createMDX from '@next/mdx';
 import type { NextConfig } from 'next';
 import createNextIntlPlugin from 'next-intl/plugin';
 
 const withNextIntl = createNextIntlPlugin();
+// D38 — 가이드 본문 MDX(apps/web/content/{en,ko}/guides/*.mdx). remark/rehype 플러그인·frontmatter 없음(Turbopack 은
+// 문자열 플러그인만 받는다), @mdx-js/react 금지(클라이언트 컨텍스트 → 청크). pageExtensions 는 건드리지 않는다 — .mdx 는
+// 라우트가 아니라 lib/guides.ts 로더 맵이 import 한다
+const withMDX = createMDX({});
 
 const nextConfig: NextConfig = {
   // docs/05 §1 — 정적 export. middleware·redirects·headers 미지원이 전제이며,
@@ -18,4 +23,5 @@ const nextConfig: NextConfig = {
   generateBuildId: () => process.env.GITHUB_SHA ?? 'local',
 };
 
-export default withNextIntl(nextConfig);
+// 순서: MDX 규칙을 먼저 넣고 next-intl 이 turbopack 설정을 펼쳐 합친다(resolveAlias 병합 — 규칙 보존)
+export default withNextIntl(withMDX(nextConfig));
