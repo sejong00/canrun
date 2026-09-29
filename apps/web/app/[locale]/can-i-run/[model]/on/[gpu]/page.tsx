@@ -124,8 +124,8 @@ export default async function ComboPage({ params }: Props) {
 
   // ctx×KV 셀 뷰 — 아일랜드(D28)가 쓸 완성 문장·명령. 헤드라인 셀(8k·f16)이 실측이면 그 문장을 그대로 쓴다
   const cells: CtxCellView[] = page.matrix.rows.flat().map((cell) => {
-    const headline = cell.ctx === 8192 && cell.kvQuant === 'f16';
-    const speedQ = headline && q.result.confidence === 'measured' ? q : { result: cell.result, estimate: cell.result };
+    // 정적 표(CtxMatrixTable)와 같은 판정 — 헤드라인 실측 result 를 그대로 쓴 셀만 헤드라인 문장 (D46)
+    const speedQ = cell.result === q.result ? q : { result: cell.result, estimate: cell.result };
     const summary = cell.fits
       ? tCtx('summary', {
           ctx: formatCtx(cell.ctx),
@@ -408,7 +408,7 @@ export default async function ComboPage({ params }: Props) {
               commandFollows: tCtx('commandFollows'),
             }}
           />
-          <CtxMatrixTable matrix={page.matrix} caption={t.combo('ctxCaption', { quant: q.quant })} />
+          <CtxMatrixTable matrix={page.matrix} caption={t.combo('ctxCaption', { quant: q.quant })} headline={q} />
           <p className="text-sm text-muted-foreground">
             {hintPrefix}
             {ctxF16 !== undefined

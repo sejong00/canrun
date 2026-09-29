@@ -48,6 +48,11 @@ export type PageFacts = {
    * 밴드 없이 인용하는 정책 문장이라 제외)
    */
   speedTexts: string[];
+  /**
+   * 실측 라벨 표기 결함 (D46): 0폭 밴드("38.1–38.1") 옆 실측 라벨, 빈 측정 컨텍스트("measured (1 run,  context)").
+   * 헤드라인 실측 값을 추정치 자리에 넣으면 생긴다 — 가시 텍스트 전체에서 찾는다
+   */
+  measuredLabelIssues: string[];
   /** `<meta name="robots">` 에 noindex 포함 */
   robotsNoindex: boolean;
   h1Count: number;
@@ -162,6 +167,23 @@ export function decodeEntities(text: string): string {
     .replace(/&quot;/g, '"')
     .replace(/&#x27;|&#39;/g, "'")
     .replace(/&amp;/g, '&');
+}
+
+/** D46 — 실측 라벨 표기 결함 패턴 (en/ko). 공백 정규화된 가시 텍스트를 받는다 */
+const MEASURED_LABEL_ISSUES: readonly RegExp[] = [
+  // 0폭 밴드 바로 뒤 실측 라벨 — 실측값이 추정 밴드 자리에 들어간 것
+  /(\d[\d.,]*)–\1, (?:measured|실측)/g,
+  // 측정 컨텍스트가 빈 라벨
+  /measured \(\d+ runs?, context\)/g,
+  /measured at context/g,
+  /실측 \d+건 \( ?컨텍스트\)/g,
+  /\( ?컨텍스트, \d+건/g,
+];
+
+export function measuredLabelIssuesOf(text: string): string[] {
+  const out: string[] = [];
+  for (const re of MEASURED_LABEL_ISSUES) for (const m of text.matchAll(re)) out.push(m[0]);
+  return out;
 }
 
 /** 스크립트·스타일을 뺀 가시 텍스트 (RSC 인라인 페이로드 제외). 공백은 보존 */
@@ -524,6 +546,7 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
     enPrefixedLinkCount: (html.match(/(?:href|action)="\/en(\/|")/g) ?? []).length,
     hangulWords: locale === 'en' ? (visible.match(HANGUL_RE) ?? []) : [],
     speedTexts,
+    measuredLabelIssues: measuredLabelIssuesOf(visible.replace(/\s+/g, ' ')),
     robotsNoindex: robotsNoindexOf(html),
     h1Count: (noScript.match(/<h1\b/g) ?? []).length,
     ...(verdictSentence === undefined ? {} : { verdictSentence }),

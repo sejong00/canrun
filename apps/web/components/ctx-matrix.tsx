@@ -1,4 +1,4 @@
-import type { CtxMatrix } from '@canrun/data';
+import type { CtxMatrix, QuantAssessment } from '@canrun/data';
 import { useLocale, useTranslations } from 'next-intl';
 import { SpeedCell } from '@/components/estimate';
 import { ScrollTable, TABLE_CLASS } from '@/components/hub-table';
@@ -10,8 +10,20 @@ const VERDICTS = ['S', 'A', 'B', 'F'] as const;
 /**
  * ctx × KV quant 정적 표 (docs/04 §4 ③, 결정 D11) — 셀 = 필요 메모리 + compact 판정 배지 + 속도(밴드·신뢰 라벨, 규칙 3).
  * 배지의 전체 라벨은 sr-only(VerdictBadge compact)이고, 글자 뜻은 표 아래 한 줄 범례가 알려 준다.
+ *
+ * `headline` = 페이지 헤드라인 quant 평가. `ctxMatrix` 는 헤드라인이 실측 조인이면 8k·f16 셀에 그 실측 `result` 를
+ * 그대로 넣으므로(같은 객체), 그 셀은 헤드라인의 추정치·조인 정보로 문장을 만든다 — 실측값을 추정치 자리에 넣으면
+ * "8k estimate 38.1 (38.1–38.1, measured (1 run, context))" 가 된다 (D46, 필수 prop 으로 누락 방지)
  */
-export function CtxMatrixTable({ matrix, caption }: { matrix: CtxMatrix; caption: string }) {
+export function CtxMatrixTable({
+  matrix,
+  caption,
+  headline,
+}: {
+  matrix: CtxMatrix;
+  caption: string;
+  headline: Pick<QuantAssessment, 'result' | 'estimate' | 'measured'>;
+}) {
   const locale = useLocale();
   const t = useTranslations('Combo');
   const tCommon = useTranslations('Common');
@@ -49,7 +61,7 @@ export function CtxMatrixTable({ matrix, caption }: { matrix: CtxMatrix; caption
                       {cell.fits ? (
                         <>
                           <VerdictBadge verdict={cell.verdict} compact />
-                          <SpeedCell q={{ result: cell.result, estimate: cell.result }} />
+                          <SpeedCell q={cell.result === headline.result ? headline : { result: cell.result, estimate: cell.result }} />
                         </>
                       ) : (
                         <span className="text-xs text-muted-foreground">{t('ctxCellNoFit')}</span>

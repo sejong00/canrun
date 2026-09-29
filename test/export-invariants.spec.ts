@@ -328,6 +328,11 @@ describe('estimates always carry a band (CLAUDE.md 규칙 3)', () => {
       }
     }
   });
+
+  it('measured labels never sit on a zero-width band or an empty measured context (D46)', () => {
+    const bad = pages.filter((p) => p.measuredLabelIssues.length > 0).map((p) => `${p.file}: ${p.measuredLabelIssues.join(' | ')}`);
+    expect(bad).toEqual([]);
+  });
 });
 
 describe('titles and descriptions (docs/04 §4 — no duplicate templates)', () => {
