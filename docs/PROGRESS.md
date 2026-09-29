@@ -6,29 +6,27 @@
 
 ## 1. 현재 위치 (2026-09-29)
 
-- **Phase 0: P0-1~P0-4b 완료 · P0-5(자체 실측, 사람 작업) 미실시** — own 0행 / AC ≥30행. P0-5는 `docs/06`상 병행 태스크라 P1 착수를 막지 않는다. **Phase 1: P1-1(허브 템플릿) 완료 — 다음은 P1-2.**
-- 마지막 기능 커밋 `4419aa1`(09-29, P1-1). 라이브: https://canrun.pages.dev — 홈 + GPU 허브 54 + 모델 허브 29, en·ko 168페이지(허브 전체 index — §4 09-29 D1, sitemap·robots는 P1-5). 판정 조립은 `packages/data/src/assess.ts`(엔진 무변경), 페이지는 서버 컴포넌트만(JS 131KB gzip)
-- 데이터: 모델 29종(한국 9종) · 모델×quant 100행(`model-quants.json`; QuantId 정의 13종은 `quants.json`) · GPU 프로필 54개(dGPU 39·통합 메모리 12·CPU 3) · 캘리브레이션 실측 52점(**own 0**)
-- 자동화: 주간 data-sync PR(화 06:00 KST) · 주간 new-model 요약 이슈(월 06:30 KST — 출시 전) · Daily rebuild(03:00 KST) · CI 8게이트(typecheck·lint·test:coverage 90%·validate-data·build·test:export·Playwright 스모크·Lighthouse CI) + gitleaks(전 히스토리) · Dependabot(npm·actions 월간). 08-26 이후 실패 런 2건은 모두 `data/hf-sync` PR의 job 0개 CI 런(08-26·09-01 — 봇 PR의 알려진 동작, 게이트 실패 아님, §5), 09-28 Deploy 2건은 동시성 취소 — 그 외 전부 성공
+- **Phase 0: P0-1~P0-4b 완료 · P0-5(자체 실측, 사람 작업) 미실시** — own 0행 / AC ≥30행. P0-5는 `docs/06`상 병행 태스크라 P1 착수를 막지 않는다. **Phase 1: P1-1 허브 · P1-2 콤보 템플릿 완료 — 다음은 P1-3 계산기·홈.**
+- 마지막 기능 커밋 `91fb743`(09-29, P1-2). 라이브: https://canrun.pages.dev — 홈 + GPU 허브 54 + 모델 허브 29 + **콤보 1,566**(`/can-i-run/{model}/on/{gpu}`), en·ko **3,302페이지**. 허브는 전체 index(§4 D1), **콤보는 전부 noindex**(`data/publish.json` currentBatch 0 — 배치 1 후보 10×6 등록, 공개는 P1-6 §4 D9). 조립 로직 `packages/data/src/{assess,combo,snippet,publish}.ts`(엔진 무변경), 페이지는 서버 컴포넌트만(JS 131KB gzip), 산출물 3,315파일/334MB(RSC 페이로드 프루닝 §4 D18)
+- 데이터: 모델 29종(한국 9종) · 모델×quant 100행(`model-quants.json` — 09-29부터 실파일명 `fileName` 포함; QuantId 정의 13종은 `quants.json`) · GPU 프로필 54개(dGPU 39·통합 메모리 12·CPU 3) · 캘리브레이션 실측 52점(**own 0**)
+- 자동화: 주간 data-sync PR(화 06:00 KST) · 주간 new-model 요약 이슈(월 06:30 KST — 출시 전) · Daily rebuild(03:00 KST) · CI 8게이트(typecheck·lint·test:coverage 90%·validate-data·build·test:export·Playwright 스모크 42·Lighthouse CI 6URL assertMatrix) + gitleaks(전 히스토리) · Dependabot(npm·actions 월간). 08-26 이후 실패 런 2건은 모두 `data/hf-sync` PR의 job 0개 CI 런(08-26·09-01 — 봇 PR의 알려진 동작, 게이트 실패 아님, §5), 09-28 Deploy 2건은 동시성 취소 — 그 외 전부 성공
 - GitHub에 남은 것: PR #85 eslint 10.11(09-28 #4를 대체)·#5 typescript 6(보류 — 백로그) · new-model 열린 이슈 21건(높음 14 = 백로그 「카탈로그 확장」 입력, llama.cpp 본선 지원 대기 7)
 - 운영 방식: 머지·트리아지·푸시 등 반복 잡일은 Claude에 위임(`CLAUDE.md` "세션 운영", 로컬 허용 규칙 `.claude/settings.local.json`)
 
 ## 2. 다음 할 일 큐 (위에서부터)
 
-1. **P1-2 콤보 템플릿** (트래픽의 본체) — **가장 강한 모델로 진행.** `docs/06` AC + 추가 요구:
-   - **P1-1 자산 재사용**: 조합 판정은 `assessCombo`(기준·추천·최후 수단 quant, 실측 조인, 신뢰 라벨, 판정 사유 — 규칙 `docs/01` §3 「허브 판정 규칙」), 판정 UI `components/{verdict,estimate,hub-table,badges}.tsx`, 문장 `lib/phrases.ts`, JSON-LD `lib/jsonld.ts`. 내부 링크는 `<a>` + `localeHref`(next/link·next-intl 클라이언트 프로바이더 금지 — JS 예산, §4 09-29 D6). 허브 표의 모델/GPU 링크를 콤보 페이지로 돌릴지 결정
-   - 콤보 예산 `docs/05` §6 LCP < 2s: `lighthouserc.json`의 LCP assert를 warn → error로 올리고 콤보 대표 URL 추가
-   - 실행 커맨드 스니펫에 **실제 파일명 변형 표기** — 플레인 파일이 없는 unsloth repo(Qwen3.5 MTP-GGUF 4종, research 표기상 gemma-4-26b-a4b도)의 `Q4_K_M` 등은 실파일이 `UD-*`(매처 UD 폴백, §5). **현재 데이터엔 실파일명·UD 여부 기록이 없다**(ModelQuant = fileGB·ggufRepo뿐, sync도 매칭 경로를 저장하지 않음) → 필드 추가와 sync 기록 방식부터 결정(스키마 변경 시 `docs/03` §1 동시 갱신)
-   - `publishBatch` 필드 미구현(스키마·데이터·코드 0건) — 어느 레코드에 둘지 계획 단계에서 결정. 정의 `docs/05` §3, 배치 계획 `docs/04` §3, AC `docs/06` P1-2
-   - 라이선스·GGUF 출처 배지 재사용, Ollama `OLLAMA_CONTEXT_LENGTH` 명시(`docs/01` §9)
-   - 완료 후 외부 리뷰(§6) 강력 권장 — 페이지가 수백 개 생기는 첫 태스크
-2. P1-3 계산기·홈(+ 모델 허브 GPU 표 가격 정렬 UI — `docs/01` F2, P1-1 이월) → P1-4 에디토리얼 → **P1-5 출시 배치 0**(+ og:image — `docs/05` §1은 허브 포함 · "Data updated" 기준일 표시 — `docs/01` §7, P1-1 이월) (+ new-model 알림을 매일로 되돌림 — `new-model-alert.yml` cron, 48h SLA `docs/04` §8) → P1-6 (`docs/06`)
+1. **P1-3 계산기·홈** (F4 + WebGPU 감지 + 공유 URL, `docs/06` AC: 모바일 실기기 테스트·감지 실패 시 무소음 폴백) + 이월분:
+   - **콤보 인터랙션**(`docs/01` F3, §4 D11): 계산기의 클라이언트 엔진 아일랜드를 만든 뒤 콤보 페이지에 ctx 슬라이더·KV quant 토글로 끼워 넣는다. JS 예산 §4 D6(모듈 스크립트 gzip ≤150KB, 현재 131KB) — 번역은 서버에서 props 로 전달(클라이언트 프로바이더 금지)
+   - **콤보 딥링크**: 계산기 결과 카드 → `/can-i-run/{model}/on/{gpu}`(`lib/links.ts comboHref`). 미공개 콤보로 가는 유일한 경로(`docs/04` §3) — 링크 규칙(공개 페이지는 공개 콤보만)은 계산기 결과엔 적용하지 않는다(사용자 세션 결과, noindex 계산기 페이지)
+   - 모델 허브 GPU 표 가격 정렬 UI(`docs/01` F2, P1-1 이월)
+   - 라이브 콤보 확인이 끝나면 외부 리뷰(§6) — 리뷰 범위 `fe21e98..HEAD`, 브리프 `docs/review-brief.md`(P1-2 갱신)
+2. P1-4 에디토리얼(**가이드마다 공개 콤보 ≥N 인바운드 링크** — `docs/04` §2 ③, export 테스트로 강제) → **P1-5 출시 배치 0**(+ og:image — `docs/05` §1은 허브 포함 · "Data updated" 기준일 표시 — `docs/01` §7 · **sitemap-combos 는 `indexableCombos()`(공개 콤보만)** · robots.txt 는 `/can-i-run/` Disallow 금지 · `_redirects` 콤보 alias 없음) (+ new-model 알림을 매일로 되돌림 — `new-model-alert.yml` cron, 48h SLA `docs/04` §8) → **P1-6 배치 1 개방** = `data/publish.json` `currentBatch: 1` 커밋(규칙 5 게이트 승인) + sitemap-combos 제출·GSC 색인 요청, 4주 게이트는 재크롤 확인 시점부터 기산(`docs/04` §3) (`docs/06`)
 
 **출시 후 백로그** (출시 전엔 손대지 않는다)
 - **카탈로그 확장** — 높음 이슈 14건: #8 DeepSeek-V4-Flash-0731 · #10 Ling-3.0-tiny · #16 LFM2.5-2.6B · #18 Nemotron-3.5-Lightning-30B-A3B · #20 Ling-3.0-flash · #41 granite-4.2-30b · #42 Laguna-S-2.1 · #43 Spark-X2.5-4B · #45 K2-Horizon-MoVA-36B-A4B · #51 MiniCPM5-2B · #54 MiniCPM5-1B · #61 Llama-3.2-3B · #69 Llama-3.2-1B · #70 Xing4.0-29B-A4B (#42·#45·#70은 llama.cpp 본선 지원 확인 후) + 알림이 놓쳤던 원본(첫 요약 이슈에 함께 올라온다 — 30일 다운로드 순): **google/gemma-4-31B-it**(946만) · **Qwen/Qwen3.8-27B**(673만) · Qwen3.6-35B-A3B(325만) · Qwen3.8-Flash-Next(123만). **대기 목록**(llama.cpp 본선 지원 대기 — 이때 재확인): #19 Motif-3 · #22 maple-preview · #32 GLM-5.3-Flash · #44 Ouro-1.4B · #49 Nanbeige4.2-3B · #57 K2-Horizon-7B · #77 AliceAI-80B-A3B. 위 번호의 이슈는 이 태스크 때까지 열어 두고, `/canrun-start`는 재판정하지 않는다
 - **TS 6 이행** (#5) — `packages/engine`·`packages/data` tsconfig에 `"types": ["node"]` 추가로 Typecheck 실패 해소(§5). 그 전까지 PR은 열어 둔다
 - **eslint 10** (#85 — 09-28 Dependabot이 #4를 닫고 10.11.0으로 새로 올림) — eslint-plugin-react·import·jsx-a11y의 eslint 10 지원 대기
-- **엔진 후속** (P1-1에서 발견, §5 — P0-5 실측이 들어오면 출시 전이라도 착수 가능, 상수 변경은 규칙 1): ① cpu-moe 속도 모델 교정(엔진이 `docs/02` §3.3 앵커 대비 ~2.5× 과소) ② §3.4 B 상한이 nonExpertGB 없는 MoE에도 걸림(스펙은 dense 한정) ③ 리즈닝 ×1.5 대상 정밀화 — `category`의 reasoning ≠ 사고 토큰 방출(phi-4 과엄격), `thinking` 필드 검토(카탈로그 확장과 함께)
+- **엔진 후속** (P1-1에서 발견, §5 — P0-5 실측이 들어오면 출시 전이라도 착수 가능, 상수 변경은 규칙 1): ① cpu-moe 속도 모델 교정(엔진이 `docs/02` §3.3 앵커 대비 ~2.5× 과소) ② §3.4 B 상한이 nonExpertGB 없는 MoE에도 걸림(스펙은 dense 한정) ③ 리즈닝 ×1.5 대상 정밀화 — `category`의 reasoning ≠ 사고 토큰 방출(phi-4 과엄격), `thinking` 필드 검토(카탈로그 확장과 함께) ④ **gpt-oss `nonExpertGB` 과소**(P1-2 §5): GGUF 텐서 목록 기반 비전문가 크기(모델별 override + validateAll 허용 오차) — 그때까지 `--n-cpu-moe` 최소값은 +1층 여유(§4 D23)
 - **원화 가격**(ko, `docs/01` §6) — `streetKRW` 데이터 0건, 환율 주간 갱신 파이프라인과 함께
 
 **사람 작업 (YOO)**
@@ -84,6 +82,18 @@
 | 09-29 | **D7 브레드크럼 2단**(홈 › 허브) — `/gpu`·`/model` 인덱스 페이지 없음 · **D8 FAQPage 유지하되 리치 결과 기대 안 함** | Google은 마지막 외 항목에 URL 요구. FAQ 리치 결과는 2023~ 정부·보건 한정. FAQ 답 = 화면 텍스트(export 테스트 강제). `docs/04` §5 |
 | 09-29 | FP16 크리플 GPU(GTX 10)는 CPU 폴백 대신 **GPU 판정 + theoretical + 주의 배지** — `docs/01` §9 개정 | tg는 대역폭 지배라 Pascal에서도 GPU가 CPU보다 빠르다. CPU 폴백은 더 느린 경로로 안내한다(스펙 이탈 — 리뷰 지적) |
 | 09-29 | 산출물 테스트 확장(9→19): 허브 전수 존재·JSON-LD(BreadcrumbList URL·FAQ 텍스트 일치)·수치 문장의 밴드 동반·title/description 유일·고아 0(스위처 링크 제외)·ko 내부 링크 /ko만·en 페이지 한글 0 + Playwright 18·LHCI 4URL×3회 median | AC "대칭 hreflang 테스트"는 기존 불변식이 166허브에 자동 적용 — 확장분은 규칙 3·4·5 회귀 방지 |
+| 09-29 | **D9 콤보 전 조합 생성(1,566 × 2언어) + `data/publish.json` 인덱싱 게이트** — `{ currentBatch, batches[{batch, gpuIds, modelIds}] }`, 콤보 배치 = 쌍을 포함하는 항목의 최소 batch, indexable ⇔ batch ≤ currentBatch. 출시값 currentBatch 0(전부 noindex,follow), 배치 1 후보 10 GPU × 6 모델 등록. 미공개 콤보는 허브·홈에서 링크 0(계산기 딥링크·미공개끼리 인접 링크로만), 공개 페이지는 공개 콤보로만 링크 | 사용자 승인(P1-2 계획). "수요 없는 콤보는 생성하되 noindex"(`docs/04` §3). 내부 nofollow 비권장·3.3K는 크롤 예산 우려 규모 미만(계획 리뷰). `docs/04` §3·`docs/05` §3·`docs/03` §1·CLAUDE.md 규칙 5 갱신 |
+| 09-29 | **D10 콤보 브레드크럼 3단**(홈 › 모델 허브 › 콤보) · **D11 콤보 클라이언트 JS 0** — ctx×KV(f16/q8_0/q4_0) 정적 표, 토글은 P1-3 · **D12 허브 → 공개 콤보 "상세" 링크**는 판정 셀 배지 아래(`data-combo-link`) | 사용자 승인(인터랙션 이월). 중간 crumb 에 URL 필요(Google). `docs/01` F3 |
+| 09-29 | **D13 pp 는 full-gpu(통합 포함)·fit 일 때만** 표시, `docs/02` §3.5 "대략 ±40%" → **4번째 신뢰 라벨 `rough`(pp 전용)** + 범위 표기. 밴드 상수 `PP_BAND`는 packages/data 정책 | `ppEstimate`는 fp16 연산식이라 partial/cpu-moe/CPU 엔 성립하지 않음(계획 리뷰: 316+188+104행이 오도). CLAUDE.md 규칙 3·`docs/01` §3·`docs/02` §4 갱신 |
+| 09-29 | **D14 콤보 제목·판정 문장**: `Can I run {model} on the {gpu}? {verdict}` / `{gpu}에서 {model} 돌릴 수 있을까? {verdict}` — 제목 판정은 기준 비-F → 판정 / F + 추천(desperate 포함 — 본문 표시 quant 와 같은 답) → "{verdict} at {quant}" / RAM 힌트 → "{verdict} with N GB RAM" / 그 외 F. 콤보 제목은 `absoluteTitle` + `shortGpuName`(브랜드 접두·마케팅 괄호명·"dual-channel" 제거, "(N-core GPU)"→"N-core"). 판정 문장 = 헤더·description·FAQ Q1 단일 출처, 이모지 없음 | 기준 판정만 쓰면 "IQ3_XS 로는 원활" 페이지 제목이 Won't run 으로 거짓(계획 리뷰). desperate 추천을 제목에서 빼면 본문("UD-Q2_K_XL 가능")과 제목("RAM 64GB 면")이 모순(구현 리뷰). 실측 최장 제목 82자(DeepSeek R1 Distill Qwen 32B × 4060 Laptop, 72자 초과 120건 — 검색 결과는 ~60자에서 잘리므로 판정은 긴 이름에서 어차피 뒤로 밀린다) |
+| 09-29 | **D15 깊이 테스트** = GPU명·id·별칭·shortGpuName·GpuName 오버라이드 마스킹 후 숫자 다중집합 지문이 로케일 내 1,566 콤보에서 유일 + mulberry32(20260929) 3페이지 기록 · **D16 보일러플레이트** = 콤보 ≥50%에 나타나는 문장 단위(p/li/h/td/th/dt/dd/caption/code, 이름 마스킹, 8자 미만 제외) 글자 비율 < 0.6 — 실측 en max 0.39 / ko 0.31 · **D17 export 테스트 lazy facts**(HTML 즉시 폐기, 3,302페이지 ~5s) | `docs/06` P1-2 AC·`docs/04` §4. 쌍둥이 GPU 7그룹(§5)은 FP16·pp·가격·인접 GPU 로 구분 |
+| 09-29 | **D18 postbuild RSC 페이로드 프루닝**(`__next.*` 디렉터리 + 허용목록 `robots.txt|ads.txt|llms.txt` 외 `*.txt`, 평탄화 전) — 3,302페이지 = 3,315파일(Cloudflare Pages 한도 20,000의 17%; 프루닝 없이는 ~16,500) | 앱은 `<a>`만 쓰고 next/link·router 없음 — Next 16.3.6 클라이언트가 `.txt`를 요청하는 경로는 `fetchServerResponse`(navigate/prefetch/refresh)뿐, 뒤로가기 복원은 CacheNode 재사용(소스 확인). 안전망: export 파일 위생 테스트 + E2E goBack 실패 요청 0. `docs/05` §3 |
+| 09-29 | **D19 LHCI `assertMatrix`**: 전 URL performance·accessibility·best-practices ≥0.9·script ≤150KB·CLS ≤0.1 / 비콤보 SEO ≥0.9 + LCP warn 2.0s / **콤보 LCP error 2.5s + 개별 SEO 감사 8종 = 1**(noindex 로 `is-crawlable` 실패 → SEO 카테고리 0.63) — `docs/05` §6 "LCP < 2s"는 필드 목표 | Lantern 비관 그래프가 131KB Next 런타임을 렌더블로킹 취급 → 5KB 홈도 ~2.0s 바닥(콤보 실측 1.9s). 개별 감사는 Edge 로컬 실측 전부 1 |
+| 09-29 | **D20 `ModelQuant.fileName`**(zod optional, validateAll 이 전 행 존재 강제, sync-models 가 기록 — 분할은 첫 조각, UD 는 이름 유지) + 매처 드래프트 제외(`mmproj`·`mtp-`·`eagle3-` basename 접두) + 애매 매칭 error | 스니펫의 HF 태그·다운로드 안내 정본. 드래프트 합산 버그로 gemma-4-12b Q8_0 13.13→12.67·gemma-4-26b-a4b Q8_0 27.32→26.86 교정(sync 리포트 auto 102·suspicious 0·error 0). `docs/03` §1·§5.1 |
+| 09-29 | **D21 `generateBuildId: () => GITHUB_SHA ?? 'local'`** — 두 번 빌드 `diff -rq` 0건(바이트 동일) 확인 후 채택 | 매일 리빌드가 3.3K HTML(~230MB)을 전량 재업로드하지 않게. 청크는 내용 해시 |
+| 09-29 | **D22 쌍둥이 GPU**(메모리 구성 동일 7그룹) 페이지에 형제 문장 + pp 비교, 같은 배치에 쌍둥이 금지 · **D23 `nCpuMoeMin` 네이티브 quant(MXFP4)·Unsloth Dynamic(UD) 파일 +1층 여유** | gpt-oss 비전문가 텐서는 Q8_0(GGUF 헤더 파싱: 20b 1.30GB·120b 1.69GB GPU 상주) vs 균등 bpw 유도 0.65/0.81 — 여유 없이는 4060×gpt-oss-20b N_min 12가 0.24GB 초과. UD 도 어텐션·공유 텐서를 평균 bpw 보다 높게 둬 같은 방향(구현 리뷰). 백로그 「엔진 후속」④ |
+| 09-29 | **표시 필요량 = 엔진 비교량** `MemoryNeed.needGB`·`CtxCell.needGB`: CPU 경로(CPU 프로필·cpu-only 모드)는 가중치+KV, GPU 경로는 +연산 버퍼(`totalNeedGB`). 콤보·허브의 "필요 vs 가용" 문장과 ctx 표가 이 값을 쓴다 · F+RAM 힌트 페이지는 메모리·ctx·속도·FAQ 문장마다 힌트 구성(예 96GB)을 명시 | 브라우저 확인에서 CPU 페이지가 "6.6GB 필요"(버퍼 포함)와 "RAM 6.0GB에서 실행"을 나란히 보였음 — 엔진 §2.4 ④는 가중치+KV 만 비교. 힌트 페이지는 32GB 페이지에 96GB 수치가 무표기로 섞였음 |
+| 09-29 | 스니펫 규칙: `-ngl all`(full/unified) · partial `floor(gpuFrac×layers)`(4,183 조합 예산 초과 0 — llama.cpp 는 출력층 우선·입력층 CPU) · cpu-moe `-ngl all --n-cpu-moe {layers}`(엔진 §3.3 가정) + N_min · Ollama 는 `hf.co/{repo}:{tag}` + `OLLAMA_CONTEXT_LENGTH` 서버 env/`/set parameter num_ctx`, cpu-moe·분할 GGUF 는 생략(전문가 오프로드 플래그 없음·분할 미지원 매니페스트 400 확인) | llama-server README·HF ollama 문서 인용은 `packages/data/src/snippet.ts` 헤더 |
 
 ## 5. 알려진 이슈·주의
 
@@ -96,6 +106,11 @@
 - new-model 필터는 이름 휴리스틱(`REPACK_PATTERN`·`ocr`)과 HF `base_model` 태그 기반이다 — 태그 없는 타 org 파인튠은 통과하고, 이름에 fp8·mlx 등이 든 원본은 빠질 수 있다. 요약 이슈 트리아지에서 보정하고, 반복되면 `scripts/new-model-alert.ts` 필터를 고친다
 - PR #5 (typescript 5.9.3→6.0.3, 브랜치명은 7.0.2): Typecheck 실패 원인 확인됨(CI 런 31937998006 로그 — 보존 90일) — `packages/engine`·`packages/data` tsconfig에 `types`가 없어 TS 6에서 `@types/node`가 로드되지 않는다(TS2591 `node:fs`, TS2304 `structuredClone`·`console`, 연쇄 TS7006). 루트 `tsconfig.json`에만 `"types": ["node"]`가 있다
 - `data/hf-sync` PR에 생기는 CI 런은 job이 0개라 로그가 없고, 대기하다 30일 경과·PR 종료 시 failure로 기록된다(08-26·09-01 런) — GITHUB_TOKEN이 만든 PR의 동작이라 게이트 실패가 아니다. 실패 건수에서 뺀다
+- **쌍둥이 GPU 7그룹**(VRAM·대역폭·클래스 동일, FP16 만 다름): RX 9070/9070 XT · RTX 4090/3090 Ti · 5070 Ti/5080 Laptop · 5070/5070 Ti Laptop · 4070/4070 Super · 5060/5060 Ti 8GB/3070 · 4060 Laptop/4070 Laptop — 콤보 페이지가 근접 중복이라 형제 문장·같은 배치 금지(§4 D22). 카탈로그 확장 때 `twinGpus` 로 재확인
+- **gpt-oss `nonExpertGB` 과소**(0.65/0.81 vs 실제 GPU 상주 1.30/1.69GB): fit 판정은 안 뒤집히지만 `--n-cpu-moe` 최소값이 1층 OOM → +1층 여유(§4 D23). 근본 해결은 백로그 「엔진 후속」④
+- **Lighthouse LCP 바닥 ~2.0s**(Lantern 비관 그래프 + 131KB Next 런타임): 5KB 홈도 2.04s. 콤보 게이트는 2.5s(§4 D19). 런타임을 줄이지 않는 한 2.0s error 는 걸 수 없다
+- **오래 noindex 였던 URL 은 재크롤이 느리다**: P1-6 배치 개방 후 sitemap 제출·GSC 색인 요청, 4주 게이트 기산은 재크롤 확인 시점(`docs/04` §3). robots.txt 가 `/can-i-run/` 을 Disallow 하면 noindex 를 못 읽는다 — 금지
+- 콤보 export 테스트(`test/export-invariants.spec.ts` + `test/export-facts.ts`): 콤보 0건이면 조용히 통과하지 않고 실패한다. 허브 범례 `<dd>`("20 tok/s 이상")는 임계값 문장이라 규칙 3 범위 검사에서 제외 — 콤보엔 범례를 넣지 않는다
 - **cpu-moe 속도 과소 추정**: 엔진 cpu-moe tg가 `docs/02` §3.3 앵커(3060 12GB + DDR5, Qwen3.6-35B-A3B ~52 tok/s) 대비 약 2.5× 낮다(qwen3.5-35b-a3b 20.4). 교정 전까지 cpu-moe는 theoretical ±30%로 표시(`assess.ts` isTheoretical) — 판정은 보수 쪽(8~20 → B). P0-5 B그룹 실측으로 교정(백로그 「엔진 후속」①)
 - 엔진 `verdict.ts`의 §3.4 B 상한(gpuFrac < 0.9)이 nonExpertGB 없는 MoE(gemma-4-26b-a4b·qwen3.5-122b-a10b·solar-open2)에도 적용된다 — 스펙은 dense 한정. 해당 조합은 theoretical로 표시 중(백로그 「엔진 후속」②)
 - naver-ellm(HyperCLOVA X SEED Think 14B GGUF)은 HF 미인증 org라 "커뮤니티"로 표시 — 네이버 공식 여부 확인되면 `HUB_POLICY.llamaCppOrgs`처럼 공식 매핑 추가 검토
@@ -112,11 +127,12 @@
 1. 커밋이 끝난 상태에서 격리 클론(로컬 클론은 커밋분만 복사 — 미커밋 수정은 빠진다): `git clone D:\workspace\canrun-plan C:\Temp\canrun-review-<N>` — 라이브 폴더 직접 검토 금지
 2. 클론에 들어 있는 `docs/review-brief.md`를 리뷰어(Codex 등)에게 주고 "이 브리프 지시대로 검토" 요청
 3. 결과를 Claude Code에 붙여넣어 P1/P2/P3 판정 → 수용분을 수정 태스크(예: P1-2b)로 한 세션에 처리 → §4·§7에 기록하고 아래 **리뷰 기준 커밋**을 이번 리뷰 대상 HEAD로 갱신
-- **리뷰 기준 커밋: `fe21e98`** → 다음 리뷰 범위 `fe21e98..HEAD` (`66a42fb` P0-3 스키마·시드 v1과 `c66f9ff` 반영분은 미검토)
+- **리뷰 기준 커밋: `fe21e98`** → 다음 리뷰 범위 `fe21e98..HEAD` (`66a42fb` P0-3 스키마·시드 v1과 `c66f9ff` 반영분, P1-1·P1-2 전체가 미검토 — P1-2 완료 후 외부 리뷰 권장, `docs/review-brief.md` 갱신됨)
 - 이력: 계획서 외부 리뷰 8건 중 7건 수용(v2~v4 — 저장소 밖 기획 단계, 저장소엔 최종본 `03337a8`만) · P0-1~P0-2 코드 리뷰(기준 `fe21e98`) 10건(P1 1·P2 5·P3 4) 전부 반영 `c66f9ff`
 
 ## 7. 이력 (최신이 위)
 
+- **09-29** `91fb743` **P1-2 콤보 템플릿** — `/can-i-run/{model}/on/{gpu}` 1,566 × en/ko(총 3,302페이지), 전부 noindex(`data/publish.json` currentBatch 0, 배치 1 후보 10×6). 8요소: quant×fit 표·VRAM 분해 바·ctx×KV(f16/q8_0/q4_0) 정적 표·tg/pp 밴드·실측 표·대안 0~3·llama.cpp/Ollama 스니펫(`-ngl`·`--n-cpu-moe` N/N_min·실파일명 태그)·FAQ 3 + 인접 콤보 4·양쪽 허브·3단 브레드크럼. 데이터: `fileName` 100행 백필 + 드래프트 파일 합산 버그 교정 2행. 인프라: RSC 페이로드 프루닝(3,315파일), `generateBuildId`, export 불변식 lazy facts 32(깊이·보일러플레이트 en 0.39/ko 0.31·noindex·링크 규칙·파일 위생), Playwright 42(goBack 포함), LHCI 6URL assertMatrix. 설계 검토 3 + 계획 리뷰 3(확정 반영) + 구현 후 5관점 적대적 리뷰 25건(3표 검증: 확정 6 · 기각 19 — 기각 대부분은 검증 전에 이미 수정된 항목, 전부 반영) + 브라우저 확인 2건(필요량 표기·RAM 힌트 가정). 결정 D9~D23(§4). 로컬 게이트 전부 통과(단위 297 · export 32 · E2E 42 · LH 콤보 perf 1.0·a11y 1.0, LCP ~1.9s — Edge 절차 §5)
 - **09-29** `9dab66e`·`4419aa1` **P1-1 허브 템플릿** — GPU 허브 54·모델 허브 29 × en/ko(168페이지). 판정 조립 `packages/data/src/assess.ts`(엔진 무변경) · 판정 배지·밴드+신뢰 라벨·JSON-LD·페이지별 로케일 전환 · next-intl 클라이언트 번들 제거(JS 146→131KB) · CI에 Playwright 18·LHCI(4 URL × 3회 median) + serve-out, export 불변식 9→19. 스펙 동기화(docs/01·02·03) + 결정 D1~D8(§4). 계획 교차 검증 3건 + 구현 후 5관점 적대적 리뷰(확정 17 · 기각 10) + 재검증 반영. 로컬 게이트 전부 통과(단위 251 · export 19 · E2E 18 · LHCI 4 카테고리 0.99~1.0 — Edge 대체 절차 §5), gitleaks는 로컬 도구 없어 정규식 스캔 0건. 푸시 후 CI(Playwright·LHCI·gitleaks 포함)·Deploy 초록, 라이브 허브 200
 - **09-28** 재개 점검 완료 + 운영 위임 — PR #31(data sync, fileGB 12행 \|Δ\|≤3.63%)·#72(npm minor/patch 13건: next 16.3.5·react 19.3·zod 4.6 등)·#28(peter-evans v8, Data sync 수동 실행으로 확인) 머지 · new-model 71건 트리아지(50건 닫음, 21건 유지) · `a09a12f` 알림 요약 이슈 전환·필터 + Dependabot 월간 · `6b6fcbf` 운영 위임 규칙 + 재개 점검 기록(CLAUDE.md 위임 범위·명령 2종·HANDOFF·이 파일) — 푸시 후 CI(gitleaks 포함)·Deploy 초록 · dependabot.yml 변경으로 Dependabot 재실행 → #84(npm minor/patch 7건: next 16.3.6 등) 위임 머지, #85(eslint 10.11)는 #4를 대체해 보류
 - **09-27** `docs: Claude Code 운영 이관` — Cowork → Claude Code 운영 이관(이 파일·`docs/review-brief.md`·커스텀 명령 `/canrun-start`·`/canrun-wrap` 도입). Cowork 초안을 저장소 실상과 대조해 정정(Phase 0 상태, gated 5종, attnOverrides 11종, 리뷰 기준 커밋, GitHub 조회 방식 등). 공백기 점검: 09-27 fetch 기준 origin/main 변동 없음, own 실측 0, 커스텀 도메인 미설정(코드·라이브 canonical 기준)
