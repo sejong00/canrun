@@ -7,7 +7,7 @@
 정본은 `packages/data/src/schema.ts` — 이 블록은 요약이며 불일치 시 코드가 우선. 초기 명세 대비 P0-3 이탈(`schema.ts` 헤더·PROGRESS §4 08-16): ① Gpu.kind에 `'cpu'` 추가(§2 CPU 프로필 3종, 엔진 `Hardware.kind`와 정합) ② unified/cpu는 `vramGB` 대신 `ramOptionsGB[]`(PRD "Mac은 칩+RAM 통합 선택") ③ BenchPoint.modelId·quant는 자유 문자열(카탈로그 외 캘리브레이션 모델·실측 quant 표기 보존 — §4).
 
 ```ts
-// 공통: sources = URL[] (min 1 — Gpu·Model·ModelQuant·attnOverrides. BenchPoint는 sourceUrl 단일, QuantDef·Alias는 없음)
+// 공통: sources = URL[] (min 1 — Gpu·Model·ModelQuant·attnOverrides. BenchPoint는 sourceUrl 단일, QuantDef·Alias·PublishPlan은 없음)
 //       날짜 = 'YYYY-MM-DD' · id = slug /^[a-z0-9][a-z0-9.-]*$/
 Gpu { id, name, aliases[], vendor:'nvidia'|'amd'|'intel'|'apple'|'amd-apu'|'nvidia-dgx'|'generic',
      kind:'dgpu'|'unified'|'cpu', form:'desktop'|'laptop',
@@ -24,7 +24,14 @@ Model { id, family, name, hfId, paramsB, activeParamsB?,   // moe ⇒ activePara
      maxContext, license, moe:boolean, nonExpertGB?,   // MoE attention+shared GB (derive.ts 유도)
      category:('chat'|'coding'|'reasoning'|'vision')[] (min 1),
      korean?:boolean, popularity:1..5, releasedAt, note?, sources[] }
-ModelQuant { modelId, quant:QuantId, fileGB, ggufRepo, sources[] }   // 실제 GGUF 크기 (decimal GB, 분할 합산)
+ModelQuant { modelId, quant:QuantId, fileGB, ggufRepo, fileName?, sources[] }   // 실제 GGUF 크기 (decimal GB, 분할 합산)
+     // fileName (P1-2 D20, PROGRESS §4 09-29): repo 상대 실파일 경로 /^[^\s/][^\s]*\.gguf$/i — 분할이면 첫 조각 `…-00001-of-0000N.gguf`,
+     //   UD 변형은 이름의 `UD-` 유지(플레인 파일이 없는 unsloth repo의 Q4_K_M 행 등). zod는 optional이지만 validateAll이 전 행 존재를
+     //   강제(빌드가 호출), 값은 sync-models가 기록(§5.1 ④). 콤보 스니펫 `-hf {repo}:{tag}` 태그·다운로드 안내의 원천
+PublishPlan (data/publish.json, 단일 객체 — P1-2 D9) { currentBatch:int ≥ 0,
+     batches:[{ batch:int ≥ 1, gpuIds:GpuId[], modelIds:ModelId[], plannedAt?:date, note? }] }
+     // 검증: 항목 안 id 중복 거부 · gpuIds/modelIds는 카탈로그 FK(validateAll) · batches가 비면 currentBatch 0만, 아니면 ≤ max(batch)
+     // 콤보 배치 = 쌍을 포함하는 항목들의 최소 batch, indexable ⇔ batch ≤ currentBatch (`04` §3) — 조회 `packages/data/src/publish.ts`
 QuantId = 'IQ2_M'|'Q2_K'|'IQ3_XS'|'Q3_K_M'|'IQ4_XS'|'Q4_K_M'|'Q5_K_M'|'Q6_K'|'Q8_0'|'MXFP4'|'UD-Q2_K_XL'|'UD-IQ2_M'|'F16'
 QuantDef { id:QuantId, bpw, tier:'safe'|'ok'|'degraded'|'desperate', note }   // bpw = 엔진 QUANT_BPW (consistency 테스트)
 BenchPoint { id, gpuId?|hardwareDesc?,   // 둘 중 하나 필수 (카탈로그 외 하드웨어는 hardwareDesc)
@@ -156,6 +163,7 @@ KV = KiB/tok(f16). 파일 크기 = 실측 GGUF(decimal GB), 출처 repo 명기.
 1. 후보 GGUF repo(bartowski, unsloth, lmstudio-community, ggml-org) HF API `GET /api/models/{repo}/tree/main` → quant별 실제 파일 크기 갱신 (분할 파일 합산).
 2. 원본 repo `config.json` fetch → layers/kv_heads/head_dim/ctx → `kvBytesPerTokenF16` 재계산. 하이브리드/SWA/MLA는 `attnOverrides` 수동 필드 우선(자동 추출 불가 케이스).
 3. diff 있으면 PR 자동 생성(리뷰 후 머지·배포 — 리포트 SUSPICIOUS·ERROR 0이면 Claude가 위임 처리, 그 외는 사람 승인. `docs/PROGRESS.md` §3) — 데이터 조작 방지 + 리뷰 기록.
+4. **`fileName` 기록(P1-2 D20)**: quant별로 매칭된 파일의 repo 상대 경로를 `fileName`에 기록(1의 크기 갱신과 같은 매칭 결과). **드래프트 파일은 제외** — basename 접두 `mmproj-`·`mtp-`·`eagle3-`는 매칭·크기 합산 모두에서 뺀다(gemma-4 MTP/EAGLE 드래프트가 fileGB에 합산되던 버그 교정 — repo 이름의 `MTP`는 무관). 단일 파일이거나 일관된 분할 세트(`-0000N-of-0000M`, 첫 조각을 기록)가 아니면 `error`(ambiguous match)로 리포트하고 반영하지 않는다. 레코드 키 순서는 `ggufRepo` 뒤에 `fileName`(한 레코드 한 줄 직렬화 유지).
 ### 5.2 `new-model-alert.ts` (출시 전 주 1회 → P1-5 출시부터 일 1회): HF trending + 지정 org 신규 릴리스 감지(`text-generation`·`image-text-to-text`) → 카탈로그·기보고·리팩·OCR 전용·타 org 파생 제외 → 새 후보가 있으면 요약 GitHub issue 1건 생성("48h 내 페이지" SLA는 출시 후 — `04-seo-content-plan.md` §8).
 ### 5.3 가격 (`prices.json`): 주간 수동/반자동(정찰 소스: 아마존 표시가, 다나와 최저가). `priceAsOf` 없는 가격 표시 금지. TechPowerUp 등 DB **통째 스크래핑 금지**(개별 사실 확인·출처 기재만) — 법적 리스크 정책.
 

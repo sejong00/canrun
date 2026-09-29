@@ -19,7 +19,8 @@ import { catalog } from '@/lib/catalog';
 import { formatGB, formatInt, formatUSD } from '@/lib/format';
 import { getGpuHub } from '@/lib/hubs';
 import type { QA } from '@/lib/jsonld';
-import { gpuHref, localeHref, modelHref } from '@/lib/links';
+import { comboHref, gpuHref, localeHref, modelHref } from '@/lib/links';
+import { isComboIndexable } from '@/lib/publish';
 import { gpuName, modeKey, quantText, speedPhrase, type Translate } from '@/lib/phrases';
 import { buildPageMetadata } from '@/lib/seo';
 import { absoluteUrl } from '@/lib/site';
@@ -209,7 +210,7 @@ function buildFaq(
       answer = t.faq('gpuLargeNoFit', {
         model: refName,
         quant: ref.baseline.quant,
-        need: formatGB(locale, ref.baseline.memory.totalNeedGB),
+        need: formatGB(locale, ref.baseline.memory.needGB),
         gpuUsable: formatGB(locale, ref.baseline.memory.gpuUsableGB),
         ramUsable: formatGB(locale, ref.baseline.memory.ramUsableGB),
       });
@@ -418,7 +419,17 @@ export default async function GpuHubPage({ params }: Props) {
                     <th scope="row">
                       <a href={localeHref(locale, modelHref(row.model.id))}>{row.model.name}</a>
                     </th>
-                    <ComboCells combo={row.combos[hub.primaryIndex]!} gpu={gpu} showReasoning />
+                    <ComboCells
+                      combo={row.combos[hub.primaryIndex]!}
+                      gpu={gpu}
+                      showReasoning
+                      comboHref={
+                        isComboIndexable(gpu.id, row.model.id)
+                          ? localeHref(locale, comboHref(row.model.id, gpu.id))
+                          : undefined
+                      }
+                      detailsLabel={tTable('detailsFor', { model: row.model.name, gpu: name })}
+                    />
                   </tr>
                 ))}
               </tbody>

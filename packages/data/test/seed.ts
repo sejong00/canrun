@@ -7,6 +7,7 @@ import {
   parseGpus,
   parseModelQuants,
   parseModels,
+  parsePublish,
   parseQuantDefs,
   type SeedFiles,
 } from '../src/index';
@@ -23,5 +24,6 @@ export function loadSeed(): SeedFiles {
     modelQuants: parseModelQuants(readSeedJson('model-quants.json')),
     quantDefs: parseQuantDefs(readSeedJson('quants.json')),
     benchmarks: parseBenchmarks(readSeedJson('benchmarks.json')),
+    publish: parsePublish(readSeedJson('publish.json')),
   };
 }

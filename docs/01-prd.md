@@ -28,7 +28,7 @@
 - URL: `/can-i-run/{model}/on/{gpu}` — 검색 "can i run qwen3 14b on rtx 4060" 직격.
 - 즉답 헤더: **판정 배지 + 한 문장** ("❌ Q4_K_M은 VRAM 1.7GB 부족 → ✅ IQ3_XS로는 가능, 예상 21 tok/s").
 - 본문(페이지당 고유 데이터 ≥8개 — `04-seo-content-plan.md` §4의 스팸 방어 요건): quant별 fit 표, VRAM 구성 분해 바(가중치+KV+버퍼+OS예약), 컨텍스트 슬라이더별 변화, 예상 pp/tg, 실측 있으면 실측 표, 대안 3종(더 작은 모델/더 낮은 quant/cpu-moe 세팅), 실행 커맨드 스니펫(ollama/llama.cpp 플래그 포함), FAQ 3개(자동 생성이되 수치 기반).
-- 인터랙션: 컨텍스트/KV quant 토글은 클라이언트에서 엔진 재계산(정적 페이지 + 하이드레이션).
+- 인터랙션: P1-2 시점엔 **클라이언트 JS 0** — 컨텍스트(8k~모델 최대 계단) × KV quant(f16/q8_0/q4_0) 변화는 정적 표(메모리 GB + tg 밴드 + 판정)로 싣는다. 토글·엔진 재계산은 P1-3 계산기 아일랜드에서(하이드레이션은 그 섬만 — JS 예산 §7, PROGRESS §4 09-29 D6·D11).
 
 ### F4. 인터랙티브 계산기 (`/calculator`)
 - F1+F2 통합 자유 조작 UI. 임의 파라미터 수동 입력 모드(카탈로그에 없는 모델: 파라미터 수·레이어·kv_heads 직접 입력 or HF repo id 입력 → 클라이언트에서 HF API fetch).
@@ -43,7 +43,7 @@
 | B | Runs slowly / 겨우 가능 | 부분 오프로드/CPU, 2~8 tok/s | amber |
 | F | Won't run / 불가 | 최저 quant도 미탑재 or < 2 tok/s | red |
 
-- 모든 수치에 신뢰 라벨: `측정됨(실측 N건)` > `보정된 추정`(NVIDIA·AMD dGPU dense ±12% / 그 외 클래스·모든 MoE·부분 오프로드 ±20% — `02-engine-spec.md` §4) > `이론 추정(±30%)`. **오차를 숨기지 않는 것이 브랜드 전략** (경쟁사 willitrunai의 약점이 과장 추정).
+- 모든 수치에 신뢰 라벨: `측정됨(실측 N건)` > `보정된 추정`(NVIDIA·AMD dGPU dense ±12% / 그 외 클래스·모든 MoE·부분 오프로드 ±20% — `02-engine-spec.md` §4) > `이론 추정(±30%)`. **pp(프롬프트 처리)만 4번째 라벨 `대략(rough) ±40%`**(범위 est×0.6~1.4 — `02` §3.5, P1-2 D13): pp 식은 fp16 연산 전제라 **full-GPU(통합 메모리 포함) fit일 때만 표시**하고 부분 오프로드·cpu-moe·CPU 전용에선 생략 사유 한 줄. **오차를 숨기지 않는 것이 브랜드 전략** (경쟁사 willitrunai의 약점이 과장 추정).
 - 등급 산출 기본값: Q4_K_M 기준. 카드에는 "이 quant면 가능" 최적 quant를 병기.
 
 ### 허브 판정 규칙 (P1-1 — 정본 `packages/data/src/assess.ts`, 결정 기록 `docs/PROGRESS.md` §4 09-29)
@@ -66,7 +66,7 @@
 
 ### MVP (Phase 1) — 정적, DB 쓰기 없음
 - [F1][F2][F3][F4] 위 플로우 전부
-- GPU 허브 페이지(`/gpu/{slug}`), 모델 허브(`/model/{slug}`), 콤보 페이지 생성(1차 30 GPU × 20 모델)
+- GPU 허브 페이지(`/gpu/{slug}`), 모델 허브(`/model/{slug}`), 콤보 페이지 생성(카탈로그 전 조합 — 인덱싱은 배치 게이트, `04` §3)
 - en/ko 전체 i18n(라우팅·문자열·SEO 태그), 다크모드
 - 공유 카드(빌드 타임 og:image, 상위 페이지), 사이트맵 자동 생성, JSON-LD
 - 에디토리얼 섹션 `/guides/` (MDX, 출시 시 en 10편 + ko 10편)
@@ -91,7 +91,7 @@
 | 계산기 | `/calculator` | 정적+CSR | 1 |
 | GPU 허브 | `/gpu/{slug}` | SSG from JSON | 카탈로그 전체 (현 54 — CPU 프로필 포함) |
 | 모델 허브 | `/model/{slug}` | SSG | 카탈로그 전체 (현 29) |
-| 콤보 | `/can-i-run/{model}/on/{gpu}` | SSG | 600 (단계적 인덱싱) |
+| 콤보 | `/can-i-run/{model}/on/{gpu}` | SSG | 카탈로그 전 조합(현 1,566 = GPU 54 × 모델 29) 생성 — 인덱싱은 `data/publish.json` 배치 게이트(`04` §3, P1-2) |
 | 가이드 | `/guides/{slug}` | MDX | 10 |
 | 방법론 | `/methodology` | 정적 | 1 |
 | 벤치마크(P2) | `/benchmarks` | 동적 | — |
@@ -122,4 +122,5 @@
 - 노트북 GPU: 데스크톱과 별개 SKU로 취급(예: "RTX 4090 Laptop"은 16GB·576GB/s — 혼동 방지 경고 배지).
 - iGPU/구형 GPU(FP16 미지원 GTX 10 등): ~~CPU 추론 권장 판정으로 폴백~~ → P1-1: GPU 판정 유지 + theoretical(±30%) 라벨 + "FP16 성능 낮음 — 프롬프트 처리 매우 느림" 주의 배지(`fp16Tflops` < 1). tg는 대역폭 지배라 Pascal에서도 GPU가 CPU보다 빠르다 — CPU 폴백은 사용자를 더 느린 경로로 보낸다(PROGRESS §4 09-29).
 - 카탈로그에 없는 신모델: HF repo id 입력 경로(F4) + "모델 추가 요청" 링크(GitHub issue).
-- Ollama 기본 컨텍스트(VRAM 24GB 미만이면 4k)로 인한 체감 차이: 콤보 페이지 커맨드 스니펫에 항상 `OLLAMA_CONTEXT_LENGTH` 명시.
+- Ollama 기본 컨텍스트(VRAM 24GB 미만이면 4k)로 인한 체감 차이: 콤보 페이지 커맨드 스니펫에 항상 `OLLAMA_CONTEXT_LENGTH` 명시 — **P1-2 구현 완료**: 서버 env(`OLLAMA_CONTEXT_LENGTH` — PowerShell `$env:…; ollama serve` / bash) + REPL `/set parameter num_ctx` 병기. Ollama는 분할 GGUF·전문가 오프로드(`--n-cpu-moe`) 미지원이라 그 경우 Ollama 블록은 생략 사유만 표시.
+- 실행 커맨드의 오프로드 플래그(P1-2, PROGRESS §4 09-29): dense 부분 오프로드 `-ngl` = `floor(gpuFrac × layers)` — llama.cpp는 출력층을 먼저 올리고 입력층은 항상 CPU라 floor가 안전(4,183 partial 조합에서 엔진 예산 초과 0), 각주 "실제로는 ±1~2층 직접 조정". MoE cpu-moe는 `--n-cpu-moe N`에 **N = layers(엔진 `02` §3.3 가정 — 추정치 기준)와 N_min(VRAM에 맞는 최소 N, 더 빠름)**을 함께 표시. **네이티브 quant(MXFP4) 파일과 Unsloth Dynamic(UD) 파일은 N_min에 +1층 여유(D23)**: gpt-oss는 비전문가 텐서가 Q8_0이라 bpw 균등 유도 `nonExpertGB`(0.65/0.81GB)가 실제 GPU 상주분(1.30/1.69GB)보다 작아 최소값이 1층 OOM, UD 파일도 어텐션·공유 텐서를 평균 bpw보다 높게 둬 같은 방향 — 정확한 해결(GGUF 텐서 목록 기반)은 백로그 「엔진 후속」④.

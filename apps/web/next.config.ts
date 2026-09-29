@@ -13,6 +13,9 @@ const nextConfig: NextConfig = {
   images: { unoptimized: true },
   // 워크스페이스 패키지는 TS 소스를 그대로 소비한다(빌드 산출물 없음).
   transpilePackages: ['@canrun/engine', '@canrun/data'],
+  // D21 — 빌드 ID 를 커밋 SHA 로 고정: 같은 커밋의 일 1회 리빌드(daily-rebuild)에서 HTML 이 바이트 동일하게
+  // 나와 wrangler 가 변경된 파일만 업로드한다. 청크는 내용 해시라 영향 없음. 로컬 빌드는 'local'.
+  generateBuildId: () => process.env.GITHUB_SHA ?? 'local',
 };
 
 export default withNextIntl(nextConfig);

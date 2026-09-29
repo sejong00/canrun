@@ -53,10 +53,16 @@ canrun/
 ```
 
 ## 3. 페이지 생성 흐름
-`data/*.json` → zod 파싱 → `generateStaticParams`로 콤보/허브 열거(인덱싱 배치 플래그 필드 `publishBatch`로 noindex/생성 제어) → 페이지 컴포넌트는 엔진 호출 결과를 빌드 시 계산해 HTML에 박음 → 클라이언트 하이드레이션 후 슬라이더 조작 시 동일 엔진으로 재계산.
-규모: 1차 (허브 83 = GPU 54 + 모델 29 + 600 콤보 + 20 가이드) × 2언어 ≈ **1,400페이지** — 빌드 수 분. 허브 조립 로직(기준·추천 quant, 실측 조인, 신뢰 라벨)은 `packages/data/src/assess.ts`(순수·엔진 무변경), 페이지는 서버 컴포넌트만 — 내부 링크는 `<a>`, next-intl 클라이언트 프로바이더 없음(JS 예산 `01` §7). 전체 확장(수천 페이지)도 정적으로 감당, 20분 초과 시 콤보 분할 빌드 도입.
+`data/*.json` → zod 파싱 → `generateStaticParams`로 콤보/허브 열거 → 페이지 컴포넌트는 엔진 호출 결과를 빌드 시 계산해 HTML에 박음. **인덱싱 게이트는 `data/publish.json`**(`currentBatch` + `batches[{batch, gpuIds, modelIds}]` — 메커니즘 `04` §3, 스키마 `03` §1, P1-2 D9): 콤보는 카탈로그 **전 조합을 생성**하고, 개방된 배치 밖의 콤보는 `robots noindex, follow` 메타로만 구분한다(생성 여부는 게이트와 무관). **콤보 페이지는 클라이언트 JS 0** — 컨텍스트 × KV quant(f16/q8_0/q4_0) 변화는 정적 표(메모리·tg 밴드·판정)로 싣고, 토글·재계산은 P1-3 계산기 아일랜드로 미룬다(D11, JS 예산 D6).
+규모: 허브 168(GPU 54 + 모델 29 × 2언어) + 콤보 1,566 × 2 = 3,132 → 홈 포함 **3,302페이지 전부 생성**, 인덱싱만 게이트(계획 시점 "1,400페이지"는 GPU 30 × 모델 20 시절 수치 — PROGRESS §4 09-29). 허브·콤보 조립 로직(기준·추천 quant, 실측 조인, 신뢰 라벨, ctx×KV 표, 대안, 커맨드 스니펫, 공개 상태)은 `packages/data/src/{assess,combo,snippet,publish}.ts`(순수·엔진 무변경), 페이지는 서버 컴포넌트만 — 내부 링크는 `<a>`, next-intl 클라이언트 프로바이더 없음(JS 예산 `01` §7). 20분 초과 시 콤보 분할 빌드 도입.
 
-alias→canonical 301(`04` §2)은 Next redirects가 정적 export에서 미지원이므로 **Cloudflare Pages `_redirects` 파일을 `aliases.json`에서 빌드 시 생성**한다(정적 룰 2,000줄 한도 — 수요 있는 alias만 301, 나머지는 캐노니컬 태그로만).
+빌드 후처리 `scripts/postbuild.ts`(P1-2 D18·D21, PROGRESS §4 09-29) — 순서가 중요하다:
+1. **RSC 페이로드 프루닝(평탄화 전)**: Cloudflare Pages 파일 한도 20,000개 — 페이지당 html + RSC `.txt` 3 + `__next.*` 디렉터리 = 5파일이라 3,302페이지면 ~16,500(82%). `__next.*` 디렉터리를 재귀 삭제하고 허용목록(`robots.txt|ads.txt|llms.txt` — P1-5 대비) 외 `*.txt`를 전부 삭제한다(~17% 감소). 안전 근거: 사이트는 `<a>`만 쓰고 next/link·router가 없어 Next 16.3.6 클라이언트가 `.txt`를 요청하는 경로(`fetchServerResponse` — navigate/prefetch/refresh)가 실행되지 않고, HTML에 `.txt` 참조 0건, 뒤로가기(`pageshow`/`popstate`) 복원은 기존 CacheNode를 재사용한다. 안전망: export 테스트(허용목록 외 `.txt` 0 · `__next` 0 · 총 파일 < 16,000 · 최대 파일 < 25MiB) + E2E 실패 요청 0(인접 링크 이동 후 `goBack()` + networkidle 포함 — 유일한 history 경로).
+2. `out/en/**` → 루트 평탄화(`renameSync`, §1).
+3. `_redirects` 생성(아래).
+- `next.config.ts` `generateBuildId: () => GITHUB_SHA ?? 'local'`(D21)로 빌드 ID를 고정 — 산출물 결정성(채택 조건: 두 번 빌드 `diff -r out` 바이트 동일, 결과는 PROGRESS §4 09-29).
+
+alias→canonical 301(`04` §2)은 Next redirects가 정적 export에서 미지원이므로 **Cloudflare Pages `_redirects` 파일을 `aliases.json`에서 빌드 시 생성**한다(정적 룰 2,000줄 한도 — 수요 있는 alias만 301, 나머지는 캐노니컬 태그로만). **콤보 URL엔 alias 301을 만들지 않는다**(1,566쌍 × 2언어가 한도를 넘는다 — 캐노니컬만, `04` §2, P1-2).
 
 ## 4. Phase 2 확장 경계 (지금 잘라 두는 것)
 - **제출 API**: Cloudflare **Workers + D1** (같은 플랫폼, 무료 티어 충분). `POST /api/submissions` → 파서(`scripts/parse-bench.ts` 재사용) → 엔진 추정 대비 ±3배 새너티 → `pending` 저장. 승인 큐는 소형 관리자 페이지(Workers + Access 인증) or 초기엔 D1 콘솔.
@@ -70,7 +76,7 @@ alias→canonical 301(`04` §2)은 Next redirects가 정적 export에서 미지�
 - WebGPU 감지: `navigator.gpu.requestAdapter()` → adapter info 매핑 테이블(aliases.json) — 실패/미지원 시 UI 노출 없이 수동 검색만. HF repo 직접 입력 모드: 클라이언트에서 HF API fetch(CORS 허용됨) → config 파싱 → 엔진.
 
 ## 6. 품질·성능 가드
-- CI: typecheck + vitest(엔진 회귀 = 실측 대조 케이스) + zod 데이터 검증(**출처 없는 레코드 실패**) + Playwright 스모크(대표 페이지 3종 × 2언어) + Lighthouse CI(콤보 템플릿 LCP < 2s, CLS < 0.1 예산).
+- CI: typecheck + vitest(엔진 회귀 = 실측 대조 케이스) + zod 데이터 검증(**출처 없는 레코드 실패**) + Playwright 스모크(대표 페이지 × 2언어 — 허브·콤보 포함) + Lighthouse CI(`assertMatrix` — P1-2 D19, PROGRESS §4 09-29): 전 URL 공통 performance·accessibility·best-practices ≥0.9 · script ≤150KB · CLS ≤0.1 / 비콤보 SEO ≥0.9 + LCP warn 2.0s / **콤보 템플릿 LCP 랩 게이트 = error 2.5s**(web.dev "good"). 근거: Lighthouse Lantern 비관 그래프가 131KB Next 런타임을 렌더블로킹으로 취급해 5KB 홈도 ~2.0s가 바닥이라 콤보에 2.0s error는 걸 수 없다 — **`01` §7 "LCP < 2s"는 필드(RUM) 목표로 유지**. noindex 콤보는 `is-crawlable`(가중치 4)이 실패해 SEO 카테고리 ≈0.69라, 콤보 URL은 카테고리 대신 개별 감사(document-title·meta-description·canonical·hreflang·crawlable-anchors·link-text·image-alt·http-status-code = 1)를 단언한다.
 - 광고 도입 후: 슬롯 고정 높이 예약으로 CLS 방어(`07` §3).
 - 접근성: verdict 색+아이콘+텍스트, 키보드 콤보 탐색.
 

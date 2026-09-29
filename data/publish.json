@@ -1,0 +1,30 @@
+{
+  "currentBatch": 0,
+  "batches": [
+    {
+      "batch": 1,
+      "plannedAt": "2026-09-29",
+      "note": "docs/04 §3 배치 1 — 인기 GPU 10 × 모델 6 (P1-2 후보, P1-6 에서 currentBatch 1 로 개방)",
+      "gpuIds": [
+        "rtx-4060",
+        "rtx-3060-12gb",
+        "rtx-4070",
+        "rtx-5070",
+        "rtx-5060-ti-16gb",
+        "rtx-4090",
+        "rtx-3090",
+        "rtx-5090",
+        "apple-m4",
+        "apple-m4-pro"
+      ],
+      "modelIds": [
+        "llama-3.1-8b",
+        "qwen3-14b",
+        "qwen3-30b-a3b-2507",
+        "gpt-oss-20b",
+        "gpt-oss-120b",
+        "gemma-3-12b"
+      ]
+    }
+  ]
+}

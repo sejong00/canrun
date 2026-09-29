@@ -19,7 +19,9 @@ import {
   VERDICT_THRESHOLDS,
   verdictOf,
   weightsGB,
+  type FitResult,
   type Hardware,
+  type KvQuant,
   type Mode,
   type ModelQuant,
   type QuantId,
@@ -254,6 +256,11 @@ export type VerdictReason =
 export type MemoryNeed = {
   /** 가중치 + KV + 버퍼 (GB, OS 예약 제외) */
   totalNeedGB: number;
+  /**
+   * 엔진이 실제로 가용량과 비교하는 필요량 — CPU 경로(CPU 프로필, cpu-only 모드)는 가중치 + KV
+   * (docs/02 §2.4 ④, 연산 버퍼는 OS 예약 4GB 가 흡수), GPU 경로는 totalNeedGB. 페이지의 "필요 vs 가용" 문장용.
+   */
+  needGB: number;
   /** GPU(통합 풀)에 올라가는 양 — OS 예약 포함, 엔진 breakdown.total */
   gpuGB: number;
   /** GPU(통합 풀) 사용 가능량 (dGPU: VRAM − OS 예약, 통합: RAM × 0.70) — CPU 프로필은 0 */
@@ -308,8 +315,10 @@ function memoryNeed(
   const weights = weightsGB(mq);
   const kv = kvGB(mq.kvBytesPerToken, ctx);
   const hw = config.hw;
+  const cpuPath = hw.kind === 'cpu' || (fits && result.mode === 'cpu-only');
   const base = {
     totalNeedGB: weights + kv + computeBufferGB(ctx),
+    needGB: cpuPath ? weights + kv : weights + kv + computeBufferGB(ctx),
     gpuUsableGB: hw.kind === 'cpu' ? 0 : Math.max(0, usableGB(hw)),
     ramUsableGB: Math.max(0, usableRamGB(hw)),
   };
@@ -408,7 +417,32 @@ export type RamHint = {
   verdict: Verdict;
   mode: Mode;
   result: Result;
+  /** 힌트 구성 그 자체 — F 페이지의 스니펫·대안이 이 구성으로 생성된다 (P1-2) */
+  config: HwConfig;
+  q: QuantAssessment;
 };
+
+/**
+ * (구성, 모델, quant) 를 임의 ctx·KV quant 에서 평가 — ctx 계단·ctx×KV 행렬 공용.
+ * 실측 조인은 하지 않는다(실측 ctx 조건이 다름).
+ */
+export function estimateAt(
+  gpu: Gpu,
+  config: HwConfig,
+  model: Model,
+  row: Pick<ModelQuantRecord, 'quant' | 'fileGB'>,
+  opts: { ctx: number; kvQuant?: KvQuant },
+): { fit: FitResult; result: Result } {
+  const mq = toModelQuant(model, row);
+  const fitResult = fit(config.hw, mq, { ctx: opts.ctx, kvQuant: opts.kvQuant });
+  const result = evaluate(config.hw, mq, {
+    ctx: opts.ctx,
+    kvQuant: opts.kvQuant,
+    reasoning: isReasoning(model),
+    theoretical: isTheoretical(gpu, model, fitResult.mode),
+  });
+  return { fit: fitResult, result };
+}
 
 export type ComboAssessment = {
   gpuId: string;
@@ -488,18 +522,11 @@ function maxCtxSameMode(
   display: QuantAssessment,
 ): number | undefined {
   if (display.estimate.verdict === 'F') return undefined;
-  const mq = toModelQuant(model, { quant: display.quant, fileGB: display.fileGB });
-  const reasoning = isReasoning(model);
   let best: number | undefined;
   for (const ctx of HUB_POLICY.ctxLadder) {
     if (ctx > model.maxContext) break;
-    const f = fit(config.hw, mq, { ctx });
+    const { fit: f, result: r } = estimateAt(gpu, config, model, display, { ctx });
     if (!f.fits || f.mode !== display.estimate.mode) break;
-    const r = evaluate(config.hw, mq, {
-      ctx,
-      reasoning,
-      theoretical: isTheoretical(gpu, model, f.mode),
-    });
     if (r.verdict !== display.estimate.verdict) break;
     best = ctx;
   }
@@ -530,6 +557,8 @@ function ramHintFor(
         verdict: assessed.result.verdict,
         mode: assessed.result.mode,
         result: assessed.result,
+        config,
+        q: assessed,
       };
     }
   }
@@ -756,7 +785,7 @@ export type ModelHubData = {
 };
 
 /** 통합·CPU: 최고 기준 판정의 최소 RAM 구성, 전부 F 면 최대 RAM (결정 D4). */
-function pickConfigCombo(combos: readonly ComboAssessment[]): ComboAssessment {
+export function pickConfigCombo(combos: readonly ComboAssessment[]): ComboAssessment {
   const best = Math.max(...combos.map((c) => verdictRank(c.baseline.result.verdict)));
   if (best === 0) return combos[combos.length - 1]!;
   return combos.find((c) => verdictRank(c.baseline.result.verdict) === best)!;

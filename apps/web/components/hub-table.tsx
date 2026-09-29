@@ -41,7 +41,7 @@ function MemoryText({ combo, gpu }: { combo: ComboAssessment; gpu: Gpu }) {
   const t = useTranslations('Memory');
   const q = combo.display;
   const m = q.memory;
-  if (q.fReason === 'no-fit') return <>{t('need', { need: formatGB(locale, m.totalNeedGB) })}</>;
+  if (q.fReason === 'no-fit') return <>{t('need', { need: formatGB(locale, m.needGB) })}</>;
   const total = gpu.kind === 'dgpu' ? (gpu.vramGB ?? 0) : m.gpuUsableGB;
   switch (q.result.mode) {
     case 'full-gpu':
@@ -70,7 +70,7 @@ function noFitText(
   gpu: Gpu,
 ): string {
   const m = q.memory;
-  const need = formatGB(locale, m.totalNeedGB);
+  const need = formatGB(locale, m.needGB);
   if (gpu.kind === 'dgpu') {
     return tReason('noFitDgpu', {
       need,
@@ -88,8 +88,8 @@ function noFitText(
   return tReason('noFitCpu', { need, ram: formatGB(locale, m.ramUsableGB) });
 }
 
-/** 판정 사유(실제로 걸린 규칙)·추천·최후 수단·RAM 힌트 (결정 D4) */
-function Notes({
+/** 판정 사유(실제로 걸린 규칙)·추천·최후 수단·RAM 힌트 (결정 D4) — 콤보 quant 표도 재사용 */
+export function Notes({
   combo,
   gpu,
   showReasoning,
@@ -156,20 +156,27 @@ function Notes({
  * 조합 1개의 판정~참고 셀 (GPU 허브·모델 허브 공용). 판정 배지는 기준 quant, 나머지 수치는
  * 표시 quant(기준이 F 면 추천) — 둘이 다르면 배지 아래에 표시 quant 의 판정을 덧붙인다.
  * showReasoning: 행마다 모델이 다른 GPU 허브에서만 리즈닝 표시 (모델 허브는 표 아래 한 번).
+ * comboHref: 공개(index) 콤보 페이지로 가는 "상세" 링크 — 미공개 콤보는 링크하지 않는다 (D9·D12).
  */
 export function ComboCells({
   combo,
   gpu,
   showReasoning = false,
+  comboHref,
+  detailsLabel,
 }: {
   combo: ComboAssessment;
   gpu: Gpu;
   showReasoning?: boolean;
+  comboHref?: string;
+  /** "상세" 링크의 접근성 이름 — 행마다 같은 링크 텍스트라 어느 조합인지 이름에 담는다 */
+  detailsLabel?: string;
 }) {
   const tMode = useTranslations('Mode');
   const tHint = useTranslations('Hint');
   const tVerdict = useTranslations('Verdict');
   const tCommon = useTranslations('Common');
+  const tTable = useTranslations('Table');
   const q = combo.display;
   const shifted = q.quant !== combo.baseline.quant;
   return (
@@ -184,6 +191,11 @@ export function ComboCells({
                 verdict: tVerdict(q.result.verdict),
               })}
             </span>
+          )}
+          {comboHref && (
+            <a href={comboHref} data-combo-link className="text-xs" aria-label={detailsLabel}>
+              {tTable('details')}
+            </a>
           )}
         </div>
       </td>

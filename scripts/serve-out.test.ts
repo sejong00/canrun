@@ -16,6 +16,8 @@ const FIXTURE: Readonly<Record<string, string>> = {
   'gpu/rtx-4060.html': '<!doctype html><title>gpu</title>',
   'model/qwen3.5-9b.html': '<!doctype html><title>model</title>',
   'model/qwen3.5-9b/__next._tree.txt': 'model-tree',
+  // 콤보 — 점 슬러그가 중간 세그먼트에 있는 중첩 경로 (P1-2)
+  'can-i-run/qwen3.5-9b/on/rtx-4060.html': '<!doctype html><title>combo</title>',
   'a.txt': 'rsc payload',
   'docs/index.html': '<!doctype html><title>docs</title>',
   '404.html': '<!doctype html><title>not found</title>',
@@ -49,6 +51,17 @@ describe('resolveOutPath', () => {
     expect(resolveOutPath(outDir, '/model/qwen3.5-9b')).toEqual({
       status: 200,
       file: at('model/qwen3.5-9b.html'),
+    });
+  });
+
+  it('nested combo path with a dotted middle segment maps to .html', () => {
+    expect(resolveOutPath(outDir, '/can-i-run/qwen3.5-9b/on/rtx-4060')).toEqual({
+      status: 200,
+      file: at('can-i-run/qwen3.5-9b/on/rtx-4060.html'),
+    });
+    expect(resolveOutPath(outDir, '/can-i-run/qwen3.5-9b/on/nope')).toEqual({
+      status: 404,
+      file: at('404.html'),
     });
   });
 

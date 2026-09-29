@@ -35,14 +35,17 @@ export function buildPageMetadata(opts: {
   locale: Locale;
   title: string;
   description: string;
-  /** 레이아웃의 " — CanRun" 템플릿을 쓰지 않을 때 (홈) */
+  /** 레이아웃의 " — CanRun" 템플릿을 쓰지 않을 때 (홈·콤보) */
   absoluteTitle?: boolean;
+  /** 인덱싱 배치 밖의 콤보 (docs/04 §3, 결정 D9) — noindex,follow. 캐노니컬·hreflang 은 그대로 */
+  noindex?: boolean;
 }): Metadata {
   const { href, locale, title, description } = opts;
   return {
     title: opts.absoluteTitle ? { absolute: title } : title,
     description,
     alternates: buildAlternates(href, locale),
+    ...(opts.noindex ? { robots: { index: false, follow: true } } : {}),
     openGraph: {
       type: 'website',
       siteName: 'CanRun',

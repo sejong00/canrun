@@ -2,18 +2,43 @@
  * 정적 export 산출물 불변식 — P0-1 i18n 스파이크의 실증 + 상시 회귀.
  *
  * 외부 리뷰 반영(2026-08): 홈 2페이지 고정 검사 → **산출물 재귀 열거** 로 확장.
- * `pnpm build` 이후 전 HTML 페이지에 대해:
+ * P1-2(D17): 3,300여 페이지를 다루므로 beforeAll 에서 페이지별 사실(PageFacts)만 추출하고
+ * HTML 은 폐기한다 (test/export-facts.ts). `pnpm build` 이후 전 HTML 페이지에 대해:
  *  - en/ko 짝 존재 (전 페이지 대칭 — docs/04 §6)
  *  - canonical == 실제 파일 경로의 URL (자기참조, CLAUDE.md 규칙 5)
  *  - hreflang {en, ko, x-default} 상호 대조 (짝 페이지와 동일 집합, x-default=en)
  *  - URL 당 파일 1개 (foo.html 과 foo/index.html 중복 금지)
  *  - out/en/ 부재 (평탄화), en 페이지에 /en 프리픽스 링크 0건, _redirects 한도
+ *  - 허브·콤보 구조화 데이터, 규칙 3 밴드, 제목·description 유일, 고아 0, 한글 누출 0
+ *  - 콤보(P1-2): 전 조합 존재 · publish.json 게이트(noindex) · 링크 규칙 · 깊이(D15) ·
+ *    보일러플레이트(D16) · 파일 위생(D18)
  */
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { CF_PAGES_REDIRECT_LINE_LIMIT } from '../scripts/build-redirects';
+import {
+  comboIndexable,
+  comboOf,
+  comboPath,
+  createFactsContext,
+  extractPageFacts,
+  hubPath,
+  isKoPath,
+  localePath,
+  median,
+  mulberry32,
+  parsePublishPlan,
+  pickDistinct,
+  stripLocale,
+  urlToPath,
+  type GpuRecord,
+  type ModelRecord,
+  type PageFacts,
+  type PublishPlan,
+  type UnitTable,
+} from './export-facts';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const outDir = join(repoRoot, 'apps/web/out');
@@ -21,70 +46,119 @@ const outDir = join(repoRoot, 'apps/web/out');
 /** hreflang 짝 검사에서 제외되는 에러/시스템 페이지 */
 const EXCLUDED = new Set(['404.html', '_not-found.html']);
 
-type Page = {
-  /** out/ 기준 상대 파일 경로 (posix) */
-  file: string;
-  /** 사이트 URL 경로 (`/`, `/ko`, `/gpu/rtx-4060` …) */
-  urlPath: string;
-  html: string;
-};
+/**
+ * 콤보 페이지(P1-2)가 산출물에 있어야 한다. true 면 콤보가 0건일 때 콤보 불변식이
+ * 조용히 통과하지 않고 명확한 메시지로 실패한다.
+ */
+const EXPECT_COMBOS = true;
+/** D15 표본 PRNG 시드 (AC 기록: 세 페이지 URL 을 콘솔에 남긴다) */
+const DEPTH_SEED = 20260929;
+/** D16 — 보일러플레이트 글자 비율 상한 */
+const BOILERPLATE_MAX = 0.6;
+/** D18 — Cloudflare Pages 파일 20,000개 한도 대비 여유. source: docs/05 §3 (policy) */
+const FILE_COUNT_MAX = 16_000;
+/** D18 — CF Pages 단일 파일 25 MiB 한도 */
+const FILE_SIZE_MAX = 25 * 1024 * 1024;
+/** 루트 허용 비-HTML 파일 (P1-5 사이트맵·robots·ads·llms 대비) */
+const ROOT_FILE_ALLOWLIST = /^(?:_redirects|icon\.svg|robots\.txt|sitemap[^/]*\.xml|ads\.txt|llms\.txt)$/;
+const TXT_ALLOWLIST = new Set(['robots.txt', 'ads.txt', 'llms.txt']);
+const HEAVY_TIMEOUT = 60_000;
 
-function walkHtml(dir: string): string[] {
-  const found: string[] = [];
-  for (const entry of readdirSync(dir)) {
-    const full = join(dir, entry);
-    if (statSync(full).isDirectory()) {
-      found.push(...walkHtml(full));
-    } else if (entry.endsWith('.html')) {
-      found.push(full);
+type OutFile = { rel: string; size: number };
+
+/** out/ 전체 열거 (파일 + 디렉터리, posix 상대 경로) — 단일 패스 */
+function walkOut(dir: string, rel = ''): { files: OutFile[]; dirs: string[] } {
+  const files: OutFile[] = [];
+  const dirs: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const entryRel = rel === '' ? entry.name : `${rel}/${entry.name}`;
+    if (entry.isDirectory()) {
+      dirs.push(entryRel);
+      const sub = walkOut(join(dir, entry.name), entryRel);
+      files.push(...sub.files);
+      dirs.push(...sub.dirs);
+    } else {
+      files.push({ rel: entryRel, size: statSync(join(dir, entry.name)).size });
     }
   }
-  return found;
+  return { files, dirs };
 }
 
-/** 파일 경로 → URL 경로 (trailingSlash:false 규약: foo.html → /foo, dir/index.html → /dir) */
-function toUrlPath(relFile: string): string {
-  const posix = relFile.replaceAll('\\', '/');
-  if (posix === 'index.html') return '/';
-  if (posix.endsWith('/index.html')) return `/${posix.slice(0, -'/index.html'.length)}`;
-  return `/${posix.slice(0, -'.html'.length)}`;
-}
+const readJson = <T>(relPath: string): T => JSON.parse(readFileSync(join(repoRoot, relPath), 'utf8')) as T;
 
-function extractHreflangs(html: string): Record<string, string> {
-  const map: Record<string, string> = {};
-  for (const tag of html.match(/<link\b[^>]*rel="alternate"[^>]*>/g) ?? []) {
-    const hreflang = tag.match(/hreflang="([^"]+)"/i)?.[1];
-    const href = tag.match(/href="([^"]+)"/i)?.[1];
-    if (hreflang && href) map[hreflang] = href;
-  }
-  return map;
-}
-
-function extractCanonical(html: string): string | undefined {
-  return html.match(/<link\b[^>]*rel="canonical"[^>]*href="([^"]+)"/i)?.[1];
-}
-
-/** 절대 URL → 경로 (루트는 슬래시 유무 무관하게 '/' 로 정규화) */
-function urlToPath(url: string): string {
-  const { pathname } = new URL(url);
-  return pathname === '' ? '/' : pathname;
-}
-
-let pages: Page[] = [];
+let pages: PageFacts[] = [];
+let outFiles: OutFile[] = [];
+let outDirs: string[] = [];
+let units: UnitTable;
+let gpus: GpuRecord[] = [];
+let models: ModelRecord[] = [];
 
 beforeAll(() => {
   if (!existsSync(outDir)) {
     throw new Error('apps/web/out not found — run `pnpm build` before `pnpm test:export`');
   }
-  pages = walkHtml(outDir)
-    .map((full) => relative(outDir, full))
-    .filter((rel) => !EXCLUDED.has(rel.replaceAll('\\', '/')))
-    .map((rel) => ({
-      file: rel.replaceAll('\\', '/'),
-      urlPath: toUrlPath(rel),
-      html: readFileSync(join(outDir, rel), 'utf8'),
-    }));
-});
+  gpus = readJson<GpuRecord[]>('data/gpus.json');
+  models = readJson<ModelRecord[]>('data/models.json');
+  const ctx = createFactsContext({
+    gpus,
+    models,
+    gpuNameOverrides: (['en', 'ko'] as const).map(
+      (locale) => readJson<{ GpuName?: Record<string, string> }>(`apps/web/messages/${locale}.json`).GpuName ?? {},
+    ),
+  });
+  units = ctx.units;
+
+  const walked = walkOut(outDir);
+  outFiles = walked.files;
+  outDirs = walked.dirs;
+  pages = [];
+  for (const { rel } of outFiles) {
+    if (!rel.endsWith('.html') || EXCLUDED.has(rel)) continue;
+    // HTML 은 이 스코프를 벗어나면 버려진다 (D17)
+    pages.push(extractPageFacts(readFileSync(join(outDir, rel), 'utf8'), rel, ctx));
+  }
+}, 120_000);
+
+// ---------------------------------------------------------------------------
+// 공용 조회
+// ---------------------------------------------------------------------------
+
+const isHub = (page: PageFacts) => page.kind === 'gpu' || page.kind === 'model';
+const isStructured = (page: PageFacts) => isHub(page) || page.kind === 'combo';
+const urlSet = () => new Set(pages.map((p) => p.urlPath));
+const byUrl = () => new Map(pages.map((p) => [p.urlPath, p]));
+
+/** 콤보 페이지 — EXPECT_COMBOS 이고 0건이면 명확히 실패 */
+function requireCombos(): PageFacts[] {
+  const combos = pages.filter((p) => p.kind === 'combo');
+  if (combos.length === 0 && EXPECT_COMBOS) {
+    throw new Error(
+      'no combo pages (/can-i-run/{model}/on/{gpu}) found under apps/web/out — P1-2 combo template not exported. ' +
+        'Set EXPECT_COMBOS = false only if combos are intentionally absent.',
+    );
+  }
+  return combos;
+}
+
+let publishCache: PublishPlan | undefined;
+function loadPublish(): PublishPlan {
+  publishCache ??= parsePublishPlan(readJson<unknown>('data/publish.json'));
+  return publishCache;
+}
+
+function indexableOf(page: PageFacts): boolean {
+  return page.combo !== undefined && comboIndexable(loadPublish(), page.combo.gpuId, page.combo.modelId);
+}
+
+/** href → 콤보 indexable 여부 (콤보 href 가 아니면 undefined) */
+function hrefIndexable(href: string): boolean | undefined {
+  const combo = comboOf(href);
+  return combo ? comboIndexable(loadPublish(), combo.gpuId, combo.modelId) : undefined;
+}
+
+// ---------------------------------------------------------------------------
+// P0-1 · P1-1 불변식
+// ---------------------------------------------------------------------------
 
 describe('URL space integrity', () => {
   it('found at least the en/ko home pages', () => {
@@ -92,12 +166,12 @@ describe('URL space integrity', () => {
   });
 
   it('exactly one file per URL (no foo.html + foo/index.html duplicates)', () => {
-    const byUrl = new Map<string, string[]>();
+    const files = new Map<string, string[]>();
     for (const page of pages) {
-      byUrl.set(page.urlPath, [...(byUrl.get(page.urlPath) ?? []), page.file]);
+      files.set(page.urlPath, [...(files.get(page.urlPath) ?? []), page.file]);
     }
-    for (const [urlPath, files] of byUrl) {
-      expect(files, `duplicate files for ${urlPath}`).toHaveLength(1);
+    for (const [urlPath, list] of files) {
+      expect(list, `duplicate files for ${urlPath}`).toHaveLength(1);
     }
   });
 
@@ -112,13 +186,13 @@ describe('URL space integrity', () => {
 
 describe('en/ko page pairing (docs/04 §6 — every page in both locales)', () => {
   it('every en page has its /ko twin and vice versa', () => {
-    const urls = new Set(pages.map((p) => p.urlPath));
+    const urls = urlSet();
     for (const url of urls) {
-      if (url === '/ko' || url.startsWith('/ko/')) {
-        const enTwin = url === '/ko' ? '/' : url.slice('/ko'.length);
+      if (isKoPath(url)) {
+        const enTwin = stripLocale(url);
         expect(urls.has(enTwin), `ko page ${url} missing en twin ${enTwin}`).toBe(true);
       } else {
-        const koTwin = url === '/' ? '/ko' : `/ko${url}`;
+        const koTwin = localePath('ko', url);
         expect(urls.has(koTwin), `en page ${url} missing ko twin ${koTwin}`).toBe(true);
       }
     }
@@ -128,39 +202,34 @@ describe('en/ko page pairing (docs/04 §6 — every page in both locales)', () =
 describe('canonical + hreflang per page (CLAUDE.md rule 5)', () => {
   it('canonical is self-referencing: canonical path == actual file URL path', () => {
     for (const page of pages) {
-      const canonical = extractCanonical(page.html);
-      expect(canonical, `${page.file} missing canonical`).toBeDefined();
-      expect(urlToPath(canonical!), `${page.file} canonical mismatch`).toBe(page.urlPath);
+      expect(page.canonical, `${page.file} missing canonical`).toBeDefined();
+      expect(urlToPath(page.canonical!), `${page.file} canonical mismatch`).toBe(page.urlPath);
     }
   });
 
   it('hreflang set is {en, ko, x-default}, points at the real pair, x-default=en', () => {
-    const urls = new Set(pages.map((p) => p.urlPath));
+    const urls = urlSet();
     for (const page of pages) {
-      const map = extractHreflangs(page.html);
+      const map = page.hreflang;
       expect(Object.keys(map).sort(), page.file).toEqual(['en', 'ko', 'x-default']);
       expect(map['x-default'], `${page.file} x-default != en`).toBe(map.en);
 
       const enPath = urlToPath(map.en!);
       const koPath = urlToPath(map.ko!);
-      const isKo = page.urlPath === '/ko' || page.urlPath.startsWith('/ko/');
       // 자기참조 + 짝 참조가 실제 존재하는 페이지를 가리켜야 한다 (상호 대조)
-      expect(isKo ? koPath : enPath, `${page.file} hreflang self-ref`).toBe(page.urlPath);
+      expect(page.locale === 'ko' ? koPath : enPath, `${page.file} hreflang self-ref`).toBe(page.urlPath);
       expect(urls.has(enPath), `${page.file} hreflang en → missing page ${enPath}`).toBe(true);
       expect(urls.has(koPath), `${page.file} hreflang ko → missing page ${koPath}`).toBe(true);
     }
   });
 
   it('hreflang maps are identical across each en/ko pair', () => {
-    const byUrl = new Map(pages.map((p) => [p.urlPath, p]));
+    const map = byUrl();
     for (const page of pages) {
-      const isKo = page.urlPath === '/ko' || page.urlPath.startsWith('/ko/');
-      if (isKo) continue;
-      const twin = byUrl.get(page.urlPath === '/' ? '/ko' : `/ko${page.urlPath}`);
-      expect(twin).toBeDefined();
-      expect(extractHreflangs(page.html), `pair mismatch at ${page.urlPath}`).toEqual(
-        extractHreflangs(twin!.html),
-      );
+      if (page.locale === 'ko') continue;
+      const twin = map.get(localePath('ko', page.urlPath));
+      expect(twin, `${page.urlPath} ko twin`).toBeDefined();
+      expect(page.hreflang, `pair mismatch at ${page.urlPath}`).toEqual(twin!.hreflang);
     }
   });
 });
@@ -168,91 +237,19 @@ describe('canonical + hreflang per page (CLAUDE.md rule 5)', () => {
 describe('en pages carry no /en-prefixed internal links', () => {
   it('no href="/en" or href="/en/…" anywhere', () => {
     for (const page of pages) {
-      const enPrefixed = page.html.match(/href="\/en(\/|")/g) ?? [];
-      expect(enPrefixed, page.file).toEqual([]);
+      expect(page.enPrefixedLinkCount, page.file).toBe(0);
     }
   });
 });
 
-// ---------------------------------------------------------------------------
-// P1-1 허브 템플릿 불변식 (docs/04 §2·§5·§6, CLAUDE.md 규칙 3·4·5)
-// ---------------------------------------------------------------------------
-
-const readIds = (file: string) =>
-  (JSON.parse(readFileSync(join(repoRoot, 'data', file), 'utf8')) as Array<{ id: string }>).map(
-    (record) => record.id,
-  );
-
-const isKoPath = (urlPath: string) => urlPath === '/ko' || urlPath.startsWith('/ko/');
-const hubPathOf = (urlPath: string) => (isKoPath(urlPath) ? urlPath.slice('/ko'.length) : urlPath);
-const isHub = (urlPath: string) => /^\/(gpu|model)\//.test(hubPathOf(urlPath));
-
-function decodeEntities(text: string): string {
-  return text
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#x27;|&#39;/g, "'")
-    .replace(/&amp;/g, '&');
-}
-
-function jsonLdBlocks(html: string): Array<Record<string, unknown>> {
-  return [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].map(
-    (m) => JSON.parse(m[1]!) as Record<string, unknown>,
-  );
-}
-
-function metaDescription(html: string): string | undefined {
-  const raw = html.match(/<meta name="description" content="([^"]*)"/)?.[1];
-  return raw === undefined ? undefined : decodeEntities(raw);
-}
-
-function titleOf(html: string): string | undefined {
-  const raw = html.match(/<title>([^<]*)<\/title>/)?.[1];
-  return raw === undefined ? undefined : decodeEntities(raw);
-}
-
-function visibleFaq(html: string): Array<{ question: string; answer: string }> {
-  const questions = [...html.matchAll(/<h3[^>]*data-faq-question[^>]*>([\s\S]*?)<\/h3>/g)].map(
-    (m) => decodeEntities(m[1]!),
-  );
-  const answers = [...html.matchAll(/<p[^>]*data-faq-answer[^>]*>([\s\S]*?)<\/p>/g)].map((m) =>
-    decodeEntities(m[1]!),
-  );
-  return questions.map((question, i) => ({ question, answer: answers[i] ?? '' }));
-}
-
-/** `<a href="/…">` 내부 링크 (로케일 전환 링크 제외 옵션) */
-function internalLinks(html: string, { skipLocaleSwitch = false } = {}): string[] {
-  const links: string[] = [];
-  for (const m of html.matchAll(/<a\b[^>]*>/g)) {
-    const tag = m[0];
-    const href = tag.match(/href="(\/[^"/][^"]*|\/)"/)?.[1];
-    if (!href) continue;
-    if (skipLocaleSwitch && tag.includes('data-locale-switch')) continue;
-    links.push(href);
-  }
-  return links;
-}
-
-/** 스크립트·스타일을 뺀 가시 텍스트 (RSC 인라인 페이로드 제외) */
-function visibleText(html: string): string {
-  return decodeEntities(
-    html
-      .replace(/<script[\s\S]*?<\/script>/g, ' ')
-      .replace(/<style[\s\S]*?<\/style>/g, ' ')
-      .replace(/<[^>]+>/g, ' '),
-  );
-}
-
 describe('hub pages exist for every catalog record (결정 D1 — 허브 전체 생성)', () => {
   it('every gpus.json / models.json id has an en and a ko hub', () => {
-    const urls = new Set(pages.map((p) => p.urlPath));
-    for (const id of readIds('gpus.json')) {
+    const urls = urlSet();
+    for (const { id } of gpus) {
       expect(urls.has(`/gpu/${id}`), `/gpu/${id}`).toBe(true);
       expect(urls.has(`/ko/gpu/${id}`), `/ko/gpu/${id}`).toBe(true);
     }
-    for (const id of readIds('models.json')) {
+    for (const { id } of models) {
       expect(urls.has(`/model/${id}`), `/model/${id}`).toBe(true);
       expect(urls.has(`/ko/model/${id}`), `/ko/model/${id}`).toBe(true);
     }
@@ -262,44 +259,51 @@ describe('hub pages exist for every catalog record (결정 D1 — 허브 전체 
 describe('html lang matches the locale', () => {
   it('ko pages are lang="ko", everything else lang="en"', () => {
     for (const page of pages) {
-      const lang = page.html.match(/<html[^>]*\blang="([^"]+)"/)?.[1];
-      expect(lang, page.file).toBe(isKoPath(page.urlPath) ? 'ko' : 'en');
+      expect(page.lang, page.file).toBe(page.locale);
     }
   });
 });
 
 describe('structured data (docs/04 §5)', () => {
-  it('every JSON-LD block parses; hubs carry BreadcrumbList + FAQPage', () => {
+  it('every JSON-LD block parses; hubs and combos carry BreadcrumbList + FAQPage', () => {
     for (const page of pages) {
-      const blocks = jsonLdBlocks(page.html);
-      if (!isHub(page.urlPath)) continue;
-      const types = blocks.map((b) => b['@type']);
+      expect(page.jsonLdError, page.file).toBeUndefined();
+      if (!isStructured(page)) continue;
+      const types = page.jsonLd.map((b) => b['@type']);
       expect(types, page.file).toContain('BreadcrumbList');
       expect(types, page.file).toContain('FAQPage');
     }
   });
 
-  it('breadcrumbs: every item has a URL (결정 D7), the last one is the canonical', () => {
-    for (const page of pages.filter((p) => isHub(p.urlPath))) {
-      const crumbs = jsonLdBlocks(page.html).find((b) => b['@type'] === 'BreadcrumbList')!;
+  it('breadcrumbs: every item has a URL (결정 D7), the last one is the canonical; combos are 3 levels (D10)', () => {
+    for (const page of pages.filter(isStructured)) {
+      const crumbs = page.jsonLd.find((b) => b['@type'] === 'BreadcrumbList')!;
       const items = crumbs.itemListElement as Array<{ item?: string; position: number }>;
       expect(items.length, page.file).toBeGreaterThanOrEqual(2);
       items.forEach((item, i) => {
         expect(item.position, page.file).toBe(i + 1);
         expect(item.item, page.file).toMatch(/^https?:\/\//);
       });
-      expect(items.at(-1)!.item, page.file).toBe(extractCanonical(page.html));
+      expect(items.at(-1)!.item, page.file).toBe(page.canonical);
+      if (page.combo) {
+        // 홈 › 모델 허브 › 콤보(캐노니컬)
+        expect(items.length, page.file).toBe(3);
+        expect(urlToPath(items[0]!.item!), `${page.file} crumb 1`).toBe(localePath(page.locale, '/'));
+        expect(urlToPath(items[1]!.item!), `${page.file} crumb 2`).toBe(
+          hubPath(page.locale, 'model', page.combo.modelId),
+        );
+      }
     }
   });
 
   it('FAQPage text equals the visible FAQ (Google FAQ guideline)', () => {
-    for (const page of pages.filter((p) => isHub(p.urlPath))) {
-      const faq = jsonLdBlocks(page.html).find((b) => b['@type'] === 'FAQPage')!;
+    for (const page of pages.filter(isStructured)) {
+      const faq = page.jsonLd.find((b) => b['@type'] === 'FAQPage')!;
       const entities = (
         faq.mainEntity as Array<{ name: string; acceptedAnswer: { text: string } }>
       ).map((q) => ({ question: q.name, answer: q.acceptedAnswer.text }));
       expect(entities.length, page.file).toBe(3);
-      expect(entities, page.file).toEqual(visibleFaq(page.html));
+      expect(entities, page.file).toEqual(page.faq);
     }
   });
 });
@@ -307,10 +311,9 @@ describe('structured data (docs/04 §5)', () => {
 describe('estimates always carry a band (CLAUDE.md 규칙 3)', () => {
   const RANGE = /\d[\d.,]*–\d[\d.,]*/;
   const QUOTED_SPEED = /\d[\d.,]*\s*tok\/s/;
-  it('meta descriptions and FAQ answers that quote a tok/s value also quote a range', () => {
+  it('descriptions, FAQ answers, verdict sentences, alternative cards and <dd> cells that quote a tok/s value also quote a range', () => {
     for (const page of pages) {
-      const texts = [metaDescription(page.html) ?? '', ...visibleFaq(page.html).map((q) => q.answer)];
-      for (const text of texts) {
+      for (const text of page.speedTexts) {
         if (!QUOTED_SPEED.test(text)) continue;
         expect(RANGE.test(text), `${page.file}: ${text}`).toBe(true);
       }
@@ -323,8 +326,7 @@ describe('titles and descriptions (docs/04 §4 — no duplicate templates)', () 
     const titles = new Map<string, string>();
     const descriptions = new Map<string, string>();
     for (const page of pages) {
-      const title = titleOf(page.html);
-      const description = metaDescription(page.html);
+      const { title, description } = page;
       expect(title, `${page.file} title`).toBeTruthy();
       expect(description, `${page.file} description`).toBeTruthy();
       expect(titles.get(title!), `duplicate title: ${title}`).toBeUndefined();
@@ -340,19 +342,21 @@ describe('internal linking (docs/04 §2 — 고아 페이지 0)', () => {
     const inbound = new Map<string, number>();
     for (const page of pages) {
       // 로케일 전환 링크는 제외 — 짝 페이지의 스위처가 항상 인바운드가 되어 검사가 무력해진다
-      for (const href of new Set(internalLinks(page.html, { skipLocaleSwitch: true }))) {
+      const hrefs = new Set(page.links.filter((l) => !l.localeSwitch).map((l) => l.href));
+      for (const href of hrefs) {
         if (href === page.urlPath) continue;
         inbound.set(href, (inbound.get(href) ?? 0) + 1);
       }
     }
-    for (const page of pages.filter((p) => isHub(p.urlPath))) {
+    for (const page of pages.filter(isHub)) {
       expect(inbound.get(page.urlPath) ?? 0, `orphan hub ${page.urlPath}`).toBeGreaterThan(0);
     }
   });
 
   it('ko pages link only to /ko/* (except the locale switcher)', () => {
-    for (const page of pages.filter((p) => isKoPath(p.urlPath))) {
-      for (const href of internalLinks(page.html, { skipLocaleSwitch: true })) {
+    for (const page of pages.filter((p) => p.locale === 'ko')) {
+      for (const { href, localeSwitch } of page.links) {
+        if (localeSwitch) continue;
         expect(isKoPath(href), `${page.file} → ${href}`).toBe(true);
       }
     }
@@ -360,11 +364,9 @@ describe('internal linking (docs/04 §2 — 고아 페이지 0)', () => {
 });
 
 describe('en pages render no Korean text (CLAUDE.md 규칙 4)', () => {
-  const HANGUL = /[ᄀ-ᇿ㄰-㆏가-힯]+/g;
   it('only the locale switcher label may be Hangul', () => {
-    for (const page of pages.filter((p) => !isKoPath(p.urlPath))) {
-      const hangul = (visibleText(page.html).match(HANGUL) ?? []).filter((w) => w !== '한국어');
-      expect(hangul, page.file).toEqual([]);
+    for (const page of pages.filter((p) => p.locale === 'en')) {
+      expect(page.hangulWords.filter((w) => w !== '한국어'), page.file).toEqual([]);
     }
   });
 });
@@ -379,5 +381,240 @@ describe('_redirects (docs/05 §3)', () => {
     expect(rules.length).toBeGreaterThan(0);
     expect(rules.length).toBeLessThanOrEqual(CF_PAGES_REDIRECT_LINE_LIMIT);
     expect(rules).toContain('/en/* /:splat 301');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// P1-2 콤보 페이지 불변식 (docs/04 §3·§4, 결정 D9~D18)
+// ---------------------------------------------------------------------------
+
+describe('combo pages exist for the whole catalog (결정 D9 — 전 조합 생성)', () => {
+  it('every gpus.json × models.json pair has an en and a ko combo page', () => {
+    requireCombos();
+    const urls = urlSet();
+    const missing: string[] = [];
+    for (const gpu of gpus) {
+      for (const model of models) {
+        for (const locale of ['en', 'ko'] as const) {
+          const path = comboPath(locale, model.id, gpu.id);
+          if (!urls.has(path)) missing.push(path);
+        }
+      }
+    }
+    expect(missing, `${missing.length} combo pages missing (first: ${missing.slice(0, 5).join(', ')})`).toEqual([]);
+  });
+
+  it('every combo URL names a catalog GPU and model (no stray combos)', () => {
+    const gpuIds = new Set(gpus.map((g) => g.id));
+    const modelIds = new Set(models.map((m) => m.id));
+    for (const page of requireCombos()) {
+      expect(gpuIds.has(page.combo!.gpuId), `${page.file}: unknown gpu ${page.combo!.gpuId}`).toBe(true);
+      expect(modelIds.has(page.combo!.modelId), `${page.file}: unknown model ${page.combo!.modelId}`).toBe(true);
+    }
+  });
+
+  it('carries one h1, a verdict sentence, both hub links, adjacent combo links and a llama.cpp snippet', () => {
+    for (const page of requireCombos()) {
+      const { gpuId, modelId } = page.combo!;
+      expect(page.h1Count, `${page.file} h1 count`).toBe(1);
+      expect(page.verdictSentence, `${page.file} [data-verdict-sentence]`).toBeTruthy();
+
+      const hrefs = new Set(page.links.map((l) => l.href));
+      expect(hrefs.has(hubPath(page.locale, 'gpu', gpuId)), `${page.file} → gpu hub link`).toBe(true);
+      expect(hrefs.has(hubPath(page.locale, 'model', modelId)), `${page.file} → model hub link`).toBe(true);
+
+      expect(page.adjacentHrefs.length, `${page.file} a[data-adjacent]`).toBeGreaterThan(0);
+      for (const href of page.adjacentHrefs) {
+        expect(comboOf(href), `${page.file} adjacent → ${href} is not a combo`).toBeDefined();
+        expect(isKoPath(href), `${page.file} adjacent → ${href} locale`).toBe(page.locale === 'ko');
+        expect(href, `${page.file} adjacent self-link`).not.toBe(page.urlPath);
+      }
+
+      // 실행 명령은 fit 이 있을 때만 — 미탑재(RAM 힌트도 없음) 페이지는 [data-no-run] 으로 명시한다
+      const llama = page.snippets.find((s) => s.kind === 'llama.cpp');
+      if (page.noRun) {
+        expect(llama, `${page.file} has both [data-no-run] and a llama.cpp snippet`).toBeUndefined();
+      } else {
+        expect(llama?.text, `${page.file} figure[data-snippet="llama.cpp"]`).toContain('llama-server -hf');
+      }
+      const ollama = page.snippets.find((s) => s.kind === 'ollama');
+      if (ollama) expect(ollama.text, `${page.file} ollama snippet`).toContain('OLLAMA_CONTEXT_LENGTH');
+    }
+  });
+});
+
+describe('combo indexing gate (data/publish.json — 결정 D9, docs/04 §3)', () => {
+  it('robots noindex ⇔ !indexable(publish.json); hubs and home are never noindex', () => {
+    const combos = requireCombos();
+    const publish = loadPublish();
+    const indexable = combos.filter(indexableOf).length;
+    console.log(
+      `[publish] currentBatch ${publish.currentBatch}, batches ${publish.batches.map((b) => b.batch).join(',') || '-'} → ` +
+        `${indexable}/${combos.length} combo pages indexable`,
+    );
+    for (const page of combos) {
+      expect(page.robotsNoindex, `${page.file} robots noindex (indexable=${indexableOf(page)})`).toBe(
+        !indexableOf(page),
+      );
+    }
+    for (const page of pages.filter((p) => p.kind !== 'combo')) {
+      expect(page.robotsNoindex, `${page.file} must not be noindex`).toBe(false);
+    }
+  });
+
+  it('noindex(en) === noindex(ko twin)', () => {
+    const map = byUrl();
+    for (const page of requireCombos().filter((p) => p.locale === 'en')) {
+      const twin = map.get(localePath('ko', page.urlPath));
+      expect(twin, `${page.urlPath} ko twin`).toBeDefined();
+      expect(twin!.robotsNoindex, `${page.urlPath} noindex differs from ko twin`).toBe(page.robotsNoindex);
+    }
+  });
+});
+
+describe('combo linking rules (docs/04 §3 — 공개 페이지는 공개 콤보로만 링크)', () => {
+  it('home, hub pages and indexable combos link only to indexable combos', () => {
+    requireCombos();
+    const publicPages = pages.filter((p) => p.kind === 'home' || isHub(p) || (p.kind === 'combo' && indexableOf(p)));
+    for (const page of publicPages) {
+      for (const { href } of page.links) {
+        const indexable = hrefIndexable(href);
+        if (indexable === undefined) continue;
+        expect(indexable, `${page.file} (${page.kind}) links to non-indexable combo ${href}`).toBe(true);
+      }
+      for (const href of page.comboLinkHrefs) {
+        expect(hrefIndexable(href), `${page.file} a[data-combo-link] → ${href} must be an indexable combo`).toBe(true);
+      }
+    }
+  });
+
+  it(
+    'every indexable combo is linked from its GPU hub, its model hub and ≥1 other combo via data-adjacent',
+    { timeout: HEAVY_TIMEOUT },
+    () => {
+      const combos = requireCombos();
+      const map = byUrl();
+      const adjacentInbound = new Map<string, number>();
+      for (const page of combos) {
+        for (const href of new Set(page.adjacentHrefs)) {
+          if (href === page.urlPath) continue;
+          adjacentInbound.set(href, (adjacentInbound.get(href) ?? 0) + 1);
+        }
+      }
+      const indexable = combos.filter(indexableOf);
+      if (indexable.length === 0) {
+        // currentBatch 0 이면 검사 대상이 없다 — 공회전을 숨기지 않고 그 이유(게이트 닫힘)를 단언한다. P1-6 개방 후 실효
+        expect(loadPublish().currentBatch, 'no indexable combo although the publish gate is open').toBe(0);
+        return;
+      }
+      for (const page of indexable) {
+        const { gpuId, modelId } = page.combo!;
+        const gpuHub = map.get(hubPath(page.locale, 'gpu', gpuId));
+        const modelHub = map.get(hubPath(page.locale, 'model', modelId));
+        expect(gpuHub?.links.some((l) => l.href === page.urlPath), `${page.urlPath} not linked from its GPU hub`).toBe(true);
+        expect(modelHub?.links.some((l) => l.href === page.urlPath), `${page.urlPath} not linked from its model hub`).toBe(
+          true,
+        );
+        expect(adjacentInbound.get(page.urlPath) ?? 0, `${page.urlPath} has no data-adjacent inbound link`).toBeGreaterThan(
+          0,
+        );
+      }
+    },
+  );
+});
+
+describe('depth test (결정 D15 — GPU명을 가려도 수치로 구분된다)', () => {
+  const groupByFingerprint = (combos: PageFacts[]) => {
+    const groups = new Map<string, string[]>();
+    for (const page of combos) {
+      groups.set(page.numberFingerprint, [...(groups.get(page.numberFingerprint) ?? []), page.urlPath]);
+    }
+    return groups;
+  };
+
+  it('number fingerprints are unique across all combo pages of each locale', { timeout: HEAVY_TIMEOUT }, () => {
+    const combos = requireCombos();
+    for (const locale of ['en', 'ko'] as const) {
+      const scoped = combos.filter((p) => p.locale === locale);
+      expect(scoped.length, `${locale} combo pages`).toBeGreaterThan(0);
+      for (const page of scoped) {
+        expect(page.numberFingerprint, `${page.file} has no numbers in its visible text`).not.toBe('');
+      }
+      const collisions = [...groupByFingerprint(scoped).values()].filter((urls) => urls.length > 1);
+      const report = collisions
+        .slice(0, 10)
+        .map((urls) => urls.join(' == '))
+        .join('\n');
+      expect(collisions, `${locale}: ${collisions.length} fingerprint collision group(s)\n${report}`).toEqual([]);
+    }
+  });
+
+  it('seeded sample of 3 en combo pages is distinguishable (AC record — URLs logged)', () => {
+    const enCombos = requireCombos()
+      .filter((p) => p.locale === 'en')
+      .sort((a, b) => a.urlPath.localeCompare(b.urlPath, 'en'));
+    const groups = groupByFingerprint(enCombos);
+    const picks = pickDistinct(mulberry32(DEPTH_SEED), enCombos.length, 3).map((i) => enCombos[i]!);
+    console.log(`[depth] mulberry32(${DEPTH_SEED}) sample: ${picks.map((p) => p.urlPath).join(' · ')}`);
+    expect(picks).toHaveLength(3);
+    for (const page of picks) {
+      expect(groups.get(page.numberFingerprint), `${page.urlPath} fingerprint is not unique`).toEqual([page.urlPath]);
+    }
+  });
+});
+
+describe('boilerplate ratio (결정 D16 — ≥50% 페이지에 나타나는 문장 단위의 글자 비율 < 0.6)', () => {
+  it('per locale, no combo page is 60% or more boilerplate by characters', { timeout: HEAVY_TIMEOUT }, () => {
+    const combos = requireCombos();
+    for (const locale of ['en', 'ko'] as const) {
+      const scoped = combos.filter((p) => p.locale === locale);
+      // df[unit] = 단위를 담은 콤보 페이지 수 (페이지당 Set 으로 중복 제거)
+      const df = new Map<number, number>();
+      for (const page of scoped) {
+        for (const id of new Set(page.textUnitIds)) df.set(id, (df.get(id) ?? 0) + 1);
+      }
+      const threshold = 0.5 * scoped.length;
+      const boilerplate = new Set([...df].filter(([, n]) => n >= threshold).map(([id]) => id));
+
+      const ratios = scoped.map((page) => {
+        expect(page.textChars, `${page.file} has no text units`).toBeGreaterThan(0);
+        let hit = 0;
+        for (const id of page.textUnitIds) if (boilerplate.has(id)) hit += units.text(id).length;
+        return { page, ratio: hit / page.textChars };
+      });
+      const worst = ratios.reduce((a, b) => (b.ratio > a.ratio ? b : a));
+      const values = ratios.map((r) => r.ratio);
+      console.log(
+        `[boilerplate] ${locale}: min ${Math.min(...values).toFixed(3)} median ${median(values).toFixed(3)} ` +
+          `max ${worst.ratio.toFixed(3)} (${worst.page.urlPath}) — ${boilerplate.size}/${df.size} units boilerplate`,
+      );
+      expect(worst.ratio, `${locale} boilerplate max ${worst.ratio.toFixed(3)} at ${worst.page.urlPath}`).toBeLessThan(
+        BOILERPLATE_MAX,
+      );
+    }
+  });
+});
+
+describe('export file hygiene (결정 D18 — RSC 페이로드 프루닝 · CF Pages 한도)', () => {
+  const basename = (rel: string) => rel.slice(rel.lastIndexOf('/') + 1);
+
+  it('no *.txt outside the allowlist and no __next* directories', () => {
+    const strayTxt = outFiles.map((f) => f.rel).filter((rel) => rel.endsWith('.txt') && !TXT_ALLOWLIST.has(basename(rel)));
+    expect(strayTxt.slice(0, 20), `${strayTxt.length} stray .txt file(s)`).toEqual([]);
+    const nextDirs = outDirs.filter((rel) => basename(rel).startsWith('__next'));
+    expect(nextDirs.slice(0, 20), `${nextDirs.length} __next* director(ies)`).toEqual([]);
+  });
+
+  it(`fewer than ${FILE_COUNT_MAX} files, every file under 25 MiB`, () => {
+    expect(outFiles.length, 'total file count').toBeLessThan(FILE_COUNT_MAX);
+    const largest = outFiles.reduce((a, b) => (b.size > a.size ? b : a));
+    expect(largest.size, `largest file ${largest.rel}`).toBeLessThan(FILE_SIZE_MAX);
+  });
+
+  it('non-HTML files live only under _next/static/** or the root allowlist', () => {
+    const stray = outFiles
+      .map((f) => f.rel)
+      .filter((rel) => !rel.endsWith('.html') && !rel.startsWith('_next/static/') && !ROOT_FILE_ALLOWLIST.test(rel));
+    expect(stray.slice(0, 20), `${stray.length} unexpected non-HTML file(s)`).toEqual([]);
   });
 });

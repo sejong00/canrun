@@ -82,3 +82,16 @@ export function modeKey(mode: Mode, gpuKind: Gpu['kind']): string {
 export function gpuName(tGpuName: Translate & { has?: (key: string) => boolean }, gpu: Gpu): string {
   return tGpuName.has?.(gpu.id) ? tGpuName(gpu.id) : gpu.name;
 }
+
+/**
+ * 제목용 짧은 GPU 이름 (결정 D14): 브랜드 접두를 떼고 "(N-core GPU)" 를 "N-core" 로.
+ * 콤보 제목이 SERP 폭 안에 들어가도록 — 본문·허브는 전체 이름을 쓴다.
+ */
+export function shortGpuName(name: string): string {
+  return name
+    .replace(/^(?:GeForce|Radeon|Intel|NVIDIA|Apple)\s+/, '')
+    .replace(/\s*\((\d+)-core GPU\)/, ' $1-core')
+    // 마케팅 괄호명("(Strix Halo)")과 "dual-channel"은 제목에서 뺀다 — h1·본문은 전체 이름
+    .replace(/\s*\([^)]*\)/, '')
+    .replace(/\s+(?:dual-channel|듀얼채널)\s+CPU$/, ' CPU');
+}

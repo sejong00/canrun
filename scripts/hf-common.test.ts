@@ -9,12 +9,17 @@ import { fetchConfig, fetchTree, nextPageUrl, serializeRecords, type FetchLike }
 const dataDir = join(resolve(dirname(fileURLToPath(import.meta.url)), '..'), 'data');
 
 describe('serializeRecords', () => {
-  it('round-trips every seed file byte-identically (git diff 최소화의 전제)', () => {
+  it('round-trips every record-array seed file byte-identically (git diff 최소화의 전제)', () => {
+    let checked = 0;
     for (const file of registeredDataFiles()) {
       const raw = readFileSync(join(dataDir, file), 'utf8');
-      const out = serializeRecords(JSON.parse(raw) as unknown[]);
-      expect(out, `data/${file}`).toBe(raw);
+      const parsed = JSON.parse(raw) as unknown;
+      // publish.json 은 단일 객체(운영 계획)라 레코드 직렬화 대상이 아니다 — sync 도 건드리지 않는다
+      if (!Array.isArray(parsed)) continue;
+      expect(serializeRecords(parsed), `data/${file}`).toBe(raw);
+      checked += 1;
     }
+    expect(checked).toBeGreaterThanOrEqual(6);
   });
 
   it('renders an empty array as []', () => {

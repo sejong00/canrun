@@ -13,6 +13,7 @@ import {
   parseGpus,
   parseModelQuants,
   parseModels,
+  parsePublish,
   parseQuantDefs,
   schemaRegistry,
   validateAll,
@@ -34,6 +35,7 @@ const REQUIRED_DATASETS = [
   'quants.json',
   'benchmarks.json',
   'aliases.json',
+  'publish.json',
 ] as const;
 
 const files = readdirSync(dataDir).filter((name) => name.endsWith('.json'));
@@ -80,6 +82,7 @@ if (failures.length === 0) {
     modelQuants: parseModelQuants(readJson('model-quants.json')),
     quantDefs: parseQuantDefs(readJson('quants.json')),
     benchmarks: parseBenchmarks(readJson('benchmarks.json')),
+    publish: parsePublish(readJson('publish.json')),
   });
   for (const problem of problems) failures.push(`cross-check: ${problem}`);
   if (problems.length === 0) console.log('✓ cross-file consistency');

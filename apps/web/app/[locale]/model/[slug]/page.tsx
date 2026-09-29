@@ -20,7 +20,8 @@ import { catalog } from '@/lib/catalog';
 import { formatCtx, formatGB, formatInt, formatParams, formatUSD } from '@/lib/format';
 import { getModelHub } from '@/lib/hubs';
 import type { QA } from '@/lib/jsonld';
-import { gpuHref, hfUrl, localeHref, modelHref } from '@/lib/links';
+import { comboHref, gpuHref, hfUrl, localeHref, modelHref } from '@/lib/links';
+import { isComboIndexable } from '@/lib/publish';
 import { gpuName, quantText, speedPhrase, type Translate } from '@/lib/phrases';
 import { buildPageMetadata } from '@/lib/seo';
 import { absoluteUrl } from '@/lib/site';
@@ -371,7 +372,16 @@ export default async function ModelHubPage({ params }: Props) {
                       <th scope="row">
                         <a href={localeHref(locale, gpuHref(gpu.id))}>{rowLabel(t, row, locale)}</a>
                       </th>
-                      <ComboCells combo={row.combo} gpu={gpu} />
+                      <ComboCells
+                        combo={row.combo}
+                        gpu={gpu}
+                        comboHref={
+                          isComboIndexable(gpu.id, model.id)
+                            ? localeHref(locale, comboHref(model.id, gpu.id))
+                            : undefined
+                        }
+                        detailsLabel={tTable('detailsFor', { model: model.name, gpu: gpuName(t.names, gpu) })}
+                      />
                       <td className="text-xs">{price}</td>
                     </tr>
                   );

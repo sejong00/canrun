@@ -10,25 +10,28 @@ import {
   parseGpus,
   parseModelQuants,
   parseModels,
+  parsePublish,
   parseQuantDefs,
   validateAll,
   type Gpu,
   type Model,
-  type SeedCatalog,
+  type SeedFiles,
 } from '@canrun/data';
 import benchmarksJson from '../../../data/benchmarks.json';
 import gpusJson from '../../../data/gpus.json';
 import modelQuantsJson from '../../../data/model-quants.json';
 import modelsJson from '../../../data/models.json';
+import publishJson from '../../../data/publish.json';
 import quantsJson from '../../../data/quants.json';
 
-function load(): SeedCatalog {
+function load(): SeedFiles {
   const files = {
     gpus: parseGpus(gpusJson),
     models: parseModels(modelsJson),
     modelQuants: parseModelQuants(modelQuantsJson),
     quantDefs: parseQuantDefs(quantsJson),
     benchmarks: parseBenchmarks(benchmarksJson),
+    publish: parsePublish(publishJson),
   };
   const problems = validateAll(files);
   if (problems.length > 0) {
@@ -37,7 +40,7 @@ function load(): SeedCatalog {
   return files;
 }
 
-export const catalog: SeedCatalog = load();
+export const catalog: SeedFiles = load();
 
 export function findGpu(id: string): Gpu | undefined {
   return catalog.gpus.find((gpu) => gpu.id === id);

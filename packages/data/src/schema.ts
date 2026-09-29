@@ -161,8 +161,56 @@ export const ModelQuantSchema = z.object({
   /** 실제 GGUF 파일 크기 (decimal GB, 분할 파일 합산) */
   fileGB: z.number().positive(),
   ggufRepo: z.string().min(1),
+  /**
+   * repo 내 실파일 경로 — 스니펫 태그·다운로드 안내의 정본 (P1-2, docs/03 §1·§5.1 ④).
+   * 분할이면 첫 조각(`…-00001-of-0000N.gguf`), UD 변형은 파일명에 `UD-` 가 남는다.
+   * zod 는 optional(sync 가 구 시드를 읽어 채워야 하므로) — 전 행 존재는 validateAll 이 강제.
+   */
+  fileName: z
+    .string()
+    .regex(/^[^\s/][^\s]*\.gguf$/i, 'fileName must be a repo-relative *.gguf path')
+    .optional(),
   sources,
 });
+
+/**
+ * 인덱싱 배치 계획 — `data/publish.json` (docs/04 §3, P1-2 결정 D9).
+ * 콤보(gpu × model)의 배치 = 그 쌍을 포함하는 항목들의 최소 batch, batch ≤ currentBatch 만 index.
+ * 사실 레코드가 아니라 운영 결정이므로 sources 대신 plannedAt·note 로 근거를 남긴다.
+ */
+export const PublishSchema = z
+  .object({
+    currentBatch: z.number().int().min(0),
+    batches: z.array(
+      z.object({
+        batch: z.number().int().min(1),
+        gpuIds: z.array(slug).min(1),
+        modelIds: z.array(slug).min(1),
+        plannedAt: isoDate.optional(),
+        note: z.string().optional(),
+      }),
+    ),
+  })
+  .superRefine((plan, ctx) => {
+    const maxBatch = plan.batches.reduce((max, b) => Math.max(max, b.batch), 0);
+    if (plan.currentBatch > maxBatch) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `currentBatch ${plan.currentBatch} exceeds the largest defined batch ${maxBatch}`,
+      });
+    }
+    plan.batches.forEach((entry, i) => {
+      for (const key of ['gpuIds', 'modelIds'] as const) {
+        const seen = new Set<string>();
+        for (const id of entry[key]) {
+          if (seen.has(id)) {
+            ctx.addIssue({ code: 'custom', message: `batches[${i}].${key}: duplicate id '${id}'` });
+          }
+          seen.add(id);
+        }
+      }
+    });
+  });
 
 export const QuantDefSchema = z.object({
   id: QuantIdSchema,
@@ -226,3 +274,4 @@ export type ModelQuantRecord = z.infer<typeof ModelQuantSchema>;
 export type QuantDef = z.infer<typeof QuantDefSchema>;
 export type BenchPoint = z.infer<typeof BenchPointSchema>;
 export type AliasRecord = z.infer<typeof AliasSchema>;
+export type PublishPlan = z.infer<typeof PublishSchema>;

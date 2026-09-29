@@ -124,12 +124,13 @@ tg = eff × memBandwidthGBs / bytesPerToken
 ### 3.3 cpu-moe 모드 속도
 `tg ≈ eff_cpu × ramBandwidthGBs / expertBytesPerToken` (attention은 GPU라 병목 아님, 상한은 full-gpu 값)
 실측 앵커: RTX 3060 12GB + DDR5로 Qwen3.6-35B-A3B ≈ 51~53 tok/s, gpt-oss-120b + 5090 + `--n-cpu-moe 21` = 8~9.6 tok/s(DDR4 서버).
+- P1-2 커맨드 스니펫(`packages/data/src/snippet.ts`, 엔진 무변경): `--n-cpu-moe N`에 **N = layers**(이 모델의 전문가 층 전부를 CPU로 — 위 속도식·fit 판정의 가정)와 **N_min**(VRAM에 맞는 최소 N — 더 빠르지만 검증점 없음)을 함께 표시하며, **페이지의 추정치는 N = layers 기준**이다. `N_min = min(layers, max(1, layers − floor((usable − nonExpert − kv − buffer) / ((fileGB − nonExpert)/layers)) + (네이티브 quant 또는 UD 파일이면 1))` — 네이티브 quant(MXFP4)·Unsloth Dynamic(UD) 파일의 +1층 여유는 `nonExpertGB` 과소(`01` §9 D23) 보정.
 
 ### 3.4 partial-offload (dense) — 절벽 경고
 `tg ≈ 1 / (gpuFrac/tg_gpu + (1−gpuFrac)/tg_cpu)` (조화 평균). gpuFrac < 0.9면 B등급 상한. UI에 "dense 모델 부분 오프로드는 급감" 고정 경고 + 실측 예시(gpt-oss-120b: 5090 naive 3.4 vs cpu-moe 9.6 tok/s).
 
 ### 3.5 프롬프트 처리(pp) — 연산 지배
-`pp ≈ ppCoef × fp16Tflops` — NVIDIA 140/TFLOP, Apple 45, AMD/Intel 30~40 (Vulkan 페널티, 7900 XTX 실측 근거). 표기는 "대략" 수준으로만(±40%). 장문 RAG 유저용 참고치.
+`pp ≈ ppCoef × fp16Tflops` — NVIDIA 140/TFLOP, Apple 45, AMD/Intel 30~40 (Vulkan 페널티, 7900 XTX 실측 근거). 표기는 "대략" 수준으로만(±40%) — P1-2부터 **범위 est×0.6~1.4 + 4번째 신뢰 라벨 `rough`(pp 전용, §4)**로 표시한다. 식이 fp16 연산 전제라 **full-gpu(통합 메모리 포함) fit일 때만** 표시하고 부분 오프로드·cpu-moe·cpu-only에선 생략(사유 한 줄). 밴드 상수는 데이터 레이어 정책(`packages/data` `PP_BAND = 0.4`, `// source: docs/02 §3.5 (policy)`) — 엔진 `Result.ppTokS`는 est만 반환(무변경, PROGRESS §4 09-29 D13). 장문 RAG 유저용 참고치.
 
 ### 3.6 컨텍스트 감쇠
 kvRead 항이 자연 반영 (예: 4090 Qwen3-8B: 8k에서 118 → 16k에서 95 → 32k에서 68 tok/s). tg128 단문 실측과 비교 시 이 항 제외 조건 일치 확인.
@@ -137,6 +138,7 @@ kvRead 항이 자연 반영 (예: 4090 Qwen3-8B: 8k에서 118 → 16k에서 95 �
 ## 4. 신뢰 라벨
 - `measured`: 동일 (기기, 모델, quant) 실측 n≥1 존재 → 실측 중앙값 표시, 추정은 보조
 - `calibrated`: 클래스 계수 검증 범위 내 조합 → **클래스별 밴드: NVIDIA·AMD dGPU dense ±12% / 그 외 클래스·모든 MoE·부분 오프로드 ±20%** (§7 검증 최대 오차 17.1%를 상회하도록 설정 — 밴드가 검증값보다 좁으면 안 됨). 실측 누적 시 기기별로 축소
+- `rough`: **pp(프롬프트 처리) 전용** 4번째 라벨 — **±40%**(§3.5, est×0.6~1.4). tg·판정에는 쓰지 않으며, 엔진 `Result.confidence`(§1)에는 없고 데이터 레이어가 pp 표시에만 붙인다(P1-2 D13, PROGRESS §4 09-29)
 - `theoretical`: 신형 기기/특이 아키텍처 등 검증 밖 → **±30%** 밴드 + "제출로 검증에 참여" CTA
   - 판정 주체는 데이터 레이어(`EvaluateOptions.theoretical`). P1-1 규칙(`packages/data/src/assess.ts` `isTheoretical`): ① MoE × MoE 계수가 없는 클래스(현재 intel-arc — §3.2) ② mode = cpu-moe(속도 검증점 0 — §3.3 앵커 3060+Qwen3.6-35B-A3B ~52 tok/s 대비 엔진 추정이 약 2.5× 낮다, PROGRESS §5) ③ `nonExpertGB` 없는 MoE가 부분 오프로드로 떨어진 경우(엔진이 dense 경로로 계산) ④ llama.cpp 구동이 검증되지 않은 커스텀 아키텍처(HyperCLOVA X SEED Think 14B) ⑤ FP16 크리플 GPU(`fp16Tflops` < 1 — GTX 10, 계수 도출 표본 밖. `01` §9 P1-1 개정: GPU 판정 유지 + 주의 배지) ⑥ 통합 메모리 칩의 cpu-only(cpu 계수 검증점은 데스크톱 DDR5뿐 — CPU측 대역폭은 `01` §3 `unifiedCpuBandwidth`로 GPU 경로 이하로 제한)
 

@@ -16,11 +16,13 @@ import {
   GpuSchema,
   ModelQuantSchema,
   ModelSchema,
+  PublishSchema,
   QuantDefSchema,
   type BenchPoint,
   type Gpu,
   type Model,
   type ModelQuantRecord,
+  type PublishPlan,
   type QuantDef,
 } from './schema';
 import { z } from 'zod';
@@ -29,6 +31,9 @@ export * from './schema';
 export * from './derive';
 export * from './assess';
 export * from './license';
+export * from './publish';
+export * from './snippet';
+export * from './combo';
 
 /**
  * `data/<파일명>` → 파일 전체 스키마. `scripts/validate-data.ts` 가 순회하며,
@@ -41,6 +46,7 @@ export const schemaRegistry: Readonly<Record<string, ZodType>> = Object.freeze({
   'quants.json': z.array(QuantDefSchema),
   'benchmarks.json': z.array(BenchPointSchema),
   'aliases.json': z.array(AliasSchema),
+  'publish.json': PublishSchema,
 });
 
 /** 레지스트리에 등록된 데이터 파일명 목록. */
@@ -55,6 +61,7 @@ export const parseModelQuants = (json: unknown): ModelQuantRecord[] =>
 export const parseQuantDefs = (json: unknown): QuantDef[] => z.array(QuantDefSchema).parse(json);
 export const parseBenchmarks = (json: unknown): BenchPoint[] =>
   z.array(BenchPointSchema).parse(json);
+export const parsePublish = (json: unknown): PublishPlan => PublishSchema.parse(json);
 
 /**
  * MoE nonExpertGB 유도 근거 — models.json 시드 값과의 일치를 validateAll 이 강제.
@@ -75,6 +82,8 @@ export type SeedFiles = {
   modelQuants: ModelQuantRecord[];
   quantDefs: QuantDef[];
   benchmarks: BenchPoint[];
+  /** 인덱싱 배치 계획 (P1-2) — 페이지 생성엔 무관, index 여부·허브 링크만 좌우 */
+  publish: PublishPlan;
 };
 
 /**
@@ -86,12 +95,27 @@ export function validateAll(files: SeedFiles): string[] {
   const modelIds = new Set(files.models.map((model) => model.id));
   const gpuIds = new Set(files.gpus.map((gpu) => gpu.id));
 
-  // model-quants.modelId 는 카탈로그 FK
+  // model-quants.modelId 는 카탈로그 FK · fileName 은 전 행 필수 (sync-models 가 기록, P1-2)
   for (const mq of files.modelQuants) {
     if (!modelIds.has(mq.modelId)) {
       problems.push(`model-quants: unknown modelId '${mq.modelId}'`);
     }
+    if (mq.fileName === undefined) {
+      problems.push(`model-quants/${mq.modelId}/${mq.quant}: fileName missing — run sync-models`);
+    }
   }
+
+  // publish.json 의 배치 목록은 카탈로그 FK
+  files.publish.batches.forEach((entry, i) => {
+    for (const gpuId of entry.gpuIds) {
+      if (!gpuIds.has(gpuId)) problems.push(`publish/batches[${i}]: unknown gpuId '${gpuId}'`);
+    }
+    for (const modelId of entry.modelIds) {
+      if (!modelIds.has(modelId)) {
+        problems.push(`publish/batches[${i}]: unknown modelId '${modelId}'`);
+      }
+    }
+  });
 
   // benchmarks.gpuId 는 존재하면 FK (modelId 는 캘리브레이션 전용 id 허용)
   for (const bp of files.benchmarks) {

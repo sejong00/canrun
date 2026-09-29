@@ -81,8 +81,12 @@ const SUSPICIOUS_DELTA_PCT = 5;
  * 뒤 경계 -|.|/ 또는 끝 ('_' 제외 → Q4_K_M_L 미매칭). 대소문자 무시(mxfp4).
  * 비-UD quant 는 플레인 파일 우선, 플레인이 없으면 UD- 접두 변형(unsloth Dynamic)으로 폴백 —
  * 둘 다 배포하는 repo 의 합산 오염은 막고, UD 만 배포하는 repo(MTP 계열)는 실파일을 취한다.
- * mmproj-*.gguf(비전 프로젝터)는 모델 가중치가 아니므로 제외.
+ * 드래프트·보조 파일은 모델 가중치가 아니므로 제외 (basename 접두, 대소문자 무시):
+ * mmproj-*(비전 프로젝터) · mtp-*(MTP 드래프트 헤드) · eagle3-*(EAGLE 드래프트) — P1-2 에서
+ * 드래프트 합산 버그(gemma-4 Q8_0 에 mtp 0.46GB 합산)를 고쳤다. repo 이름의 'MTP' 는 무관.
  */
+const DRAFT_FILE_PREFIX = /^(?:mmproj|mtp-|eagle3-)/i;
+
 export function matchQuantFiles(entries: readonly TreeEntry[], quant: QuantId): TreeEntry[] {
   const esc = quant.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const re = new RegExp(`(?:^|[-_./])${esc}(?:[-./]|$)`, 'i');
@@ -94,12 +98,37 @@ export function matchQuantFiles(entries: readonly TreeEntry[], quant: QuantId): 
     const path = entry.path;
     if (!path.toLowerCase().endsWith('.gguf')) return false;
     const base = path.split('/').at(-1) ?? path;
-    if (base.toLowerCase().startsWith('mmproj')) return false;
+    if (DRAFT_FILE_PREFIX.test(base)) return false;
     return re.test(path);
   });
   if (udRe === undefined) return candidates;
   const plain = candidates.filter((entry) => !udRe.test(entry.path));
   return plain.length > 0 ? plain : candidates;
+}
+
+const SHARD_RE = /-(\d{5})-of-(\d{5})\.gguf$/i;
+
+export type PrimaryFile = { path: string; shards: number };
+
+/**
+ * 매칭 파일들 → 대표 실파일 (model-quants `fileName` 의 정본, docs/03 §5.1 ④).
+ * 단일 파일이면 그것, 전부 `-0000N-of-0000M` 조각이고 M 이 같으며 개수 == M 이면 00001 조각.
+ * 그 외(비-분할 2개 이상, 조각 누락·혼합)는 애매 → 호출자가 error 로 보고 (조용한 합산 금지).
+ */
+export function primaryFile(files: readonly TreeEntry[]): PrimaryFile | { error: string } {
+  const names = files.map((f) => f.path);
+  if (files.length === 1) return { path: names[0]!, shards: 1 };
+  const parsed = names.map((path) => {
+    const m = SHARD_RE.exec(path);
+    return m ? { path, index: Number(m[1]), total: Number(m[2]) } : undefined;
+  });
+  const totals = new Set(parsed.map((p) => p?.total));
+  const consistent =
+    parsed.every((p) => p !== undefined) && totals.size === 1 && files.length === [...totals][0];
+  if (!consistent) return { error: `ambiguous match: ${names.join(', ')}` };
+  const first = parsed.find((p) => p?.index === 1);
+  if (!first) return { error: `shard 00001 missing: ${names.join(', ')}` };
+  return { path: first.path, shards: files.length };
 }
 
 /** 분할 파일 합산 → decimal GB 2자리. size 누락 항목이 있으면 NaN. */
@@ -189,6 +218,28 @@ export function buildSyncPlan(input: SyncInput): Change[] {
         note: `no GGUF files matching ${mq.quant} in ${mq.ggufRepo}`,
       });
       return;
+    }
+    const primary = primaryFile(files);
+    if ('error' in primary) {
+      changes.push({
+        file: 'model-quants.json',
+        id,
+        field: 'fileName',
+        kind: 'error',
+        note: `${primary.error} in ${mq.ggufRepo}`,
+      });
+      return;
+    }
+    if (mq.fileName !== primary.path) {
+      changes.push({
+        file: 'model-quants.json',
+        id,
+        field: 'fileName',
+        old: mq.fileName,
+        next: primary.path,
+        kind: 'auto',
+        note: primary.shards > 1 ? `${primary.shards}개 분할(첫 조각)` : undefined,
+      });
     }
     const gb = sumFileGB(files);
     if (!Number.isFinite(gb)) {
@@ -363,6 +414,23 @@ export function buildSyncPlan(input: SyncInput): Change[] {
 }
 
 /** auto/suspicious 변경만 raw 레코드에 반영 (키 순서 보존 — 값 갱신·sources push 만). */
+/** `key` 를 `after` 바로 뒤에 두고(이미 있으면 제자리 갱신) 레코드를 재구성한다. */
+export function withKeyAfter(
+  raw: Record<string, unknown>,
+  key: string,
+  value: unknown,
+  after: string,
+): Record<string, unknown> {
+  if (key in raw) return { ...raw, [key]: value };
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(raw)) {
+    out[k] = v;
+    if (k === after) out[key] = value;
+  }
+  if (!(key in out)) out[key] = value;
+  return out;
+}
+
 export function applyChanges(changes: readonly Change[], input: SyncInput): void {
   for (const change of changes) {
     if (change.kind !== 'auto' && change.kind !== 'suspicious') continue;
@@ -372,6 +440,9 @@ export function applyChanges(changes: readonly Change[], input: SyncInput): void
       if (!raw) throw new Error(`applyChanges: quant row not found for ${change.id}`);
       if (change.field === 'fileGB' && typeof change.next === 'number') {
         raw['fileGB'] = change.next;
+      } else if (change.field === 'fileName' && typeof change.next === 'string') {
+        // 키 순서 유지: 없던 키는 ggufRepo 뒤에 삽입 (레코드 재구성 — 대입은 sources 뒤에 붙는다)
+        input.rawQuants[idx] = withKeyAfter(raw, 'fileName', change.next, 'ggufRepo');
       } else if (change.field === 'sources' && typeof change.next === 'string') {
         (raw['sources'] as string[]).push(change.next);
       }

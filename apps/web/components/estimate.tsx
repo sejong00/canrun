@@ -32,7 +32,7 @@ export function ConfidenceLabel({
  * 표의 속도 셀. F(미탑재)는 수치 대신 대시, 실측이면 실측값 + 추정 밴드 병기(n=1 이면 엔진 밴드가
  * 폭 0 — 규칙 3 을 위해 추정 밴드를 함께 보인다).
  */
-export function SpeedCell({ q }: { q: QuantAssessment }) {
+export function SpeedCell({ q }: { q: Pick<QuantAssessment, 'result' | 'estimate' | 'measured' | 'fReason'> }) {
   const locale = useLocale();
   const t = useTranslations('Common');
   const tConfidence = useTranslations('Confidence');

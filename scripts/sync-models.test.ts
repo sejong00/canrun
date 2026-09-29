@@ -12,6 +12,8 @@ import {
   sumFileGB,
   type Change,
   type SyncInput,
+  primaryFile,
+  withKeyAfter,
 } from './sync-models';
 
 const file = (path: string, size?: number): TreeEntry => ({ type: 'file', path, size });
@@ -67,9 +69,45 @@ describe('matchQuantFiles', () => {
     expect(matchQuantFiles(udOnly, 'Q4_K_M').map((e) => e.path)).toEqual(['m-UD-Q4_K_M.gguf']);
   });
 
+  it('excludes draft heads (mtp-*, eagle3-*) by basename prefix only — repo names with MTP are unaffected', () => {
+    const entries = [
+      file('MTP/mtp-gemma-4-12b-it-Q8_0.gguf', 470_000_000),
+      file('mtp-gemma-4-12b-it.gguf', 460_000_000),
+      file('eagle3-gpt-oss-20b-Q8_0.gguf', 920_000_000),
+      file('gemma-4-12b-it-Q8_0.gguf', 12_670_000_000),
+      file('Qwen3.5-9B-MTP-Q8_0.gguf', 9_790_000_000),
+    ];
+    expect(matchQuantFiles(entries, 'Q8_0').map((e) => e.path)).toEqual([
+      'gemma-4-12b-it-Q8_0.gguf',
+      'Qwen3.5-9B-MTP-Q8_0.gguf',
+    ]);
+  });
+
   it('excludes mmproj weights and non-gguf files', () => {
     expect(matchQuantFiles(flat, 'F16')).toHaveLength(0); // mmproj-…-F16.gguf 제외
     expect(matchQuantFiles([file('notes-Q4_K_M.txt', 1)], 'Q4_K_M')).toHaveLength(0);
+  });
+});
+
+describe('primaryFile', () => {
+  it('returns the single file with shards 1', () => {
+    expect(primaryFile([file('a-Q4_K_M.gguf', 1)])).toEqual({ path: 'a-Q4_K_M.gguf', shards: 1 });
+  });
+
+  it('returns the 00001 shard of a consistent split set', () => {
+    const shards = [
+      file('Q8_0/a-Q8_0-00002-of-00003.gguf', 1),
+      file('Q8_0/a-Q8_0-00001-of-00003.gguf', 1),
+      file('Q8_0/a-Q8_0-00003-of-00003.gguf', 1),
+    ];
+    expect(primaryFile(shards)).toEqual({ path: 'Q8_0/a-Q8_0-00001-of-00003.gguf', shards: 3 });
+  });
+
+  it('reports ambiguity for non-shard multiples or incomplete shard sets', () => {
+    expect(primaryFile([file('a-Q8_0.gguf', 1), file('b-Q8_0.gguf', 1)])).toEqual({
+      error: 'ambiguous match: a-Q8_0.gguf, b-Q8_0.gguf',
+    });
+    expect('error' in primaryFile([file('a-00001-of-00003.gguf', 1), file('a-00002-of-00003.gguf', 1)])).toBe(true);
   });
 });
 
@@ -223,6 +261,38 @@ describe('buildSyncPlan — fileGB', () => {
     expect(change).toEqual(
       expect.objectContaining({ kind: 'auto', next: 'https://huggingface.co/org/test-8b-GGUF' }),
     );
+  });
+});
+
+describe('buildSyncPlan — fileName (P1-2)', () => {
+  it('records the real file name as auto when missing or different, silent when equal', () => {
+    const treeByRepo = new Map([['org/test-8b-GGUF', [file('test-8b-Q4_K_M.gguf', 4_920_000_000)]]]);
+    const missing = makeInput({ models: [fullModel()], quants: [quantRow()], treeByRepo });
+    expect(buildSyncPlan(missing).filter((c) => c.field === 'fileName')).toEqual([
+      expect.objectContaining({ id: 'test-8b/Q4_K_M', old: undefined, next: 'test-8b-Q4_K_M.gguf', kind: 'auto' }),
+    ]);
+    const same = makeInput({
+      models: [fullModel()],
+      quants: [quantRow({ fileName: 'test-8b-Q4_K_M.gguf' })],
+      treeByRepo,
+    });
+    expect(buildSyncPlan(same).filter((c) => c.field === 'fileName')).toHaveLength(0);
+  });
+
+  it('notes shard count and errors on ambiguous matches', () => {
+    const sharded = new Map([[
+      'org/test-8b-GGUF',
+      [file('Q4_K_M/test-8b-Q4_K_M-00001-of-00002.gguf', 2_000_000_000), file('Q4_K_M/test-8b-Q4_K_M-00002-of-00002.gguf', 2_920_000_000)],
+    ]]);
+    const change = buildSyncPlan(makeInput({ models: [fullModel()], quants: [quantRow()], treeByRepo: sharded })).find((c) => c.field === 'fileName');
+    expect(change).toEqual(expect.objectContaining({ next: 'Q4_K_M/test-8b-Q4_K_M-00001-of-00002.gguf', note: '2개 분할(첫 조각)' }));
+    const ambiguous = new Map([[
+      'org/test-8b-GGUF',
+      [file('test-8b-Q4_K_M.gguf', 1), file('test-8b-Q4_K_M-imatrix.gguf', 1)],
+    ]]);
+    const errors = buildSyncPlan(makeInput({ models: [fullModel()], quants: [quantRow()], treeByRepo: ambiguous }));
+    expect(errors.some((c) => c.kind === 'error' && c.field === 'fileName')).toBe(true);
+    expect(errors.some((c) => c.field === 'fileGB')).toBe(false);
   });
 });
 
@@ -390,6 +460,24 @@ describe('applyChanges', () => {
     expect((rawModel['arch'] as Record<string, unknown>)['layers']).toBe(36);
     expect(rawModel['maxContext']).toBe(131072); // manual 은 미반영
     expect(Object.keys(rawQuant)).toEqual(before);
+  });
+});
+
+describe('applyChanges — fileName 삽입 위치', () => {
+  it('inserts fileName right after ggufRepo when absent, updates in place when present', () => {
+    const rawQuant = quantRow();
+    const input = makeInput({ models: [fullModel()], quants: [rawQuant] });
+    applyChanges(
+      [{ file: 'model-quants.json', id: 'test-8b/Q4_K_M', field: 'fileName', next: 'test-8b-Q4_K_M.gguf', kind: 'auto' }],
+      input,
+    );
+    expect(Object.keys(input.rawQuants[0]!)).toEqual(['modelId', 'quant', 'fileGB', 'ggufRepo', 'fileName', 'sources']);
+    applyChanges(
+      [{ file: 'model-quants.json', id: 'test-8b/Q4_K_M', field: 'fileName', old: 'test-8b-Q4_K_M.gguf', next: 'x.gguf', kind: 'auto' }],
+      input,
+    );
+    expect(input.rawQuants[0]!['fileName']).toBe('x.gguf');
+    expect(withKeyAfter({ a: 1, c: 3 }, 'b', 2, 'a')).toEqual({ a: 1, b: 2, c: 3 });
   });
 });
 
