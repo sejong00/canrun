@@ -2,9 +2,9 @@
  * 사이트 절대 URL. 캐노니컬·hreflang·사이트맵이 전부 이 값을 기준으로 만들어진다.
  *
  * 공개 성격 값이므로 시크릿이 아니다(docs/05 §8 표) — 다만 환경 분리를 위해 env 로 관리한다.
- * 도메인 확정 전까지는 Cloudflare Pages 기본 도메인을 폴백으로 쓴다.
+ * 09-30 도메인 canrunllm.com 연결 — 폴백 기본값이 곧 운영 주소다(배포 워크플로는 env 를 넘기지 않는다). 옛 canrun.pages.dev 는 대량 리디렉션으로 301.
  */
-export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? 'https://canrun.pages.dev').replace(
+export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? 'https://canrunllm.com').replace(
   /\/+$/,
   '',
 );
