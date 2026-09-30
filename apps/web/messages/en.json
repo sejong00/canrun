@@ -174,7 +174,7 @@
     "breakdownCaption": "Where the memory goes: {model} ({quant}) on the {gpu}",
     "measuredTitle": "Measured: {model} ({quant}) on the {gpu}",
     "measuredSources": "Source:",
-    "theoreticalNote": "Theoretical estimates (±30%) mark setups we have not validated against measurements yet, such as MoE experts kept in system RAM. They are likely on the conservative side.",
+    "theoreticalNote": "Theoretical estimates (±30%) mark setups whose real speed varies a lot, such as MoE experts kept in system RAM. For experts in RAM we assume every expert sits in RAM, so keeping some on the GPU can be faster.",
     "atRam": "with {ram} GB",
     "comboOn": "{model} on the {gpu}",
     "colHardware": "Hardware",

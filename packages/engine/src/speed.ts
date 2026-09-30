@@ -1,8 +1,8 @@
 /** 속도 모델 — docs/02-engine-spec.md §3. */
 
-import { EFF, MOE_TG_CAP_TOKS, PP_COEF } from './constants';
+import { CPU_MOE_RAM_EFF, EFF, MOE_TG_CAP_TOKS, PP_COEF } from './constants';
 import type { FitResult } from './fit';
-import { kvGB, weightsGB } from './memory';
+import { kvGB, nonExpertGBFor, weightsGB } from './memory';
 import type { Hardware, KvQuant, ModelQuant } from './types';
 
 export type SpeedOptions = { ctx?: number; kvQuant?: KvQuant };
@@ -43,15 +43,19 @@ function tgCpuOnly(hw: Hardware, mq: ModelQuant, bytes: number): number {
 }
 
 /**
- * cpu-moe(§3.3): expert 읽기가 RAM 대역폭 지배, attention 은 GPU 라 병목 아님.
- * expertBytesPerToken ≈ MoE weightsRead 근사(공유 텐서 과소는 계수에 흡수 — §9).
- * 상한은 full-gpu 값.
+ * cpu-moe(§3.3, 09-30 보정): 토큰 시간 = RAM 몫 + GPU 몫(직렬).
+ * - RAM 몫: **라우팅 전문가만** = 활성 슬라이스 − 비전문가(nonExpertGB, 균등 bpw — derive.ts 와 같은 가정) ÷ (CPU_MOE_RAM_EFF × RAM 대역폭)
+ * - GPU 몫: 비전문가 + KV 읽기 ÷ (GPU 클래스 MoE 효율 × VRAM 대역폭)
+ * 전문가를 **전부** RAM 에 둔다고 가정(보수적 — 일부를 GPU 에 남기면 더 빠르다). 상한은 full-gpu 값.
+ * (이전 식은 활성 슬라이스 전체를 RAM 속도로 읽어 ~2.5× 과소 — PROGRESS §4 09-30)
  */
 function tgCpuMoe(hw: Hardware, mq: ModelQuant, bytes: number): number {
-  const expertBytes = weightsGB(mq) * (mq.activeParamsB! / mq.paramsB);
-  const eff = resolveEff({ effClass: 'cpu' }, true);
-  const tg = (eff * hw.ramBandwidthGBs) / expertBytes;
-  return Math.min(tg, tgFullGpu(hw, mq, bytes));
+  const activeGB = weightsGB(mq) * (mq.activeParamsB! / mq.paramsB);
+  const nonExpert = Math.min(nonExpertGBFor(mq) ?? 0, activeGB);
+  const routedGB = activeGB - nonExpert;
+  const gpuGB = bytes - routedGB; // = 비전문가 + KV 읽기
+  const seconds = routedGB / (CPU_MOE_RAM_EFF * hw.ramBandwidthGBs) + gpuGB / (resolveEff(hw, true) * hw.memBandwidthGBs);
+  return Math.min(1 / seconds, tgFullGpu(hw, mq, bytes));
 }
 
 /** partial-offload(§3.4): 조화 평균 — dense 절벽. */

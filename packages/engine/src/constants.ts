@@ -113,6 +113,13 @@ export const PP_COEF: Readonly<Partial<Record<EffClass, number>>> = Object.freez
   strix: 35,
 });
 
+/**
+ * cpu-moe(§3.3) RAM 몫 효율 — 라우팅 전문가 바이트 ÷ (이 값 × RAM 대역폭). 전문가 전부 RAM 인 공개 실측에서
+ * GPU 몫(비전문가+KV)을 뺀 역산값 0.50~0.63 (09-30 보정, 기존 식은 활성 파라미터 전체를 RAM 에서 읽어 ~2.5× 과소).
+ */
+// source: https://www.reddit.com/r/LocalLLaMA/comments/1n4v76j/ (3060 Ti + DDR5-6800, gpt-oss-120b --n-cpu-moe 999 24.85 tok/s) · https://www.reddit.com/r/LocalLLaMA/comments/1rei65v/ (5080 + DDR5-4800 2ch, Qwen3.5-35B-A3B 전문가 전부 CPU Q4_K_M 51.0 · Q8_0 35.7) · https://carteakey.dev/blog/optimizing-gpt-oss-120b-local-inference/ (RAM 속도 2000→6000MT/s 대조 — 대역폭 비례)
+export const CPU_MOE_RAM_EFF = 0.5;
+
 /** 고속 소형 MoE 대역폭 모델 상한 이탈 캡 (§9: 5090에서 30B-A3B 오버헤드 지배, 실측 141.6 tok/s) */
 // source: https://www.hardware-corner.net/gpu-ranking-local-llm/ (RTX 5090 Qwen3-30B-A3B) — 캡 값 자체는 docs/02 §9 (policy)
 export const MOE_TG_CAP_TOKS = 235;

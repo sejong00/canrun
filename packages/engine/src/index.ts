@@ -21,7 +21,7 @@ export * from './speed';
 export * from './verdict';
 
 /** 엔진 스펙 버전 — docs/02-engine-spec.md 개정 시 함께 올린다. */
-export const ENGINE_SPEC_VERSION = '0.2.0';
+export const ENGINE_SPEC_VERSION = '0.3.0'; // 09-30 cpu-moe 속도식 개정 (docs/02 §3.3)
 
 /** 실측 중앙값 (§4 measured: 실측 중앙값 표시, 추정은 보조). */
 function median(values: readonly number[]): number {

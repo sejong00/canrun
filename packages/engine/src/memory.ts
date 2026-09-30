@@ -74,3 +74,15 @@ export function usableGB(hw: Hardware): number {
 export function usableRamGB(hw: Pick<Hardware, 'ramGB'>): number {
   return hw.ramGB - CPU_OS_RESERVE_GB;
 }
+
+/**
+ * 이 양자화의 비전문가(어텐션·공유 텐서) 크기 GB (09-30). `nonExpertGB` 는 기준 양자화(Q4_K_M·MXFP4) 파일에서
+ * 균등 bpw 로 유도한 값이라(packages/data/src/derive.ts), **더 큰** 양자화(Q8_0 등)는 bpw 비율로 키운다.
+ * 더 작은 양자화는 줄이지 않는다 — Q2_K·UD 파일은 어텐션·공유 텐서를 평균보다 높은 정밀도로 두는 경우가 많아
+ * 줄이면 VRAM 을 과소 계산한다(--n-cpu-moe 명령이 OOM — PROGRESS §4 D23 과 같은 방향). 기준 양자화는 원값 그대로.
+ */
+export function nonExpertGBFor(mq: Pick<ModelQuant, 'quant' | 'nonExpertGB'>): number | undefined {
+  if (mq.nonExpertGB === undefined) return undefined;
+  if (mq.quant === 'Q4_K_M' || mq.quant === 'MXFP4') return mq.nonExpertGB;
+  return mq.nonExpertGB * Math.max(1, QUANT_BPW[mq.quant] / QUANT_BPW.Q4_K_M);
+}

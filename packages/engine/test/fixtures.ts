@@ -202,3 +202,37 @@ export const QWEN35_35B_A3B_Q4: ModelQuant = {
   nonExpertGB: 1.22, // P0-3 확정 — 256E top-8+1shared 유도 (3060 12GB cpu-moe 실증: openclawdc 2026-07)
   maxContext: 262144,
 };
+
+// ---------- 5) cpu-moe 보정 (09-30, docs/02 §3.3·§7) — 전문가 전부 RAM 인 공개 실측 ----------
+export type CpuMoeCase = { label: string; hw: Hardware; mq: ModelQuant; ctx: number; measuredTg: number; source: string };
+
+const withRam = (hw: Hardware, ramGB: number, ramBandwidthGBs: number): Hardware => ({ ...hw, ramGB, ramBandwidthGBs });
+
+export const QWEN35_35B_A3B_Q8: ModelQuant = { ...QWEN35_35B_A3B_Q4, quant: 'Q8_0', fileGB: 37.8 };
+
+export const CPU_MOE_CASES: readonly CpuMoeCase[] = [
+  {
+    label: '3060 Ti 8GB + DDR5-6800 2ch, gpt-oss-120b MXFP4 (--n-cpu-moe 999)',
+    hw: withRam(dgpu(8, 448, 'nvidia'), 96, 108.8),
+    mq: GPT_OSS_120B,
+    ctx: 512,
+    measuredTg: 24.85,
+    source: 'https://www.reddit.com/r/LocalLLaMA/comments/1n4v76j/',
+  },
+  {
+    label: '5080 16GB + DDR5-4800 2ch, Qwen3.5-35B-A3B Q4_K_M (experts all CPU)',
+    hw: withRam(dgpu(16, 960, 'nvidia'), 128, 76.8),
+    mq: QWEN35_35B_A3B_Q4,
+    ctx: 512,
+    measuredTg: 51.0,
+    source: 'https://www.reddit.com/r/LocalLLaMA/comments/1rei65v/',
+  },
+  {
+    label: '5080 16GB + DDR5-4800 2ch, Qwen3.5-35B-A3B Q8_0 (experts all CPU)',
+    hw: withRam(dgpu(16, 960, 'nvidia'), 128, 76.8),
+    mq: QWEN35_35B_A3B_Q8,
+    ctx: 512,
+    measuredTg: 35.7,
+    source: 'https://www.reddit.com/r/LocalLLaMA/comments/1rei65v/',
+  },
+];

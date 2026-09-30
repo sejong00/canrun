@@ -7,12 +7,14 @@
  *  2) KV 7종: 공식값 전수 일치 (±0.5 KiB)
  *  3) 속도 12점: 각 점이 클래스 밴드(±12%/±20%) 이내 + MAE < 7% (검증값 6.3%)
  *  4) 판정 새너티: 4060 8GB 통념 일치
+ *  5) cpu-moe(전문가 RAM) 3점: 각 ±20% 이내 + MAE < 12% (09-30 보정 — 이전 식은 ~2.5× 과소)
  */
 import { describe, expect, it } from 'vitest';
 import { evaluate } from '../src/index';
 import { kvBytesPerToken, kvGB, weightsGBFromBpw } from '../src/memory';
 import { tgEstimate } from '../src/speed';
 import {
+  CPU_MOE_CASES,
   GPT_OSS_20B,
   KV_CASES,
   LLAMA31_8B_Q4,
@@ -99,5 +101,17 @@ describe('4) verdict sanity: RTX 4060 8GB (windows display, usable ≈ 7.4GB)', 
     ['gpt-oss-20b MXFP4', GPT_OSS_20B],
   ] as const)('%s: no full offload', (_name, mq) => {
     expect(evaluate(RTX_4060_8GB, mq).mode).not.toBe('full-gpu');
+  });
+});
+
+describe('5) cpu-moe: RAM 몫 = 라우팅 전문가만 (09-30 보정, docs/02 §3.3)', () => {
+  const errors = CPU_MOE_CASES.map(({ hw, mq, ctx, measuredTg }) => (tgEstimate(hw, mq, { mode: 'cpu-moe' }, { ctx }) - measuredTg) / measuredTg);
+
+  it.each(CPU_MOE_CASES.map((c, i) => [c.label, i] as const))('%s within ±20%%', (_label, i) => {
+    expect(Math.abs(errors[i]!)).toBeLessThanOrEqual(0.2);
+  });
+
+  it('MAE < 12%', () => {
+    expect(errors.reduce((a, b) => a + Math.abs(b), 0) / errors.length).toBeLessThan(0.12);
   });
 });

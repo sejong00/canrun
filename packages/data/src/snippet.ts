@@ -18,6 +18,7 @@ import {
   computeBufferGB,
   kvGB,
   NATIVE_QUANTS,
+  nonExpertGBFor,
   usableGB,
   weightsGB,
   type KvQuant,
@@ -106,11 +107,12 @@ export function nCpuMoeMin(
   if (model.nonExpertGB === undefined) return undefined;
   const layers = model.arch.layers;
   const mq = toModelQuant(model, row);
-  const expertPerLayer = (weightsGB(mq) - model.nonExpertGB) / layers;
+  const nonExpert = nonExpertGBFor(mq) ?? model.nonExpertGB;
+  const expertPerLayer = (weightsGB(mq) - nonExpert) / layers;
   if (expertPerLayer <= 0) return undefined;
   const avail =
     usableGB(config.hw) -
-    model.nonExpertGB -
+    nonExpert -
     kvGB(mq.kvBytesPerToken, opts.ctx, opts.kvQuant) -
     computeBufferGB(opts.ctx);
   const base = Math.max(1, layers - Math.floor(avail / expertPerLayer));

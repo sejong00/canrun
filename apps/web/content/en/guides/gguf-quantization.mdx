@@ -94,7 +94,7 @@ IQ4_XS needs <Num kind="needGB" model="gemma-3-12b" quant="IQ4_XS" />, still ove
 
 For <ComboLink model="qwen3-14b" gpu="rtx-4060" />, the gap is too wide. At the baseline it Runs slowly,<Expect model="qwen3-14b" gpu="rtx-4060" verdict="B" /> and IQ4_XS still needs <Num kind="needGB" model="qwen3-14b" quant="IQ4_XS" />, far over the <Num kind="usableGB" gpu="rtx-4060" /> the card can use, so one step down does not change the verdict. Only the Heavy loss Q2_K comes close, and even it needs <Num kind="needGB" model="qwen3-14b" quant="Q2_K" />, still over.
 
-One caveat for MoE models: where a ladder row keeps the MoE experts in system RAM, as the Q4_K_M and IQ4_XS rows do for Qwen3 30B-A3B (2507) on the RTX 5060 Ti 16GB, those rows are theoretical (±30%) and likely conservative, since that path has no measurements to check against yet.
+One caveat for MoE models: where a ladder row keeps the MoE experts in system RAM, as the Q4_K_M and IQ4_XS rows do for Qwen3 30B-A3B (2507) on the RTX 5060 Ti 16GB, those rows are theoretical (±30%). They are conservative figures that assume all of the experts sit in system RAM, so if your card has VRAM to spare and you keep some experts on the GPU, it can run faster.
 
 ## When a larger file is worth the memory
 
@@ -124,7 +124,7 @@ Where to go next:
 
 File sizes are the real GGUF sizes from the Hugging Face repos, in decimal GB. The memory needs add the file, the KV cache and a compute buffer (working memory for inference), and they are calculated with a formula, not estimated.
 
-Speeds are estimates, each with a band and a confidence label, and the verdicts follow from those estimates and from how much of the model stays on the GPU. Calibrated means ±12% for dense models running fully on an NVIDIA or AMD card, and ±20% for partial offload, MoE models and other hardware. Theoretical means ±30%; it marks setups such as MoE experts kept in system RAM, where our estimates are likely conservative. Every ladder row in this guide is calibrated.
+Speeds are estimates, each with a band and a confidence label, and the verdicts follow from those estimates and from how much of the model stays on the GPU. Calibrated means ±12% for dense models running fully on an NVIDIA or AMD card, and ±20% for partial offload, MoE models and other hardware. Theoretical means ±30%; it marks setups such as MoE experts kept in system RAM, where we assume all of the experts sit in RAM, a conservative figure that can be beaten when VRAM to spare lets you keep some experts on the GPU. Every ladder row in this guide is calibrated.
 
 Measurements are joined only when the quant matches exactly, so a run of a Q4_K_XL file is never used for a Q4_K_M cell. The one measured point in this guide, shown below, comes from a llama.cpp GitHub discussion at a 2k context, not from an Ollama run, and sits next to our 8k estimate band.
 

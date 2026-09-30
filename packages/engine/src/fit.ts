@@ -9,6 +9,7 @@ import {
   usableRamGB,
   weightsGB,
   weightsGBFromBpw,
+  nonExpertGBFor,
 } from './memory';
 import type { Hardware, KvQuant, Mode, ModelQuant, QuantId, VramBreakdown } from './types';
 
@@ -79,7 +80,7 @@ function fitOnce(hw: Hardware, mq: ModelQuant, weights: number, opts?: FitOption
 
   // 2. cpu-moe (MoE 전용, dgpu): nonExpert+kv+buffer ≤ vram && expert ≤ RAM
   if (hw.kind === 'dgpu' && isMoe(mq)) {
-    const nonExpert = mq.nonExpertGB!;
+    const nonExpert = nonExpertGBFor(mq)!;
     const expert = weights - nonExpert;
     if (nonExpert + kv + buffer <= pool && expert <= usableRam) {
       return {

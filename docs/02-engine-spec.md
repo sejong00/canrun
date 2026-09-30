@@ -122,8 +122,15 @@ tg = eff × memBandwidthGBs / bytesPerToken
 - Phase 2: 기기×모델급 실측이 n≥3 쌓이면 `effOverride`로 대체(주간 배치 재학습). 그때까지 위 표 = 클래스 기본값.
 
 ### 3.3 cpu-moe 모드 속도
-`tg ≈ eff_cpu × ramBandwidthGBs / expertBytesPerToken` (attention은 GPU라 병목 아님, 상한은 full-gpu 값)
-실측 앵커: RTX 3060 12GB + DDR5로 Qwen3.6-35B-A3B ≈ 51~53 tok/s, gpt-oss-120b + 5090 + `--n-cpu-moe 21` = 8~9.6 tok/s(DDR4 서버).
+**09-30 개정(PROGRESS §4 D55)** — 토큰 시간 = RAM 몫 + GPU 몫(직렬):
+```
+routedGB   = fileGB × (activeParamsB / paramsB) − nonExpertGB(q)   // 라우팅 전문가만 RAM 에서 읽는다
+t = routedGB / (CPU_MOE_RAM_EFF × ramBandwidthGBs)                  // CPU_MOE_RAM_EFF = 0.5 (공개 실측 역산)
+  + (nonExpertGB(q) + kvReadGB) / (eff_gpu(moe) × memBandwidthGBs)   // 어텐션·공유 텐서·KV 는 GPU
+tg = min(1 / t, full-gpu 값)
+```
+`nonExpertGB(q)` = 기준 양자화(Q4_K_M·MXFP4) 파일에서 유도한 값, 더 큰 양자화는 bpw 비율로 키우고 줄이지는 않는다(엔진 `nonExpertGBFor`). 전문가를 **전부** RAM 에 둔다고 가정 — 보수적(VRAM 여유만큼 일부를 GPU 에 두면 20~30% 빠르다). 이전 식(`eff_cpu × ramBW / (fileGB × active/params)`)은 공유 텐서까지 RAM 속도로 읽어 약 2.5× 과소였다.
+실측 앵커: RTX 3060 12GB + DDR5로 Qwen3.6-35B-A3B ≈ 51~53 tok/s(전문가 일부 GPU), gpt-oss-120b + 5090 + `--n-cpu-moe 21` = 8~9.6 tok/s(DDR4 서버). 회귀 검증점은 §7.
 - P1-2 커맨드 스니펫(`packages/data/src/snippet.ts`, 엔진 무변경): `--n-cpu-moe N`에 **N = layers**(이 모델의 전문가 층 전부를 CPU로 — 위 속도식·fit 판정의 가정)와 **N_min**(VRAM에 맞는 최소 N — 더 빠르지만 검증점 없음)을 함께 표시하며, **페이지의 추정치는 N = layers 기준**이다. `N_min = min(layers, max(1, layers − floor((usable − nonExpert − kv − buffer) / ((fileGB − nonExpert)/layers)) + (네이티브 quant 또는 UD 파일이면 1))` — 네이티브 quant(MXFP4)·Unsloth Dynamic(UD) 파일의 +1층 여유는 `nonExpertGB` 과소(`01` §9 D23) 보정.
 
 ### 3.4 partial-offload (dense) — 절벽 경고
@@ -140,7 +147,7 @@ kvRead 항이 자연 반영 (예: 4090 Qwen3-8B: 8k에서 118 → 16k에서 95 �
 - `calibrated`: 클래스 계수 검증 범위 내 조합 → **클래스별 밴드: NVIDIA·AMD dGPU dense ±12% / 그 외 클래스·모든 MoE·부분 오프로드 ±20%** (§7 검증 최대 오차 17.1%를 상회하도록 설정 — 밴드가 검증값보다 좁으면 안 됨). 실측 누적 시 기기별로 축소
 - `rough`: **pp(프롬프트 처리) 전용** 4번째 라벨 — **±40%**(§3.5, est×0.6~1.4). tg·판정에는 쓰지 않으며, 엔진 `Result.confidence`(§1)에는 없고 데이터 레이어가 pp 표시에만 붙인다(P1-2 D13, PROGRESS §4 09-29)
 - `theoretical`: 신형 기기/특이 아키텍처 등 검증 밖 → **±30%** 밴드 + "제출로 검증에 참여" CTA
-  - 판정 주체는 데이터 레이어(`EvaluateOptions.theoretical`). P1-1 규칙(`packages/data/src/assess.ts` `isTheoretical`): ① MoE × MoE 계수가 없는 클래스(현재 intel-arc — §3.2) ② mode = cpu-moe(속도 검증점 0 — §3.3 앵커 3060+Qwen3.6-35B-A3B ~52 tok/s 대비 엔진 추정이 약 2.5× 낮다, PROGRESS §5) ③ `nonExpertGB` 없는 MoE가 부분 오프로드로 떨어진 경우(엔진이 dense 경로로 계산) ④ llama.cpp 구동이 검증되지 않은 커스텀 아키텍처(HyperCLOVA X SEED Think 14B) ⑤ FP16 크리플 GPU(`fp16Tflops` < 1 — GTX 10, 계수 도출 표본 밖. `01` §9 P1-1 개정: GPU 판정 유지 + 주의 배지) ⑥ 통합 메모리 칩의 cpu-only(cpu 계수 검증점은 데스크톱 DDR5뿐 — CPU측 대역폭은 `01` §3 `unifiedCpuBandwidth`로 GPU 경로 이하로 제한)
+  - 판정 주체는 데이터 레이어(`EvaluateOptions.theoretical`). P1-1 규칙(`packages/data/src/assess.ts` `isTheoretical`): ① MoE × MoE 계수가 없는 클래스(현재 intel-arc — §3.2) ② mode = cpu-moe(09-30 보정 후에도 유지 — 전문가 전부 RAM 공개 실측 3점 오차 12% 이내지만, 전문가 일부 GPU 배치·OS·백엔드 편차가 커 ±30%) ③ `nonExpertGB` 없는 MoE가 부분 오프로드로 떨어진 경우(엔진이 dense 경로로 계산) ④ llama.cpp 구동이 검증되지 않은 커스텀 아키텍처(HyperCLOVA X SEED Think 14B) ⑤ FP16 크리플 GPU(`fp16Tflops` < 1 — GTX 10, 계수 도출 표본 밖. `01` §9 P1-1 개정: GPU 판정 유지 + 주의 배지) ⑥ 통합 메모리 칩의 cpu-only(cpu 계수 검증점은 데스크톱 DDR5뿐 — CPU측 대역폭은 `01` §3 `unifiedCpuBandwidth`로 GPU 경로 이하로 제한)
 
 ## 5. 판정 임계값 (ctx 8k, Q4_K_M 기준)
 ```
@@ -161,6 +168,7 @@ VRAM 합산 − GPU당 buffer 중복. tg ≈ 단일 카드 계수 × 0.68 (2×30
 - 가중치: 실제 GGUF 11종 대조 **MAE 0.7% / max 1.6%**
 - KV: 아키텍처 7종 공식값 **전수 일치**
 - 속도: 실측 12점 대조 **MAE 6.3% / max 17.1%** (worst: M4 Pro −17%, 5060Ti MoE −15% → 클래스 계수 한계, Phase 2 기기별 보정 대상)
+- cpu-moe(09-30): 전문가 전부 RAM 공개 실측 3점(3060 Ti+DDR5-6800 gpt-oss-120b 24.85 · 5080+DDR5-4800 Qwen3.5-35B-A3B Q4_K_M 51.0·Q8_0 35.7) 각 ±20% 이내 + MAE < 12% (verify-regression 5)
 - 판정: RTX 4060 8GB에서 8B Q4_K_M "가능"(실측 38~42 tok/s로 확인) / 14B Q4_K_M "풀 오프로드 불가" — 커뮤니티 통념과 일치
 - CI 이식 시 print 스크립트가 아닌 **assertion 테스트로 변환**할 것 (Windows cp949 콘솔 인코딩 이슈가 외부 리뷰에서 재현됨)
 

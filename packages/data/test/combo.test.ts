@@ -173,9 +173,9 @@ describe('alternatives (docs/04 §4 ⑥, D4)', () => {
   });
 
   it('cpu-moe page carries the expert-offload setting (rtx-3060-12gb × qwen3-30b-a3b-2507)', () => {
+    // 09-30 cpu-moe 보정으로 이 조합이 A — 대안이 "더 작은 모델·낮은 양자화" 에서 "더 큰 모델" 로
     expect(altsFor('rtx-3060-12gb', 'qwen3-30b-a3b-2507').map(label)).toEqual([
-      'smaller-model:qwen3-14b',
-      'lower-quant:IQ4_XS',
+      'larger-model:qwen3.5-35b-a3b',
       'cpu-moe:48/24',
     ]);
   });

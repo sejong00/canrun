@@ -95,7 +95,8 @@ describe('measured join (결정 D4)', () => {
     expect(hint.verdict).toBe('B');
     expect(hint.mode).toBe('cpu-moe');
     expect(hint.result.confidence).toBe('theoretical');
-    expect(hint.result.tgTokS.est).toBeCloseTo(13.92, 2);
+    // 09-30 cpu-moe 보정(라우팅 전문가만 RAM) — 이전 13.92
+    expect(hint.result.tgTokS.est).toBeCloseTo(22.18, 1);
   });
 
   it('Q4_K_XL 실측은 Q4_K_M 에 조인되지 않는다', () => {
@@ -172,12 +173,13 @@ describe('판정 사유 = 실제로 걸린 규칙 (P1-1 리뷰)', () => {
     expect(c.baseline.verdictReason).toBe('cap-full-gpu-only');
   });
 
-  it('cpu-moe 8~20 tok/s 는 B — A 는 20 이상 (rtx-4060 × kanana-1.5-15.7b-a3b)', () => {
-    const c = combo('rtx-4060', 'kanana-1.5-15.7b-a3b');
+  // 09-30 cpu-moe 보정 뒤 기본 구성(RAM 32GB)의 비-리즈닝 cpu-moe 는 전부 20 이상 — 리즈닝(기준 ×1.5 = 30)으로 규칙을 고정
+  it('cpu-moe 는 원활 기준 미만이면 B — 리즈닝은 30 (rtx-4060 × gpt-oss-20b)', () => {
+    const c = combo('rtx-4060', 'gpt-oss-20b');
     expect(c.baseline.result.mode).toBe('cpu-moe');
     expect(c.baseline.result.verdict).toBe('B');
     expect(c.baseline.verdictReason).toBe('cap-cpu-moe');
-    expect(c.baseline.capMinTokS).toBe(20);
+    expect(c.baseline.capMinTokS).toBe(30);
   });
 
   it('사유가 뜻하는 등급 = 표시 판정 (전 카탈로그)', () => {
@@ -326,7 +328,8 @@ describe('summaries', () => {
     expect(c.S + c.A + c.B + c.F).toBe(scen.models.length);
     // 09-30 카탈로그 확장 1차: 소형 4종(Llama 3.2·MiniCPM5) S, qwen3.6-35b-a3b A(형제 qwen3.5 와 동일), 30B급 dense 3종 B(부분 오프로드)
     // 09-30 Gemma 4 12B KV 수정(4배 과대 → 설정 기준)으로 12B 가 4060 에서 B → A(부분 오프로드지만 GPU 90% 이상)
-    expect(c).toMatchObject({ S: 11, A: 3, B: 15, F: 8, otherQuant: 3 });
+    // 09-30 cpu-moe 보정: qwen3-30b-a3b-2507·kanana-1.5-15.7b-a3b 가 4060 에서 B → A (20 tok/s 이상)
+    expect(c).toMatchObject({ S: 11, A: 5, B: 13, F: 8, otherQuant: 3 });
     expect(hub.faq.referenceLarge?.baseline.fReason).toBe('no-fit');
     expect(hub.benchmarks.every((bp) => bp.gpuId === 'rtx-4060')).toBe(true);
     // 정렬: 기준 판정 비증가, 같은 판정 안에서는 표시 tok/s 비증가
