@@ -34,14 +34,14 @@
           }
         },
         {
-          "matchingUrlPattern": "^(?!.*/(can-i-run|guides)/).*$",
+          "matchingUrlPattern": "^(?!.*/can-i-run/).*$",
           "assertions": {
             "categories:seo": ["error", { "minScore": 0.9, "aggregationMethod": "median-run" }],
             "largest-contentful-paint": ["warn", { "maxNumericValue": 2000, "aggregationMethod": "median-run" }]
           }
         },
         {
-          "matchingUrlPattern": "/(can-i-run|guides)/",
+          "matchingUrlPattern": "/can-i-run/",
           "assertions": {
             "largest-contentful-paint": ["error", { "maxNumericValue": 2500, "aggregationMethod": "median-run" }],
             "document-title": ["error", { "minScore": 1 }],

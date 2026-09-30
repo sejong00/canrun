@@ -43,11 +43,12 @@ export type GuideSlug = (typeof GUIDE_SLUGS)[number];
 /** 배치 1 모델(docs/04 §3) — vram·mac 그리드가 공유 */
 const BATCH1_MODELS = ['llama-3.1-8b', 'gemma-3-12b', 'qwen3-14b', 'gpt-oss-20b', 'qwen3-30b-a3b-2507', 'gpt-oss-120b'] as const;
 
-const DRAFT = { status: 'draft', datePublished: '2026-09-29', dateModified: '2026-09-29', author: 'CanRun' } as const;
+/** 09-30 사용자가 채팅으로 6편 모두 게시 승인 (D40) */
+const PUBLISHED = { status: 'published', reviewedAt: '2026-09-30', datePublished: '2026-09-30', dateModified: '2026-09-30', author: 'CanRun' } as const;
 
 export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
   'vram-requirements': {
-    ...DRAFT,
+    ...PUBLISHED,
     grids: {
       tiers: {
         gpus: ['rtx-4060', 'rtx-3060-12gb', 'rtx-4070', 'rtx-5070', 'rtx-5060-ti-16gb', 'rtx-3090', 'rtx-4090', 'rtx-5090'],
@@ -69,7 +70,7 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
     },
   },
   'ollama-context-length': {
-    ...DRAFT,
+    ...PUBLISHED,
     grids: {},
     related: ['kv-cache-context', 'vram-requirements', 'gguf-quantization'],
     locales: {
@@ -86,7 +87,7 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
     },
   },
   'gguf-quantization': {
-    ...DRAFT,
+    ...PUBLISHED,
     grids: {},
     related: ['vram-requirements', 'kv-cache-context', 'korean-open-llms'],
     locales: {
@@ -103,7 +104,7 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
     },
   },
   'korean-open-llms': {
-    ...DRAFT,
+    ...PUBLISHED,
     grids: {
       korean: {
         gpus: ['rtx-4060', 'rtx-3060-12gb', 'rtx-5060-ti-16gb', 'rtx-3090', 'rtx-5090', 'apple-m4-pro'],
@@ -134,7 +135,7 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
     },
   },
   'mac-local-llm': {
-    ...DRAFT,
+    ...PUBLISHED,
     grids: {
       apple: {
         gpus: ['apple-m4', 'apple-m4-pro', 'apple-m4-max-40c', 'apple-m5-pro'],
@@ -156,7 +157,7 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
     },
   },
   'kv-cache-context': {
-    ...DRAFT,
+    ...PUBLISHED,
     grids: {},
     related: ['ollama-context-length', 'vram-requirements', 'gguf-quantization'],
     locales: {
