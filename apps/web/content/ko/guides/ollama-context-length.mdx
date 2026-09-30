@@ -32,7 +32,7 @@ RTX 4060에 <HubLink model="llama-3.1-8b" />를 올리면, Ollama 기본값인 4
 
 12GB 카드는 여유가 조금 더 있습니다. <ComboLink model="gemma-3-12b" gpu="rtx-3060-12gb" />를 돌리면 KV 캐시를 f16으로 두고 32k까지 늘려도 <Num kind="needGB" model="gemma-3-12b" ctx="32768" />라서, 사용 가능 메모리 <Num kind="usableGB" gpu="rtx-3060-12gb" /> 안에 들어갑니다. 8k에서는 쾌적하게 돌아갑니다<Expect model="gemma-3-12b" gpu="rtx-3060-12gb" verdict="S" />.
 
-## 24GB 카드에서 Ollama가 느려지는 이유: 32k 기본값
+## Ollama가 느려지는 이유 — 24GB 카드의 32k 기본값
 
 24GB 카드에서 Ollama는 처음부터 컨텍스트를 32k로 잡습니다. <HubLink model="qwen3-32b" /> Q4_K_M은 8k에서 <Num kind="needGB" model="qwen3-32b" ctx="8192" />가 필요해 RTX 3090의 사용 가능 메모리 <Num kind="usableGB" gpu="rtx-3090" /> 안에 들어갑니다. 8k에서는 쾌적하게 돌아갑니다<Expect model="qwen3-32b" gpu="rtx-3090" verdict="S" />. 하지만 32k에서는 f16 KV 캐시만 <Num kind="kvGB" model="qwen3-32b" ctx="32768" />라서 합계가 <Num kind="needGB" model="qwen3-32b" ctx="32768" />로 늘어납니다. 넘치는 만큼 가중치 일부가 시스템 RAM으로 밀려납니다.
 

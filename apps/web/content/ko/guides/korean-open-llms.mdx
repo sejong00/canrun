@@ -27,7 +27,7 @@ HyperCLOVA X SEED Think 14B의 GGUF는 naver-ellm이 올린 Q4_K_M 파일 하나
 
 EXAONE 4.5 33B는 이미지 입력을 받는 비전-언어 모델이라, 표의 파라미터 수에 비전 인코더가 들어 있습니다. 이미지를 넣을 때 쓰는 비전 프로젝터(mmproj)는 별도 파일이라 메모리 수치에는 넣지 않았습니다. 모델 카드에 따르면 EXAONE 세 모델과 HyperCLOVA X SEED Think 14B는 리즈닝(생각) 모드를 켜고 끌 수 있습니다. CanRun은 이 가운데 EXAONE 4.0 32B·4.5 33B와 HyperCLOVA X SEED Think 14B를 리즈닝 모델로 분류합니다. Solar Open 2는 전문가 가중치와 공유 가중치가 각각 얼마인지 확인하지 못했습니다. 그래서 사양·메모리 표에만 넣고 판정 표에서는 뺐습니다.
 
-## 필요한 메모리: 8GB부터 24GB급 카드까지
+## 필요한 메모리 — 8GB부터 24GB급까지
 
 필요 메모리는 기본 양자화 파일 크기에 f16 KV 캐시와 연산 버퍼를 더한 값입니다. KV 캐시는 지금까지 나눈 대화, 즉 컨텍스트를 담아 두는 메모리이고, 연산 버퍼는 계산에 쓰는 임시 메모리입니다. 기본 양자화는 Q4_K_M입니다. Q4_K_M GGUF가 없는 Solar Open 2만 IQ4_XS로 계산했습니다.
 
@@ -41,7 +41,7 @@ EXAONE 4.5 33B는 이미지 입력을 받는 비전-언어 모델이라, 표의 
 - **24GB급(RTX 3090, 사용 가능 <Num kind="usableGB" gpu="rtx-3090" />)**: EXAONE 4.0 32B(<Num kind="needGB" model="exaone-4.0-32b" />)와 4.5 33B(<Num kind="needGB" model="exaone-4.5-33b" />)가 GPU에 다 올라갑니다.
 - **Solar**: Solar Open 100B(<Num kind="needGB" model="solar-open-100b" />)는 이 글에 나오는 어떤 그래픽카드 한 장에도 들어가지 않습니다. Solar Open 2는 그보다 훨씬 큽니다.
 
-### EXAONE 32B급의 KV 캐시가 덜 늘어나는 이유
+### KV 캐시 — EXAONE 32B급이 적게 늘어나는 이유
 
 KV 캐시는 컨텍스트 길이에 비례해 커지고, 토큰당 크기는 모델 구조마다 다릅니다.
 
@@ -73,7 +73,7 @@ CanRun 계산은 글로벌 층의 KV만 셉니다. 그래서 토큰당 열은 KV
 
 하드웨어별 전체 결과는 <HubLink gpu="rtx-4060" />, <HubLink gpu="rtx-3060-12gb" />, <HubLink gpu="rtx-5060-ti-16gb" />, <HubLink gpu="rtx-3090" />, <HubLink gpu="rtx-5090" />, <HubLink gpu="apple-m4-pro" /> 페이지에서 볼 수 있습니다.
 
-## 메모리가 조금 모자랄 때: 양자화, 시스템 RAM, 전문가 오프로드
+## 조금 넘칠 때 — 양자화, 시스템 RAM, 전문가 오프로드
 
 양자화를 한 단계 낮추면 RTX 3060 12GB에서 Kanana 1.5 15.7B-A3B는 GPU에 다 올라갑니다. 하지만 RTX 5060 Ti 16GB에서 EXAONE 4.5 33B는 그래도 다 올라가지 않습니다. Solar Open 100B를 돌릴 수 있는지는 시스템 RAM 용량에 달려 있습니다.
 
@@ -138,7 +138,7 @@ Q4_K_M·8k 기준으로 EXAONE 4.0 1.2B는 <Num kind="needGB" model="exaone-4.0-
 
 대부분은 llama.cpp 계열 도구에서 쓸 수 있는 GGUF 파일이 있어 돌려 볼 수 있습니다. 다만 CanRun이 직접 시험해 보지는 않았습니다. 예외는 HyperCLOVA X SEED Think 14B입니다. GGUF 카드에서 네이버 클라우드의 llama.cpp 포크를 쓰라고 안내하고 있어, 공식 llama.cpp와 Ollama에서 돌아가는지는 확인되지 않았습니다. Solar Open 2도 커뮤니티 GGUF만 있고 선형 어텐션을 섞은 구조라서, 쓰려는 런타임이 지원하는지 따로 확인해야 합니다. EXAONE은 LG 공식 GGUF가 있습니다. 카드에 적힌 최소 llama.cpp 빌드 이상으로 먼저 업데이트하세요.
 
-### 16GB 카드에서 Kanana 1.5 15.7B-A3B는 쾌적하게 돌아가는데 EXAONE 4.0 32B는 왜 느린가요?
+### Kanana 1.5 15.7B-A3B는 16GB 카드에서 쾌적한데 EXAONE 4.0 32B는 왜 아닌가요?
 
 메모리에 다 들어가느냐 아니냐의 차이입니다. Kanana 1.5 15.7B-A3B는 8k에서 <Num kind="needGB" model="kanana-1.5-15.7b-a3b" />가 필요해, RTX 5060 Ti 16GB의 사용 가능 메모리 <Num kind="usableGB" gpu="rtx-5060-ti-16gb" /> 안에 들어갑니다. 그래서 쾌적하게 돌아갑니다(보정된 추정)<Expect model="kanana-1.5-15.7b-a3b" gpu="rtx-5060-ti-16gb" verdict="S" />. EXAONE 4.0 32B는 <Num kind="needGB" model="exaone-4.0-32b" />가 필요해 다 들어가지 않습니다. CanRun 계산으로는 가중치 일부를 시스템 RAM에 두는 부분 오프로드로 겨우 돌아갑니다(보정된 추정)<Expect model="exaone-4.0-32b" gpu="rtx-5060-ti-16gb" verdict="B" />. MoE인 Kanana는 토큰마다 약 3B 파라미터만 계산하므로 GPU에 다 올라가면 빠릅니다. 반면 dense 모델은 일부만 넘쳐도 느린 시스템 RAM 때문에 속도가 크게 떨어집니다.
 

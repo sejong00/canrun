@@ -62,7 +62,7 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
           'What fits on 8, 12, 16, 24 and 32 GB graphics cards: the memory formula, model-by-model verdicts, and how context length and quantization change the answer.',
       },
       ko: {
-        title: '로컬 LLM에 VRAM은 얼마나 필요할까? 8~32GB별 정리 (2026)',
+        title: '로컬 LLM 사양 — VRAM 8~32GB로 돌릴 수 있는 모델 (2026)',
         description:
           '그래픽카드 VRAM 8·12·16·24·32GB에서 어떤 모델이 돌아가는지 정리했습니다. 필요한 메모리를 계산하는 법과, 컨텍스트·양자화에 따라 달라지는 점도 함께 다룹니다.',
       },
@@ -79,7 +79,7 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
           'Why Ollama trims long conversations or slows down: its default context length by VRAM tier, how to raise it, and what a longer context costs in memory.',
       },
       ko: {
-        title: 'Ollama가 느리거나 앞 대화를 잊는다면: 컨텍스트 기본값 확인하기',
+        title: 'Ollama가 느리거나 앞 내용을 잊을 때 — 컨텍스트 기본값',
         description:
           'Ollama가 긴 대화의 앞부분을 버리거나 느려지는 이유를 설명합니다. VRAM별 기본 컨텍스트 길이와 늘리는 방법, 늘렸을 때 더 드는 메모리도 정리했습니다.',
       },
@@ -96,7 +96,7 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
           'What each GGUF quant level costs in gigabytes, how we group them by quality, and when dropping one level turns a model that does not fit into one that runs.',
       },
       ko: {
-        title: 'GGUF 양자화, Q4_K_M·IQ4_XS·Q8_0 중 무엇을 받아야 할까',
+        title: 'GGUF 양자화 등급 정리 — Q4_K_M·IQ4_XS·Q8_0 무엇을 받을까',
         description:
           'GGUF 양자화 단계마다 파일 용량이 얼마인지, 품질은 어떻게 나뉘는지 정리했습니다. 한 단계만 낮춰도 못 돌리던 모델이 돌아가는 경우를 데이터로 보여 줍니다.',
       },
@@ -127,7 +127,7 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
           'Specs, licenses and what it takes to run LG EXAONE, Kakao Kanana, NAVER HyperCLOVA X SEED and Upstage Solar locally, with verdicts on common GPUs and Macs.',
       },
       ko: {
-        title: '한국 오픈 LLM(EXAONE·Kanana·HyperCLOVA X·Solar)을 돌리는 데 필요한 사양',
+        title: '한국 오픈 LLM 정리 — EXAONE·Kanana·HyperCLOVA X·Solar 구동 사양',
         description:
           'LG EXAONE, 카카오 Kanana, 네이버 HyperCLOVA X SEED, 업스테이지 Solar를 내 PC에서 돌리려면 무엇이 필요한지 정리했습니다. 모델 사양과 라이선스, 흔한 GPU·맥에서의 판정을 함께 봅니다.',
       },
@@ -149,7 +149,7 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
           'How much of a Mac’s unified memory a local model can use, which M4 and M5 configurations fit which models, and why memory bandwidth sets the speed.',
       },
       ko: {
-        title: '맥에서 로컬 LLM 돌리기: M4·M5 통합 메모리는 얼마나 필요할까',
+        title: '맥에서 로컬 LLM 돌리기 — M4·M5 통합 메모리는 얼마나 필요할까',
         description:
           '맥의 통합 메모리 가운데 모델이 실제로 쓸 수 있는 양과 M4·M5 구성별로 돌아가는 모델을 정리했습니다. 속도를 좌우하는 메모리 대역폭도 함께 다룹니다.',
       },
@@ -166,7 +166,7 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
           'Why a longer context needs more memory, how much each model’s KV cache costs per token, and what q8_0 and q4_0 KV cache quantization buy you.',
       },
       ko: {
-        title: 'KV 캐시와 컨텍스트 길이: 컨텍스트를 늘리면 VRAM이 얼마나 더 들까',
+        title: 'KV 캐시와 컨텍스트 길이 — 컨텍스트를 늘리면 VRAM이 얼마나 더 필요할까',
         description:
           '컨텍스트가 길어지면 왜 메모리가 더 드는지, 모델마다 KV 캐시가 토큰당 얼마나 차지하는지 정리했습니다. KV 캐시를 q8_0·q4_0으로 양자화하면 얼마나 줄어드는지도 다룹니다.',
       },
