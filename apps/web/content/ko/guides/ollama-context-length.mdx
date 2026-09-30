@@ -1,67 +1,67 @@
-<RuntimeFact id="ollama-default-ctx" />. 그래서 8GB·12GB·16GB 카드는 4k로 시작하고, 대화가 이 길이를 넘으면 Ollama는 가장 오래된 메시지부터 아무 표시 없이 버립니다. 24GB·32GB 카드는 32k로 시작합니다. 24GB 카드에서 dense 모델인 Qwen3 32B Q4_K_M은 8k라면 <Num kind="needGB" model="qwen3-32b" ctx="8192" />로 사용 가능 메모리 <Num kind="usableGB" gpu="rtx-3090" /> 안에 들어가지만<Expect model="qwen3-32b" gpu="rtx-3090" verdict="S" />, f16 KV 32k에서는 <Num kind="needGB" model="qwen3-32b" ctx="32768" />가 필요해 넘친 부분이 시스템 RAM으로 가고, 그래서 느려집니다. 해결책은 `OLLAMA_CONTEXT_LENGTH`나 `num_ctx`로 VRAM에 들어가는 가장 긴 컨텍스트 길이를 지정하고 `ollama ps`로 확인하는 것입니다.
+<RuntimeFact id="ollama-default-ctx" />. 그래서 8GB·12GB·16GB 카드는 컨텍스트 4k로 시작합니다. 대화가 이 길이를 넘으면 Ollama는 가장 오래된 메시지부터 아무 알림 없이 버립니다. 24GB·32GB 카드는 32k로 시작합니다. 24GB 카드에서 dense 모델인 Qwen3 32B Q4_K_M은 8k라면 <Num kind="needGB" model="qwen3-32b" ctx="8192" />가 필요해 사용 가능 메모리 <Num kind="usableGB" gpu="rtx-3090" /> 안에 들어갑니다<Expect model="qwen3-32b" gpu="rtx-3090" verdict="S" />. 하지만 32k에서는 f16 KV 캐시 기준으로 <Num kind="needGB" model="qwen3-32b" ctx="32768" />가 필요해, 넘치는 부분이 시스템 RAM으로 가면서 느려집니다. 해결하려면 `OLLAMA_CONTEXT_LENGTH`나 `num_ctx`로 VRAM에 들어가는 가장 긴 컨텍스트를 지정하고, `ollama ps`로 확인합니다.
 
 ## Ollama 기본 컨텍스트는 GPU 메모리로 정해진다
 
-컨텍스트 길이를 따로 지정하지 않으면 한 가지 값으로 고정되지 않습니다. Ollama 컨텍스트 길이 문서 기준으로 <RuntimeFact id="ollama-default-ctx" />. CanRun 카탈로그로 보면 <HubLink gpu="rtx-4060" />(8GB), RTX 3060 12GB, <HubLink gpu="rtx-5060-ti-16gb" />는 4k 구간이고, <HubLink gpu="rtx-3090" />·RTX 4090(24GB)과 <HubLink gpu="rtx-5090" />(32GB)은 32k 구간입니다. 카탈로그에서 가장 큰 그래픽카드가 32GB라, 한 장으로 256k 구간에 드는 카드는 없습니다.
+컨텍스트 길이를 따로 지정하지 않았을 때 Ollama가 쓰는 기본 길이는 한 가지가 아닙니다. Ollama 컨텍스트 길이 문서의 설명은 이렇습니다. <RuntimeFact id="ollama-default-ctx" />. CanRun 카탈로그에 있는 카드로 따져 보면, 8GB인 <HubLink gpu="rtx-4060" />와 RTX 3060 12GB, <HubLink gpu="rtx-5060-ti-16gb" />는 기본값이 4k입니다. 24GB인 <HubLink gpu="rtx-3090" />·RTX 4090과 32GB인 <HubLink gpu="rtx-5090" />은 32k입니다. 카탈로그에서 메모리가 가장 큰 그래픽카드가 32GB라서, 한 장으로 256k 기본값을 받는 카드는 없습니다.
 
-4k는 모델이 감당하는 길이보다 한참 짧습니다. Llama 3.1 8B는 최대 <Num kind="maxContext" model="llama-3.1-8b" />, <HubLink model="qwen3-14b" />는 <Num kind="maxContext" model="qwen3-14b" />까지 지원합니다(Qwen3는 모델 카드 기준 네이티브 32k, YaRN 적용 시 128k).
+4k는 모델이 처리할 수 있는 길이보다 한참 짧습니다. Llama 3.1 8B는 최대 <Num kind="maxContext" model="llama-3.1-8b" />, <HubLink model="qwen3-14b" />는 <Num kind="maxContext" model="qwen3-14b" />까지 지원합니다. Qwen3 모델 카드에 따르면 기본 지원 길이는 32k이고, YaRN이라는 확장 기법을 쓰면 128k까지 늘릴 수 있습니다.
 
 ### 컨텍스트를 넘으면 오래된 메시지부터 빠진다
 
-대화가 컨텍스트 길이보다 길어져도 Ollama는 오류를 내지 않습니다. 채팅 요청은 기본으로 가장 오래된 메시지부터 버리되 시스템 메시지와 마지막 메시지는 남기고(`server/prompt.go`, 요청에서 `truncate`를 지정하지 않으면 켜짐), 생성 도중 컨텍스트가 가득 차면 앞쪽 토큰 일부를 버리고 계속 씁니다(`shift`, 역시 기본으로 켜짐). 메시지를 잘라 냈다는 사실은 디버그 수준 로그에만 기록됩니다. 그래서 초반에 준 지시나 붙여 넣은 문서의 앞부분이 조용히 빠지고, 모델이 앞 내용을 잊은 것처럼 보입니다.
+대화가 컨텍스트 길이보다 길어져도 Ollama는 오류를 내지 않습니다. 채팅 요청에서는 가장 오래된 메시지부터 버리고, 시스템 메시지와 마지막 메시지는 남깁니다(`server/prompt.go`). 요청에 `truncate`를 따로 지정하지 않으면 이 동작이 기본으로 켜져 있습니다. 답을 생성하는 도중에 컨텍스트가 가득 차면 앞쪽 토큰 일부를 버리고 이어서 씁니다. 이 `shift` 동작도 기본으로 켜져 있습니다. 메시지를 잘라 냈다는 기록은 디버그 수준 로그에만 남습니다. 그래서 처음에 준 지시나 붙여 넣은 문서의 앞부분이 모르는 사이에 빠지고, 모델이 앞 내용을 잊은 것처럼 보입니다.
 
-생각(thinking) 모드 모델은 컨텍스트가 더 빨리 찹니다. Qwen3 모델 카드는 대부분의 질문에 출력 길이 32k 토큰을 권하는데, 4k 컨텍스트로는 한참 모자랍니다.
+생각(thinking) 모드에서는 모델이 답하기 전에 추론 과정을 길게 쓰기 때문에 컨텍스트가 더 빨리 찹니다. Qwen3 모델 카드는 대부분의 질문에 출력 길이를 32k 토큰으로 잡으라고 권하는데, 4k 컨텍스트로는 한참 모자랍니다.
 
-오래된 글이나 일부 참조 문서가 적어 둔 단일 기본값(Modelfile 파라미터 표의 `2048`, FAQ의 `4096`)은 지금 규칙이 아닙니다. 실제로 잡힌 값은 `ollama ps`로 봅니다. CONTEXT 열이 쓰는 컨텍스트 길이, PROCESSOR 열이 GPU와 CPU에 나눠 올린 비율입니다.
+예전 글이나 일부 참조 문서에는 기본값이 하나로 적혀 있습니다. Modelfile 파라미터 표에는 `2048`, FAQ에는 `4096`이 나오지만, 지금 Ollama는 이렇게 정하지 않습니다. 실제로 잡힌 값은 `ollama ps`로 확인합니다. CONTEXT 열은 지금 쓰는 컨텍스트 길이이고, PROCESSOR 열은 모델을 GPU와 CPU에 나눠 올린 비율입니다.
 
 ## 컨텍스트를 늘리면 메모리가 얼마나 더 드나
 
-필요 메모리는 기본 양자화의 모델 파일, KV 캐시, 연산 버퍼를 더한 값입니다. 파일 크기는 컨텍스트와 상관없이 그대로이고, 전체 어텐션(full attention) 모델이면 KV 캐시가 컨텍스트 길이에 비례해 커집니다.
+필요 메모리는 세 가지를 더한 값입니다. 기본 양자화로 받은 모델 파일, 앞선 토큰의 계산 결과를 저장해 두는 KV 캐시, 계산 중에 쓰는 작업 공간인 연산 버퍼입니다. 파일 크기는 컨텍스트와 상관없이 그대로입니다. 반면 모든 층이 앞의 토큰 전체를 참고하는 전체 어텐션 모델이라면, KV 캐시가 컨텍스트 길이에 비례해 커집니다.
 
-토큰당 KV 크기는 모델 구조에 따라 크게 다릅니다. f16 KV 32k에서 Llama 3.1 8B의 KV 캐시는 <Num kind="kvGB" model="llama-3.1-8b" ctx="32768" />인데, gpt-oss-20b는 슬라이딩 윈도(sliding window) 층의 KV가 일정 길이에서 더 늘지 않아 <Num kind="kvGB" model="gpt-oss-20b" ctx="32768" />에 그칩니다. EXAONE 4.0 32B도 로컬(슬라이딩 윈도)과 글로벌 어텐션을 3:1로 섞어 쓰기 때문에(모델 카드), 32k 합계가 Qwen3 32B보다 Gemma 3 27B 쪽에 훨씬 가깝습니다(아래 표). 자세한 원리는 가이드 ‘<GuideLink slug="kv-cache-context" />’에 있습니다.
+토큰 하나에 드는 KV 캐시 크기는 모델 구조에 따라 크게 다릅니다. KV 캐시를 f16으로 두고 32k를 쓰면 Llama 3.1 8B의 KV 캐시는 <Num kind="kvGB" model="llama-3.1-8b" ctx="32768" />입니다. 같은 조건에서 gpt-oss-20b는 <Num kind="kvGB" model="gpt-oss-20b" ctx="32768" />에 그칩니다. 최근 일정 길이의 토큰만 보는 슬라이딩 윈도 층이 있어서, 그 층의 KV 캐시는 일정 길이를 넘으면 더 늘지 않기 때문입니다. EXAONE 4.0 32B도 모델 카드에 따르면 슬라이딩 윈도를 쓰는 로컬 어텐션과 글로벌 어텐션을 3:1로 섞어 씁니다. 그래서 아래 표에서 32k 합계가 Qwen3 32B보다 Gemma 3 27B에 훨씬 가깝습니다. 자세한 원리는 ‘<GuideLink slug="kv-cache-context" />’ 가이드에서 설명합니다.
 
-아래 표는 24GB·32GB 카드의 Ollama 기본값인 32k 기준입니다. 합계는 카드 라벨이 아니라 사용 가능 메모리와 비교합니다(Windows에서 화면을 출력하는 카드는 OS가 VRAM 일부를 씀).
+아래 표는 24GB·32GB 카드에서 Ollama가 기본으로 잡는 32k를 기준으로 합니다. 합계는 카드에 적힌 용량이 아니라 사용 가능 메모리와 비교해야 합니다. Windows에서 화면 출력을 맡은 카드는 OS가 VRAM 일부를 쓰기 때문입니다.
 
 <ModelMemoryTable models="llama-3.1-8b,gemma-3-12b,qwen3-14b,gpt-oss-20b,gemma-3-27b,qwen3-30b-a3b-2507,exaone-4.0-32b,qwen3-32b" ctx="32768" />
 
 ### 8GB 카드에서 한 단계씩 늘려 보면
 
-RTX 4060에 <HubLink model="llama-3.1-8b" />를 올리면 Ollama 기본값 4k에서 <Num kind="needGB" model="llama-3.1-8b" ctx="4096" />, 8k에서 <Num kind="needGB" model="llama-3.1-8b" ctx="8192" />로 둘 다 사용 가능 메모리 <Num kind="usableGB" gpu="rtx-4060" /> 안에 들어갑니다. 8k 기준 판정은 쾌적입니다<Expect model="llama-3.1-8b" gpu="rtx-4060" verdict="S" />. f16 KV 16k는 <Num kind="needGB" model="llama-3.1-8b" ctx="16384" />로 사용 가능 메모리를 살짝 넘고, 32k는 <Num kind="needGB" model="llama-3.1-8b" ctx="32768" />입니다. 이 선을 넘으면 CanRun 계산은 가중치 일부를 시스템 RAM에 두는 부분 오프로드로(더 길면 CPU 전용으로) 보고, 그만큼 판정과 속도 범위가 낮아집니다. 아래 표는 <ComboLink model="llama-3.1-8b" gpu="rtx-4060" />의 컨텍스트·KV 캐시 타입별 결과입니다.
+RTX 4060에 <HubLink model="llama-3.1-8b" />를 올리면, Ollama 기본값인 4k에서는 <Num kind="needGB" model="llama-3.1-8b" ctx="4096" />, 8k에서는 <Num kind="needGB" model="llama-3.1-8b" ctx="8192" />가 필요합니다. 둘 다 사용 가능 메모리 <Num kind="usableGB" gpu="rtx-4060" /> 안에 들어가고, 8k에서는 쾌적하게 돌아갑니다<Expect model="llama-3.1-8b" gpu="rtx-4060" verdict="S" />. KV 캐시를 f16으로 두고 16k로 늘리면 <Num kind="needGB" model="llama-3.1-8b" ctx="16384" />가 필요해 사용 가능 메모리를 넘습니다. 32k에서는 <Num kind="needGB" model="llama-3.1-8b" ctx="32768" />가 필요합니다. 이 선을 넘으면 CanRun 계산은 가중치 일부를 시스템 RAM에 두는 부분 오프로드로 보고, 더 길어지면 CPU 전용으로 봅니다. 그만큼 판정과 예상 속도 범위도 낮아집니다. 아래 표는 <ComboLink model="llama-3.1-8b" gpu="rtx-4060" />를 돌릴 때 컨텍스트 길이와 KV 캐시 종류에 따라 결과가 어떻게 달라지는지 보여 줍니다.
 
 <CtxTable model="llama-3.1-8b" gpu="rtx-4060" />
 
-12GB 카드는 여유가 조금 더 있습니다. <ComboLink model="gemma-3-12b" gpu="rtx-3060-12gb" />는 f16 KV 32k에서도 <Num kind="needGB" model="gemma-3-12b" ctx="32768" />라 사용 가능 메모리 <Num kind="usableGB" gpu="rtx-3060-12gb" /> 안에 들어가고, 8k 기준 판정은 쾌적입니다<Expect model="gemma-3-12b" gpu="rtx-3060-12gb" verdict="S" />.
+12GB 카드는 여유가 조금 더 있습니다. <ComboLink model="gemma-3-12b" gpu="rtx-3060-12gb" />를 돌리면 KV 캐시를 f16으로 두고 32k까지 늘려도 <Num kind="needGB" model="gemma-3-12b" ctx="32768" />라서, 사용 가능 메모리 <Num kind="usableGB" gpu="rtx-3060-12gb" /> 안에 들어갑니다. 8k에서는 쾌적하게 돌아갑니다<Expect model="gemma-3-12b" gpu="rtx-3060-12gb" verdict="S" />.
 
-## Ollama가 느려지는 이유 — 24GB 카드의 32k 기본값
+## 24GB 카드에서 Ollama가 느려지는 이유: 32k 기본값
 
-24GB 카드에서 Ollama는 처음부터 32k를 잡습니다. <HubLink model="qwen3-32b" /> Q4_K_M은 8k에서 <Num kind="needGB" model="qwen3-32b" ctx="8192" />라 RTX 3090의 사용 가능 메모리 <Num kind="usableGB" gpu="rtx-3090" /> 안에 들어가고, 8k 기준 판정은 쾌적입니다<Expect model="qwen3-32b" gpu="rtx-3090" verdict="S" />. 하지만 f16 KV 32k에서는 KV 캐시만 <Num kind="kvGB" model="qwen3-32b" ctx="32768" />라 합계가 <Num kind="needGB" model="qwen3-32b" ctx="32768" />로 늘고, 넘는 만큼 가중치 일부가 시스템 RAM으로 밀려납니다.
+24GB 카드에서 Ollama는 처음부터 컨텍스트를 32k로 잡습니다. <HubLink model="qwen3-32b" /> Q4_K_M은 8k에서 <Num kind="needGB" model="qwen3-32b" ctx="8192" />가 필요해 RTX 3090의 사용 가능 메모리 <Num kind="usableGB" gpu="rtx-3090" /> 안에 들어갑니다. 8k에서는 쾌적하게 돌아갑니다<Expect model="qwen3-32b" gpu="rtx-3090" verdict="S" />. 하지만 32k에서는 f16 KV 캐시만 <Num kind="kvGB" model="qwen3-32b" ctx="32768" />라서 합계가 <Num kind="needGB" model="qwen3-32b" ctx="32768" />로 늘어납니다. 넘치는 만큼 가중치 일부가 시스템 RAM으로 밀려납니다.
 
-이 분할은 Ollama가 스스로 하기 때문에 대화는 이어지지만 속도가 크게 떨어지고, `ollama ps`의 PROCESSOR 열에 `100% GPU` 대신 CPU/GPU 비율이 찍힙니다. Ollama 문서도 CPU로 넘기지 않는 범위에서 가장 큰 컨텍스트를 쓰라고 권합니다. 아래 표는 <ComboLink model="qwen3-32b" gpu="rtx-3090" />의 컨텍스트·KV 캐시 타입별 결과입니다.
+Ollama가 스스로 모델을 GPU와 CPU에 나눠 올리기 때문에 대화는 끊기지 않습니다. 대신 속도가 크게 떨어지고, `ollama ps`의 PROCESSOR 열에 `100% GPU` 대신 CPU/GPU 비율이 표시됩니다. Ollama 문서도 CPU로 넘어가지 않는 범위에서 가장 긴 컨텍스트를 쓰라고 권합니다. 아래 표는 <ComboLink model="qwen3-32b" gpu="rtx-3090" />를 돌릴 때의 결과를 컨텍스트 길이와 KV 캐시 종류별로 보여 줍니다.
 
 <CtxTable model="qwen3-32b" gpu="rtx-3090" />
 
-모든 모델이 넘치지는 않습니다. 32k 합계로 Gemma 3 27B는 <Num kind="needGB" model="gemma-3-27b" ctx="32768" />, Qwen3 30B-A3B (2507)은 <Num kind="needGB" model="qwen3-30b-a3b-2507" ctx="32768" />, 크기가 Qwen3 32B와 비슷한 한국 모델 EXAONE 4.0 32B는 슬라이딩 윈도 설계 덕분에 <Num kind="needGB" model="exaone-4.0-32b" ctx="32768" />로, 셋 다 RTX 3090의 사용 가능 메모리보다 작습니다. 8k 기준 판정도 모두 쾌적입니다<Expect model="gemma-3-27b" gpu="rtx-3090" verdict="S" /><Expect model="qwen3-30b-a3b-2507" gpu="rtx-3090" verdict="S" /><Expect model="exaone-4.0-32b" gpu="rtx-3090" verdict="S" />. 그래서 <ComboLink model="qwen3-30b-a3b-2507" gpu="rtx-3090" />처럼 Ollama 기본값 32k를 그대로 둬도 GPU 안에 머무는 조합이 있습니다.
+모든 모델이 넘치지는 않습니다. 32k에서 필요한 메모리 합계는 Gemma 3 27B가 <Num kind="needGB" model="gemma-3-27b" ctx="32768" />, Qwen3 30B-A3B (2507)이 <Num kind="needGB" model="qwen3-30b-a3b-2507" ctx="32768" />입니다. 한국 모델 EXAONE 4.0 32B는 크기가 Qwen3 32B와 비슷하지만, 슬라이딩 윈도 설계 덕분에 <Num kind="needGB" model="exaone-4.0-32b" ctx="32768" />에 그칩니다. 셋 다 RTX 3090의 사용 가능 메모리보다 작고, 8k에서는 모두 쾌적하게 돌아갑니다<Expect model="gemma-3-27b" gpu="rtx-3090" verdict="S" /><Expect model="qwen3-30b-a3b-2507" gpu="rtx-3090" verdict="S" /><Expect model="exaone-4.0-32b" gpu="rtx-3090" verdict="S" />. 그래서 <ComboLink model="qwen3-30b-a3b-2507" gpu="rtx-3090" />처럼 Ollama 기본값 32k를 그대로 둬도 GPU 메모리 안에 다 들어가는 조합이 있습니다.
 
-같은 32k 구간의 <HubLink gpu="rtx-5090" />은 사용 가능 메모리가 <Num kind="usableGB" gpu="rtx-5090" />라 Qwen3 32B를 f16 KV 32k에서도 GPU에 모두 올리고, 이 조합의 8k 기준 판정도 쾌적입니다<Expect model="qwen3-32b" gpu="rtx-5090" verdict="S" />. 24GB인 <HubLink gpu="rtx-4090" />도 RTX 3090과 같은 경우입니다.
+기본값이 똑같이 32k인 <HubLink gpu="rtx-5090" />은 사용 가능 메모리가 <Num kind="usableGB" gpu="rtx-5090" />입니다. CanRun 계산으로는 Qwen3 32B를 f16 KV 캐시로 32k까지 늘려도 GPU에 모두 올라가고, 8k에서는 쾌적하게 돌아갑니다<Expect model="qwen3-32b" gpu="rtx-5090" verdict="S" />. 24GB인 <HubLink gpu="rtx-4090" />은 RTX 3090과 사정이 같습니다.
 
 ### 해결 1: 그 모델만 컨텍스트 줄이기
 
-16k로 줄이면 <Num kind="needGB" model="qwen3-32b" ctx="16384" />로 아직 조금 넘고, 8k면 들어갑니다. 요청이나 Modelfile의 `num_ctx`로 그 모델만 짧게 쓸 수 있습니다. 설정 방법은 아래 절에 있습니다.
+RTX 3090에서 Qwen3 32B를 16k로 줄여도 <Num kind="needGB" model="qwen3-32b" ctx="16384" />가 필요해 여전히 사용 가능 메모리를 넘습니다. 8k로 줄이면 들어갑니다. 요청이나 Modelfile에서 `num_ctx`를 지정하면 그 모델만 컨텍스트를 짧게 쓸 수 있습니다. 설정 방법은 아래 ‘Ollama 컨텍스트 늘리는 방법’에 있습니다.
 
 ### 해결 2: KV 캐시 양자화
 
-<RuntimeFact id="ollama-kv-cache-type" />. 32k에서 q8_0이면 <Num kind="needGB" model="qwen3-32b" ctx="32768" kv="q8_0" />로 여전히 넘고, q4_0이면 <Num kind="needGB" model="qwen3-32b" ctx="32768" kv="q4_0" />로 근소하게 그 아래라 표에서도 풀 GPU로 계산됩니다. 대가는 정밀도입니다. Ollama FAQ에 따르면 q8_0은 손실이 아주 작고, q4_0은 손실이 작거나 중간 정도이며 컨텍스트가 길수록 더 두드러질 수 있습니다. 영향은 모델과 작업마다 다릅니다. 우리 표는 블록 스케일을 포함해 q8_0·q4_0 KV 캐시를 f16의 약 54%·29% 크기로 계산합니다.
+<RuntimeFact id="ollama-kv-cache-type" />. Qwen3 32B는 32k에서 q8_0 KV 캐시를 써도 <Num kind="needGB" model="qwen3-32b" ctx="32768" kv="q8_0" />가 필요해 여전히 넘칩니다. q4_0이면 <Num kind="needGB" model="qwen3-32b" ctx="32768" kv="q4_0" />로 사용 가능 메모리에 아슬아슬하게 들어가서, 표에서도 풀 GPU로 나옵니다. 실제로 GPU에 다 올라갔는지는 `ollama ps`로 확인합니다. 대신 정밀도가 낮아집니다. Ollama FAQ에 따르면 q8_0은 정밀도 손실이 아주 작습니다. q4_0은 손실이 작거나 중간 정도이고, 컨텍스트가 길수록 더 두드러질 수 있습니다. 영향은 모델과 작업에 따라 다릅니다. 이 글의 표는 양자화 블록마다 붙는 스케일 값까지 포함해, q8_0·q4_0 KV 캐시를 f16의 약 54%·29% 크기로 계산합니다.
 
-VRAM 안에서도 컨텍스트가 길수록 추정 속도는 표의 행을 따라 조금씩 내려갑니다. 새 토큰마다 KV 캐시 전체를 읽기 때문입니다(각 행은 컨텍스트가 그 길이까지 찼다고 가정). 큰 폭의 하락은 메모리가 넘쳐 시스템 RAM을 쓸 때 옵니다.
+VRAM 안에 다 들어가더라도 컨텍스트가 길어지면 예상 속도는 조금씩 떨어집니다. 새 토큰을 만들 때마다 KV 캐시 전체를 읽기 때문입니다. 표의 각 행은 컨텍스트가 그 길이까지 찼다고 가정한 값입니다. 속도가 크게 떨어지는 것은 메모리가 넘쳐 시스템 RAM을 쓸 때입니다.
 
 ## Ollama 컨텍스트 늘리는 방법
 
 Ollama 문서에 나온 설정 방법은 다섯 가지입니다.
 
-- **Ollama 앱**: 설정(Settings)의 컨텍스트 길이 슬라이더를 옮깁니다.
-- **서버 전체 기본값**: 환경 변수 `OLLAMA_CONTEXT_LENGTH`를 씁니다. 예: `OLLAMA_CONTEXT_LENGTH=16384 ollama serve`(macOS·Linux 터미널 기준, Windows는 아래 절 참고)
+- **Ollama 앱**: 설정(Settings)에서 컨텍스트 길이 슬라이더를 옮깁니다.
+- **서버 전체 기본값**: 환경 변수 `OLLAMA_CONTEXT_LENGTH`로 정합니다. macOS·Linux 터미널에서는 `OLLAMA_CONTEXT_LENGTH=16384 ollama serve`처럼 실행합니다. Windows 설정 방법은 아래 절에 있습니다.
 - **`ollama run` 대화 중**: `/set parameter num_ctx 16384`를 입력합니다.
-- **API 요청마다**: 요청 본문 `options`에 `num_ctx`를 넣습니다(아래 `/api/chat` 예시).
+- **API 요청마다**: 요청 본문의 `options`에 `num_ctx`를 넣습니다. 아래는 `/api/chat` 요청 예시입니다.
 - **모델마다**: Modelfile에 `PARAMETER num_ctx 16384`를 적고 `ollama create`로 모델을 새로 만듭니다.
 
 ```json
@@ -72,43 +72,43 @@ Ollama 문서에 나온 설정 방법은 다섯 가지입니다.
 }
 ```
 
-`OLLAMA_CONTEXT_LENGTH`는 자동으로 고르는 기본값만 바꿉니다. Modelfile이나 요청에 `num_ctx`가 있으면 그쪽이 우선합니다(환경 변수 도움말, `server/routes.go`의 옵션 적용 순서). 환경 변수를 바꿨는데 `ollama ps`의 CONTEXT가 그대로라면, 먼저 Ollama를 완전히 종료했다가 다시 실행했는지 확인하고, 그다음 Modelfile이나 요청을 보내는 프로그램이 `num_ctx`를 따로 지정하는지 봅니다.
+`OLLAMA_CONTEXT_LENGTH`는 Ollama가 자동으로 고르는 기본값만 바꿉니다. Modelfile이나 요청에 `num_ctx`가 있으면 그 값이 우선합니다. 이 순서는 환경 변수 도움말과 `server/routes.go`의 옵션 적용 순서에서 확인할 수 있습니다. 환경 변수를 바꿨는데도 `ollama ps`의 CONTEXT가 그대로라면 두 가지를 확인합니다. 먼저 Ollama를 완전히 종료했다가 다시 실행했는지 봅니다. 그다음 Modelfile이나 요청을 보내는 프로그램이 `num_ctx`를 따로 지정하는지 봅니다.
 
 ### Windows에서 환경 변수 설정하기
 
-1. 알림 영역(트레이)의 Ollama 아이콘에서 앱을 종료합니다.
-2. 설정 앱이나 시작 메뉴에서 ‘환경 변수’를 검색해 ‘계정의 환경 변수 편집’을 엽니다. 사용자 변수 아래 ‘새로 만들기’를 눌러 변수 이름에 `OLLAMA_CONTEXT_LENGTH`, 변수 값에 `16384`처럼 원하는 길이를 넣고 ‘확인’을 누릅니다.
+1. 작업 표시줄 알림 영역에 있는 Ollama 아이콘에서 앱을 종료합니다.
+2. 설정 앱이나 시작 메뉴에서 ‘환경 변수’를 검색해 ‘계정의 환경 변수 편집’을 엽니다. 사용자 변수 아래의 ‘새로 만들기’를 누릅니다. 변수 이름에는 `OLLAMA_CONTEXT_LENGTH`, 변수 값에는 `16384`처럼 원하는 길이를 넣고 ‘확인’을 누릅니다.
 3. 시작 메뉴에서 Ollama를 다시 실행합니다.
 
-잠깐 시험만 하려면 앱을 끈 뒤 PowerShell에서 `$env:OLLAMA_CONTEXT_LENGTH="16384"; ollama serve`를 실행합니다. 그 PowerShell 창에서 띄운 서버에만 적용되며, 조합 페이지가 보여 주는 명령도 이 형태입니다. macOS 앱은 `launchctl setenv OLLAMA_CONTEXT_LENGTH 16384`를 실행하고 앱을 다시 시작합니다. Linux systemd는 `systemctl edit ollama.service`로 `[Service]` 아래에 `Environment="OLLAMA_CONTEXT_LENGTH=16384"`를 넣은 뒤 `systemctl daemon-reload`, `systemctl restart ollama`를 실행합니다.
+잠깐 시험만 해 보려면 앱을 끈 뒤 PowerShell에서 `$env:OLLAMA_CONTEXT_LENGTH="16384"; ollama serve`를 실행합니다. 이 설정은 그 PowerShell 창에서 띄운 서버에만 적용됩니다. CanRun 조합 페이지에 나오는 명령도 이 형태입니다. macOS 앱에서는 `launchctl setenv OLLAMA_CONTEXT_LENGTH 16384`를 실행한 뒤 앱을 다시 시작합니다. Linux에서 systemd로 돌린다면 `systemctl edit ollama.service`로 `[Service]` 아래에 `Environment="OLLAMA_CONTEXT_LENGTH=16384"`를 넣습니다. 그다음 `systemctl daemon-reload`와 `systemctl restart ollama`를 실행합니다.
 
 ### 얼마로 잡을까
 
-필요 메모리 합계가 사용 가능 메모리보다 작은 범위에서 가장 긴 컨텍스트가 기준입니다(위 표들 참고). Ollama 문서는 에이전트·웹 검색·코딩 도구에 64k 이상을 권하는데, Llama 3.1 8B는 f16 KV 64k에서 <Num kind="needGB" model="llama-3.1-8b" ctx="65536" />를 씁니다.
+필요 메모리 합계가 사용 가능 메모리보다 작은 범위에서 가장 긴 컨텍스트를 고르면 됩니다. 길이별 필요량은 위 표들에서 볼 수 있습니다. Ollama 문서는 에이전트, 웹 검색, 코딩 도구에는 64k 이상을 권합니다. Llama 3.1 8B만 해도 f16 KV 캐시로 64k를 쓰면 <Num kind="needGB" model="llama-3.1-8b" ctx="65536" />가 필요합니다.
 
-16GB 카드도 기본값은 4k라 직접 늘려야 합니다. <ComboLink model="qwen3-14b" gpu="rtx-5060-ti-16gb" />는 f16 KV 32k에 <Num kind="needGB" model="qwen3-14b" ctx="32768" />가 필요해 사용 가능 메모리 <Num kind="usableGB" gpu="rtx-5060-ti-16gb" />에 아슬아슬하게 들어가고, 8k 기준 판정은 쾌적입니다<Expect model="qwen3-14b" gpu="rtx-5060-ti-16gb" verdict="S" />.
+16GB 카드도 기본값은 4k라서 직접 늘려야 합니다. <ComboLink model="qwen3-14b" gpu="rtx-5060-ti-16gb" />를 돌릴 때 f16 KV 캐시로 32k를 쓰면 <Num kind="needGB" model="qwen3-14b" ctx="32768" />가 필요합니다. 사용 가능 메모리 <Num kind="usableGB" gpu="rtx-5060-ti-16gb" />에 아슬아슬하게 들어가므로 `ollama ps`로 확인합니다. 8k에서는 쾌적하게 돌아갑니다<Expect model="qwen3-14b" gpu="rtx-5060-ti-16gb" verdict="S" />.
 
-모델의 최대 길이를 넘겨 잡아도 소용없습니다. Qwen3 32B는 최대 <Num kind="maxContext" model="qwen3-32b" />이고 그 이상은 YaRN이 필요한데(모델 카드), YaRN 설정은 이 글의 범위 밖입니다. 한국 모델 Kanana 1.5 8B도 최대 <Num kind="maxContext" model="kanana-1.5-8b" />입니다.
+모델이 지원하는 최대 길이보다 길게 잡아도 소용없습니다. Qwen3 32B의 최대 길이는 <Num kind="maxContext" model="qwen3-32b" />이고, 모델 카드에 따르면 그보다 길게 쓰려면 YaRN이 필요합니다. YaRN 설정은 이 글에서 다루지 않습니다. 한국 모델 Kanana 1.5 8B도 최대 길이가 <Num kind="maxContext" model="kanana-1.5-8b" />입니다.
 
-동시 요청도 따져야 합니다. Ollama FAQ에 따르면 필요 메모리는 `OLLAMA_NUM_PARALLEL` × `OLLAMA_CONTEXT_LENGTH`에 비례해 늘고, 우리 표는 요청 슬롯 하나를 가정합니다. 조합 페이지의 Ollama 명령은 고른 컨텍스트에 맞춰 `OLLAMA_CONTEXT_LENGTH`를 넣고, q8_0·q4_0 칸이면 `OLLAMA_FLASH_ATTENTION=1`과 `OLLAMA_KV_CACHE_TYPE`도 붙입니다(예: <ComboLink model="llama-3.1-8b" gpu="rtx-4060" /> 조합).
+동시 요청 수도 따져 봐야 합니다. Ollama FAQ에 따르면 필요 메모리는 `OLLAMA_NUM_PARALLEL` × `OLLAMA_CONTEXT_LENGTH`에 비례해 늘어납니다. 이 글의 표는 요청을 한 번에 하나만 처리한다고 가정합니다. CanRun 조합 페이지의 Ollama 명령에는 고른 컨텍스트에 맞춘 `OLLAMA_CONTEXT_LENGTH`가 들어갑니다. q8_0·q4_0 칸을 고르면 `OLLAMA_FLASH_ATTENTION=1`과 `OLLAMA_KV_CACHE_TYPE`도 붙습니다. <ComboLink model="llama-3.1-8b" gpu="rtx-4060" />를 돌리는 조합 페이지에서 이런 명령을 볼 수 있습니다.
 
 더 읽을거리:
 
 - KV 캐시가 왜 이만큼 늘어나는지: <GuideLink slug="kv-cache-context" />
 - 카드별로 어떤 모델이 들어가는지: <GuideLink slug="vram-requirements" />
-- 더 작은 양자화로 컨텍스트 자리를 만드는 법: <GuideLink slug="gguf-quantization" />
+- 더 작은 양자화로 컨텍스트에 쓸 메모리를 확보하는 법: <GuideLink slug="gguf-quantization" />
 
 ## 이 숫자는 얼마나 확실한가
 
-메모리 수치(파일 + KV 캐시 + 연산 버퍼)는 실제 GGUF 파일 크기와 모델 config에서 공식으로 계산한 값이라 오차 범위를 붙이지 않고, 속도는 오차 범위와 신뢰 라벨을 붙인 추정치입니다. 보정된 추정은 NVIDIA·AMD 그래픽카드에서 dense 모델을 GPU에만 올릴 때 ±12%, 부분 오프로드·MoE·그 밖의 하드웨어에서 ±20%이고, 이론 추정은 ±30%입니다. 이 글의 두 컨텍스트 표는 NVIDIA 카드의 dense 모델이라 모두 보정된 추정이며, RTX 4060에서 Llama 3.1 8B의 8k·f16 칸만 실측입니다.
+메모리 수치는 파일, KV 캐시, 연산 버퍼를 더한 값입니다. 실제 GGUF 파일 크기와 모델 config로 공식에 따라 계산한 값이라 오차 범위를 붙이지 않습니다. 속도는 추정치라서 오차 범위와 신뢰 라벨을 함께 붙입니다. 보정된 추정의 오차 범위는 NVIDIA·AMD 그래픽카드에서 dense 모델을 GPU에만 올릴 때 ±12%입니다. 부분 오프로드, MoE 모델, 그 밖의 하드웨어에서는 ±20%이고, 이론 추정은 ±30%입니다. 이 글의 두 컨텍스트 표는 NVIDIA 카드에서 dense 모델을 돌리는 경우라 보정된 추정입니다. 다만 RTX 4060에서 Llama 3.1 8B의 8k·f16 칸은 실측값입니다.
 
 <Measured model="llama-3.1-8b" gpu="rtx-4060" />
 
-이 실측은 LocalScore가 4k 컨텍스트에서 잰 공개 측정 한 건으로, Ollama로 잰 값이 아닙니다. 우리 8k 추정 범위와 나란히 보여 줍니다. 이 카드에서 다른 모델의 결과는 <HubLink gpu="rtx-4060" /> 페이지에 모아 두었습니다.
+이 실측은 LocalScore가 4k 컨텍스트에서 잰 공개 측정 한 건이고, Ollama로 잰 값은 아닙니다. 여기서는 CanRun의 8k 추정 범위와 나란히 보여 줍니다. 이 카드에서 다른 모델을 돌린 결과는 <HubLink gpu="rtx-4060" /> 페이지에 모아 두었습니다.
 
-Ollama는 자체 메모리 추정으로 GPU/CPU 분할을 정하므로 `ollama ps`의 SIZE나 분할이 우리 수치와 정확히 같지는 않습니다. 내 PC에서의 기준은 `ollama ps`의 PROCESSOR와 CONTEXT 열입니다.
+Ollama는 자체 메모리 추정으로 GPU와 CPU에 얼마씩 올릴지 정합니다. 그래서 `ollama ps`에 나오는 SIZE나 분할 비율이 CanRun 수치와 정확히 같지는 않습니다. 내 PC에서 실제로 어떻게 돌아가는지는 `ollama ps`의 PROCESSOR와 CONTEXT 열을 기준으로 봅니다.
 
-표는 Windows에서 그 카드로 화면을 출력하고(OS가 VRAM 일부를 예약), 시스템 RAM 32GB(DDR5)에 모델 하나, 요청 슬롯 하나(Ollama FAQ상 `OLLAMA_NUM_PARALLEL` 기본값 `1`)를 쓰며, KV 캐시 양자화에 필요한 플래시 어텐션을 쓸 수 있다고 가정합니다. 문장 속 판정은 모두 8k 컨텍스트·f16 KV 기준이고, 컨텍스트별 결과는 표에서 읽습니다.
+표는 다음 조건을 가정합니다. Windows에서 그 카드로 화면을 출력해 OS가 VRAM 일부를 예약하고, 시스템 RAM은 32GB(DDR5)입니다. 모델은 하나만 올리고, 요청은 한 번에 하나만 처리합니다. Ollama FAQ에 나온 `OLLAMA_NUM_PARALLEL` 기본값 `1`과 같은 조건입니다. KV 캐시 양자화에 필요한 플래시 어텐션도 쓸 수 있다고 봅니다. 본문에서 말하는 판정은 모두 8k 컨텍스트, f16 KV 캐시 기준입니다. 다른 컨텍스트 길이의 결과는 표에서 확인합니다.
 
 <Threshold />
 
@@ -116,33 +116,33 @@ Ollama는 자체 메모리 추정으로 GPU/CPU 분할을 정하므로 `ollama p
 
 ### Ollama가 긴 대화에서 앞 내용을 잊는 이유는 무엇인가요?
 
-컨텍스트가 가득 찼기 때문입니다. <RuntimeFact id="ollama-default-ctx" />. 컨텍스트가 차면 Ollama는 기본으로 가장 오래된 메시지부터 버리고(시스템 프롬프트와 마지막 메시지는 유지) 오류도 띄우지 않습니다(Ollama 소스 `server/prompt.go`). 메모리가 허락하는 만큼 `OLLAMA_CONTEXT_LENGTH`, 앱 슬라이더, `num_ctx`로 늘리고 `ollama ps`의 CONTEXT 열로 확인합니다.
+컨텍스트가 가득 찼기 때문입니다. <RuntimeFact id="ollama-default-ctx" />. 컨텍스트가 차면 Ollama는 기본 설정에서 가장 오래된 메시지부터 버립니다. 시스템 프롬프트와 마지막 메시지는 남기고, 오류도 띄우지 않습니다(Ollama 소스 `server/prompt.go`). 메모리가 허락하는 만큼 `OLLAMA_CONTEXT_LENGTH`나 앱 슬라이더, `num_ctx`로 컨텍스트를 늘리고, `ollama ps`의 CONTEXT 열로 확인합니다.
 
 ### 컨텍스트를 늘리면 Ollama가 느려지나요?
 
-크게 느려지는 것은 늘어난 KV 캐시가 VRAM을 넘어 Ollama가 모델 일부를 시스템 RAM에 둘 때이고, 이때 `ollama ps`에 `100% GPU` 대신 CPU/GPU 비율이 나옵니다. 예를 들어 Qwen3 32B Q4_K_M은 f16 KV 32k에서 <Num kind="needGB" model="qwen3-32b" ctx="32768" />가 필요한데, 32k가 이미 기본값인 24GB 카드의 사용 가능 메모리는 <Num kind="usableGB" gpu="rtx-3090" />입니다. GPU 안에 머무는 동안에는 추정 속도가 조금씩만 내려갑니다(위 표의 행 참고).
+VRAM 안에 들어가는 동안에는 예상 속도가 조금씩만 내려가고, VRAM을 넘으면 크게 느려집니다. 늘어난 KV 캐시가 VRAM을 넘으면 Ollama가 모델 일부를 시스템 RAM에 두기 때문입니다. 이때 `ollama ps`에는 `100% GPU` 대신 CPU/GPU 비율이 나옵니다. 예를 들어 Qwen3 32B Q4_K_M은 f16 KV 캐시로 32k를 쓰면 <Num kind="needGB" model="qwen3-32b" ctx="32768" />가 필요합니다. 그런데 32k가 기본값인 24GB 카드의 사용 가능 메모리는 <Num kind="usableGB" gpu="rtx-3090" />입니다. 컨텍스트 길이별 예상 속도는 위 표에서 볼 수 있습니다.
 
 ### 32k 컨텍스트에는 메모리가 얼마나 더 드나요?
 
-모델이 토큰마다 저장하는 KV 캐시 크기에 달렸습니다. f16 KV 32k에서 Llama 3.1 8B는 <Num kind="kvGB" model="llama-3.1-8b" ctx="32768" />, Qwen3 32B는 <Num kind="kvGB" model="qwen3-32b" ctx="32768" />를 더 쓰지만, 슬라이딩 윈도 층이 있는 gpt-oss-20b는 <Num kind="kvGB" model="gpt-oss-20b" ctx="32768" />뿐입니다. 전체 필요량(파일 + KV 캐시 + 연산 버퍼)은 위 32k 메모리 표에서 사용 가능 메모리와 비교합니다.
+모델이 토큰 하나마다 저장하는 KV 캐시 크기에 달려 있습니다. f16 KV 캐시로 32k를 쓰면 Llama 3.1 8B는 <Num kind="kvGB" model="llama-3.1-8b" ctx="32768" />, Qwen3 32B는 <Num kind="kvGB" model="qwen3-32b" ctx="32768" />를 더 씁니다. 슬라이딩 윈도 층이 있는 gpt-oss-20b는 <Num kind="kvGB" model="gpt-oss-20b" ctx="32768" />에 그칩니다. 파일, KV 캐시, 연산 버퍼를 더한 전체 필요량은 위의 32k 메모리 표에서 사용 가능 메모리와 비교해 보면 됩니다.
 
 ### Ollama에서 q8_0이나 q4_0 KV 캐시를 켜야 하나요?
 
-`OLLAMA_KV_CACHE_TYPE`은 서버 전체에 거는 설정이라 모든 모델에 적용되고, 플래시 어텐션이 켜져 있어야 합니다. Ollama FAQ에 따르면 q8_0은 KV 캐시를 대략 절반으로 줄이면서 정밀도 손실이 아주 작고, q4_0은 더 줄이는 대신 손실이 작거나 중간 정도이며 컨텍스트가 길수록 더 두드러질 수 있습니다(우리 표에서는 f16의 약 54%·29%). 들어가느냐 넘치느냐를 가르기도 합니다. Qwen3 32B는 32k·q4_0에서 <Num kind="needGB" model="qwen3-32b" ctx="32768" kv="q4_0" />로, RTX 3090의 사용 가능 메모리 바로 아래입니다.
+원하는 컨텍스트가 VRAM에 들어가지 않을 때 켜 볼 만합니다. 다만 `OLLAMA_KV_CACHE_TYPE`은 서버 전체에 거는 설정이라 모든 모델에 적용되고, 플래시 어텐션이 켜져 있어야 합니다. Ollama FAQ에 따르면 q8_0은 KV 캐시를 대략 절반으로 줄이면서 정밀도 손실이 아주 작습니다. q4_0은 더 많이 줄이는 대신 손실이 작거나 중간 정도이고, 컨텍스트가 길수록 더 두드러질 수 있습니다. 이 글의 표는 q8_0·q4_0을 f16의 약 54%·29% 크기로 계산합니다. KV 캐시 종류에 따라 VRAM에 들어가느냐 넘치느냐가 갈리기도 합니다. Qwen3 32B는 32k·q4_0에서 <Num kind="needGB" model="qwen3-32b" ctx="32768" kv="q4_0" />가 필요해, RTX 3090의 사용 가능 메모리에 아슬아슬하게 들어갑니다.
 
 ### 다른 글에는 Ollama 기본값이 `2048`이나 `4096`이라고 나오던데요?
 
-예전 버전의 Ollama와 일부 참조 문서가 한 가지 값을 적어 두었기 때문입니다(Modelfile 파라미터 표의 `2048`, FAQ의 `4096`). 현재 컨텍스트 길이 문서의 설명은 다음과 같습니다. <RuntimeFact id="ollama-default-ctx" />. 내 PC에 실제로 잡힌 값은 `ollama ps`로 확인합니다.
+예전 버전의 Ollama는 기본값이 한 가지로 정해져 있었고, 일부 참조 문서에 아직 그 값이 적혀 있기 때문입니다. Modelfile 파라미터 표에는 `2048`, FAQ에는 `4096`이 나옵니다. 현재 컨텍스트 길이 문서의 설명은 이렇습니다. <RuntimeFact id="ollama-default-ctx" />. 내 PC에 실제로 잡힌 값은 `ollama ps`로 확인합니다.
 
 ## 출처
 
-- [Ollama 문서: 컨텍스트 길이](https://docs.ollama.com/context-length) — VRAM 구간별 기본값, 앱 슬라이더, `OLLAMA_CONTEXT_LENGTH`, 64k 이상 권장 용도, `ollama ps` 열, CPU 오프로드 회피 권고
-- [Ollama FAQ](https://docs.ollama.com/faq) — `num_ctx`, OS별 환경 변수, `ollama ps`, 플래시 어텐션, `OLLAMA_KV_CACHE_TYPE`, `OLLAMA_NUM_PARALLEL`
-- [Ollama 문서: Modelfile](https://docs.ollama.com/modelfile) — `PARAMETER num_ctx`, `ollama create`(표의 기본값은 예전 값)
-- [Ollama 소스: server/prompt.go](https://github.com/ollama/ollama/blob/main/server/prompt.go) — 오래된 메시지부터 버리는 chatPrompt, 잘라 낸 개수를 남기는 디버그 로그
-- [Ollama 소스: server/routes.go](https://github.com/ollama/ollama/blob/main/server/routes.go) — truncate·shift 기본값, VRAM 구간별 기본값, 옵션 적용 순서
-- [Ollama 소스: api/types.go](https://github.com/ollama/ollama/blob/main/api/types.go) — 요청 필드 Truncate·Shift
-- [Ollama 소스: envconfig/config.go](https://github.com/ollama/ollama/blob/main/envconfig/config.go) — `OLLAMA_CONTEXT_LENGTH` 설명
-- [Qwen3-14B 모델 카드](https://huggingface.co/Qwen/Qwen3-14B) — 네이티브 32k(YaRN 적용 시 128k), 권장 출력 길이
-- [Qwen3-32B 모델 카드](https://huggingface.co/Qwen/Qwen3-32B) — 네이티브 32k, 층 수·KV 헤드 수
-- [EXAONE 4.0 32B 모델 카드](https://huggingface.co/LGAI-EXAONE/EXAONE-4.0-32B) — 로컬·글로벌 어텐션 3:1 혼합, 최대 128k
+- [Ollama 문서: 컨텍스트 길이](https://docs.ollama.com/context-length): VRAM 구간별 기본값, 앱 슬라이더, `OLLAMA_CONTEXT_LENGTH`, 64k 이상을 권하는 용도, `ollama ps` 열, CPU로 넘기지 말라는 권고
+- [Ollama FAQ](https://docs.ollama.com/faq): `num_ctx`, OS별 환경 변수, `ollama ps`, 플래시 어텐션, `OLLAMA_KV_CACHE_TYPE`, `OLLAMA_NUM_PARALLEL`
+- [Ollama 문서: Modelfile](https://docs.ollama.com/modelfile): `PARAMETER num_ctx`, `ollama create`. 표에 적힌 기본값은 예전 값
+- [Ollama 소스: server/prompt.go](https://github.com/ollama/ollama/blob/main/server/prompt.go): 오래된 메시지부터 버리는 chatPrompt, 잘라 낸 개수를 남기는 디버그 로그
+- [Ollama 소스: server/routes.go](https://github.com/ollama/ollama/blob/main/server/routes.go): truncate·shift 기본값, VRAM 구간별 기본값, 옵션 적용 순서
+- [Ollama 소스: api/types.go](https://github.com/ollama/ollama/blob/main/api/types.go): 요청 필드 Truncate·Shift
+- [Ollama 소스: envconfig/config.go](https://github.com/ollama/ollama/blob/main/envconfig/config.go): `OLLAMA_CONTEXT_LENGTH` 설명
+- [Qwen3-14B 모델 카드](https://huggingface.co/Qwen/Qwen3-14B): 기본 지원 길이 32k, YaRN 적용 시 128k, 권장 출력 길이
+- [Qwen3-32B 모델 카드](https://huggingface.co/Qwen/Qwen3-32B): 기본 지원 길이 32k, 층 수, KV 헤드 수
+- [EXAONE 4.0 32B 모델 카드](https://huggingface.co/LGAI-EXAONE/EXAONE-4.0-32B): 로컬·글로벌 어텐션 3:1 혼합, 최대 128k

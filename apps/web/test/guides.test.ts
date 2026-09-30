@@ -79,6 +79,8 @@ const PROSE_BANS: ReadonlyArray<[RegExp, string]> = [
   [/\$\s?\d|₩\s?\d|\d[\d,]*\s?원(?![가-힣])/, 'price in prose (use <Price>)'],
   [/\b(?:guaranteed|definitely|will run|runs perfectly|no problem|best GPU|fastest|future-proof)\b/i, 'assertive wording'],
   [/무조건|확실히|완벽하게|문제없이|최고의|끝판왕|사세요/, 'assertive wording (ko)'],
+  [/(?:쾌적|원활|겨우 가능|불가)(?:입니다|이고|이며|이라|이지만)|(?:쾌적|원활|겨우 가능|불가) 판정을|판정(?:은|이) (?:쾌적|원활|겨우 가능|불가)/, 'verdict name used as a predicate (ko) — write "쾌적하게 돌아갑니다" (AUTHORING §1)'],
+  [/[가-힣)] — [가-힣<(]/, 'em dash joining a ko sentence — split the sentence or use a comma (AUTHORING §1)'],
 ];
 
 describe('MDX toolchain pin (D38)', () => {
