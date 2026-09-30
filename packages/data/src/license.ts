@@ -13,6 +13,7 @@ const LICENSE_CLASS: Readonly<Record<string, Exclude<LicenseClass, 'unknown'>>> 
   'Apache-2.0': 'permissive',
   MIT: 'permissive',
   'Llama 3.1': 'custom',
+  'Llama 3.2': 'custom',
   'Llama 3.3': 'custom',
   Gemma: 'custom',
   'Kanana License': 'custom',

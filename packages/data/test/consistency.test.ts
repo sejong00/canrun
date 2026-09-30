@@ -35,8 +35,8 @@ describe('seed scale (docs/06 P0-3)', () => {
     expect(unified.length).toBeGreaterThanOrEqual(10);
   });
 
-  it('has the 29 models (first-wave 20 + 한국 모델 9, P0-4b)', () => {
-    expect(seed.models.length).toBe(29);
+  it('has the 37 models (first-wave 20 + 한국 모델 9, P0-4b + 카탈로그 확장 1차 8, 09-30)', () => {
+    expect(seed.models.length).toBe(37);
     expect(seed.models.filter((m) => m.korean).length).toBe(9);
   });
 

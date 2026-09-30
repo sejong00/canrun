@@ -321,7 +321,8 @@ describe('summaries', () => {
     expect(hub.rows).toHaveLength(seed.models.length);
     const c = hub.counts[0]!;
     expect(c.S + c.A + c.B + c.F).toBe(seed.models.length);
-    expect(c).toMatchObject({ S: 7, A: 1, B: 13, F: 8, otherQuant: 3 });
+    // 09-30 카탈로그 확장 1차: 소형 4종(Llama 3.2·MiniCPM5) S, qwen3.6-35b-a3b A(형제 qwen3.5 와 동일), 30B급 dense 3종 B(부분 오프로드)
+    expect(c).toMatchObject({ S: 11, A: 2, B: 16, F: 8, otherQuant: 3 });
     expect(hub.faq.largestFullGpu?.combo.modelId).toBe('qwen3.5-9b');
     expect(hub.faq.referenceLarge?.baseline.fReason).toBe('no-fit');
     expect(hub.benchmarks.every((bp) => bp.gpuId === 'rtx-4060')).toBe(true);
