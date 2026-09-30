@@ -140,7 +140,7 @@ export function ResultList({
           )}
           {results.all.some((c) => c.combo.reasoning) && <p className="text-xs text-muted-foreground">{t.common('reasoningNote')}</p>}
           <p className="text-sm text-muted-foreground">
-            <a href={issueUrl} rel="noopener">
+            <a href={issueUrl}>
               {t.calc('requestModel')}
             </a>
           </p>

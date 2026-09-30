@@ -60,8 +60,8 @@ const BOILERPLATE_MAX = 0.6;
 const FILE_COUNT_MAX = 16_000;
 /** D18 — CF Pages 단일 파일 25 MiB 한도 */
 const FILE_SIZE_MAX = 25 * 1024 * 1024;
-/** 루트 허용 비-HTML 파일 (P1-5 사이트맵·robots·ads·llms 대비) */
-const ROOT_FILE_ALLOWLIST = /^(?:_redirects|icon\.svg|robots\.txt|sitemap[^/]*\.xml|ads\.txt|llms\.txt)$/;
+/** 허용 비-HTML 파일 (P1-5 사이트맵·robots·RSS·기본 공유 카드, ads·llms 대비) */
+const ROOT_FILE_ALLOWLIST = /^(?:_redirects|icon\.svg|robots\.txt|sitemap[^/]*\.xml|ads\.txt|llms\.txt|rss\.xml|ko\/rss\.xml|og\/default-(?:en|ko)\.png)$/;
 const TXT_ALLOWLIST = new Set(['robots.txt', 'ads.txt', 'llms.txt']);
 const HEAVY_TIMEOUT = 60_000;
 
@@ -129,6 +129,8 @@ const isCalculator = (page: PageFacts) => page.kind === 'calculator';
 const isStructured = (page: PageFacts) => isHub(page) || page.kind === 'combo' || isCalculator(page);
 const isGuide = (page: PageFacts) => page.kind === 'guide';
 const isGuidesIndex = (page: PageFacts) => page.kind === 'guides-index';
+/** 소개·계산 방법·개인정보처리방침·문의 (P1-5) */
+const isStatic = (page: PageFacts) => page.kind === 'static';
 /** 가이드 URL → 슬러그 (레지스트리 밖이면 undefined) */
 const guideSlugOf = (urlPath: string): GuideSlug | undefined => {
   const slug = /\/guides\/([^/]+)$/.exec(urlPath)?.[1];
@@ -399,7 +401,7 @@ describe('internal linking (docs/04 §2 — 고아 페이지 0)', () => {
     // 가이드: published 만 링크 대상(초안은 URL 로만 — D40). 목차는 published ≥1 일 때만
     const linkedGuides = (p: PageFacts) =>
       (isGuide(p) && guidePublished(guideSlugOf(p.urlPath)!)) || (isGuidesIndex(p) && PUBLISHED_GUIDES.length > 0);
-    for (const page of pages.filter((p) => isHub(p) || isCalculator(p) || linkedGuides(p))) {
+    for (const page of pages.filter((p) => isHub(p) || isCalculator(p) || linkedGuides(p) || isStatic(p))) {
       expect(inbound.get(page.urlPath) ?? 0, `orphan ${page.kind} ${page.urlPath}`).toBeGreaterThan(0);
     }
   });
@@ -573,7 +575,7 @@ describe('combo linking rules (docs/04 §3 — 공개 페이지는 공개 콤보
     requireCombos();
     const publicPages = pages.filter(
       (p) =>
-        p.kind === 'home' || isCalculator(p) || isHub(p) || isGuide(p) || isGuidesIndex(p) || (p.kind === 'combo' && indexableOf(p)),
+        p.kind === 'home' || isCalculator(p) || isHub(p) || isGuide(p) || isGuidesIndex(p) || isStatic(p) || (p.kind === 'combo' && indexableOf(p)),
     );
     for (const page of publicPages) {
       for (const { href } of page.links) {
@@ -766,7 +768,7 @@ describe('islands SSR (P1-3 D28 · price sort)', () => {
     for (const page of pages.filter((p) => p.kind === 'model')) {
       expect(page.markers.sortControl, `${page.file} [data-sort-control]`).toBe(true);
     }
-    for (const page of pages.filter((p) => p.kind === 'gpu' || p.kind === 'home' || isGuide(p) || isGuidesIndex(p))) {
+    for (const page of pages.filter((p) => p.kind === 'gpu' || p.kind === 'home' || isGuide(p) || isGuidesIndex(p) || isStatic(p))) {
       expect(page.markers.sortControl || page.markers.ctxControls, `${page.file} has no island`).toBe(false);
     }
   });
@@ -836,5 +838,46 @@ describe('export file hygiene (결정 D18 — RSC 페이로드 프루닝 · CF P
       .map((f) => f.rel)
       .filter((rel) => !rel.endsWith('.html') && !rel.startsWith('_next/static/') && !ROOT_FILE_ALLOWLIST.test(rel));
     expect(stray.slice(0, 20), `${stray.length} unexpected non-HTML file(s)`).toEqual([]);
+  });
+});
+
+describe('sitemaps · robots.txt · RSS (P1-5)', () => {
+  const read = (rel: string) => readFileSync(join(outDir, rel), 'utf8');
+  const locsOf = (xml: string) => [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]!.replace(/&amp;/g, '&'));
+  const origin = () => new URL(pages.find((p) => p.urlPath === '/')!.canonical!).origin;
+
+  it('the sitemap index lists existing sub-sitemaps whose URLs are exactly the canonicals of every indexable page', () => {
+    const subs = locsOf(read('sitemap.xml'));
+    expect(subs.length, 'sub-sitemaps').toBeGreaterThanOrEqual(4);
+    const seen: string[] = [];
+    for (const url of subs) {
+      expect(url.startsWith(`${origin()}/`), url).toBe(true);
+      const rel = url.slice(origin().length + 1);
+      expect(existsSync(join(outDir, rel)), rel).toBe(true);
+      seen.push(...locsOf(read(rel)));
+    }
+    expect(new Set(seen).size, 'duplicate <loc>').toBe(seen.length);
+    const expected = pages.filter((p) => !p.robotsNoindex).map((p) => p.canonical ?? `(no canonical) ${p.file}`);
+    // 빠짐·초과·noindex 포함 0 — 공개 콤보가 생기면(P1-6) combos-en/-ko 가 자동으로 여기 들어온다
+    expect([...seen].sort()).toEqual([...expected].sort());
+  });
+
+  it('robots.txt allows crawling (including /can-i-run/) and names the sitemap', () => {
+    const robots = read('robots.txt');
+    expect(robots).toMatch(/^User-agent: \*$/m);
+    expect(robots).not.toMatch(/^Disallow:\s*\/\S/m);
+    expect(robots).toContain(`Sitemap: ${origin()}/sitemap.xml`);
+  });
+
+  it('RSS per locale lists exactly the published guides, linking their canonical URLs', () => {
+    for (const [rel, locale] of [
+      ['rss.xml', 'en'],
+      ['ko/rss.xml', 'ko'],
+    ] as const) {
+      const xml = read(rel);
+      const links = [...xml.matchAll(/<item><title>[^<]*<\/title><link>([^<]+)<\/link>/g)].map((m) => m[1]!);
+      const expected = PUBLISHED_GUIDES.map((slug) => `${origin()}${localePath(locale, `/guides/${slug}`)}`);
+      expect([...links].sort(), rel).toEqual([...expected].sort());
+    }
   });
 });

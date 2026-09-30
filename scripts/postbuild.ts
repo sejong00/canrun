@@ -16,6 +16,7 @@
  *   2. `out/en/**` 를 `out/**` 루트로 평탄화 (en = 루트, docs/04 §2) — 같은 볼륨이라 최상위 항목별 renameSync,
  *      충돌은 즉시 실패
  *   3. `data/aliases.json` → `out/_redirects` 생성 (scripts/build-redirects.ts)
+ *   4. 사이트맵·robots.txt·RSS 생성 (scripts/build-sitemaps.ts — P1-5)
  *
  * 검증: test/export-invariants.spec.ts (pnpm test:export) — 허용목록 외 `.txt` 0건·`__next` 0·파일 수 한도,
  * 뒤로가기(history) 경로에서 실패 요청 0 은 e2e/smoke.spec.ts 가 본다.
@@ -25,6 +26,7 @@ import { existsSync, readdirSync, renameSync, rmdirSync, rmSync, writeFileSync }
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildRedirects, loadAliases } from './build-redirects';
+import { buildSitemaps } from './build-sitemaps';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const outDir = resolve(repoRoot, 'apps/web/out');
@@ -111,7 +113,10 @@ if (!existsSync(rootIndex)) {
 const redirects = buildRedirects(loadAliases(repoRoot));
 writeFileSync(join(outDir, '_redirects'), redirects, 'utf8');
 
+// --- 4. 사이트맵·robots·RSS (P1-5) -------------------------------------------
+const seoFiles = buildSitemaps(repoRoot, outDir);
+
 console.log(
   `[postbuild] pruned ${pruned.txtFiles} RSC .txt + ${pruned.nextDirs} __next.* dirs ` +
-    `(${pruned.emptyDirs} emptied dirs removed), flattened ${flattened} en entries to root, _redirects written`,
+    `(${pruned.emptyDirs} emptied dirs removed), flattened ${flattened} en entries to root, _redirects written, ${seoFiles.join(' ')}`,
 );

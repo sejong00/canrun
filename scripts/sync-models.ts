@@ -596,9 +596,20 @@ async function main(): Promise<void> {
     // 자가검증: 쓰기 전 zod 재파싱 — 스키마 위반 상태로 디스크에 남기지 않는다
     parseModels(rawModels);
     parseModelQuants(rawQuants);
-    writeFileSync(join(dataDir, 'models.json'), serializeRecords(rawModels));
-    writeFileSync(join(dataDir, 'model-quants.json'), serializeRecords(rawQuants));
+    const nextModels = serializeRecords(rawModels);
+    const nextQuants = serializeRecords(rawQuants);
+    const changed =
+      nextModels !== readFileSync(join(dataDir, 'models.json'), 'utf8') ||
+      nextQuants !== readFileSync(join(dataDir, 'model-quants.json'), 'utf8');
+    writeFileSync(join(dataDir, 'models.json'), nextModels);
+    writeFileSync(join(dataDir, 'model-quants.json'), nextQuants);
     console.log('data/models.json, data/model-quants.json updated');
+    // 데이터 기준일(P1-5) — 내용이 실제로 바뀐 날만 갱신. 스크립트는 빌드가 아니라 Date 사용 가능(D21 은 빌드 결정론)
+    if (changed) {
+      const today = new Date().toISOString().slice(0, 10);
+      writeFileSync(join(dataDir, 'meta.json'), `${JSON.stringify({ dataUpdated: today }, null, 2)}\n`);
+      console.log(`data/meta.json dataUpdated = ${today}`);
+    }
   } else {
     console.log('--dry: data/*.json untouched');
   }

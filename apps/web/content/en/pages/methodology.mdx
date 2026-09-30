@@ -1,0 +1,63 @@
+Every answer on CanRun comes from the same calculation, whether you see it on the calculator, a GPU page, a model page or a guide. This page explains how that calculation works, how well it has matched real benchmarks and where it can be wrong.
+
+## Verdicts
+
+Each model gets one of four verdicts. The baseline is the Q4_K_M quant, an 8k context and an f16 KV cache, the setup most people start with.
+
+<Threshold />
+
+For reasoning models, which write long chains of thought before answering, the speed thresholds are 1.5 times higher, because you wait for many more tokens per answer. When a model does not reach a good verdict at Q4_K_M, the pages also show what a smaller quant or more system RAM would change.
+
+## Memory
+
+The memory a model needs is the sum of three parts:
+
+- **The model file.** We use the real size of the GGUF file on Hugging Face for each quant, not an estimate from the parameter count.
+- **The KV cache**, which holds the conversation so far. It grows with the context length, and how fast it grows depends on the model's architecture: models with sliding-window layers need much less at long contexts. We calculate it from each model's published configuration.
+- **A compute buffer**, the working memory the runtime needs while it generates text.
+
+That total is compared with the memory the card can actually use, not the number on the box. A card that also drives your display keeps some memory back for the operating system, and a Mac shares its unified memory with macOS. When the model does not fit, we work out whether part of it can run from system RAM and how much that slows it down.
+
+## Speed
+
+Generating each token means reading the model's weights and the KV cache from memory, so memory bandwidth sets the pace. Our estimate starts from the card's bandwidth and the bytes read per token, then applies an efficiency factor for each class of hardware (NVIDIA, AMD, Intel and Apple GPUs, and CPUs). Those factors are calibrated against public benchmarks. When part of the model runs from system RAM, the slower RAM bandwidth is added for that part.
+
+## Confidence labels
+
+Every speed on CanRun is a range with a label:
+
+- **Measured**: a public benchmark of the same GPU, model and quant. We show where it came from and under what conditions.
+- **Calibrated**: our estimate, checked against benchmarks of similar setups. The range is ±12% for dense models running fully on an NVIDIA or AMD card, and ±20% for other hardware, mixture-of-experts (MoE) models and setups that spill into system RAM.
+- **Theoretical**: an estimate for a setup we have not been able to check against benchmarks yet, shown with a ±30% range.
+
+Prompt processing speed, the time before the first token, is shown as a rough ±40% range.
+
+## How accurate it has been
+
+We check the calculation against real data, and the check runs automatically every time the code or data changes:
+
+- **Model file sizes**: an average error of 0.7% and at most 1.6% across 11 real GGUF files.
+- **KV cache**: an exact match with the formula for all 7 architectures we checked.
+- **Speed**: an average error of 6.3% and at most 17.1% across 12 reference benchmarks. The largest misses were an Apple M4 Pro, about 17% too low, and an MoE model on an RTX 5060 Ti 16GB, about 15% too low.
+
+These figures date from August 9, 2026, and the automated check keeps them from getting worse.
+
+## Known limits
+
+- **MoE models with their experts in system RAM** likely run faster than we estimate. Community reports suggest our estimate for this setup can be well below real speeds, so these results are labeled theoretical until we can calibrate them.
+- **Very fast small MoE models on top-end cards** are limited by overhead rather than bandwidth, so we cap their estimates.
+- **Benchmarks differ in how they measure.** Some average over a long context and some use a short prompt, so we record the context of every benchmark and compare like with like.
+- **Your own machine can differ**: laptop power and heat limits, single-channel RAM, drivers and background apps can all change real speeds. The ranges absorb some of this, not all of it.
+- **Runtimes make their own decisions.** Ollama and llama.cpp estimate memory in their own way and may split a model between GPU and CPU differently from our calculation. On your machine, `ollama ps` shows what actually happened.
+
+## Independence
+
+Verdicts and recommendations are calculated from the data above. They do not depend on ads, affiliate links or any arrangement with a manufacturer. Where prices appear, they are shown with the date they were checked.
+
+## Sources
+
+- [Hugging Face](https://huggingface.co): GGUF file sizes and model configurations.
+- [llama.cpp](https://github.com/ggml-org/llama.cpp): quantization formats and runtime behavior.
+- [Ollama documentation](https://docs.ollama.com): default context length and KV cache settings.
+- Manufacturer specification pages for each GPU and chip, linked from its GPU page.
+- Public benchmarks, each linked where it is shown.

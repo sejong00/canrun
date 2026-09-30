@@ -8,8 +8,10 @@
  * 문장 단위(D16)는 `UnitTable` 로 인터닝해 페이지당 id 배열만 보유한다.
  */
 
+import { STATIC_PAGE_SLUGS } from '../apps/web/content/pages';
+
 export type Locale = 'en' | 'ko';
-export type PageKind = 'home' | 'gpu' | 'model' | 'combo' | 'calculator' | 'guide' | 'guides-index' | 'other';
+export type PageKind = 'home' | 'gpu' | 'model' | 'combo' | 'calculator' | 'guide' | 'guides-index' | 'static' | 'other';
 
 export type GpuRecord = { id: string; name: string; aliases?: string[] };
 export type ModelRecord = { id: string; name: string };
@@ -164,6 +166,7 @@ export function kindOf(urlPath: string): PageKind {
   if (COMBO_RE.test(bare)) return 'combo';
   if (bare === '/guides') return 'guides-index';
   if (/^\/guides\/[^/]+$/.test(bare)) return 'guide';
+  if ((STATIC_PAGE_SLUGS as readonly string[]).includes(bare.slice(1))) return 'static';
   return 'other';
 }
 

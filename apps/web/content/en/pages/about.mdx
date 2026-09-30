@@ -1,0 +1,22 @@
+CanRun answers one question: can this PC or Mac run this local LLM, and how well? Pick a graphics card, an Apple chip or a CPU-only setup, and CanRun shows which open models fit, which quant to download, how much memory each one needs and roughly how fast it will generate text.
+
+## What you get
+
+- **A verdict for every model**: Runs great, Runs well, Runs slowly or Won't run, based on whether the model fits in memory and how fast it is likely to run.
+- **The memory it needs**, split into the model file, the KV cache for your context length and a small working buffer.
+- **A speed range, never a single number.** Every speed comes with a confidence label that says how sure we are.
+- **Ready-to-run commands** for llama.cpp and Ollama, matched to the context length you pick.
+
+The <SiteLink to="/calculator">calculator</SiteLink> covers any combination, and every GPU, model and model-on-GPU pair also has its own page.
+
+## Where the numbers come from
+
+Model sizes come from the actual GGUF files on Hugging Face, and memory figures from each model's published configuration. GPU and chip specs come from manufacturer pages. Speed estimates start from memory bandwidth and are calibrated against public benchmarks. The full method, how accurate it has been and where it falls short are on the <SiteLink to="/methodology">How we calculate</SiteLink> page.
+
+## How often it is updated
+
+Model data is checked against Hugging Face every week, and new models are added once llama.cpp supports them. The date of the current data is at the bottom of every page. It is currently <DataUpdated />.
+
+## Who runs CanRun
+
+CanRun is an independent project. It is not affiliated with any GPU maker or model publisher, and its verdicts are calculated from data, not from any commercial arrangement. If a number looks wrong or a model is missing, please get in touch through the <SiteLink to="/contact">contact page</SiteLink>.

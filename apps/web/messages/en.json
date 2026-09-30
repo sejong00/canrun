@@ -133,7 +133,7 @@
     "cardModelHub": "Model page",
     "badgeKorean": "Korean model",
     "cardAllQuants": "{count, plural, one {# quant} other {# quants}}",
-    "requestModel": "Model not listed? Request it on GitHub.",
+    "requestModel": "Model not listed? Email us to request it.",
     "noscript": "The calculator needs JavaScript. Without it, open a GPU page instead:",
     "faq1Q": "How accurate are the speed estimates?",
     "faq1A": "Every speed is a band with a confidence label: measured (a public benchmark for this exact GPU, model and quant), calibrated (a bandwidth model fitted to public benchmarks — ±12% for NVIDIA and AMD cards running a dense model fully on the GPU, ±20% otherwise) or theoretical (±30%, outside our calibration set). Drivers, backend, context and thermals move real results within that band.",
@@ -141,7 +141,8 @@
     "faq2A": "Runs great: the whole model sits on the GPU and generates faster than you read. Runs well: a comfortable wait, including MoE models that keep their experts in system RAM. Runs slowly: it works but crawls (CPU or a GPU/CPU split). Won't run: not enough memory, or too slow to be usable. Reasoning models are judged 1.5× more strictly because they spend tokens thinking.",
     "faq3Q": "Is my hardware information sent anywhere?",
     "faq3A": "No. Detection and every calculation run inside your browser; there is no server. A share link only carries the GPU, RAM and settings you picked as URL parameters.",
-    "gpuConfirmVariant": "“{text}”: only one memory size is in the catalog — pick it if it matches yours, otherwise enter your specs below."
+    "gpuConfirmVariant": "“{text}”: only one memory size is in the catalog — pick it if it matches yours, otherwise enter your specs below.",
+    "requestModelSubject": "CanRun: model request"
   },
   "Guides": {
     "indexMetaTitle": "Local LLM guides: VRAM, quantization, context length and Macs",
@@ -154,7 +155,9 @@
     "widgetTitle": "Check your own hardware",
     "relatedTitle": "Related guides",
     "relatedGuide": "Guide: {title}",
-    "dataNote": "Speeds on this page are estimates with an error band and a confidence label, or public measurements with their source. Verdicts assume the setup stated with each table."
+    "dataNote": "Speeds on this page are estimates with an error band and a confidence label, or public measurements with their source. Verdicts assume the setup stated with each table.",
+    "rssTitle": "CanRun guides",
+    "rssDescription": "Guides to running local LLMs on your own PC or Mac."
   },
   "GuideData": {
     "gridCaption": "Verdicts at 8k context with an f16 KV cache, assuming 32 GB of DDR5 system RAM and Windows on PCs (Macs: the unified memory size shown in the cell). Speeds are estimates with an error band and a confidence label.",
@@ -625,5 +628,23 @@
     "summaryNoFitDgpu": "At {ctx} with a {kv} KV cache, {quant} needs {need} GB and does not fit in {usable} GB of usable VRAM plus {ram} GB of RAM.",
     "commandFollows": "The run commands below follow this setting.",
     "commandNone": "No run command for this setting — the commands below stay at 8k / f16."
+  },
+  "Footer": {
+    "nav": "Site information",
+    "about": "About",
+    "methodology": "How we calculate",
+    "privacy": "Privacy",
+    "contact": "Contact",
+    "dataUpdated": "Data updated: {date}"
+  },
+  "Pages": {
+    "aboutTitle": "About CanRun",
+    "aboutDescription": "CanRun tells you which local LLMs your GPU, Mac or PC can run, at which quant, and roughly how fast, with every estimate shown as a range.",
+    "methodologyTitle": "How CanRun calculates: verdicts, speed estimates and error ranges",
+    "methodologyDescription": "How CanRun works out memory needs, speed ranges and verdicts, how accurate the estimates have been against public benchmarks, and where they fall short.",
+    "privacyTitle": "Privacy policy",
+    "privacyDescription": "What CanRun collects (nothing personal), how the calculator runs in your browser, and what our hosting provider logs.",
+    "contactTitle": "Contact",
+    "contactDescription": "How to reach CanRun: report a wrong number, ask for a model or GPU to be added, or send feedback by email."
   }
 }

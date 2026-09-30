@@ -178,6 +178,14 @@ export const ModelQuantSchema = z.object({
  * 콤보(gpu × model)의 배치 = 그 쌍을 포함하는 항목들의 최소 batch, batch ≤ currentBatch 만 index.
  * 사실 레코드가 아니라 운영 결정이므로 sources 대신 plannedAt·note 로 근거를 남긴다.
  */
+/**
+ * data/meta.json — 데이터 기준일 (P1-5). 푸터 "데이터 기준일"·사이트맵 lastmod 의 출처 — 빌드 시각이 아니라 데이터에서 온다(D21 결정론).
+ * `scripts/sync-models.ts` 가 데이터를 실제로 바꿀 때 갱신하고, 수동 데이터 커밋은 함께 갱신한다(PROGRESS §3).
+ */
+export const MetaSchema = z.object({ dataUpdated: isoDate }).strict();
+
+export type DataMeta = z.infer<typeof MetaSchema>;
+
 export const PublishSchema = z
   .object({
     currentBatch: z.number().int().min(0),

@@ -13,10 +13,10 @@ import { catalog } from '@/lib/catalog';
 import { clientDict } from '@/lib/client-messages';
 import { CALC_MESSAGE_SPEC } from '@/lib/i18n-lite';
 import { softwareApplicationJsonLd } from '@/lib/jsonld';
-import { calculatorHref, gpuHref, localeHref, NEW_MODEL_ISSUE_URL } from '@/lib/links';
+import { calculatorHref, gpuHref, localeHref, mailtoHref } from '@/lib/links';
 import { gpuName, type Translate } from '@/lib/phrases';
 import { buildPageMetadata } from '@/lib/seo';
-import { absoluteUrl } from '@/lib/site';
+import { CONTACT_EMAIL, absoluteUrl } from '@/lib/site';
 
 type Props = { params: Promise<{ locale: Locale }> };
 
@@ -69,7 +69,7 @@ export default async function CalculatorPage({ params }: Props) {
           <p className="text-lg text-muted-foreground">{t('lede')}</p>
         </header>
 
-        <CalculatorIsland locale={locale} catalog={getCatalogLite()} dict={dict} issueUrl={NEW_MODEL_ISSUE_URL} />
+        <CalculatorIsland locale={locale} catalog={getCatalogLite()} dict={dict} issueUrl={mailtoHref(CONTACT_EMAIL, t('requestModelSubject'))} />
 
         <noscript>
           <p className="rounded-lg border border-border p-4 text-sm">

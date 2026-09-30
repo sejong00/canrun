@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { routing, type Locale } from '@/i18n/routing';
-import { localeHref } from './links';
+import { localeHref, rssHref } from './links';
 import { absoluteUrl } from './site';
 
 /** next-intl getPathname 과 같은 as-needed 규칙 (lib/links.ts — 클라이언트 번들 회피) */
@@ -24,12 +24,17 @@ export function buildAlternates(href: string, locale: Locale): Metadata['alterna
   return {
     canonical: absoluteUrl(getPathname({ href, locale })),
     languages,
+    // 로캘 RSS (P1-5) — rel=alternate type=application/rss+xml (hreflang 없음)
+    types: { 'application/rss+xml': absoluteUrl(getPathname({ href: rssHref(), locale })) },
   };
 }
 
 const OG_LOCALE: Record<Locale, string> = { en: 'en_US', ko: 'ko_KR' };
 
-/** 페이지 메타데이터 — alternates(규칙 5) + Open Graph 기본값. og:image 는 P1-5 전 별도. */
+/** 기본 공유 카드 (P1-5) — 로캘별 1장. 허브·콤보별 카드는 백로그 (PROGRESS §4 09-30) */
+const OG_IMAGE = { width: 1200, height: 630 } as const;
+
+/** 페이지 메타데이터 — alternates(규칙 5) + Open Graph 기본값 + 기본 공유 카드. */
 export function buildPageMetadata(opts: {
   href: string;
   locale: Locale;
@@ -57,6 +62,8 @@ export function buildPageMetadata(opts: {
       description,
       url: absoluteUrl(getPathname({ href, locale })),
       locale: OG_LOCALE[locale],
+      images: [{ url: absoluteUrl(`/og/default-${locale}.png`), ...OG_IMAGE }],
     },
+    twitter: { card: 'summary_large_image' },
   };
 }

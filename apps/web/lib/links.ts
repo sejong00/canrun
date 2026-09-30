@@ -25,5 +25,9 @@ export const calculatorHref = (query = '') => `/calculator${query}`;
 /** 가이드 목차·글 (docs/04 §2, P1-4) — 슬러그는 로캘 불변 */
 export const guidesHref = () => `/guides`;
 export const guideHref = (slug: string) => `/guides/${slug}`;
-/** 카탈로그 밖 모델 요청 — new-model 이슈 (P1-3 D35) */
-export const NEW_MODEL_ISSUE_URL = 'https://github.com/sejong00/canrun/issues/new?labels=new-model';
+/** 정적 페이지 (P1-5) — 소개·계산 방법·개인정보처리방침·문의 */
+export const staticHref = (slug: string) => `/${slug}`;
+/** 로캘별 RSS (P1-5) — en `/rss.xml`, ko `/ko/rss.xml` */
+export const rssHref = () => `/rss.xml`;
+/** 메일 링크 — 문의·카탈로그 밖 모델 요청 (P1-5: 저장소가 비공개라 GitHub 이슈 대신 이메일, D35 대체) */
+export const mailtoHref = (email: string, subject: string) => `mailto:${email}?subject=${encodeURIComponent(subject)}`;

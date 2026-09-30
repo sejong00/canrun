@@ -36,6 +36,7 @@ const REQUIRED_DATASETS = [
   'benchmarks.json',
   'aliases.json',
   'publish.json',
+  'meta.json',
 ] as const;
 
 const files = readdirSync(dataDir).filter((name) => name.endsWith('.json'));

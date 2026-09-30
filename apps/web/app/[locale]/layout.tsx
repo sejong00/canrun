@@ -3,8 +3,12 @@ import type { ReactNode } from 'react';
 import { notFound } from 'next/navigation';
 import { hasLocale } from 'next-intl';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
-import { routing } from '@/i18n/routing';
-import { SITE_URL } from '@/lib/site';
+import { STATIC_PAGE_SLUGS, type StaticPageSlug } from '@/content/pages';
+import { routing, type Locale } from '@/i18n/routing';
+import { DATA_UPDATED } from '@/lib/data-meta';
+import { formatGuideDate } from '@/lib/guides';
+import { localeHref, staticHref } from '@/lib/links';
+import { SEARCH_VERIFICATION, SITE_URL } from '@/lib/site';
 import '../globals.css';
 
 type Props = {
@@ -26,6 +30,15 @@ export async function generateMetadata({ params }: Omit<Props, 'children'>): Pro
   return {
     metadataBase: new URL(SITE_URL),
     title: { default: t('name'), template: `%s — ${t('name')}` },
+    // 검색엔진 소유 확인 (P1-5) — 코드가 있을 때만 메타 태그
+    ...(SEARCH_VERIFICATION.google || SEARCH_VERIFICATION.naver
+      ? {
+          verification: {
+            ...(SEARCH_VERIFICATION.google ? { google: SEARCH_VERIFICATION.google } : {}),
+            ...(SEARCH_VERIFICATION.naver ? { other: { 'naver-site-verification': SEARCH_VERIFICATION.naver } } : {}),
+          },
+        }
+      : {}),
   };
 }
 
@@ -44,15 +57,41 @@ export default async function LocaleLayout({ children, params }: Props) {
   setRequestLocale(locale);
 
   const t = await getTranslations({ locale, namespace: 'Site' });
+  const tFooter = await getTranslations({ locale, namespace: 'Footer' });
+  const footerLabel = (slug: StaticPageSlug) => {
+    switch (slug) {
+      case 'about':
+        return tFooter('about');
+      case 'methodology':
+        return tFooter('methodology');
+      case 'privacy':
+        return tFooter('privacy');
+      case 'contact':
+        return tFooter('contact');
+    }
+  };
 
   return (
     <html lang={locale}>
       <body className="min-h-dvh">
         {children}
         <footer className="border-t border-border">
-          <p className="mx-auto max-w-5xl px-4 py-6 text-sm text-muted-foreground sm:px-6">
-            {t('tagline')}
-          </p>
+          <div className="mx-auto flex max-w-5xl flex-col gap-3 px-4 py-6 text-sm text-muted-foreground sm:px-6">
+            <p>{t('tagline')}</p>
+            {/* 정적 페이지 링크 (P1-5 — 고아 방지·AdSense 필수 페이지) + 데이터 기준일 (docs/01 §7) */}
+            <nav aria-label={tFooter('nav')}>
+              <ul className="flex flex-wrap gap-x-4 gap-y-1">
+                {STATIC_PAGE_SLUGS.map((slug) => (
+                  <li key={slug}>
+                    <a href={localeHref(locale as Locale, staticHref(slug))} data-footer-link={slug} className="underline underline-offset-4 hover:text-foreground">
+                      {footerLabel(slug)}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+            <p data-data-updated={DATA_UPDATED}>{tFooter('dataUpdated', { date: formatGuideDate(locale as Locale, DATA_UPDATED) })}</p>
+          </div>
         </footer>
       </body>
     </html>

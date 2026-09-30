@@ -58,6 +58,7 @@ const PAGES: readonly PageSpec[] = [
   // P1-4 — 가이드 1편(초안이면 noindex·미링크, URL 로는 열린다) + 목차
   { name: 'guide', path: '/guides/ollama-context-length', structured: false, combo: false },
   { name: 'guides index', path: '/guides', structured: false, combo: false },
+  { name: 'methodology', path: '/methodology', structured: false, combo: false },
 ];
 
 for (const locale of LOCALES) {
