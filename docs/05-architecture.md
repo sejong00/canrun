@@ -47,7 +47,7 @@ canrun/
 │  ├─ components/  lib/  messages/{en,ko}.json   # components/islands/ = 클라이언트 아일랜드, lib/calc/ = 계산기 순수 로직 (P1-3, §5)
 │  └─ content/{en,ko}/guides/*.mdx  # + content/guides.ts 레지스트리·AUTHORING.md (P1-4 D38)
 ├─ scripts/
-│  ├─ sync-models.ts  new-model-alert.ts  build-sitemaps.ts  og-images.ts
+│  ├─ sync-models.ts  new-model-alert.ts  build-sitemaps.ts(postbuild 4단계 — P1-5 D49)  make-og.ts(기본 공유 카드 1회 생성 — D50)
 │  └─ parse-bench.ts            # llama-bench 파서 (P2 제출과 공용 — 미리 엔진 옆에)
 └─ .github/workflows/{deploy,daily-rebuild,data-sync}.yml
 ```
