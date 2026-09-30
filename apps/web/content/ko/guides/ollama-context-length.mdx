@@ -90,7 +90,7 @@ Ollama 문서에 나온 설정 방법은 다섯 가지입니다.
 
 모델이 지원하는 최대 길이보다 길게 잡아도 소용없습니다. Qwen3 32B의 최대 길이는 <Num kind="maxContext" model="qwen3-32b" />이고, 모델 카드에 따르면 그보다 길게 쓰려면 YaRN이 필요합니다. YaRN 설정은 이 글에서 다루지 않습니다. 한국 모델 Kanana 1.5 8B도 최대 길이가 <Num kind="maxContext" model="kanana-1.5-8b" />입니다.
 
-동시 요청 수도 따져 봐야 합니다. Ollama FAQ에 따르면 필요 메모리는 `OLLAMA_NUM_PARALLEL` × `OLLAMA_CONTEXT_LENGTH`에 비례해 늘어납니다. 이 글의 표는 요청을 한 번에 하나만 처리한다고 가정합니다. CanRun 조합 페이지의 Ollama 명령에는 고른 컨텍스트에 맞춘 `OLLAMA_CONTEXT_LENGTH`가 들어갑니다. q8_0·q4_0 칸을 고르면 `OLLAMA_FLASH_ATTENTION=1`과 `OLLAMA_KV_CACHE_TYPE`도 붙습니다. <ComboLink model="llama-3.1-8b" gpu="rtx-4060" />를 돌리는 조합 페이지에서 이런 명령을 볼 수 있습니다.
+동시 요청 수도 따져 봐야 합니다. Ollama FAQ에 따르면 필요 메모리는 `OLLAMA_NUM_PARALLEL` × `OLLAMA_CONTEXT_LENGTH`에 비례해 늘어납니다. 이 글의 표는 요청을 한 번에 하나만 처리한다고 가정합니다. CanRun 조합 페이지의 Ollama 명령에는 고른 컨텍스트에 맞춘 `OLLAMA_CONTEXT_LENGTH`가 들어갑니다. KV 캐시를 q8_0이나 q4_0으로 고르면 `OLLAMA_FLASH_ATTENTION=1`과 `OLLAMA_KV_CACHE_TYPE`도 붙습니다. <ComboLink model="llama-3.1-8b" gpu="rtx-4060" />를 돌리는 조합 페이지에서 이런 명령을 볼 수 있습니다.
 
 더 읽을거리:
 
@@ -100,11 +100,11 @@ Ollama 문서에 나온 설정 방법은 다섯 가지입니다.
 
 ## 이 숫자는 얼마나 확실한가
 
-메모리 수치는 파일, KV 캐시, 연산 버퍼를 더한 값입니다. 실제 GGUF 파일 크기와 모델 config로 공식에 따라 계산한 값이라 오차 범위를 붙이지 않습니다. 속도는 추정치라서 오차 범위와 신뢰 라벨을 함께 붙입니다. 보정된 추정의 오차 범위는 NVIDIA·AMD 그래픽카드에서 dense 모델을 GPU에만 올릴 때 ±12%입니다. 부분 오프로드, MoE 모델, 그 밖의 하드웨어에서는 ±20%이고, 이론 추정은 ±30%입니다. 이 글의 두 컨텍스트 표는 NVIDIA 카드에서 dense 모델을 돌리는 경우라 보정된 추정입니다. 다만 RTX 4060에서 Llama 3.1 8B의 8k·f16 칸은 실측값입니다.
+메모리 수치는 파일, KV 캐시, 연산 버퍼를 더한 값입니다. 실제 GGUF 파일 크기와 모델 config로 공식에 따라 계산한 값이라 오차 범위를 붙이지 않습니다. 속도는 추정치라서 오차 범위와 신뢰 라벨을 함께 붙입니다. 보정된 추정의 오차 범위는 NVIDIA·AMD 그래픽카드에서 dense 모델을 GPU에만 올릴 때 ±12%입니다. 부분 오프로드, MoE 모델, 그 밖의 하드웨어에서는 ±20%이고, 이론 추정은 ±30%입니다. 이 글의 두 컨텍스트 표는 NVIDIA 카드에서 dense 모델을 돌리는 경우라 보정된 추정입니다. 다만 RTX 4060에서 Llama 3.1 8B를 8k·f16 KV 캐시로 돌릴 때의 속도는 추정치가 아니라 공개 벤치마크에서 실제로 잰 값입니다.
 
 <Measured model="llama-3.1-8b" gpu="rtx-4060" />
 
-이 실측은 LocalScore가 4k 컨텍스트에서 잰 공개 측정 한 건이고, Ollama로 잰 값은 아닙니다. 여기서는 CanRun의 8k 추정 범위와 나란히 보여 줍니다. 이 카드에서 다른 모델을 돌린 결과는 <HubLink gpu="rtx-4060" /> 페이지에 모아 두었습니다.
+이 값은 LocalScore가 4k 컨텍스트에서 잰 공개 벤치마크 결과 한 건이고, Ollama로 잰 값은 아닙니다. 여기서는 CanRun의 8k 추정 범위와 나란히 보여 줍니다. 이 카드에서 다른 모델을 돌린 결과는 <HubLink gpu="rtx-4060" /> 페이지에 모아 두었습니다.
 
 Ollama는 자체 메모리 추정으로 GPU와 CPU에 얼마씩 올릴지 정합니다. 그래서 `ollama ps`에 나오는 SIZE나 분할 비율이 CanRun 수치와 정확히 같지는 않습니다. 내 PC에서 실제로 어떻게 돌아가는지는 `ollama ps`의 PROCESSOR와 CONTEXT 열을 기준으로 봅니다.
 

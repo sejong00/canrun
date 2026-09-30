@@ -10,7 +10,7 @@
 
 <MemoryBreakdown model="qwen3-14b" gpu="apple-m4" />
 
-16GB 맥이라고 14B급 모델이 다 들어가지는 않습니다. <HubLink model="phi-4" />(<Num kind="params" model="phi-4" />)는 Q4_K_M, 8k 컨텍스트에서 <Num kind="needGB" model="phi-4" />가 필요해 16GB M4의 GPU 몫을 넘습니다. CanRun은 맥에서 모델 일부만 GPU에 올리는 경우를 계산하지 않습니다. 그래서 이 조합은 CPU 전용으로 계산되고, 이론 추정으로 겨우 돌아가는 수준입니다<Expect model="phi-4" gpu="apple-m4" verdict="B" />. 실제 Ollama는 모델의 층을 나눠 GPU와 CPU에 올릴 수 있으니, `ollama ps`의 PROCESSOR 열로 확인합니다. 참고로 Phi-4의 모델 페이지와 조합 페이지는 CPU 전용 칸에서 연산 버퍼를 빼고 표시합니다. 그래서 필요 메모리가 GPU 몫보다 작아 보입니다.
+16GB 맥이라고 14B급 모델이 다 들어가지는 않습니다. <HubLink model="phi-4" />(<Num kind="params" model="phi-4" />)는 Q4_K_M, 8k 컨텍스트에서 <Num kind="needGB" model="phi-4" />가 필요해 16GB M4의 GPU 몫을 넘습니다. CanRun은 맥에서 모델 일부만 GPU에 올리는 경우를 계산하지 않습니다. 그래서 이 조합은 CPU 전용으로 계산되고, 이론 추정으로 겨우 돌아가는 수준입니다<Expect model="phi-4" gpu="apple-m4" verdict="B" />. 실제 Ollama는 모델의 층을 나눠 GPU와 CPU에 올릴 수 있으니, `ollama ps`의 PROCESSOR 열로 확인합니다. 참고로 Phi-4의 모델 페이지와 조합 페이지는 CPU 전용으로 계산한 필요 메모리에서 연산 버퍼를 빼고 표시합니다. 그래서 필요 메모리가 GPU 몫보다 작아 보입니다.
 
 macOS가 실제로 정해 둔 기본 한도는 메모리 용량에 따라 다릅니다. llama.cpp 토론 #2182에 올라온 코드를 보면, 32GB 이하 맥은 약 3분의 1을 GPU가 쓰지 못하게 남겨 둡니다. 그보다 큰 맥은 약 4분의 1을 남깁니다. 또 애플이 16GB라고 적는 메모리는 이진 단위라서, CanRun이 쓰는 십진 GB로 바꾸면 약 7% 더 큽니다. 이 두 가지를 따지면, 70% 하나로 어림한 CanRun 수치는 32GB 이하 구성에서 실제 기본 한도와 거의 같거나 조금 작습니다. 36GB 이상 구성에서는 실제보다 작게 잡힐 수 있습니다.
 
@@ -78,11 +78,11 @@ M4 Pro의 대역폭은 M4의 두 배가 넘고, 40코어 GPU M4 Max는 다시 M4
 - 8k와 16k는 f16 KV로도 GPU에 들어갑니다. 8k에서는 원활하게 돌아가고<Expect model="llama-3.1-8b" gpu="apple-m4" verdict="A" />, 16k도 표에서 판정이 같습니다.
 - 32k·f16은 <Num kind="needGB" model="llama-3.1-8b" ctx="32768" />로 GPU 몫 안에 들어갑니다. 하지만 토큰마다 KV 캐시 전체를 읽느라 표에서 판정이 한 단계 내려갑니다. KV 캐시를 q8_0으로 두면 표에서 8k와 같은 판정이 나옵니다.
 - 64k·f16에서는 KV 캐시만 <Num kind="kvGB" model="llama-3.1-8b" ctx="65536" />로 늘어납니다. 가중치와 합치면 GPU 몫은 물론 CPU 전용 한도도 넘어서, 표에 ‘미탑재’로 나옵니다. KV 캐시를 q8_0(합계 <Num kind="needGB" model="llama-3.1-8b" ctx="65536" kv="q8_0" />)이나 q4_0으로 두면 GPU에 들어갑니다.
-- 128k에서는 q4_0 칸만 CPU 전용으로 돌릴 수 있고, 속도는 이론 추정(±30%)입니다. 조합 페이지에서 이 칸을 고르면 명령도 `-ngl 0`으로 바뀝니다. CPU 전용 칸은 연산 버퍼를 빼고 표시합니다. 그래서 GPU 몫보다 작아 보여도 버퍼를 더하면 넘습니다.
+- 128k에서는 KV 캐시를 q4_0으로 둘 때만 CPU 전용으로 돌릴 수 있고, 속도는 이론 추정(±30%)입니다. 조합 페이지에서 128k·q4_0을 고르면 명령도 `-ngl 0`으로 바뀝니다. CPU 전용으로 계산한 필요 메모리는 연산 버퍼를 빼고 표시합니다. 그래서 GPU 몫보다 작아 보여도 버퍼를 더하면 넘습니다.
 
 컨텍스트가 길어질 때 늘어나는 메모리는 모델마다 다릅니다. 32k 컨텍스트, f16 KV에서 Llama 3.1 8B의 KV 캐시는 <Num kind="kvGB" model="llama-3.1-8b" ctx="32768" />입니다. gpt-oss-20b는 일부 층이 최근 토큰 일정 개수만 보는 슬라이딩 윈도 방식입니다. 이런 층은 KV 캐시가 일정 길이 이상 늘지 않아서, 전체 KV 캐시가 <Num kind="kvGB" model="gpt-oss-20b" ctx="32768" />에 그칩니다. 원리는 ‘<GuideLink slug="kv-cache-context" />’에서 설명합니다.
 
-메모리가 모자라면 KV 캐시를 양자화하는 방법도 있습니다. <RuntimeFact id="ollama-kv-cache-type" />. 맥에서 Ollama 앱을 쓴다면 `launchctl setenv OLLAMA_FLASH_ATTENTION 1`과 `launchctl setenv OLLAMA_KV_CACHE_TYPE q8_0`을 실행한 뒤 앱을 다시 시작하면 됩니다. CanRun은 KV 캐시를 q8_0으로 두면 f16의 약 54%, q4_0으로 두면 약 29%로 계산합니다. 조합 페이지에서 q8_0 칸을 고르면 llama.cpp 명령의 `-fa on` 뒤에 `--cache-type-k q8_0 --cache-type-v q8_0`이 붙습니다.
+메모리가 모자라면 KV 캐시를 양자화하는 방법도 있습니다. <RuntimeFact id="ollama-kv-cache-type" />. 맥에서 Ollama 앱을 쓴다면 `launchctl setenv OLLAMA_FLASH_ATTENTION 1`과 `launchctl setenv OLLAMA_KV_CACHE_TYPE q8_0`을 실행한 뒤 앱을 다시 시작하면 됩니다. CanRun은 KV 캐시를 q8_0으로 두면 f16의 약 54%, q4_0으로 두면 약 29%로 계산합니다. 조합 페이지에서 KV 캐시를 q8_0으로 고르면 llama.cpp 명령의 `-fa on` 뒤에 `--cache-type-k q8_0 --cache-type-v q8_0`이 붙습니다.
 
 맥에서 컨텍스트 길이를 바꾸는 방법은 다음과 같습니다. 명령은 모두 macOS 터미널에서 실행합니다.
 
@@ -106,7 +106,7 @@ M4 Pro의 대역폭은 M4의 두 배가 넘고, 40코어 GPU M4 Max는 다시 M4
 
 메모리 수치는 실제 GGUF 파일 크기에, 모델 설정(config)으로 구한 KV 캐시와 연산 버퍼 식을 더해 공식으로 계산합니다. 그래서 오차 범위를 붙이지 않습니다. 다만 GPU 몫 70%는 macOS 기본 한도를 비율 하나로 어림한 값입니다. 첫 절에서 설명한 대로 실제 기본값은 용량에 따라 다릅니다. 그래서 36GB 이상 구성에서는 CanRun 수치가 실제보다 작게 잡힐 수 있습니다.
 
-속도는 추정치이고, 신뢰 라벨과 오차 범위를 함께 붙입니다. 맥에서 실측이 없는 풀 GPU 칸에는 ‘보정된 추정 ±20%’를 붙입니다. ±12%는 NVIDIA·AMD 그래픽카드의 dense 모델에만 씁니다. 맥의 CPU 전용 칸은 실측과 맞춰 본 적이 없어서 ‘이론 추정 ±30%’를 붙입니다.
+속도는 추정치이고, 신뢰 라벨과 오차 범위를 함께 붙입니다. 맥에서 모델을 GPU에 전부 올리는 조합 가운데 공개 벤치마크 결과가 없는 것에는 ‘보정된 추정 ±20%’를 붙입니다. ±12%는 NVIDIA·AMD 그래픽카드의 dense 모델에만 씁니다. 맥에서 CPU 전용으로 돌리는 조합은 실제로 잰 속도와 맞춰 본 적이 없어서 ‘이론 추정 ±30%’를 붙입니다.
 
 CanRun은 애플의 기본·Pro·Max 칩에 같은 효율 계수를 씁니다. 그래서 추정 속도가 대역폭에 비례해 오릅니다. 그런데 llama.cpp 토론 #4167의 공개 측정은 다릅니다. M4 Pro에서 40코어 GPU M4 Max로 대역폭이 두 배가 돼도, 생성 속도는 두 배에 뚜렷이 못 미칩니다. 그러니 Max 칩의 추정치는 오차 범위의 아래쪽까지 염두에 두고 읽는 것이 좋습니다. gpt-oss-20b·gpt-oss-120b 같은 리즈닝 모델은 답하기 전에 생각하는 데 토큰을 더 씁니다. 그래서 판정 기준을 1.5배 엄격하게 적용합니다.
 
