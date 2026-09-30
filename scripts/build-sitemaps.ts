@@ -13,7 +13,7 @@ import { join } from 'node:path';
 import { indexableCombos, parseGpus, parseMeta, parseModels, parsePublish } from '../packages/data/src/index';
 import { GUIDES, GUIDE_SLUGS } from '../apps/web/content/guides';
 import { STATIC_PAGE_SLUGS } from '../apps/web/content/pages';
-import { SITE_URL } from '../apps/web/lib/site';
+import { ADSENSE_CLIENT, SITE_URL } from '../apps/web/lib/site';
 
 /** 페이지 캐노니컬과 바이트 동일 — Next 메타데이터는 루트를 슬래시 없이 낸다(`https://…pages.dev`) */
 const absoluteUrl = (path: string) => (path === '/' ? SITE_URL : `${SITE_URL}${path}`);
@@ -114,6 +114,10 @@ export function buildSitemaps(repoRoot: string, outDir: string): string[] {
 
   writeFileSync(join(outDir, 'robots.txt'), `User-agent: *\nAllow: /\n\nSitemap: ${absoluteUrl('/sitemap.xml')}\n`, 'utf8');
 
+  // ads.txt (Phase 1.5 AdSense) — 게시자 ID 가 있을 때만. 형식: IAB ads.txt, Google 의 인증 기관 ID f08c47fec0942fa0
+  const adsTxt = ADSENSE_CLIENT ? [`google.com, ${ADSENSE_CLIENT.replace(/^ca-/, '')}, DIRECT, f08c47fec0942fa0`] : [];
+  if (adsTxt.length > 0) writeFileSync(join(outDir, 'ads.txt'), `${adsTxt.join('\n')}\n`, 'utf8');
+
   // RSS — 로캘별, 채널 문구는 messages 의 Guides.rss*
   for (const locale of LOCALES) {
     const messages = JSON.parse(readFileSync(join(repoRoot, 'apps/web/messages', `${locale}.json`), 'utf8')) as {
@@ -154,5 +158,5 @@ export function buildSitemaps(repoRoot: string, outDir: string): string[] {
     writeFileSync(join(outDir, locale === 'en' ? 'rss.xml' : 'ko/rss.xml'), rss, 'utf8');
   }
 
-  return ['sitemap.xml', ...files.map((f) => f.name), 'robots.txt', 'rss.xml', 'ko/rss.xml'];
+  return ['sitemap.xml', ...files.map((f) => f.name), 'robots.txt', 'rss.xml', 'ko/rss.xml', ...(adsTxt.length > 0 ? ['ads.txt'] : [])];
 }

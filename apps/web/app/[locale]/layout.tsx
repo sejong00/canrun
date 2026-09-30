@@ -8,7 +8,7 @@ import { routing, type Locale } from '@/i18n/routing';
 import { DATA_UPDATED } from '@/lib/data-meta';
 import { formatGuideDate } from '@/lib/guides';
 import { localeHref, staticHref } from '@/lib/links';
-import { SEARCH_VERIFICATION, SITE_URL } from '@/lib/site';
+import { ADSENSE_CLIENT, SEARCH_VERIFICATION, SITE_URL } from '@/lib/site';
 import '../globals.css';
 
 type Props = {
@@ -39,6 +39,8 @@ export async function generateMetadata({ params }: Omit<Props, 'children'>): Pro
           },
         }
       : {}),
+    // AdSense 사이트 확인 (Phase 1.5) — 스크립트 없이 메타 태그만. 게시자 ID 가 있을 때만
+    ...(ADSENSE_CLIENT ? { other: { 'google-adsense-account': ADSENSE_CLIENT } } : {}),
   };
 }
 

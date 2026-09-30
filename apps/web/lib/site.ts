@@ -25,3 +25,10 @@ export const SEARCH_VERIFICATION = {
   google: 'MdEs99XwXIZVG3i_1NoVrmjidyt2lNEbCQQ3G8qTlOU',
   naver: '2bedddb0c84c85624795925e6ec425766a8c1f41',
 } as const;
+
+/**
+ * AdSense 게시자 ID (Phase 1.5 — `ca-pub-` 로 시작, 공개 값). 빈 문자열이면 확인 메타 태그·ads.txt 를 내지 않는다.
+ * 설정하면 모든 페이지 head 에 `google-adsense-account` 메타(스크립트 없음)와 postbuild 가 `out/ads.txt` 를 만든다.
+ * 광고 스크립트·슬롯은 승인 뒤 별도 작업(docs/07 §3).
+ */
+export const ADSENSE_CLIENT: string = '';

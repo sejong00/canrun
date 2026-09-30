@@ -18,6 +18,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { GUIDES, GUIDE_SLUGS, type GuideSlug } from '../apps/web/content/guides';
+import { ADSENSE_CLIENT } from '../apps/web/lib/site';
 import { CF_PAGES_REDIRECT_LINE_LIMIT } from '../scripts/build-redirects';
 import {
   comboIndexable,
@@ -860,6 +861,16 @@ describe('sitemaps · robots.txt · RSS (P1-5)', () => {
     const expected = pages.filter((p) => !p.robotsNoindex).map((p) => p.canonical ?? `(no canonical) ${p.file}`);
     // 빠짐·초과·noindex 포함 0 — 공개 콤보가 생기면(P1-6) combos-en/-ko 가 자동으로 여기 들어온다
     expect([...seen].sort()).toEqual([...expected].sort());
+  });
+
+  it('ads.txt exists exactly when an AdSense publisher ID is set, as the single Google line (Phase 1.5)', () => {
+    const path = join(outDir, 'ads.txt');
+    expect(existsSync(path), 'ads.txt present').toBe(ADSENSE_CLIENT !== '');
+    if (ADSENSE_CLIENT) {
+      expect(read('ads.txt')).toBe(`google.com, ${ADSENSE_CLIENT.replace(/^ca-/, '')}, DIRECT, f08c47fec0942fa0
+`);
+      expect(ADSENSE_CLIENT).toMatch(/^ca-pub-d{16}$/);
+    }
   });
 
   it('robots.txt allows crawling (including /can-i-run/) and names the sitemap', () => {
