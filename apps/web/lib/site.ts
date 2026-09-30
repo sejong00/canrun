@@ -21,4 +21,7 @@ export const CONTACT_EMAIL = 'turbojenm@gmail.com';
  * 검색엔진 소유 확인 코드 (P1-5 — GSC·네이버 서치어드바이저 "HTML 태그" 방식, 공개 값).
  * 빈 문자열이면 메타 태그를 내지 않는다. 사용자가 각 서비스에서 받은 값을 넣는다.
  */
-export const SEARCH_VERIFICATION = { google: '', naver: '' } as const;
+export const SEARCH_VERIFICATION = {
+  google: 'MdEs99XwXIZVG3i_1NoVrmjidyt2lNEbCQQ3G8qTlOU',
+  naver: '637680a93e2e60134ec55b3ddf0768e6105b7778',
+} as const;
