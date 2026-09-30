@@ -31,4 +31,4 @@ export const SEARCH_VERIFICATION = {
  * 설정하면 모든 페이지 head 에 `google-adsense-account` 메타(스크립트 없음)와 postbuild 가 `out/ads.txt` 를 만든다.
  * 광고 스크립트·슬롯은 승인 뒤 별도 작업(docs/07 §3).
  */
-export const ADSENSE_CLIENT: string = '';
+export const ADSENSE_CLIENT: string = 'ca-pub-7918829214294284';

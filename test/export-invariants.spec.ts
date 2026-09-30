@@ -867,9 +867,8 @@ describe('sitemaps · robots.txt · RSS (P1-5)', () => {
     const path = join(outDir, 'ads.txt');
     expect(existsSync(path), 'ads.txt present').toBe(ADSENSE_CLIENT !== '');
     if (ADSENSE_CLIENT) {
-      expect(read('ads.txt')).toBe(`google.com, ${ADSENSE_CLIENT.replace(/^ca-/, '')}, DIRECT, f08c47fec0942fa0
-`);
-      expect(ADSENSE_CLIENT).toMatch(/^ca-pub-d{16}$/);
+      expect(read('ads.txt')).toBe(`google.com, ${ADSENSE_CLIENT.replace(/^ca-/, '')}, DIRECT, f08c47fec0942fa0\n`);
+      expect(ADSENSE_CLIENT).toMatch(/^ca-pub-\d{16}$/);
     }
   });
 
