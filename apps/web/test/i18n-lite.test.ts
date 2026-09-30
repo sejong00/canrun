@@ -6,7 +6,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { createTranslator } from 'next-intl';
 import { describe, expect, it } from 'vitest';
-import { CALC_MESSAGE_SPEC, formatIcu, makeT, pickMessages } from '../lib/i18n-lite';
+import { CALC_MESSAGE_SPEC, GPU_PICKER_MESSAGE_SPEC, formatIcu, makeT, pickMessages } from '../lib/i18n-lite';
 
 const root = resolve(__dirname, '..');
 const messages = {
@@ -136,6 +136,30 @@ describe('island source files only use keys that exist in both locales', () => {
       }
     }
     expect(checked, 'static scan must not be vacuous').toBeGreaterThan(80);
+    expect(missing).toEqual([]);
+  });
+});
+
+describe('GPU picker dictionary (home·guide widget)', () => {
+  it('every t.calc/t.names literal in the picker and the shared listbox resolves in the picked dict, both locales', () => {
+    const files = ['components/islands/gpu-picker.tsx', 'components/islands/gpu-listbox.tsx'];
+    const nsOf: Record<string, string> = { calc: 'Calculator', names: 'GpuName' };
+    const missing: string[] = [];
+    let checked = 0;
+    for (const locale of ['en', 'ko'] as const) {
+      const dict = pickMessages(messages[locale], GPU_PICKER_MESSAGE_SPEC);
+      for (const file of files) {
+        const src = readFileSync(join(root, file), 'utf8');
+        for (const m of src.matchAll(/\bt\.(\w+)\(\s*'([^']+)'/g)) {
+          const ns = nsOf[m[1]!];
+          checked += 1;
+          if (!ns) missing.push(`${file}: unknown translator t.${m[1]!}`);
+          else if (typeof dict[`${ns}.${m[2]!}`] !== 'string') missing.push(`${file}: ${ns}.${m[2]!} (${locale})`);
+        }
+      }
+      expect(Object.keys(dict).some((k) => k.startsWith('GpuName.')), `${locale} GpuName`).toBe(true);
+    }
+    expect(checked, 'scan must not be vacuous').toBeGreaterThanOrEqual(18);
     expect(missing).toEqual([]);
   });
 });

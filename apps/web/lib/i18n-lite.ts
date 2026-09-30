@@ -151,3 +151,19 @@ export const CALC_MESSAGE_SPEC: MessageSpec = {
   ],
   keys: ['GpuHub.badgeLaptop', 'GpuHub.badgeUnified', 'GpuHub.badgeFp16', 'GpuHub.badgeCpu', 'GpuHub.ramOption', 'Table.quant', 'Table.size'],
 };
+
+/** 홈·가이드 GPU 선택기 (`components/islands/gpu-picker.tsx`) — GPU 이름 + 목록 머리글·메모리 라벨만 (페이지마다 실리므로 최소한) */
+export const GPU_PICKER_MESSAGE_SPEC: MessageSpec = {
+  namespaces: ['GpuName'],
+  keys: [
+    'Calculator.groupNvidia',
+    'Calculator.groupAmd',
+    'Calculator.groupIntel',
+    'Calculator.groupApple',
+    'Calculator.groupApu',
+    'Calculator.groupCpu',
+    'Calculator.optionLaptop',
+    'Calculator.optionMemoryVram',
+    'Calculator.optionMemoryRange',
+  ],
+};

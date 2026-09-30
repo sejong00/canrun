@@ -4,20 +4,10 @@ import { isFp16Crippled } from '@canrun/data/client';
 import { useEffect, useId, useRef, useState, type Dispatch, type KeyboardEvent } from 'react';
 import { CustomHardwareFields } from '@/components/islands/custom-hardware-fields';
 import { DetectButton } from '@/components/islands/detect-button';
+import { GpuListbox, browseOrder } from '@/components/islands/gpu-listbox';
 import { Pill } from '@/components/pill';
 import { formatCtx, formatInt } from '@/lib/format';
-import {
-  GPU_GROUPS,
-  gpuGroup,
-  laptopSibling,
-  matchGpu,
-  gpuTokens,
-  rankGpus,
-  variantStem,
-  type DetectResult,
-  type GpuGroup,
-  type GpuNames,
-} from '@/lib/calc/gpu-match';
+import { laptopSibling, matchGpu, gpuTokens, rankGpus, variantStem, type DetectResult, type GpuNames } from '@/lib/calc/gpu-match';
 import {
   CTX_OPTIONS,
   DDR_KINDS,
@@ -47,31 +37,6 @@ type Props = {
   /** no-JS 폴백 GET action (로케일 경로) */
   action: string;
 };
-
-function memoryLabel(t: CalcTranslators, locale: string, gpu: GpuCore): string {
-  if (gpu.kind === 'dgpu') return t.calc('optionMemoryVram', { vram: formatInt(locale, gpu.vramGB ?? 0) });
-  const opts = gpu.ramOptionsGB ?? [];
-  if (opts.length === 0) return '';
-  return t.calc('optionMemoryRange', { min: formatInt(locale, Math.min(...opts)), max: formatInt(locale, Math.max(...opts)) });
-}
-
-/** 둘러보기 그룹 머리글 (D29) — 리터럴 키로 써서 i18n 정적 스캔이 양 로케일 존재를 검사한다 */
-function groupLabel(t: CalcTranslators, group: GpuGroup): string {
-  switch (group) {
-    case 'nvidia':
-      return t.calc('groupNvidia');
-    case 'amd':
-      return t.calc('groupAmd');
-    case 'intel':
-      return t.calc('groupIntel');
-    case 'apple':
-      return t.calc('groupApple');
-    case 'apu':
-      return t.calc('groupApu');
-    case 'cpu':
-      return t.calc('groupCpu');
-  }
-}
 
 /** 상태의 하드웨어 → 입력창 텍스트 */
 function textFor(hardware: HardwareChoice, catalog: CatalogLite, t: CalcTranslators): string {
@@ -116,7 +81,7 @@ export function HardwareForm({ locale, catalog, names, t, state, dispatch, hydra
   const ranked = ambiguousIds
     ? ambiguousIds.map((cid) => findGpu(catalog, cid)).filter((g): g is GpuCore => g !== undefined)
     : rankGpus(text, catalog.gpus, names);
-  const options = browsing ? GPU_GROUPS.flatMap((g) => ranked.filter((gpu) => gpuGroup(gpu) === g)) : ranked;
+  const options = browsing ? browseOrder(ranked) : ranked;
   const noMatch = hydrated && text.trim() !== '' && options.length === 0 && !selected;
   // 감지 none 폴백: 포커스만 옮기고 팝업은 열지 않는다 (시각 변화 0, D30)
   const quietFocus = useRef(false);
@@ -252,27 +217,6 @@ export function HardwareForm({ locale, catalog, names, t, state, dispatch, hydra
   useEffect(() => {
     if (activeOptionId) document.getElementById(activeOptionId)?.scrollIntoView({ block: 'nearest' });
   }, [activeOptionId]);
-  const renderOption = (gpu: GpuCore, i: number) => (
-    <li
-      key={gpu.id}
-      id={`${listId}-${gpu.id}`}
-      role="option"
-      aria-selected={i === active}
-      data-gpu-id={gpu.id}
-      className={`flex min-h-10 cursor-pointer items-center justify-between gap-2 px-3 py-2 text-sm ${i === active ? 'bg-muted' : ''}`}
-      onMouseDown={(e) => {
-        e.preventDefault();
-        choose(gpu);
-      }}
-      onMouseEnter={() => setActive(i)}
-    >
-      <span>
-        {gpuName(t.names, gpu)}
-        {gpu.form === 'laptop' && <span className="ml-1 text-xs text-muted-foreground">· {t.calc('optionLaptop')}</span>}
-      </span>
-      <span className="text-xs text-muted-foreground tabular-nums">{memoryLabel(t, locale, gpu)}</span>
-    </li>
-  );
   const locked = osLocked(state.hardware, catalog);
   const os = locked ?? state.os ?? defaultOs(state.hardware, catalog);
   const isDgpu = !selected ? state.hardware.kind !== 'custom' || state.hardware.custom.kind === 'dgpu' : selected.kind === 'dgpu';
@@ -354,34 +298,17 @@ export function HardwareForm({ locale, catalog, names, t, state, dispatch, hydra
               />
               {hydrated ? (
                 open && options.length > 0 ? (
-                  <ul
-                    id={listId}
-                    role="listbox"
-                    aria-label={t.calc('gpuLabel')}
-                    // 머리글·여백·스크롤바를 눌러도 입력창 포커스가 떠나지 않게, 스크롤 영역은 Tab 순서에서 뺀다 (재검증)
-                    tabIndex={-1}
-                    onMouseDown={(e) => e.preventDefault()}
-                    className="absolute left-0 right-0 z-10 mt-1 max-h-[50vh] overflow-auto rounded-md border border-border bg-background shadow-lg"
-                  >
-                    {browsing
-                      ? // 둘러보기: APG "grouped listbox" — group 안의 presentation 머리글 + option
-                        GPU_GROUPS.map((group) => {
-                          const items = options.map((gpu, i) => ({ gpu, i })).filter(({ gpu }) => gpuGroup(gpu) === group);
-                          if (items.length === 0) return null;
-                          const headingId = `${listId}-group-${group}`;
-                          return (
-                            <li key={group} role="presentation">
-                              <ul role="group" aria-labelledby={headingId}>
-                                <li role="presentation" id={headingId} data-gpu-group={group} className="px-3 pb-1 pt-2 text-xs font-semibold text-muted-foreground">
-                                  {groupLabel(t, group)}
-                                </li>
-                                {items.map(({ gpu, i }) => renderOption(gpu, i))}
-                              </ul>
-                            </li>
-                          );
-                        })
-                      : options.map((gpu, i) => renderOption(gpu, i))}
-                  </ul>
+                  <GpuListbox
+                    listId={listId}
+                    label={t.calc('gpuLabel')}
+                    locale={locale}
+                    t={t}
+                    options={options}
+                    browsing={browsing}
+                    active={active}
+                    onChoose={choose}
+                    onActive={setActive}
+                  />
                 ) : null
               ) : (
                 <datalist id={listId}>

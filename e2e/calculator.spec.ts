@@ -117,6 +117,23 @@ for (const locale of LOCALES) {
       expect(problems).toEqual([]);
     });
 
+    test('home GPU picker: grouped list like the calculator, a picked option submits its id (09-30)', async ({ page }) => {
+      const problems = collectProblems(page);
+      await open(page, localePath(locale, '/'));
+      const form = page.locator('form[data-home-form]');
+      const input = form.locator('input[role="combobox"]');
+      await input.click();
+      await expect(form.locator('[data-gpu-group="nvidia"]')).toBeVisible();
+      await expect(form.locator('[data-gpu-group="amd"]')).toBeVisible();
+      await input.fill('4070');
+      await form.locator('[role="option"][data-gpu-id="rtx-4070"]').click();
+      await expect(input).toHaveValue(/RTX 4070/);
+      await form.locator('button[type="submit"]').click();
+      await page.waitForURL((u) => u.pathname === path && u.searchParams.get('gpu') === 'rtx-4070');
+      await expect(page.locator('[data-result-card]').first()).toBeVisible();
+      expect(problems).toEqual([]);
+    });
+
     test('share link equals the page URL', async ({ page }) => {
       await open(page, `${path}?gpu=apple-m4-pro&ram=48&kv=q8_0`);
       const share = page.locator('input[data-share-url]');

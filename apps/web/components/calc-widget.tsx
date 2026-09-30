@@ -1,12 +1,15 @@
 import { getTranslations } from 'next-intl/server';
+import { GpuPicker } from '@/components/islands/gpu-picker';
 import type { Locale } from '@/i18n/routing';
-import { catalog } from '@/lib/catalog';
+import { getCatalogLite } from '@/lib/calc-catalog';
+import { clientDict } from '@/lib/client-messages';
+import { GPU_PICKER_MESSAGE_SPEC } from '@/lib/i18n-lite';
 import { calculatorHref, localeHref } from '@/lib/links';
-import { gpuName, type Translate } from '@/lib/phrases';
 
 /**
  * 계산기 위젯 (P1-3 D25 · P1-4 D45) — no-JS GET 폼이 `/calculator?gpu=…` 로 보낸다. 홈과 모든 가이드가 같은 컴포넌트를 쓴다.
- * 서버 컴포넌트(클라이언트 JS 0). datalist = 카탈로그 표시명 + 별칭 — 값 해석은 계산기(별칭·fuzzy)가 한다.
+ * GPU 입력은 클라이언트 아일랜드 `GpuPicker`(계산기와 같은 그룹 목록 — 09-30 사용자 요청으로 D45 의 "JS 0" 을 대체).
+ * 폼·버튼·링크는 서버 렌더 그대로라 JS 없이도 GET 으로 동작한다(하이드레이션 전엔 표시명만 담은 datalist).
  * `idPrefix` 로 label·input·datalist id 를 가른다(한 페이지 여러 개여도 a11y label 짝이 맞게).
  * 홈은 `data-home-form`(E2E·export 계약)을 유지하고, 모든 위젯은 `data-calc-widget` 을 단다.
  */
@@ -23,13 +26,9 @@ export async function CalcWidget({
   heading?: string;
 }) {
   const t = await getTranslations({ locale, namespace: 'Home' });
-  const tNames = (await getTranslations({ locale, namespace: 'GpuName' })) as unknown as Translate & {
-    has?: (key: string) => boolean;
-  };
-  const options = [...new Set(catalog.gpus.flatMap((gpu) => [gpuName(tNames, gpu), ...gpu.aliases]))];
+  const dict = await clientDict(locale, GPU_PICKER_MESSAGE_SPEC);
   const calcAction = localeHref(locale, calculatorHref());
   const inputId = `${idPrefix}-gpu`;
-  const listId = `${idPrefix}-gpu-list`;
 
   return (
     <form
@@ -46,24 +45,14 @@ export async function CalcWidget({
         {t('gpuLabel')}
       </label>
       <div className="flex flex-col gap-2 sm:flex-row">
-        <input
-          id={inputId}
-          name="gpu"
-          list={listId}
-          required
-          inputMode="search"
-          enterKeyHint="go"
-          autoComplete="off"
-          autoCapitalize="off"
-          spellCheck={false}
+        <GpuPicker
+          locale={locale}
+          gpus={getCatalogLite().gpus}
+          dict={dict}
+          inputId={inputId}
+          label={t('gpuLabel')}
           placeholder={t('gpuPlaceholder')}
-          className="h-11 min-w-0 flex-1 rounded-md border border-border bg-background px-3 text-base sm:text-sm"
         />
-        <datalist id={listId}>
-          {options.map((value) => (
-            <option key={value} value={value} />
-          ))}
-        </datalist>
         <button type="submit" className="h-11 rounded-md bg-primary px-5 text-sm font-medium text-primary-foreground">
           {t('submit')}
         </button>
