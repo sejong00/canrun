@@ -23,5 +23,5 @@ export const CONTACT_EMAIL = 'turbojenm@gmail.com';
  */
 export const SEARCH_VERIFICATION = {
   google: 'MdEs99XwXIZVG3i_1NoVrmjidyt2lNEbCQQ3G8qTlOU',
-  naver: '637680a93e2e60134ec55b3ddf0768e6105b7778',
+  naver: '2bedddb0c84c85624795925e6ec425766a8c1f41',
 } as const;
