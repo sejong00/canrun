@@ -14,29 +14,23 @@ import { loadSeed } from './seed';
 const seed = loadSeed();
 
 describe('seed publish.json', () => {
-  it('ships closed (currentBatch 0) with batch 1 = 10 GPUs × 6 models', () => {
-    expect(seed.publish.currentBatch).toBe(0);
+  it('batch 1 (10 GPUs × 6 models) is open since P1-6 (09-30, user-approved gate — rule 5)', () => {
+    expect(seed.publish.currentBatch).toBe(1);
     expect(seed.publish.batches).toHaveLength(1);
     expect(seed.publish.batches[0]!.gpuIds).toHaveLength(10);
     expect(seed.publish.batches[0]!.modelIds).toHaveLength(6);
-    expect(indexableCombos(seed.publish).size).toBe(0);
   });
 
-  it('batch-1 candidates resolve but are not indexable yet', () => {
-    expect(comboPublishState(seed.publish, 'rtx-4060', 'llama-3.1-8b')).toEqual({
-      batch: 1,
-      indexable: false,
-    });
-    expect(comboPublishState(seed.publish, 'rtx-4060', 'llama-3.3-70b')).toEqual({
-      indexable: false,
-    });
+  it('batch 1 indexes exactly the 60 candidate combos, nothing outside it', () => {
+    expect(indexableCombos(seed.publish).size).toBe(60);
+    expect(comboPublishState(seed.publish, 'rtx-4060', 'llama-3.1-8b')).toEqual({ batch: 1, indexable: true });
+    expect(comboPublishState(seed.publish, 'rtx-4060', 'llama-3.3-70b')).toEqual({ indexable: false });
   });
 
-  it('opening batch 1 indexes exactly the 60 candidate combos', () => {
-    const open = { ...seed.publish, currentBatch: 1 };
-    expect(indexableCombos(open).size).toBe(60);
-    expect(comboPublishState(open, 'rtx-4060', 'llama-3.1-8b').indexable).toBe(true);
-    expect(comboPublishState(open, 'rtx-4060', 'llama-3.3-70b').indexable).toBe(false);
+  it('closing the gate (currentBatch 0) indexes nothing — the rollback switch', () => {
+    const closed = { ...seed.publish, currentBatch: 0 };
+    expect(indexableCombos(closed).size).toBe(0);
+    expect(comboPublishState(closed, 'rtx-4060', 'llama-3.1-8b')).toEqual({ batch: 1, indexable: false });
   });
 
   it('never pairs twin GPUs inside one batch (D22) — every batch, every twin group', () => {
