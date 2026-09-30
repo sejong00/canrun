@@ -18,9 +18,11 @@ import {
   type GpuHubData,
   type ModelHubData,
 } from '../src/index';
+import { scenarioSeed } from './scenario-models';
 import { loadSeed } from './seed';
 
-const seed = loadSeed();
+// 이 파일은 상황별 기대값 스냅숏 — 고정 모델 집합 위에서 돈다(새 모델 추가에 흔들리지 않게, scenario-models.ts)
+const seed = scenarioSeed(loadSeed());
 const gpu = (id: string) => seed.gpus.find((g) => g.id === id)!;
 const model = (id: string) => seed.models.find((m) => m.id === id)!;
 const row = (modelId: string, quant: string) =>
@@ -158,7 +160,8 @@ describe('alternatives (docs/04 §4 ⑥, D4)', () => {
 
   it('B partial page: smaller model, desperate quant flagged, S GPU (rtx-4060 × qwen3-14b)', () => {
     const alts = altsFor('rtx-4060', 'qwen3-14b');
-    expect(alts.map(label)).toEqual(['smaller-model:qwen3.5-9b', 'lower-quant:Q2_K', 'gpu:rtx-3060-12gb']);
+    // 09-30 Gemma 4 12B KV 수정으로 12B 가 4060 에서 A — '더 작은 모델' 대안이 qwen3.5-9b 에서 gemma-4-12b 로
+    expect(alts.map(label)).toEqual(['smaller-model:gemma-4-12b', 'lower-quant:Q2_K', 'gpu:rtx-3060-12gb']);
     expect(alts[1]).toMatchObject({ kind: 'lower-quant', desperate: true });
   });
 

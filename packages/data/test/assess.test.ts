@@ -19,6 +19,7 @@ import {
   verdictRank,
   type ComboAssessment,
 } from '../src/index';
+import { scenarioSeed } from './scenario-models';
 import { loadSeed } from './seed';
 
 const seed = loadSeed();
@@ -317,13 +318,15 @@ describe('memoryMatrix (docs/01 F2)', () => {
 
 describe('summaries', () => {
   it('GPU 허브: 전 모델 행·등급 카운트 합 = 모델 수, 판정 내림차순', () => {
-    const hub = summarizeGpu(seed, gpu('rtx-4060'));
-    expect(hub.rows).toHaveLength(seed.models.length);
+    expect(summarizeGpu(seed, gpu('rtx-4060')).rows).toHaveLength(seed.models.length);
+    // 분포 고정은 시나리오 모델 집합 위에서 — 새 모델 추가가 이 숫자를 바꾸지 않게 (scenario-models.ts)
+    const scen = scenarioSeed(seed);
+    const hub = summarizeGpu(scen, gpu('rtx-4060'));
     const c = hub.counts[0]!;
-    expect(c.S + c.A + c.B + c.F).toBe(seed.models.length);
+    expect(c.S + c.A + c.B + c.F).toBe(scen.models.length);
     // 09-30 카탈로그 확장 1차: 소형 4종(Llama 3.2·MiniCPM5) S, qwen3.6-35b-a3b A(형제 qwen3.5 와 동일), 30B급 dense 3종 B(부분 오프로드)
-    expect(c).toMatchObject({ S: 11, A: 2, B: 16, F: 8, otherQuant: 3 });
-    expect(hub.faq.largestFullGpu?.combo.modelId).toBe('qwen3.5-9b');
+    // 09-30 Gemma 4 12B KV 수정(4배 과대 → 설정 기준)으로 12B 가 4060 에서 B → A(부분 오프로드지만 GPU 90% 이상)
+    expect(c).toMatchObject({ S: 11, A: 3, B: 15, F: 8, otherQuant: 3 });
     expect(hub.faq.referenceLarge?.baseline.fReason).toBe('no-fit');
     expect(hub.benchmarks.every((bp) => bp.gpuId === 'rtx-4060')).toBe(true);
     // 정렬: 기준 판정 비증가, 같은 판정 안에서는 표시 tok/s 비증가
@@ -339,24 +342,34 @@ describe('summaries', () => {
     }
   });
 
-  it('"가장 큰 full-GPU 모델" 은 비-desperate 추천 quant 도 본다 (rtx-5060-ti-16gb)', () => {
-    const pick = summarizeGpu(seed, gpu('rtx-5060-ti-16gb')).faq.largestFullGpu!;
-    expect(pick.combo.modelId).toBe('mistral-small-3.2-24b');
-    expect(pick.q.quant).toBe('IQ4_XS');
-    expect(pick.q.result.mode).toBe('full-gpu');
-    expect(pick.q.tier).not.toBe('desperate');
+  // 모델 이름을 박지 않고 규칙을 검산한다 — 카탈로그가 늘어도(09-30 자동화) 손대지 않게.
+  // 규칙: 비-desperate·비-F 인 등록 quant 중 full-GPU 가 하나라도 있는 모델 가운데 파라미터가 가장 큰 것(동률은 id 순)
+  const largestFullGpuOracle = (gpuId: string) => {
+    const hub = summarizeGpu(seed, gpu(gpuId));
+    const paramsOf = (id: string) => seed.models.find((m) => m.id === id)!.paramsB;
+    const candidates = hub.rows
+      .map((row) => row.combos[hub.primaryIndex]!)
+      .filter((c) => [c.baseline, ...c.perQuant].some((q) => q.tier !== 'desperate' && q.result.verdict !== 'F' && q.result.mode === 'full-gpu'))
+      .sort((a, b) => paramsOf(b.modelId) - paramsOf(a.modelId) || a.modelId.localeCompare(b.modelId));
+    return { pick: hub.faq.largestFullGpu!, expected: candidates[0]!.modelId };
+  };
+
+  it('"가장 큰 full-GPU 모델" 은 비-desperate 추천 quant 도 본다 — 규칙 검산 (16GB 카드·M4 Pro)', () => {
+    for (const gpuId of ['rtx-5060-ti-16gb', 'rtx-4060-ti-16gb', 'apple-m4-pro', 'rtx-4060', 'rtx-3090']) {
+      const { pick, expected } = largestFullGpuOracle(gpuId);
+      expect(pick.combo.modelId, gpuId).toBe(expected);
+      expect(pick.q.result.mode, gpuId).toBe('full-gpu');
+      expect(pick.q.tier, gpuId).not.toBe('desperate');
+    }
   });
 
-  it('기준이 이미 같은 판정이어도 더 작은 full-GPU quant 를 찾는다 (P1-1 재검증)', () => {
-    // 4060 Ti 16GB: Mistral Small Q4_K_M 은 부분 오프로드 A(=추천도 기준), IQ4_XS 는 full-GPU
-    const ti = summarizeGpu(seed, gpu('rtx-4060-ti-16gb')).faq.largestFullGpu!;
-    expect(ti.combo.modelId).toBe('mistral-small-3.2-24b');
-    expect(ti.q.quant).toBe('IQ4_XS');
-    // M4 Pro 64GB: Llama 3.3 70B 기준은 cpu-only B, IQ4_XS 는 통합 메모리에 전부 올라간다
-    const m4pro = summarizeGpu(seed, gpu('apple-m4-pro')).faq.largestFullGpu!;
-    expect(m4pro.combo.modelId).toBe('llama-3.3-70b');
-    expect(m4pro.q.quant).toBe('IQ4_XS');
-    expect(m4pro.q.result.mode).toBe('full-gpu');
+  it('기준이 full-GPU 가 아니어도 더 작은 full-GPU quant 를 찾는다 (P1-1 재검증)', () => {
+    // 16GB 카드·M4 Pro 의 답은 지금 모두 기준(Q4_K_M)이 넘치고 IQ4_XS 로 전부 올라가는 경우다 — 이 경로가 실제로 쓰이는지 고정
+    for (const gpuId of ['rtx-5060-ti-16gb', 'rtx-4060-ti-16gb', 'apple-m4-pro']) {
+      const { pick } = largestFullGpuOracle(gpuId);
+      expect(pick.combo.baseline.result.mode, gpuId).not.toBe('full-gpu');
+      expect(pick.q.quant, gpuId).not.toBe(pick.combo.baseline.quant);
+    }
   });
 
   it('CPU 프로필 허브는 full-gpu 모델이 없고 돌아가는 최대 모델로 대신한다', () => {

@@ -509,3 +509,66 @@ describe('parseArgs', () => {
     expect(() => parseArgs(['--report', '--dry'])).toThrow('requires a value');
   });
 });
+
+describe('buildSyncPlan — 새 양자화 행 (카탈로그 확장 자동화, 09-30)', () => {
+  const tree = new Map<string, TreeEntry[]>([
+    [
+      'org/test-8b-GGUF',
+      [
+        file('test-8b-Q4_K_M.gguf', 4_920_000_000),
+        file('test-8b-IQ4_XS.gguf', 4_450_000_000),
+        file('test-8b-Q8_0.gguf', 8_540_000_000),
+        file('test-8b-Q2_K.gguf', 3_180_000_000),
+        file('test-8b-Q5_K_M.gguf', 5_730_000_000),
+      ],
+    ],
+  ]);
+  const baseRow = quantRow({ fileName: 'test-8b-Q4_K_M.gguf' });
+
+  it('adds IQ4_XS / Q8_0 / Q2_K rows found in the base repo as auto, with file name and size', () => {
+    const rows = buildSyncPlan(makeInput({ models: [fullModel()], quants: [baseRow], treeByRepo: tree })).filter((c) => c.field === 'row');
+    expect(rows.map((c) => [c.id, c.next, c.kind])).toEqual([
+      ['test-8b/IQ4_XS', 4.45, 'auto'],
+      ['test-8b/Q8_0', 8.54, 'auto'],
+      ['test-8b/Q2_K', 3.18, 'auto'],
+    ]);
+    expect(rows[0]?.newRow).toEqual({ ggufRepo: 'org/test-8b-GGUF', fileName: 'test-8b-IQ4_XS.gguf', fileGB: 4.45 });
+  });
+
+  it('never adds Q4_K_M (baseline is curated) and skips quants that already have a row', () => {
+    const mxfp4Only = quantRow({ quant: 'MXFP4', fileName: 'test-8b-mxfp4.gguf' });
+    const withQ8 = quantRow({ quant: 'Q8_0', fileGB: 8.54, fileName: 'test-8b-Q8_0.gguf' });
+    const rows = buildSyncPlan(
+      makeInput({ models: [fullModel()], quants: [mxfp4Only, withQ8], treeByRepo: tree }),
+    ).filter((c) => c.field === 'row');
+    expect(rows.map((c) => c.id)).toEqual(['test-8b/IQ4_XS', 'test-8b/Q2_K']);
+  });
+
+  it('skips Q2_K when the model already has a 2-bit row (UD-Q2_K_XL)', () => {
+    const ud = quantRow({ quant: 'UD-Q2_K_XL', fileGB: 3.3, fileName: 'test-8b-UD-Q2_K_XL.gguf' });
+    const rows = buildSyncPlan(makeInput({ models: [fullModel()], quants: [baseRow, ud], treeByRepo: tree })).filter((c) => c.field === 'row');
+    expect(rows.map((c) => c.id)).toEqual(['test-8b/IQ4_XS', 'test-8b/Q8_0']);
+  });
+
+  it('applyChanges inserts new rows right after the model’s last row with the repo as source', () => {
+    const other = quantRow({ modelId: 'other-1b', ggufRepo: 'org/other-GGUF', sources: ['https://huggingface.co/org/other-GGUF'], fileName: 'o.gguf' });
+    const input = makeInput({ models: [fullModel(), fullModel({ id: 'other-1b', hfId: 'org/other-1b' })], quants: [baseRow, other], treeByRepo: tree });
+    applyChanges(buildSyncPlan(input), input);
+    expect(input.rawQuants.map((r) => `${String(r['modelId'])}/${String(r['quant'])}`)).toEqual([
+      'test-8b/Q4_K_M',
+      'test-8b/IQ4_XS',
+      'test-8b/Q8_0',
+      'test-8b/Q2_K',
+      'other-1b/Q4_K_M',
+    ]);
+    expect(input.rawQuants[1]).toEqual({
+      modelId: 'test-8b',
+      quant: 'IQ4_XS',
+      fileGB: 4.45,
+      ggufRepo: 'org/test-8b-GGUF',
+      fileName: 'test-8b-IQ4_XS.gguf',
+      sources: ['https://huggingface.co/org/test-8b-GGUF'],
+    });
+    expect(() => parseModelQuants(input.rawQuants)).not.toThrow();
+  });
+});

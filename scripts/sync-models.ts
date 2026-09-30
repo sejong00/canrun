@@ -58,7 +58,15 @@ export type Change = {
    */
   kind: 'auto' | 'suspicious' | 'manual' | 'skipped' | 'error';
   note?: string;
+  /** field 'row' — 새 양자화 행(09-30 카탈로그 확장 자동화). applyChanges 가 그 모델의 마지막 행 뒤에 삽입 */
+  newRow?: { ggufRepo: string; fileName: string; fileGB: number };
 };
+
+/**
+ * 기존 모델에 자동으로 붙이는 표준 양자화 (09-30). **Q4_K_M 은 제외** — 판정 기준 양자화라 사람이 고른다
+ * (MXFP4 네이티브 모델에 Q4_K_M 이 붙으면 기준이 바뀐다). Q2_K 는 그 모델에 2비트 행이 없을 때만.
+ */
+export const AUTO_ROW_QUANTS: readonly QuantId[] = ['IQ4_XS', 'Q8_0', 'Q2_K'];
 
 export type SyncInput = {
   /** raw JSON.parse 레코드 — 키 순서 보존을 위해 zod 파싱본이 아닌 이것을 변경·직렬화한다 */
@@ -279,6 +287,34 @@ export function buildSyncPlan(input: SyncInput): Change[] {
     }
   });
 
+  // --- 1b) 새 표준 양자화 행 — 기준 행(Q4_K_M, 없으면 첫 행)의 GGUF repo 에 파일이 새로 생기면 추가 ---
+  for (const model of input.models) {
+    const rows = input.quants.filter((mq) => mq.modelId === model.id);
+    const base = rows.find((mq) => mq.quant === 'Q4_K_M') ?? rows[0];
+    if (!base) continue;
+    const tree = input.treeByRepo.get(base.ggufRepo);
+    if (!Array.isArray(tree)) continue;
+    const have = new Set(rows.map((mq) => mq.quant));
+    const hasTwoBit = rows.some((mq) => /Q2|IQ2/.test(mq.quant));
+    for (const quant of AUTO_ROW_QUANTS) {
+      if (have.has(quant) || (quant === 'Q2_K' && hasTwoBit)) continue;
+      const files = matchQuantFiles(tree, quant);
+      if (files.length === 0) continue;
+      const primary = primaryFile(files);
+      const gb = sumFileGB(files);
+      if ('error' in primary || !Number.isFinite(gb)) continue; // 애매한 파일 구성은 추가하지 않는다(기존 행 규칙과 같은 기준)
+      changes.push({
+        file: 'model-quants.json',
+        id: `${model.id}/${quant}`,
+        field: 'row',
+        next: gb,
+        kind: 'auto',
+        note: `새 양자화 행 — ${base.ggufRepo} ${primary.path}${primary.shards > 1 ? ` (${primary.shards}개 분할)` : ''}`,
+        newRow: { ggufRepo: base.ggufRepo, fileName: primary.path, fileGB: gb },
+      });
+    }
+  }
+
   // --- 2) MoE nonExpertGB 연쇄 -------------------------------------------
   for (const model of input.models) {
     const moeArch = MOE_ARCH[model.id];
@@ -434,6 +470,7 @@ export function withKeyAfter(
 export function applyChanges(changes: readonly Change[], input: SyncInput): void {
   for (const change of changes) {
     if (change.kind !== 'auto' && change.kind !== 'suspicious') continue;
+    if (change.field === 'row') continue; // 새 행은 인덱스 정렬을 깨므로 맨 마지막에 삽입
     if (change.file === 'model-quants.json') {
       const idx = input.quants.findIndex((mq) => `${mq.modelId}/${mq.quant}` === change.id);
       const raw = idx >= 0 ? input.rawQuants[idx] : undefined;
@@ -457,6 +494,18 @@ export function applyChanges(changes: readonly Change[], input: SyncInput): void
         arch[change.field.slice('arch.'.length)] = change.next;
       }
     }
+  }
+  // 새 양자화 행 — 그 모델의 마지막 행 바로 뒤 (파일 안에서 모델별로 묶여 있게)
+  for (const change of changes) {
+    if (change.field !== 'row' || change.newRow === undefined || change.kind !== 'auto') continue;
+    const [modelId, quant] = change.id.split('/') as [string, string];
+    let at = -1;
+    input.rawQuants.forEach((raw, i) => {
+      if (raw['modelId'] === modelId) at = i;
+    });
+    if (at < 0) throw new Error(`applyChanges: no existing row for ${modelId}`);
+    const { ggufRepo, fileName, fileGB } = change.newRow;
+    input.rawQuants.splice(at + 1, 0, { modelId, quant, fileGB, ggufRepo, fileName, sources: [hfUrl(ggufRepo)] });
   }
 }
 

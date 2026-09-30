@@ -24,6 +24,7 @@
     "verify-engine": "vitest run packages/engine/test/verify-regression.test.ts",
     "validate-data": "tsx scripts/validate-data.ts",
     "sync-models": "tsx scripts/sync-models.ts",
+    "add-model": "tsx scripts/add-model.ts",
     "new-model-alert": "tsx scripts/new-model-alert.ts"
   },
   "devDependencies": {

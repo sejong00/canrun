@@ -1,0 +1,125 @@
+/** add-model 순수 코어 — 네트워크·fs 없음. config 픽스처는 09-30 실제 HF config 를 축약. */
+import { describe, expect, it } from 'vitest';
+import type { TreeEntry } from './hf-common';
+import {
+  activeFromName,
+  classifyArch,
+  displayName,
+  familyOf,
+  mapLicense,
+  parseArgs,
+  popularityFrom,
+  quantRowsFrom,
+  rankGgufRepos,
+  slugFromHfId,
+} from './add-model';
+
+const layers = (sliding: number, full: number, kind = 'sliding_attention') => [
+  ...Array.from({ length: sliding }, () => kind),
+  ...Array.from({ length: full }, () => 'full_attention'),
+];
+
+describe('classifyArch — 선례 있는 구조만 자동 (D53)', () => {
+  it('SWA with global KV heads (Gemma 4 31B) → KV counts full layers with global kv × head_dim', () => {
+    const r = classifyArch({
+      model_type: 'gemma4',
+      vision_config: {},
+      text_config: {
+        model_type: 'gemma4_text', num_hidden_layers: 60, num_attention_heads: 32, num_key_value_heads: 16, head_dim: 256,
+        num_global_key_value_heads: 4, global_head_dim: 512, sliding_window: 1024, layer_types: layers(50, 10), max_position_embeddings: 262144,
+      },
+    });
+    expect(r).toMatchObject({ kind: 'ok', attnType: 'swa', vision: true, maxContext: 262144, arch: { layers: 60, kvHeads: 16, headDim: 256, kvBytesPerTokenF16: 81920 } });
+    expect(r.kind === 'ok' && r.override?.kvBytesPerTokenF16).toBe(81920);
+  });
+
+  it('hybrid linear (Qwen3.8 27B) and MoE hybrid (Qwen3.6 35B-A3B)', () => {
+    expect(
+      classifyArch({ model_type: 'qwen3_5_text', num_hidden_layers: 64, num_attention_heads: 24, num_key_value_heads: 4, head_dim: 256, layer_types: layers(48, 16, 'linear_attention'), max_position_embeddings: 262144 }),
+    ).toMatchObject({ kind: 'ok', attnType: 'hybrid', arch: { kvBytesPerTokenF16: 65536 } });
+    const moe = classifyArch({ model_type: 'qwen3_5_moe_text', num_hidden_layers: 40, num_attention_heads: 16, num_key_value_heads: 2, head_dim: 256, layer_types: layers(30, 10, 'linear_attention'), max_position_embeddings: 262144, num_experts: 256, num_experts_per_tok: 8 });
+    expect(moe).toMatchObject({ kind: 'ok', attnType: 'hybrid', moe: { experts: 256, topK: 8 }, arch: { kvBytesPerTokenF16: 20480 } });
+  });
+
+  it('full attention derives head_dim from hidden/heads (Llama 3.2 3B = 114688 B/token); qwen2 with use_sliding_window false stays full', () => {
+    expect(classifyArch({ model_type: 'llama', num_hidden_layers: 28, num_attention_heads: 24, num_key_value_heads: 8, hidden_size: 3072, max_position_embeddings: 131072 })).toMatchObject({
+      kind: 'ok', attnType: 'full', arch: { headDim: 128, kvBytesPerTokenF16: 114688 },
+    });
+    expect(classifyArch({ model_type: 'qwen2', num_hidden_layers: 64, num_attention_heads: 40, num_key_value_heads: 8, hidden_size: 5120, sliding_window: 131072, use_sliding_window: false, max_position_embeddings: 131072 })).toMatchObject({ kind: 'ok', attnType: 'full' });
+  });
+
+  it('holds back structures the engine does not model', () => {
+    const base = { num_hidden_layers: 24, num_attention_heads: 16, num_key_value_heads: 4, head_dim: 128, max_position_embeddings: 131072 };
+    expect(classifyArch({ ...base, model_type: 'nemotron_h' })).toMatchObject({ kind: 'unsupported' });
+    expect(classifyArch({ ...base, model_type: 'deepseek_v4' })).toMatchObject({ kind: 'unsupported' });
+    expect(classifyArch({ ...base, model_type: 'llama', kv_lora_rank: 512 })).toMatchObject({ kind: 'unsupported', reason: expect.stringContaining('kv_lora_rank') });
+    expect(classifyArch({ ...base, model_type: 'llama', layer_types: ['conv', 'full_attention'] })).toMatchObject({ kind: 'unsupported' });
+    expect(classifyArch({ ...base, model_type: 'mistral', sliding_window: 4096 })).toMatchObject({ kind: 'unsupported', reason: expect.stringContaining('슬라이딩') });
+    expect(classifyArch({ model_type: 'llama' })).toMatchObject({ kind: 'unsupported', reason: expect.stringContaining('누락') });
+  });
+});
+
+describe('names, license, popularity', () => {
+  it('slug and display name follow the catalog style', () => {
+    expect(slugFromHfId('google/gemma-4-31B-it')).toBe('gemma-4-31b');
+    expect(slugFromHfId('meta-llama/Llama-3.2-3B-Instruct')).toBe('llama-3.2-3b');
+    expect(slugFromHfId('Qwen/Qwen3.6-35B-A3B')).toBe('qwen3.6-35b-a3b');
+    expect(displayName('google/gemma-4-31B-it')).toBe('Gemma 4 31B');
+    expect(displayName('meta-llama/Llama-3.2-3B-Instruct')).toBe('Llama 3.2 3B');
+    expect(displayName('Qwen/Qwen3.6-35B-A3B')).toBe('Qwen3.6 35B-A3B');
+    expect(displayName('ibm-granite/granite-4.2-30b')).toBe('Granite 4.2 30B');
+    expect(displayName('openbmb/MiniCPM5-2B')).toBe('MiniCPM5 2B');
+    expect(familyOf('Qwen3.6 35B-A3B')).toBe('qwen');
+    expect(familyOf('MiniCPM5 2B')).toBe('minicpm');
+  });
+
+  it('maps HF license ids to badge strings, passes unknown ones through', () => {
+    expect(mapLicense('apache-2.0')).toBe('Apache-2.0');
+    expect(mapLicense('llama3.2')).toBe('Llama 3.2');
+    expect(mapLicense('other')).toBe('other');
+    expect(mapLicense(undefined)).toBe('unknown');
+  });
+
+  it('popularity from 30-day downloads; active params from the A3B-style name', () => {
+    expect([9_900_000, 3_200_000, 900_000, 91_000, 18_000].map(popularityFrom)).toEqual([5, 4, 3, 2, 1]);
+    expect(activeFromName('Qwen/Qwen3.6-35B-A3B')).toBe(3);
+    expect(activeFromName('nvidia/Nemotron-3.5-Lightning-30B-A3B-BF16')).toBe(3);
+    expect(activeFromName('google/gemma-4-31B-it')).toBeUndefined();
+  });
+});
+
+describe('GGUF repo choice and quant rows', () => {
+  it('keeps only conversions of the same model, official first, then ggml-org → bartowski → unsloth', () => {
+    expect(
+      rankGgufRepos(
+        ['unsloth/Qwen3.8-27B-GGUF', 'someone/Qwen3.8-27B-abliterated-GGUF', 'bartowski/Qwen3.8-27B-GGUF', 'ggml-org/Qwen3.8-27B-GGUF', 'Qwen/Qwen3.8-27B-GGUF', 'random/Qwen3.8-27B-GGUF'],
+        'Qwen/Qwen3.8-27B',
+      ),
+    ).toEqual(['Qwen/Qwen3.8-27B-GGUF', 'ggml-org/Qwen3.8-27B-GGUF', 'bartowski/Qwen3.8-27B-GGUF', 'unsloth/Qwen3.8-27B-GGUF']);
+    expect(rankGgufRepos(['bartowski/Qwen_Qwen3.6-35B-A3B-GGUF', 'unsloth/Qwen3.6-35B-A3B-MTP-GGUF'], 'Qwen/Qwen3.6-35B-A3B')).toEqual([
+      'bartowski/Qwen_Qwen3.6-35B-A3B-GGUF',
+      'unsloth/Qwen3.6-35B-A3B-MTP-GGUF',
+    ]);
+  });
+
+  it('builds standard rows from a tree (Q4_K_M required; UD-Q2_K_XL when there is no Q2_K)', () => {
+    const f = (path: string, size: number): TreeEntry => ({ type: 'file', path, size });
+    const tree = [f('m-Q4_K_M.gguf', 18_320_000_000), f('m-IQ4_XS.gguf', 16_370_000_000), f('m-Q8_0.gguf', 32_640_000_000), f('m-UD-Q2_K_XL.gguf', 11_770_000_000), f('mmproj-m-f16.gguf', 1_000_000_000)];
+    const rows = quantRowsFrom(tree, 'org/m-GGUF', 'm');
+    expect(rows.map((r) => [r.quant, r.fileGB, r.fileName])).toEqual([
+      ['Q4_K_M', 18.32, 'm-Q4_K_M.gguf'],
+      ['IQ4_XS', 16.37, 'm-IQ4_XS.gguf'],
+      ['Q8_0', 32.64, 'm-Q8_0.gguf'],
+      ['UD-Q2_K_XL', 11.77, 'm-UD-Q2_K_XL.gguf'],
+    ]);
+    expect(rows[0]?.sources).toEqual(['https://huggingface.co/org/m-GGUF']);
+    expect(quantRowsFrom([f('m-Q8_0.gguf', 1)], 'org/m-GGUF', 'm')).toEqual([]);
+  });
+
+  it('parses CLI args', () => {
+    expect(parseArgs(['--', 'Qwen/Qwen3-4B', '--dry', '--category', 'chat,reasoning', '--popularity', '4'])).toMatchObject({
+      hfId: 'Qwen/Qwen3-4B', dry: true, category: ['chat', 'reasoning'], popularity: 4,
+    });
+    expect(() => parseArgs(['--id'])).toThrow();
+  });
+});
