@@ -31,6 +31,8 @@ GPU나 맥 칩을 고르면 모델마다 이런 걸 보여 줘요.
 숫자를 믿을 수 있게 하는 데 제일 신경 썼어요. 속도마다 "실측 / 보정된 추정 / 이론 추정" 라벨과 오차 범위를 붙였어요. 공개 벤치마크랑 비교해서 얼마나 맞았는지는 계산 방법 페이지에 그대로 공개해 뒀어요.
 https://canrunllm.com/ko/methodology
 
+목록에 없는 모델도 Hugging Face 주소(예: Qwen/Qwen3-4B)를 넣으면 같은 방식으로 계산해 줘요. 3090 두 장처럼 같은 GPU를 여러 장 꽂은 구성도 계산할 수 있어요(베타).
+
 컨텍스트 길이나 KV 캐시 양자화를 바꾸면 메모리가 어떻게 변하는지도 볼 수 있어요. 가이드도 몇 개 써 뒀어요(VRAM별로 돌아가는 모델, Ollama 컨텍스트 설정, GGUF 양자화 고르는 법, 한국 모델 정리 등).
 
 부탁드리고 싶은 건 이거예요.
@@ -58,6 +60,8 @@ Pick a GPU or Apple chip and for each model it shows:
 - which quant to download and how much memory it needs (real GGUF file sizes, KV cache for your context length)
 - a speed range rather than a single number, labeled measured / calibrated / theoretical
 - ready-to-run llama.cpp and Ollama commands, including `--n-cpu-moe` for MoE models
+- any model that isn't in the list: paste a Hugging Face link (original or GGUF repo) and it runs the same calculation in your browser
+- multiple identical GPUs (e.g. 2×3090, beta): VRAM adds up, speed stays close to one card with layer split
 
 A few examples (assuming 32GB of DDR5-5600 system RAM):
 - RTX 4060 8GB: Llama 3.1 8B Q4_K_M fits fully, about 38 tok/s from a public measurement.
