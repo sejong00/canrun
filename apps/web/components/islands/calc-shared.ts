@@ -86,6 +86,7 @@ export type CalcAction =
   | { type: 'size'; size: CalcState['size'] }
   | { type: 'sort'; sort: CalcState['sort'] }
   | { type: 'focus'; focus: string | undefined }
+  | { type: 'hf'; hf: string | undefined }
   | { type: 'clearFilters' };
 
 /** dGPU 부류(시스템 RAM 목록·OS 선택지를 공유) — none/unresolved 는 dGPU 기본값을 쓴다 */
@@ -140,6 +141,8 @@ export function makeReducer(catalog: CatalogLite) {
         return { ...state, sort: action.sort };
       case 'focus':
         return normalize({ ...state, focus: action.focus }, catalog);
+      case 'hf':
+        return normalize({ ...state, hf: action.hf }, catalog);
       case 'clearFilters':
         return { ...state, cat: [], size: [], min: undefined };
     }

@@ -1,14 +1,16 @@
 'use client';
 import { usableGB } from '@canrun/engine';
 import type { CatalogLite } from '@canrun/data/client';
-import { useEffect, useMemo, useReducer, useState } from 'react';
+import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { HardwareForm } from '@/components/islands/hardware-form';
+import { HfModelPanel, type HfPanelStatus } from '@/components/islands/hf-model-panel';
 import { ResultList } from '@/components/islands/result-list';
 import { ShareButton } from '@/components/islands/share-button';
 import { bindTranslators, classKey, localePrefix, makeReducer } from '@/components/islands/calc-shared';
 import { formatCtx, formatGB, formatInt, formatMemGB } from '@/lib/format';
 import { matchGpu } from '@/lib/calc/gpu-match';
-import { assembleResults } from '@/lib/calc/run';
+import type { HfLoadResult } from '@/lib/calc/hf-load';
+import { assembleResults, type ExtraModel } from '@/lib/calc/run';
 import { defaultState, type CalcState } from '@/lib/calc/state';
 import { parseCalcQuery, serializeCalcQuery } from '@/lib/calc/url';
 import { useHydrated } from '@/lib/hydration';
@@ -81,7 +83,62 @@ export function CalculatorIsland({
     return () => window.clearTimeout(id);
   }, [state, restored, catalog]);
 
-  const results = useMemo(() => (hydrated && restored ? assembleResults(catalog, state) : undefined), [catalog, state, hydrated, restored]);
+  // 카탈로그 밖 모델 (계산기 P2, D57): 불러오기는 사용자가 누르거나 URL 에 hf= 가 있을 때만 — 로더는 dynamic import
+  const [hfLoad, setHfLoad] = useState<{ id: string; result: HfLoadResult } | undefined>(undefined);
+  const [hfStatus, setHfStatus] = useState<HfPanelStatus>({ kind: 'idle' });
+  const catalogIdFor = (hfId: string) => catalog.models.find((m) => m.hfId.toLowerCase() === hfId.toLowerCase())?.id;
+  // 불러오기 차례 번호 — 늦게 끝난 이전 요청(다른 모델·빼기 뒤)의 결과는 버린다 (10-01 리뷰)
+  const hfSeq = useRef(0);
+  const loadHf = (text: string) => {
+    const seq = ++hfSeq.current;
+    setHfStatus({ kind: 'loading' });
+    void import('@/lib/calc/hf-load')
+      .then(({ loadHfModel }) => loadHfModel(text, undefined, { catalogIdFor }))
+      .then((result) => {
+        if (seq !== hfSeq.current) return;
+        if (result.kind === 'catalog') {
+          // 이미 목록에 있는 모델 — 불러오지 않고 그 카드를 강조한다(URL 의 m=)
+          const name = catalog.models.find((m) => m.id === result.modelId)?.name ?? result.modelId;
+          setHfLoad(undefined);
+          setHfStatus({ kind: 'catalog', name });
+          dispatch({ type: 'hf', hf: undefined });
+          dispatch({ type: 'focus', focus: result.modelId });
+        } else if (result.kind === 'ok') {
+          setHfLoad({ id: result.hfId, result });
+          setHfStatus({ kind: 'loaded', name: result.model.name });
+          dispatch({ type: 'hf', hf: result.hfId });
+        } else {
+          setHfStatus({ kind: 'error', code: result.code, ...(result.modelType ? { modelType: result.modelType } : {}) });
+        }
+      })
+      .catch(() => {
+        if (seq === hfSeq.current) setHfStatus({ kind: 'error', code: 'network' });
+      });
+  };
+  // URL 의 hf= (공유 링크·뒤로 가기) → 불러오기. 이미 같은 id 를 불러왔으면 그대로
+  useEffect(() => {
+    if (!restored || !state.hf || hfLoad?.id === state.hf) return;
+    loadHf(state.hf);
+    // loadHf 는 렌더마다 새 함수지만 같은 일을 한다 — state.hf 가 바뀔 때만 다시 부른다
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restored, state.hf]);
+  const removeHf = () => {
+    hfSeq.current += 1;
+    setHfLoad(undefined);
+    setHfStatus({ kind: 'idle' });
+    dispatch({ type: 'hf', hf: undefined });
+  };
+  // 메모 — 매 렌더 새 객체면 아래 결과 조립(전 모델 평가)이 매번 다시 돈다
+  const extra = useMemo<ExtraModel | undefined>(
+    () => (hfLoad && hfLoad.result.kind === 'ok' && hfLoad.id === state.hf ? { model: hfLoad.result.model, rows: hfLoad.result.rows } : undefined),
+    [hfLoad, state.hf],
+  );
+  const hfMeta = extra && hfLoad?.result.kind === 'ok' ? { baseId: hfLoad.result.baseId, ggufRepo: hfLoad.result.ggufRepo } : undefined;
+
+  const results = useMemo(
+    () => (hydrated && restored ? assembleResults(catalog, state, extra) : undefined),
+    [catalog, state, hydrated, restored, extra],
+  );
   const prefix = localePrefix(locale);
   const shareUrl = useMemo(() => {
     if (!hydrated) return '';
@@ -113,6 +170,15 @@ export function CalculatorIsland({
       {hydrated && results && (
         <ShareButton t={t} url={shareUrl} shareText={shareTextFor(t, locale, state, results.hardware)} />
       )}
+      <HfModelPanel
+        t={t}
+        hydrated={hydrated}
+        status={hfStatus}
+        hasHardware={results !== undefined}
+        canRemove={state.hf !== undefined || hfStatus.kind === 'loading'}
+        onLoad={loadHf}
+        onRemove={removeHf}
+      />
       <ResultList
         locale={locale}
         catalog={catalog}
@@ -123,6 +189,7 @@ export function CalculatorIsland({
         hydrated={hydrated}
         prefix={prefix}
         issueUrl={issueUrl}
+        {...(hfMeta ? { hfMeta } : {})}
       />
     </div>
   );

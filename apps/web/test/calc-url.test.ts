@@ -134,3 +134,15 @@ describe('serializeCalcQuery / parseCalcQuery', () => {
     expect(parseCalcQuery('?gpu=custom&kind=dgpu&class=intel-arc&vram=16&bw=560', catalog).hardware).toMatchObject({ custom: { kind: 'dgpu', effClass: 'intel-arc' } });
   });
 });
+
+describe('hf= (카탈로그 밖 모델, D57)', () => {
+  it('round-trips a valid HF repo id after every other key and drops malformed ids', () => {
+    const s: CalcState = { ...defaultState(), hardware: { kind: 'catalog', gpuId: 'rtx-4060' }, focus: 'llama-3.1-8b', hf: 'Qwen/Qwen3-8B' };
+    expect(serializeCalcQuery(s, catalog)).toBe('?gpu=rtx-4060&m=llama-3.1-8b&hf=Qwen%2FQwen3-8B');
+    expect(roundTrip(s).hf).toBe('Qwen/Qwen3-8B');
+    for (const bad of ['Qwen', 'a/b/c', '../etc', 'https://huggingface.co/Qwen/Qwen3-8B', '<script>/x']) {
+      expect(parseCalcQuery(`?hf=${encodeURIComponent(bad)}`, catalog).hf, bad).toBeUndefined();
+    }
+    expect(normalize({ ...defaultState(), hf: 'x/y' }, catalog).hf).toBe('x/y');
+  });
+});

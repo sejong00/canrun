@@ -1,0 +1,576 @@
+/**
+ * Hugging Face 모델 수집 — 순수 코어 (브라우저 진입점 `@canrun/data/hf`).
+ *
+ * 데이터 동기화 스크립트(`scripts/sync-models.ts`·`scripts/add-model.ts`)와 계산기의 "카탈로그 밖 모델을 HF id 로 확인"
+ * 기능이 같은 코드를 쓴다: 구조 분류(classifyArch) · GGUF 파일 매칭(matchQuantFiles·quantRowsFrom) · GGUF 헤더 실측(./gguf).
+ * `buildHfModel` 이 HF 응답(config·트리·모델 정보·기준 양자화 헤더 실측)을 엔진이 바로 쓰는 카탈로그 레코드
+ * (ModelCore + ModelQuantCore[])로 조립한다 — assessCombo 등 조립 함수가 특별 취급 없이 받는다.
+ *
+ * 브라우저 안전: node API·zod 없음(스키마는 type-only), 모듈 최상위 부수효과 없음, 외부 의존성은 @canrun/engine 뿐 —
+ * `test/client-entry.test.ts` 가 import 그래프로 강제한다. 계산기 메인 번들(`./client`)에는 넣지 않는다(dynamic import 전용).
+ * 네트워크(HF API 트리·config·모델 정보 요청)는 호출자 몫 — 여기서는 GGUF 헤더 Range 읽기(./gguf)만 fetch 를 주입받아 한다.
+ */
+
+import type { ModelCore, ModelQuantCore } from './core';
+import { deriveNonExpertGB } from './derive';
+import type { ModelQuantRecord } from './schema';
+
+export * from './gguf';
+
+type QuantId = ModelQuantRecord['quant'];
+
+const round2 = (x: number): number => Math.round(x * 100) / 100;
+const hfUrl = (repo: string): string => `https://huggingface.co/${repo}`;
+const posInt = (v: unknown): number | undefined =>
+  typeof v === 'number' && Number.isInteger(v) && v > 0 ? v : undefined;
+
+/** HF 트리 API(`/api/models/{repo}/tree/main?recursive=true`) 항목 */
+export type TreeEntry = {
+  type: string;
+  path: string;
+  size?: number;
+};
+
+// ---------------------------------------------------------------------------
+// 입력 해석
+// ---------------------------------------------------------------------------
+
+const NAME = '[A-Za-z0-9][A-Za-z0-9._-]*';
+const BARE_RE = new RegExp(`^(${NAME})/(${NAME})$`);
+/** 호스트 형식 — 뒤에 Ollama 태그(`:Q4_K_M`) 또는 하위 경로·쿼리·해시(`/tree/main`, `/blob/main/x.gguf`, `?…`, `#…`) */
+const URL_RE = new RegExp(
+  `^(?:https?://)?(?:www\\.)?(?:huggingface\\.co|hf\\.co)/(${NAME})/(${NAME})(?::[A-Za-z0-9._-]+|[/?#].*)?$`,
+  'i',
+);
+/** URL·호스트로 시작하면 호스트 형식만 허용 (`huggingface.co/org` 를 org/repo 로 오해하지 않게) */
+const HOST_PREFIX = /^(?:[a-z][a-z0-9+.-]*:\/\/|(?:www\.)?(?:huggingface|hf)\.co(?:[/:?#]|$))/i;
+/** 모델이 아닌 HF 경로의 첫 세그먼트 — 데이터셋·스페이스 URL 등 */
+const RESERVED_OWNERS: ReadonlySet<string> = new Set([
+  'datasets',
+  'spaces',
+  'models',
+  'api',
+  'docs',
+  'blog',
+  'collections',
+  'papers',
+  'organizations',
+  'settings',
+  'posts',
+  'buckets',
+]);
+
+/**
+ * 사용자 입력 → HF 모델 id(`org/repo`). 받는 형식: `org/repo` · `https://huggingface.co/org/repo[/tree/main|/blob/…|?…]`
+ * · `huggingface.co/org/repo` · `hf.co/org/repo` · `hf.co/org/repo:Q4_K_M`(Ollama). 앞뒤 공백 무시.
+ * 그 외(데이터셋·스페이스 URL, 다른 호스트, 세그먼트 하나뿐인 입력)는 undefined.
+ */
+export function parseHfInput(text: string): string | undefined {
+  const s = text.trim();
+  const m = URL_RE.exec(s) ?? (HOST_PREFIX.test(s) ? null : BARE_RE.exec(s));
+  if (!m) return undefined;
+  const [, owner = '', repo = ''] = m;
+  if (RESERVED_OWNERS.has(owner.toLowerCase())) return undefined;
+  return `${owner}/${repo}`;
+}
+
+// ---------------------------------------------------------------------------
+// GGUF 파일 매칭 (scripts/sync-models.ts 에서 이동)
+// ---------------------------------------------------------------------------
+
+/**
+ * tree 항목에서 quant 파일 매칭 — 경계 규칙으로 근접 오매칭 차단:
+ * 앞 경계 ^|-|_|.|/ (IQ2_K 의 'I' 는 경계 아님 → Q2_K 미매칭),
+ * 뒤 경계 -|.|/ 또는 끝 ('_' 제외 → Q4_K_M_L 미매칭). 대소문자 무시(mxfp4).
+ * 비-UD quant 는 플레인 파일 우선, 플레인이 없으면 UD- 접두 변형(unsloth Dynamic)으로 폴백 —
+ * 둘 다 배포하는 repo 의 합산 오염은 막고, UD 만 배포하는 repo(MTP 계열)는 실파일을 취한다.
+ * 드래프트·보조 파일은 모델 가중치가 아니므로 제외 (basename 접두, 대소문자 무시):
+ * mmproj-*(비전 프로젝터) · mtp-*(MTP 드래프트 헤드) · eagle3-*(EAGLE 드래프트) — P1-2 에서
+ * 드래프트 합산 버그(gemma-4 Q8_0 에 mtp 0.46GB 합산)를 고쳤다. repo 이름의 'MTP' 는 무관.
+ */
+const DRAFT_FILE_PREFIX = /^(?:mmproj|mtp-|eagle3-)/i;
+
+export function matchQuantFiles(entries: readonly TreeEntry[], quant: QuantId): TreeEntry[] {
+  const esc = quant.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re = new RegExp(`(?:^|[-_./])${esc}(?:[-./]|$)`, 'i');
+  const udRe = quant.startsWith('UD-')
+    ? undefined
+    : new RegExp(`(?:^|[-_./])UD-${esc}(?:[-./]|$)`, 'i');
+  const candidates = entries.filter((entry) => {
+    if (entry.type !== 'file') return false;
+    const path = entry.path;
+    if (!path.toLowerCase().endsWith('.gguf')) return false;
+    const base = path.split('/').at(-1) ?? path;
+    if (DRAFT_FILE_PREFIX.test(base)) return false;
+    return re.test(path);
+  });
+  if (udRe === undefined) return candidates;
+  const plain = candidates.filter((entry) => !udRe.test(entry.path));
+  return plain.length > 0 ? plain : candidates;
+}
+
+const SHARD_RE = /-(\d{5})-of-(\d{5})\.gguf$/i;
+
+export type PrimaryFile = { path: string; shards: number };
+
+/**
+ * 매칭 파일들 → 대표 실파일 (model-quants `fileName` 의 정본, docs/03 §5.1 ④).
+ * 단일 파일이면 그것, 전부 `-0000N-of-0000M` 조각이고 M 이 같으며 개수 == M 이면 00001 조각.
+ * 그 외(비-분할 2개 이상, 조각 누락·혼합)는 애매 → 호출자가 error 로 보고 (조용한 합산 금지).
+ */
+export function primaryFile(files: readonly TreeEntry[]): PrimaryFile | { error: string } {
+  const names = files.map((f) => f.path);
+  if (files.length === 1) return { path: names[0]!, shards: 1 };
+  const parsed = names.map((path) => {
+    const m = SHARD_RE.exec(path);
+    return m ? { path, index: Number(m[1]), total: Number(m[2]) } : undefined;
+  });
+  const totals = new Set(parsed.map((p) => p?.total));
+  const consistent =
+    parsed.every((p) => p !== undefined) && totals.size === 1 && files.length === [...totals][0];
+  if (!consistent) return { error: `ambiguous match: ${names.join(', ')}` };
+  const first = parsed.find((p) => p?.index === 1);
+  if (!first) return { error: `shard 00001 missing: ${names.join(', ')}` };
+  return { path: first.path, shards: files.length };
+}
+
+/** 분할 파일 합산 → decimal GB 2자리. size 누락 항목이 있으면 NaN. */
+export function sumFileGB(entries: readonly TreeEntry[]): number {
+  let bytes = 0;
+  for (const entry of entries) {
+    if (entry.size === undefined) return Number.NaN;
+    bytes += entry.size;
+  }
+  return round2(bytes / 1e9);
+}
+
+// ---------------------------------------------------------------------------
+// config.json 해석 (scripts/sync-models.ts 에서 이동)
+// ---------------------------------------------------------------------------
+
+export type ExtractedArch = {
+  arch?: { layers: number; kvHeads: number; headDim: number };
+  maxContext?: number;
+  missing: string[];
+};
+
+/** 멀티모달 래퍼는 text_config 우선 */
+function textConfig(config: object): Record<string, unknown> {
+  const top = config as Record<string, unknown>;
+  const nested = top['text_config'];
+  return typeof nested === 'object' && nested !== null ? (nested as Record<string, unknown>) : top;
+}
+
+/**
+ * config.json → arch 추출. 멀티모달 래퍼는 text_config 우선.
+ * head_dim 폴백 = hidden_size / num_attention_heads, kvHeads 폴백 = num_attention_heads(MHA).
+ * 추출 불가 필드는 missing 으로 보고 — 추측 금지(CLAUDE.md 규칙 3).
+ */
+export function extractArch(config: unknown): ExtractedArch {
+  if (typeof config !== 'object' || config === null) {
+    return { missing: ['config'] };
+  }
+  const top = config as Record<string, unknown>;
+  const cfg = textConfig(config);
+
+  const layers = posInt(cfg['num_hidden_layers']);
+  const attnHeads = posInt(cfg['num_attention_heads']);
+  const kvHeads = posInt(cfg['num_key_value_heads']) ?? attnHeads;
+  const hiddenSize = posInt(cfg['hidden_size']);
+  let headDim = posInt(cfg['head_dim']);
+  if (headDim === undefined && hiddenSize !== undefined && attnHeads !== undefined) {
+    const derived = hiddenSize / attnHeads;
+    if (Number.isInteger(derived) && derived > 0) headDim = derived;
+  }
+  const maxContext = posInt(cfg['max_position_embeddings'] ?? top['max_position_embeddings']);
+
+  const missing: string[] = [];
+  if (layers === undefined) missing.push('num_hidden_layers');
+  if (kvHeads === undefined) missing.push('num_key_value_heads');
+  if (headDim === undefined) missing.push('head_dim');
+
+  if (layers === undefined || kvHeads === undefined || headDim === undefined) {
+    return { maxContext, missing };
+  }
+  return { arch: { layers, kvHeads, headDim }, maxContext, missing };
+}
+
+/**
+ * config.json → MoE 구조 (라우팅 전문가 수 · 토큰당 활성 수). 모델마다 키 이름이 달라 알려진 별칭을 순서대로 본다:
+ * experts = num_experts(Qwen·Gemma 4) · num_local_experts(gpt-oss·kanana) · n_routed_experts(Solar Open),
+ * topK = num_experts_per_tok · top_k_experts(Gemma 4) · experts_per_token(gpt-oss). 하나라도 없으면 undefined(추측 금지).
+ */
+export function extractMoe(config: unknown): { experts: number; topK: number } | undefined {
+  if (typeof config !== 'object' || config === null) return undefined;
+  const cfg = textConfig(config);
+  const experts = posInt(cfg['num_experts'] ?? cfg['num_local_experts'] ?? cfg['n_routed_experts']);
+  const topK = posInt(cfg['num_experts_per_tok'] ?? cfg['top_k_experts'] ?? cfg['experts_per_token']);
+  return experts !== undefined && topK !== undefined ? { experts, topK } : undefined;
+}
+
+// ---------------------------------------------------------------------------
+// 구조 분류·이름·라이선스 (scripts/add-model.ts 에서 이동)
+// ---------------------------------------------------------------------------
+
+/**
+ * 선례가 있는 텍스트 model_type (09-30 카탈로그 config 에서 수집). 여기 없는 구조는 자동 추가하지 않는다.
+ * gpt_oss(MXFP4 네이티브 — 기준 양자화가 다름)·solar_open2(하이브리드 특수)는 의도적으로 제외.
+ */
+export const KNOWN_MODEL_TYPES: ReadonlySet<string> = new Set([
+  'llama',
+  'mistral',
+  'mixtral',
+  'qwen2',
+  'qwen3',
+  'qwen3_moe',
+  'qwen3_5_text',
+  'qwen3_5_moe_text',
+  'gemma3_text',
+  'gemma4_text',
+  'gemma4_unified_text',
+  'phi3',
+  'granite',
+  'exaone4',
+  'exaone4_5_text',
+  'hyperclovax',
+  'solar_open',
+]);
+
+/** 이 키가 config 에 있으면 엔진이 모델링하지 않는 구조 (MLA·압축 어텐션·SSM·conv) */
+const UNSUPPORTED_KEYS = ['kv_lora_rank', 'compress_ratios', 'ssm_state_size', 'mamba_num_heads', 'conv_L_cache', 'hybrid_override_pattern'];
+const KNOWN_LAYER_TYPES: ReadonlySet<string> = new Set(['full_attention', 'sliding_attention', 'linear_attention']);
+
+export type ArchResult =
+  | {
+      kind: 'ok';
+      modelType: string;
+      attnType: 'full' | 'swa' | 'hybrid';
+      arch: { layers: number; kvHeads: number; headDim: number; kvBytesPerTokenF16: number };
+      /** swa·hybrid — 전체 어텐션 층만 KV (선례와 같은 산식) */
+      override?: { kvBytesPerTokenF16: number; reason: string };
+      maxContext: number;
+      moe?: { experts: number; topK: number };
+      vision: boolean;
+    }
+  | { kind: 'unsupported'; reason: string };
+
+/**
+ * config.json → 엔진이 모델링하는 구조인지 분류 — **선례가 있는 구조만**(PROGRESS §4 D53): 전체 어텐션 ·
+ * 슬라이딩 윈도(layer_types) · 하이브리드 선형(layer_types). 처음 보는 model_type, MLA·압축 어텐션·Mamba·conv 등은 unsupported.
+ */
+export function classifyArch(config: unknown): ArchResult {
+  if (typeof config !== 'object' || config === null) return { kind: 'unsupported', reason: 'config 없음' };
+  const top = config as Record<string, unknown>;
+  const cfg = textConfig(config);
+  const modelType = String(cfg['model_type'] ?? top['model_type'] ?? '');
+  if (!KNOWN_MODEL_TYPES.has(modelType)) return { kind: 'unsupported', reason: `처음 보는 구조 model_type=${modelType || '(없음)'} — 선례 없음, 수동 검토` };
+  for (const key of UNSUPPORTED_KEYS) {
+    if (key in cfg || key in top) return { kind: 'unsupported', reason: `엔진이 모델링하지 않는 구조 (${key})` };
+  }
+  const layers = posInt(cfg['num_hidden_layers']);
+  const heads = posInt(cfg['num_attention_heads']);
+  const kvHeads = posInt(cfg['num_key_value_heads']) ?? heads;
+  const hidden = posInt(cfg['hidden_size']);
+  const headDim = posInt(cfg['head_dim']) ?? (hidden && heads && Number.isInteger(hidden / heads) ? hidden / heads : undefined);
+  const maxContext = posInt(cfg['max_position_embeddings'] ?? top['max_position_embeddings']);
+  if (!layers || !kvHeads || !headDim || !maxContext) return { kind: 'unsupported', reason: 'config 필드 누락(layers·kv heads·head_dim·max_position_embeddings)' };
+
+  const moe = extractMoe(config);
+  const vision = 'vision_config' in top;
+  const full = layers * kvHeads * headDim * 4;
+
+  const layerTypes = Array.isArray(cfg['layer_types']) ? (cfg['layer_types'] as unknown[]).map(String) : undefined;
+  if (layerTypes && layerTypes.some((t) => !KNOWN_LAYER_TYPES.has(t))) {
+    return { kind: 'unsupported', reason: `처음 보는 층 종류 ${[...new Set(layerTypes)].filter((t) => !KNOWN_LAYER_TYPES.has(t)).join(',')}` };
+  }
+  const nFull = layerTypes?.filter((t) => t === 'full_attention').length;
+  const hasSliding = layerTypes?.includes('sliding_attention') ?? false;
+  const hasLinear = layerTypes?.includes('linear_attention') ?? false;
+
+  if (hasSliding && hasLinear) return { kind: 'unsupported', reason: '슬라이딩 + 선형 혼합 — 선례 없음' };
+  if (hasSliding && nFull !== undefined) {
+    const gKv = posInt(cfg['num_global_key_value_heads']) ?? kvHeads;
+    const gDim = posInt(cfg['global_head_dim']) ?? headDim;
+    const kv = nFull * gKv * gDim * 4;
+    const global = gKv !== kvHeads || gDim !== headDim ? ` × global kv ${gKv} × head_dim ${gDim}` : '';
+    return {
+      kind: 'ok', modelType, attnType: 'swa', vision, maxContext, ...(moe ? { moe } : {}),
+      arch: { layers, kvHeads, headDim, kvBytesPerTokenF16: kv },
+      override: { kvBytesPerTokenF16: kv, reason: `swa — full attn ${nFull}/${layers} layers${global}, sliding win${String(cfg['sliding_window'] ?? '?')} 는 평탄 근사로 제외 (add-model)` },
+    };
+  }
+  if (hasLinear && nFull !== undefined) {
+    const kv = nFull * kvHeads * headDim * 4;
+    return {
+      kind: 'ok', modelType, attnType: 'hybrid', vision, maxContext, ...(moe ? { moe } : {}),
+      arch: { layers, kvHeads, headDim, kvBytesPerTokenF16: kv },
+      override: { kvBytesPerTokenF16: kv, reason: `hybrid linear — full attn ${nFull}/${layers} layers, KV 는 full 레이어만 계상 (add-model)` },
+    };
+  }
+  // layer_types 가 없고 sliding_window_pattern(N 층마다 1층 전역 — Gemma 3 구형 config)만 있으면 전역 층 = floor(layers / N).
+  // 카탈로그 gemma-3-12b(48층 → 8 × 8 × 256 × 4 = 65,536)·27b(62층 → 10 × 16 × 128 × 4 = 81,920) 기록과 같은 산식 (10-01)
+  const sw = posInt(cfg['sliding_window']);
+  const pattern = posInt(cfg['sliding_window_pattern']);
+  if (!layerTypes && sw !== undefined && pattern !== undefined && pattern >= 2 && sw < maxContext) {
+    const nGlobal = Math.floor(layers / pattern);
+    const kv = nGlobal * kvHeads * headDim * 4;
+    return {
+      kind: 'ok', modelType, attnType: 'swa', vision, maxContext, ...(moe ? { moe } : {}),
+      arch: { layers, kvHeads, headDim, kvBytesPerTokenF16: kv },
+      override: { kvBytesPerTokenF16: kv, reason: `swa ${pattern - 1}:1 (sliding_window_pattern) — full attn ${nGlobal}/${layers} layers, sliding win${sw} 는 평탄 근사로 제외` },
+    };
+  }
+  // 그 밖에 layer_types 가 없거나 전부 full. 모든 층 슬라이딩(use_sliding_window 켜짐)은 선례 없음
+  if (!layerTypes && sw !== undefined && cfg['use_sliding_window'] !== false && sw < maxContext) {
+    return { kind: 'unsupported', reason: `전 층 슬라이딩 윈도(${sw}) — 선례 없음` };
+  }
+  return { kind: 'ok', modelType, attnType: 'full', vision, maxContext, ...(moe ? { moe } : {}), arch: { layers, kvHeads, headDim, kvBytesPerTokenF16: full } };
+}
+
+const DROP_SUFFIX = /[-_](?:instruct|it|chat|hf)$/i;
+
+/** `google/gemma-4-31B-it` → `gemma-4-31b` */
+export function slugFromHfId(hfId: string): string {
+  let base = hfId.split('/').pop() ?? hfId;
+  while (DROP_SUFFIX.test(base)) base = base.replace(DROP_SUFFIX, '');
+  return base.toLowerCase().replace(/_/g, '-').replace(/[^a-z0-9.-]/g, '');
+}
+
+/** `meta-llama/Llama-3.2-3B-Instruct` → `Llama 3.2 3B`, `ibm-granite/granite-4.2-30b` → `Granite 4.2 30B` */
+export function displayName(hfId: string): string {
+  let base = hfId.split('/').pop() ?? hfId;
+  while (DROP_SUFFIX.test(base)) base = base.replace(DROP_SUFFIX, '');
+  return base
+    .split(/[-_]/)
+    .map((w) => (/^\d+(?:\.\d+)?b$/i.test(w) ? w.toUpperCase() : /^[a-z]/.test(w) ? w[0]!.toUpperCase() + w.slice(1) : w))
+    .join(' ')
+    .replace(/ (A\d+(?:\.\d+)?B)\b/, '-$1'); // 35B A3B → 35B-A3B
+}
+
+export const familyOf = (name: string): string => (name.split(' ')[0] ?? name).toLowerCase().replace(/[^a-z]/g, '') || 'other';
+
+/** HF 라이선스 id → 카탈로그 문자열(license.ts 배지 맵과 같은 표기). 모르면 원문 그대로 — 배지 테스트가 잡아 사람이 맵에 추가 */
+export function mapLicense(hf: string | undefined): string {
+  const map: Record<string, string> = {
+    'apache-2.0': 'Apache-2.0',
+    mit: 'MIT',
+    llama3: 'Llama 3',
+    'llama3.1': 'Llama 3.1',
+    'llama3.2': 'Llama 3.2',
+    'llama3.3': 'Llama 3.3',
+    gemma: 'Gemma',
+  };
+  return hf ? (map[hf.toLowerCase()] ?? hf) : 'unknown';
+}
+
+/** 30일 다운로드 → 인기도 1~5 (09-30 카탈로그 분포에 맞춘 기준) */
+export function popularityFrom(downloads: number | undefined): number {
+  const d = downloads ?? 0;
+  return d >= 5_000_000 ? 5 : d >= 1_000_000 ? 4 : d >= 200_000 ? 3 : d >= 30_000 ? 2 : 1;
+}
+
+/** 이름의 활성 파라미터 표기(`35B-A3B`) → 3 */
+export const activeFromName = (hfId: string): number | undefined => {
+  const m = /(?:^|[-_])A(\d+(?:\.\d+)?)B(?:[-_]|$)/i.exec(hfId.split('/').pop() ?? '');
+  return m ? Number(m[1]) : undefined;
+};
+
+const OWNER_ORDER = ['ggml-org', 'bartowski', 'unsloth', 'lmstudio-community'];
+
+/**
+ * GGUF 후보 repo 정렬 — 같은 모델의 변환본만(파인튠·abliterated 제외): basename 이 `<base>-GGUF`·`<owner>_<base>-GGUF`·`<base>-MTP-GGUF`.
+ * 순서: 원 저장소 소유자(공식) → ggml-org → bartowski → unsloth → lmstudio-community.
+ */
+export function rankGgufRepos(candidates: readonly string[], hfId: string): string[] {
+  const [owner = '', base = ''] = hfId.split('/');
+  const b = base.toLowerCase();
+  const same = (repo: string): boolean => {
+    let name = (repo.split('/').pop() ?? '').toLowerCase().replace(/-gguf$/, '').replace(/-mtp$/, '');
+    if (name.startsWith(`${owner.toLowerCase()}_`)) name = name.slice(owner.length + 1);
+    return name === b;
+  };
+  const rank = (repo: string): number => {
+    const o = repo.split('/')[0] ?? '';
+    if (o === owner) return 0;
+    const i = OWNER_ORDER.indexOf(o);
+    return i < 0 ? 99 : i + 1;
+  };
+  return candidates.filter(same).filter((r) => rank(r) < 99).sort((a, c) => rank(a) - rank(c));
+}
+
+/** repo 트리 → 표준 양자화 행 (Q4_K_M 필수 — 없으면 빈 배열, 있으면 첫 행). Q2_K 가 없고 UD-Q2_K_XL 만 있으면 그걸 쓴다 */
+export function quantRowsFrom(tree: readonly TreeEntry[], repo: string, modelId: string): ModelQuantRecord[] {
+  const rows: ModelQuantRecord[] = [];
+  const add = (quant: QuantId): boolean => {
+    const files = matchQuantFiles(tree, quant);
+    if (files.length === 0) return false;
+    const primary = primaryFile(files);
+    const gb = sumFileGB(files);
+    if ('error' in primary || !Number.isFinite(gb)) return false;
+    rows.push({ modelId, quant, fileGB: gb, ggufRepo: repo, fileName: primary.path, sources: [hfUrl(repo)] });
+    return true;
+  };
+  if (!add('Q4_K_M')) return [];
+  add('IQ4_XS');
+  add('Q8_0');
+  if (!add('Q2_K')) add('UD-Q2_K_XL');
+  return rows;
+}
+
+// ---------------------------------------------------------------------------
+// 조립 — HF 데이터 → 엔진 입력 레코드
+// ---------------------------------------------------------------------------
+
+/** 카탈로그 밖 모델 id 접두 — 카탈로그 id(slug)는 이 접두를 쓰지 않으므로 충돌하지 않는다 */
+export const HF_MODEL_ID_PREFIX = 'hf-';
+
+export type HfModelInput = {
+  /** 원본 모델 id (`org/repo`) — 이름·id·활성 파라미터(이름 표기) 유도에 쓴다 */
+  hfId: string;
+  /** GGUF 저장소 (`tree` 의 출처) */
+  ggufRepo: string;
+  /** 원본 config.json (파싱된 JSON) */
+  config: unknown;
+  /** GGUF 저장소 트리 */
+  tree: readonly TreeEntry[];
+  info?: {
+    /** HF cardData.license */
+    license?: string;
+    /** safetensors.total / 1e9 */
+    paramsB?: number;
+  };
+  /**
+   * 기준(Q4_K_M) 파일 헤더 실측 (`measureSplit` 결과에서). 크기는 MoE 에서만 쓴다.
+   * totalParamsB·expertParamsB = `totalParams / 1e9`·`expertParams / 1e9` — paramsB·activeParamsB 대용.
+   */
+  baseSplit?: { expertGB: number; nonExpertGB: number; totalParamsB?: number; expertParamsB?: number };
+};
+
+/**
+ * 근사 표식 (UI 가 "추정" 안내를 붙인다):
+ * - params-from-header: 파라미터 수를 safetensors 대신 GGUF 헤더 텐서 원소 수로
+ * - active-from-name: MoE 활성 파라미터를 이름 표기(A3B)에서 — 반올림된 값
+ * - active-from-header: MoE 활성 파라미터를 헤더(전문가 원소 수 × topK/experts)로 계산
+ * - nonexpert-derived: 비전문가 크기를 실측 없이 bpw 균등 유도 (derive.ts — 과소 추정 경향)
+ * - split-ignored: 헤더 실측 합이 기준 파일 크기를 넘어 쓰지 않음(다른 파일을 쟀을 수 있음)
+ * - kv-full-layers-only: swa·hybrid — KV 를 전체 어텐션 층만 계상(슬라이딩 창·선형 상태는 제외)
+ */
+export type HfModelNote =
+  | 'params-from-header'
+  | 'active-from-name'
+  | 'active-from-header'
+  | 'nonexpert-derived'
+  | 'split-ignored'
+  | 'kv-full-layers-only';
+
+export type HfModelResult =
+  | { kind: 'ok'; model: ModelCore; rows: ModelQuantCore[]; notes: HfModelNote[] }
+  | { kind: 'unsupported' | 'no-gguf' | 'no-params'; reason: string };
+
+/** validateAll 의 반올림 허용치와 같다 — 실측 합이 파일보다 이만큼 넘으면 다른 파일을 잰 것 */
+const SPLIT_TOLERANCE_GB = 0.02;
+
+/**
+ * HF 데이터 → 엔진 입력 레코드 (ModelCore + ModelQuantCore[]). 순수 — 네트워크는 호출자가 끝낸 뒤 부른다.
+ * 결과 모델은 `{ ...catalog, modelQuants: [...catalog.modelQuants, ...rows] }` 와 함께 assessCombo 에 그대로 넣는다.
+ *
+ * - classifyArch 가 unsupported 면 그 사유 그대로. Q4_K_M GGUF 가 없으면 no-gguf.
+ * - paramsB = info.paramsB → baseSplit.totalParamsB, 둘 다 없으면 no-params.
+ * - MoE: activeParamsB = 이름 표기(A3B) → 헤더(total − expert + expert × topK/experts), 없으면 no-params.
+ *   모델 nonExpertGB = 헤더 실측 → derive 유도. 기준 행(Q4_K_M)에 실측 expertGB·nonExpertGB.
+ * - 표시 값은 카탈로그 관례대로 2자리 반올림(paramsB·activeParamsB·nonExpertGB).
+ */
+export function buildHfModel(input: HfModelInput): HfModelResult {
+  const arch = classifyArch(input.config);
+  if (arch.kind === 'unsupported') return { kind: 'unsupported', reason: arch.reason };
+
+  const modelId = `${HF_MODEL_ID_PREFIX}${slugFromHfId(input.hfId)}`;
+  const records = quantRowsFrom(input.tree, input.ggufRepo, modelId);
+  const baseRecord = records[0]; // quantRowsFrom: Q4_K_M 이 첫 행
+  if (!baseRecord) return { kind: 'no-gguf', reason: `no Q4_K_M GGUF in ${input.ggufRepo}` };
+
+  const notes: HfModelNote[] = [];
+  const split = input.baseSplit;
+  const paramsB = input.info?.paramsB ?? split?.totalParamsB;
+  // 레코드에 실제로 들어가는 반올림 값으로 검증 (0.004B 는 0 이 되어 엔진이 NaN 을 낸다 — 10-01 리뷰)
+  if (paramsB === undefined || !(round2(paramsB) > 0)) {
+    return { kind: 'no-params', reason: 'parameter count unknown (no safetensors metadata, no GGUF header count)' };
+  }
+  if (input.info?.paramsB === undefined) notes.push('params-from-header');
+  if (arch.override) notes.push('kv-full-layers-only');
+
+  const modelArch: ModelCore['arch'] = {
+    layers: arch.arch.layers,
+    kvHeads: arch.arch.kvHeads,
+    headDim: arch.arch.headDim,
+    attnType: arch.attnType,
+    kvBytesPerTokenF16: arch.override?.kvBytesPerTokenF16 ?? arch.arch.kvBytesPerTokenF16,
+    ...(arch.moe ? { experts: arch.moe.experts, topK: arch.moe.topK } : {}),
+  };
+  const toCore = (r: ModelQuantRecord, measured?: { expertGB: number; nonExpertGB: number }): ModelQuantCore => ({
+    modelId: r.modelId,
+    quant: r.quant,
+    fileGB: r.fileGB,
+    ...(measured ? { expertGB: measured.expertGB, nonExpertGB: measured.nonExpertGB } : {}),
+    ggufRepo: r.ggufRepo,
+    ...(r.fileName !== undefined ? { fileName: r.fileName } : {}),
+  });
+  /** 키 순서 = MODEL_CORE_KEYS (toCatalogLite 결과와 같은 모양) */
+  const model = (moe?: { activeParamsB: number; nonExpertGB: number }): ModelCore => ({
+    id: modelId,
+    name: displayName(input.hfId),
+    hfId: input.hfId,
+    paramsB: round2(paramsB),
+    ...(moe ? { activeParamsB: round2(moe.activeParamsB) } : {}),
+    arch: modelArch,
+    maxContext: arch.maxContext,
+    license: mapLicense(input.info?.license),
+    moe: moe !== undefined,
+    ...(moe ? { nonExpertGB: moe.nonExpertGB } : {}),
+    category: arch.vision ? ['chat', 'vision'] : ['chat'],
+    korean: false,
+    popularity: 1,
+  });
+
+  if (!arch.moe) return { kind: 'ok', model: model(), rows: records.map((r) => toCore(r)), notes };
+
+  const { experts, topK } = arch.moe;
+  // 헤더 원소 수가 있으면 그 값(이름 표기 A3B 는 반올림 — Qwen3-30B-A3B 실제 3.3B), 없으면 이름 표기
+  let activeParamsB: number | undefined;
+  if (split?.totalParamsB !== undefined && split.expertParamsB !== undefined) {
+    activeParamsB = split.totalParamsB - split.expertParamsB + split.expertParamsB * (topK / experts);
+    notes.push('active-from-header');
+  } else {
+    activeParamsB = activeFromName(input.hfId);
+    if (activeParamsB !== undefined) notes.push('active-from-name');
+  }
+  if (activeParamsB === undefined) {
+    return { kind: 'no-params', reason: 'MoE active parameter count unknown (no AxB in the name, no GGUF header count)' };
+  }
+  const inconsistent = {
+    kind: 'no-params' as const,
+    reason: `MoE parameter counts inconsistent (total ${round2(paramsB)}B, active ${round2(activeParamsB)}B, top-${topK} of ${experts} experts)`,
+  };
+  if (!(round2(activeParamsB) > 0) || round2(activeParamsB) >= round2(paramsB)) return inconsistent;
+
+  // 헤더 실측은 기준 파일 크기 안일 때만 (validateAll 불변식과 같은 기준)
+  let measured: { expertGB: number; nonExpertGB: number } | undefined;
+  if (split) {
+    if (split.nonExpertGB > 0 && split.expertGB + split.nonExpertGB <= baseRecord.fileGB + SPLIT_TOLERANCE_GB) {
+      measured = { expertGB: split.expertGB, nonExpertGB: split.nonExpertGB };
+    } else notes.push('split-ignored');
+  }
+  let nonExpertGB = measured?.nonExpertGB;
+  if (nonExpertGB === undefined) {
+    nonExpertGB = round2(deriveNonExpertGB({ totalParamsB: paramsB, activeParamsB, experts, topK }, baseRecord.fileGB));
+    notes.push('nonexpert-derived');
+    if (!(nonExpertGB > 0)) return inconsistent; // 활성 비율이 topK/experts 보다 작다 — 이름·헤더 값이 서로 안 맞음
+  }
+
+  return {
+    kind: 'ok',
+    model: model({ activeParamsB, nonExpertGB }),
+    rows: records.map((r, i) => toCore(r, i === 0 ? measured : undefined)),
+    notes,
+  };
+}

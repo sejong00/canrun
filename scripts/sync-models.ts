@@ -29,6 +29,7 @@ import {
   type ModelQuantRecord,
 } from '../packages/data/src/index';
 import { kvBytesPerToken } from '../packages/engine/src/index';
+import { extractArch, extractMoe, matchQuantFiles, primaryFile, sumFileGB } from '../packages/data/src/hf';
 import { measureSplit } from './gguf-header';
 import {
   fetchConfig,
@@ -37,6 +38,10 @@ import {
   type ConfigResult,
   type TreeEntry,
 } from './hf-common';
+
+// 파일 매칭·config 해석은 브라우저 안전 모듈(packages/data/src/hf.ts)로 옮겼다 — 기존 import 호환용 재내보내기
+export { extractArch, extractMoe, matchQuantFiles, primaryFile, sumFileGB };
+export type { ExtractedArch, PrimaryFile } from '../packages/data/src/hf';
 
 type QuantId = ModelQuantRecord['quant'];
 
@@ -92,135 +97,6 @@ export type SyncInput = {
 const round2 = (x: number): number => Math.round(x * 100) / 100;
 
 const SUSPICIOUS_DELTA_PCT = 5;
-
-/**
- * tree 항목에서 quant 파일 매칭 — 경계 규칙으로 근접 오매칭 차단:
- * 앞 경계 ^|-|_|.|/ (IQ2_K 의 'I' 는 경계 아님 → Q2_K 미매칭),
- * 뒤 경계 -|.|/ 또는 끝 ('_' 제외 → Q4_K_M_L 미매칭). 대소문자 무시(mxfp4).
- * 비-UD quant 는 플레인 파일 우선, 플레인이 없으면 UD- 접두 변형(unsloth Dynamic)으로 폴백 —
- * 둘 다 배포하는 repo 의 합산 오염은 막고, UD 만 배포하는 repo(MTP 계열)는 실파일을 취한다.
- * 드래프트·보조 파일은 모델 가중치가 아니므로 제외 (basename 접두, 대소문자 무시):
- * mmproj-*(비전 프로젝터) · mtp-*(MTP 드래프트 헤드) · eagle3-*(EAGLE 드래프트) — P1-2 에서
- * 드래프트 합산 버그(gemma-4 Q8_0 에 mtp 0.46GB 합산)를 고쳤다. repo 이름의 'MTP' 는 무관.
- */
-const DRAFT_FILE_PREFIX = /^(?:mmproj|mtp-|eagle3-)/i;
-
-export function matchQuantFiles(entries: readonly TreeEntry[], quant: QuantId): TreeEntry[] {
-  const esc = quant.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const re = new RegExp(`(?:^|[-_./])${esc}(?:[-./]|$)`, 'i');
-  const udRe = quant.startsWith('UD-')
-    ? undefined
-    : new RegExp(`(?:^|[-_./])UD-${esc}(?:[-./]|$)`, 'i');
-  const candidates = entries.filter((entry) => {
-    if (entry.type !== 'file') return false;
-    const path = entry.path;
-    if (!path.toLowerCase().endsWith('.gguf')) return false;
-    const base = path.split('/').at(-1) ?? path;
-    if (DRAFT_FILE_PREFIX.test(base)) return false;
-    return re.test(path);
-  });
-  if (udRe === undefined) return candidates;
-  const plain = candidates.filter((entry) => !udRe.test(entry.path));
-  return plain.length > 0 ? plain : candidates;
-}
-
-const SHARD_RE = /-(\d{5})-of-(\d{5})\.gguf$/i;
-
-export type PrimaryFile = { path: string; shards: number };
-
-/**
- * 매칭 파일들 → 대표 실파일 (model-quants `fileName` 의 정본, docs/03 §5.1 ④).
- * 단일 파일이면 그것, 전부 `-0000N-of-0000M` 조각이고 M 이 같으며 개수 == M 이면 00001 조각.
- * 그 외(비-분할 2개 이상, 조각 누락·혼합)는 애매 → 호출자가 error 로 보고 (조용한 합산 금지).
- */
-export function primaryFile(files: readonly TreeEntry[]): PrimaryFile | { error: string } {
-  const names = files.map((f) => f.path);
-  if (files.length === 1) return { path: names[0]!, shards: 1 };
-  const parsed = names.map((path) => {
-    const m = SHARD_RE.exec(path);
-    return m ? { path, index: Number(m[1]), total: Number(m[2]) } : undefined;
-  });
-  const totals = new Set(parsed.map((p) => p?.total));
-  const consistent =
-    parsed.every((p) => p !== undefined) && totals.size === 1 && files.length === [...totals][0];
-  if (!consistent) return { error: `ambiguous match: ${names.join(', ')}` };
-  const first = parsed.find((p) => p?.index === 1);
-  if (!first) return { error: `shard 00001 missing: ${names.join(', ')}` };
-  return { path: first.path, shards: files.length };
-}
-
-/** 분할 파일 합산 → decimal GB 2자리. size 누락 항목이 있으면 NaN. */
-export function sumFileGB(entries: readonly TreeEntry[]): number {
-  let bytes = 0;
-  for (const entry of entries) {
-    if (entry.size === undefined) return Number.NaN;
-    bytes += entry.size;
-  }
-  return round2(bytes / 1e9);
-}
-
-export type ExtractedArch = {
-  arch?: { layers: number; kvHeads: number; headDim: number };
-  maxContext?: number;
-  missing: string[];
-};
-
-/**
- * config.json → arch 추출. 멀티모달 래퍼는 text_config 우선.
- * head_dim 폴백 = hidden_size / num_attention_heads, kvHeads 폴백 = num_attention_heads(MHA).
- * 추출 불가 필드는 missing 으로 보고 — 추측 금지(CLAUDE.md 규칙 3).
- */
-export function extractArch(config: unknown): ExtractedArch {
-  if (typeof config !== 'object' || config === null) {
-    return { missing: ['config'] };
-  }
-  const top = config as Record<string, unknown>;
-  const nested = top['text_config'];
-  const cfg =
-    typeof nested === 'object' && nested !== null ? (nested as Record<string, unknown>) : top;
-
-  const posInt = (v: unknown): number | undefined =>
-    typeof v === 'number' && Number.isInteger(v) && v > 0 ? v : undefined;
-
-  const layers = posInt(cfg['num_hidden_layers']);
-  const attnHeads = posInt(cfg['num_attention_heads']);
-  const kvHeads = posInt(cfg['num_key_value_heads']) ?? attnHeads;
-  const hiddenSize = posInt(cfg['hidden_size']);
-  let headDim = posInt(cfg['head_dim']);
-  if (headDim === undefined && hiddenSize !== undefined && attnHeads !== undefined) {
-    const derived = hiddenSize / attnHeads;
-    if (Number.isInteger(derived) && derived > 0) headDim = derived;
-  }
-  const maxContext = posInt(cfg['max_position_embeddings'] ?? top['max_position_embeddings']);
-
-  const missing: string[] = [];
-  if (layers === undefined) missing.push('num_hidden_layers');
-  if (kvHeads === undefined) missing.push('num_key_value_heads');
-  if (headDim === undefined) missing.push('head_dim');
-
-  if (layers === undefined || kvHeads === undefined || headDim === undefined) {
-    return { maxContext, missing };
-  }
-  return { arch: { layers, kvHeads, headDim }, maxContext, missing };
-}
-
-/**
- * config.json → MoE 구조 (라우팅 전문가 수 · 토큰당 활성 수). 모델마다 키 이름이 달라 알려진 별칭을 순서대로 본다:
- * experts = num_experts(Qwen·Gemma 4) · num_local_experts(gpt-oss·kanana) · n_routed_experts(Solar Open),
- * topK = num_experts_per_tok · top_k_experts(Gemma 4) · experts_per_token(gpt-oss). 하나라도 없으면 undefined(추측 금지).
- */
-export function extractMoe(config: unknown): { experts: number; topK: number } | undefined {
-  if (typeof config !== 'object' || config === null) return undefined;
-  const top = config as Record<string, unknown>;
-  const nested = top['text_config'];
-  const cfg =
-    typeof nested === 'object' && nested !== null ? (nested as Record<string, unknown>) : top;
-  const posInt = (v: unknown): number | undefined =>
-    typeof v === 'number' && Number.isInteger(v) && v > 0 ? v : undefined;
-  const experts = posInt(cfg['num_experts'] ?? cfg['num_local_experts'] ?? cfg['n_routed_experts']);
-  const topK = posInt(cfg['num_experts_per_tok'] ?? cfg['top_k_experts'] ?? cfg['experts_per_token']);
-  return experts !== undefined && topK !== undefined ? { experts, topK } : undefined;
-}
 
 const hfUrl = (repo: string): string => `https://huggingface.co/${repo}`;
 

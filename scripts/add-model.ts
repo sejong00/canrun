@@ -26,11 +26,20 @@ import {
   parseModels,
   type ModelQuantRecord,
 } from '../packages/data/src/index';
+import {
+  activeFromName,
+  classifyArch,
+  displayName,
+  familyOf,
+  mapLicense,
+  popularityFrom,
+  quantRowsFrom,
+  rankGgufRepos,
+  slugFromHfId,
+} from '../packages/data/src/hf';
 import { measureSplit } from './gguf-header';
-import { fetchConfig, fetchTree, serializeRecords, type TreeEntry } from './hf-common';
-import { extractMoe, matchQuantFiles, primaryFile, sumFileGB } from './sync-models';
+import { fetchConfig, fetchTree, serializeRecords } from './hf-common';
 
-type QuantId = ModelQuantRecord['quant'];
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const dataDir = join(repoRoot, 'data');
 const round2 = (x: number): number => Math.round(x * 100) / 100;
@@ -39,198 +48,23 @@ const configUrl = (repo: string): string => `https://huggingface.co/${repo}/blob
 
 // ---------------------------------------------------------------------------
 // 순수 코어 (scripts/add-model.test.ts)
+// 구조 분류·이름·라이선스·GGUF 저장소 선택·양자화 행은 브라우저 안전 모듈(packages/data/src/hf.ts)로 옮겼다 —
+// 계산기의 "카탈로그 밖 모델 확인"과 같은 코드. 기존 import 호환용으로 다시 내보낸다.
 // ---------------------------------------------------------------------------
 
-/**
- * 선례가 있는 텍스트 model_type (09-30 카탈로그 config 에서 수집). 여기 없는 구조는 자동 추가하지 않는다.
- * gpt_oss(MXFP4 네이티브 — 기준 양자화가 다름)·solar_open2(하이브리드 특수)는 의도적으로 제외.
- */
-export const KNOWN_MODEL_TYPES: ReadonlySet<string> = new Set([
-  'llama',
-  'mistral',
-  'mixtral',
-  'qwen2',
-  'qwen3',
-  'qwen3_moe',
-  'qwen3_5_text',
-  'qwen3_5_moe_text',
-  'gemma3_text',
-  'gemma4_text',
-  'gemma4_unified_text',
-  'phi3',
-  'granite',
-  'exaone4',
-  'exaone4_5_text',
-  'hyperclovax',
-  'solar_open',
-]);
-
-/** 이 키가 config 에 있으면 엔진이 모델링하지 않는 구조 (MLA·압축 어텐션·SSM·conv) */
-const UNSUPPORTED_KEYS = ['kv_lora_rank', 'compress_ratios', 'ssm_state_size', 'mamba_num_heads', 'conv_L_cache', 'hybrid_override_pattern'];
-const KNOWN_LAYER_TYPES = new Set(['full_attention', 'sliding_attention', 'linear_attention']);
-
-export type ArchResult =
-  | {
-      kind: 'ok';
-      modelType: string;
-      attnType: 'full' | 'swa' | 'hybrid';
-      arch: { layers: number; kvHeads: number; headDim: number; kvBytesPerTokenF16: number };
-      /** swa·hybrid — 전체 어텐션 층만 KV (선례와 같은 산식) */
-      override?: { kvBytesPerTokenF16: number; reason: string };
-      maxContext: number;
-      moe?: { experts: number; topK: number };
-      vision: boolean;
-    }
-  | { kind: 'unsupported'; reason: string };
-
-const posInt = (v: unknown): number | undefined => (typeof v === 'number' && Number.isInteger(v) && v > 0 ? v : undefined);
-
-export function classifyArch(config: unknown): ArchResult {
-  if (typeof config !== 'object' || config === null) return { kind: 'unsupported', reason: 'config 없음' };
-  const top = config as Record<string, unknown>;
-  const cfg = (typeof top['text_config'] === 'object' && top['text_config'] !== null ? top['text_config'] : top) as Record<string, unknown>;
-  const modelType = String(cfg['model_type'] ?? top['model_type'] ?? '');
-  if (!KNOWN_MODEL_TYPES.has(modelType)) return { kind: 'unsupported', reason: `처음 보는 구조 model_type=${modelType || '(없음)'} — 선례 없음, 수동 검토` };
-  for (const key of UNSUPPORTED_KEYS) {
-    if (key in cfg || key in top) return { kind: 'unsupported', reason: `엔진이 모델링하지 않는 구조 (${key})` };
-  }
-  const layers = posInt(cfg['num_hidden_layers']);
-  const heads = posInt(cfg['num_attention_heads']);
-  const kvHeads = posInt(cfg['num_key_value_heads']) ?? heads;
-  const hidden = posInt(cfg['hidden_size']);
-  const headDim = posInt(cfg['head_dim']) ?? (hidden && heads && Number.isInteger(hidden / heads) ? hidden / heads : undefined);
-  const maxContext = posInt(cfg['max_position_embeddings'] ?? top['max_position_embeddings']);
-  if (!layers || !kvHeads || !headDim || !maxContext) return { kind: 'unsupported', reason: 'config 필드 누락(layers·kv heads·head_dim·max_position_embeddings)' };
-
-  const moe = extractMoe(config);
-  const vision = 'vision_config' in top;
-  const full = layers * kvHeads * headDim * 4;
-
-  const layerTypes = Array.isArray(cfg['layer_types']) ? (cfg['layer_types'] as unknown[]).map(String) : undefined;
-  if (layerTypes && layerTypes.some((t) => !KNOWN_LAYER_TYPES.has(t))) {
-    return { kind: 'unsupported', reason: `처음 보는 층 종류 ${[...new Set(layerTypes)].filter((t) => !KNOWN_LAYER_TYPES.has(t)).join(',')}` };
-  }
-  const nFull = layerTypes?.filter((t) => t === 'full_attention').length;
-  const hasSliding = layerTypes?.includes('sliding_attention') ?? false;
-  const hasLinear = layerTypes?.includes('linear_attention') ?? false;
-
-  if (hasSliding && hasLinear) return { kind: 'unsupported', reason: '슬라이딩 + 선형 혼합 — 선례 없음' };
-  if (hasSliding && nFull !== undefined) {
-    const gKv = posInt(cfg['num_global_key_value_heads']) ?? kvHeads;
-    const gDim = posInt(cfg['global_head_dim']) ?? headDim;
-    const kv = nFull * gKv * gDim * 4;
-    const global = gKv !== kvHeads || gDim !== headDim ? ` × global kv ${gKv} × head_dim ${gDim}` : '';
-    return {
-      kind: 'ok', modelType, attnType: 'swa', vision, maxContext, ...(moe ? { moe } : {}),
-      arch: { layers, kvHeads, headDim, kvBytesPerTokenF16: kv },
-      override: { kvBytesPerTokenF16: kv, reason: `swa — full attn ${nFull}/${layers} layers${global}, sliding win${String(cfg['sliding_window'] ?? '?')} 는 평탄 근사로 제외 (add-model)` },
-    };
-  }
-  if (hasLinear && nFull !== undefined) {
-    const kv = nFull * kvHeads * headDim * 4;
-    return {
-      kind: 'ok', modelType, attnType: 'hybrid', vision, maxContext, ...(moe ? { moe } : {}),
-      arch: { layers, kvHeads, headDim, kvBytesPerTokenF16: kv },
-      override: { kvBytesPerTokenF16: kv, reason: `hybrid linear — full attn ${nFull}/${layers} layers, KV 는 full 레이어만 계상 (add-model)` },
-    };
-  }
-  // layer_types 가 없거나 전부 full. 모든 층 슬라이딩(use_sliding_window 켜짐)은 선례 없음
-  const sw = posInt(cfg['sliding_window']);
-  if (!layerTypes && sw !== undefined && cfg['use_sliding_window'] !== false && sw < maxContext) {
-    return { kind: 'unsupported', reason: `전 층 슬라이딩 윈도(${sw}) — 선례 없음` };
-  }
-  return { kind: 'ok', modelType, attnType: 'full', vision, maxContext, ...(moe ? { moe } : {}), arch: { layers, kvHeads, headDim, kvBytesPerTokenF16: full } };
-}
-
-const DROP_SUFFIX = /[-_](?:instruct|it|chat|hf)$/i;
-
-/** `google/gemma-4-31B-it` → `gemma-4-31b` */
-export function slugFromHfId(hfId: string): string {
-  let base = hfId.split('/').pop() ?? hfId;
-  while (DROP_SUFFIX.test(base)) base = base.replace(DROP_SUFFIX, '');
-  return base.toLowerCase().replace(/_/g, '-').replace(/[^a-z0-9.-]/g, '');
-}
-
-/** `meta-llama/Llama-3.2-3B-Instruct` → `Llama 3.2 3B`, `ibm-granite/granite-4.2-30b` → `Granite 4.2 30B` */
-export function displayName(hfId: string): string {
-  let base = hfId.split('/').pop() ?? hfId;
-  while (DROP_SUFFIX.test(base)) base = base.replace(DROP_SUFFIX, '');
-  return base
-    .split(/[-_]/)
-    .map((w) => (/^\d+(?:\.\d+)?b$/i.test(w) ? w.toUpperCase() : /^[a-z]/.test(w) ? w[0]!.toUpperCase() + w.slice(1) : w))
-    .join(' ')
-    .replace(/ (A\d+(?:\.\d+)?B)\b/, '-$1'); // 35B A3B → 35B-A3B
-}
-
-export const familyOf = (name: string): string => (name.split(' ')[0] ?? name).toLowerCase().replace(/[^a-z]/g, '') || 'other';
-
-/** HF 라이선스 id → 카탈로그 문자열(license.ts 배지 맵과 같은 표기). 모르면 원문 그대로 — 배지 테스트가 잡아 사람이 맵에 추가 */
-export function mapLicense(hf: string | undefined): string {
-  const map: Record<string, string> = {
-    'apache-2.0': 'Apache-2.0',
-    mit: 'MIT',
-    llama3: 'Llama 3',
-    'llama3.1': 'Llama 3.1',
-    'llama3.2': 'Llama 3.2',
-    'llama3.3': 'Llama 3.3',
-    gemma: 'Gemma',
-  };
-  return hf ? (map[hf.toLowerCase()] ?? hf) : 'unknown';
-}
-
-/** 30일 다운로드 → 인기도 1~5 (09-30 카탈로그 분포에 맞춘 기준) */
-export function popularityFrom(downloads: number | undefined): number {
-  const d = downloads ?? 0;
-  return d >= 5_000_000 ? 5 : d >= 1_000_000 ? 4 : d >= 200_000 ? 3 : d >= 30_000 ? 2 : 1;
-}
-
-/** 이름의 활성 파라미터 표기(`35B-A3B`) → 3 */
-export const activeFromName = (hfId: string): number | undefined => {
-  const m = /(?:^|[-_])A(\d+(?:\.\d+)?)B(?:[-_]|$)/i.exec(hfId.split('/').pop() ?? '');
-  return m ? Number(m[1]) : undefined;
-};
-
-const OWNER_ORDER = ['ggml-org', 'bartowski', 'unsloth', 'lmstudio-community'];
-
-/**
- * GGUF 후보 repo 정렬 — 같은 모델의 변환본만(파인튠·abliterated 제외): basename 이 `<base>-GGUF`·`<owner>_<base>-GGUF`·`<base>-MTP-GGUF`.
- * 순서: 원 저장소 소유자(공식) → ggml-org → bartowski → unsloth → lmstudio-community.
- */
-export function rankGgufRepos(candidates: readonly string[], hfId: string): string[] {
-  const [owner = '', base = ''] = hfId.split('/');
-  const b = base.toLowerCase();
-  const same = (repo: string): boolean => {
-    let name = (repo.split('/').pop() ?? '').toLowerCase().replace(/-gguf$/, '').replace(/-mtp$/, '');
-    if (name.startsWith(`${owner.toLowerCase()}_`)) name = name.slice(owner.length + 1);
-    return name === b;
-  };
-  const rank = (repo: string): number => {
-    const o = repo.split('/')[0] ?? '';
-    if (o === owner) return 0;
-    const i = OWNER_ORDER.indexOf(o);
-    return i < 0 ? 99 : i + 1;
-  };
-  return candidates.filter(same).filter((r) => rank(r) < 99).sort((a, c) => rank(a) - rank(c));
-}
-
-/** repo 트리 → 표준 양자화 행 (Q4_K_M 필수 — 없으면 빈 배열). Q2_K 가 없고 UD-Q2_K_XL 만 있으면 그걸 쓴다 */
-export function quantRowsFrom(tree: readonly TreeEntry[], repo: string, modelId: string): ModelQuantRecord[] {
-  const rows: ModelQuantRecord[] = [];
-  const add = (quant: QuantId): boolean => {
-    const files = matchQuantFiles(tree, quant);
-    if (files.length === 0) return false;
-    const primary = primaryFile(files);
-    const gb = sumFileGB(files);
-    if ('error' in primary || !Number.isFinite(gb)) return false;
-    rows.push({ modelId, quant, fileGB: gb, ggufRepo: repo, fileName: primary.path, sources: [hfUrl(repo)] });
-    return true;
-  };
-  if (!add('Q4_K_M')) return [];
-  add('IQ4_XS');
-  add('Q8_0');
-  if (!add('Q2_K')) add('UD-Q2_K_XL');
-  return rows;
-}
+export {
+  KNOWN_MODEL_TYPES,
+  activeFromName,
+  classifyArch,
+  displayName,
+  familyOf,
+  mapLicense,
+  popularityFrom,
+  quantRowsFrom,
+  rankGgufRepos,
+  slugFromHfId,
+} from '../packages/data/src/hf';
+export type { ArchResult } from '../packages/data/src/hf';
 
 /** GGUF 헤더 실측 중 add-model 이 쓰는 값 (gguf-header.measureSplit 의 부분집합) */
 export type RowMeasure = {

@@ -8,15 +8,16 @@
  *   zod .parse 는 키 순서를 재배열하므로 호출자는 raw JSON.parse 레코드를 넘겨야 한다.
  *
  * 시크릿 제로(CLAUDE.md 규칙 7): HF_TOKEN 은 env 로만 통과 — 코드·데이터에 저장 금지.
+ *
+ * TreeEntry 타입과 fetchWithRetry(429/5xx 1회 재시도)는 브라우저 안전 모듈(packages/data/src/hf.ts·gguf.ts)로 옮겼다 —
+ * 기존 import 호환을 위해 여기서 다시 내보낸다.
  */
 
-export type TreeEntry = {
-  type: string;
-  path: string;
-  size?: number;
-};
+import { fetchWithRetry, type FetchLike } from '../packages/data/src/gguf';
+import type { TreeEntry } from '../packages/data/src/hf';
 
-export type FetchLike = typeof globalThis.fetch;
+export { fetchWithRetry };
+export type { FetchLike, TreeEntry };
 
 export type HfFetchOpts = {
   token?: string;
@@ -25,22 +26,8 @@ export type HfFetchOpts = {
 
 const HF_BASE = 'https://huggingface.co';
 
-const RETRYABLE = new Set([429, 500, 502, 503, 504]);
-
 export function authHeaders(token?: string): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {};
-}
-
-/** 429/5xx 1회 재시도(2s 백오프) 후 응답 반환 — 상태 판정은 호출자 몫. (GGUF 헤더 Range 읽기도 공용) */
-export async function fetchWithRetry(
-  url: string,
-  headers: Record<string, string>,
-  fetchImpl: FetchLike,
-): Promise<Response> {
-  const first = await fetchImpl(url, { headers });
-  if (!RETRYABLE.has(first.status)) return first;
-  await new Promise((r) => setTimeout(r, 2000));
-  return fetchImpl(url, { headers });
 }
 
 /** `Link: <url>; rel="next"` 헤더에서 다음 페이지 URL 추출. */

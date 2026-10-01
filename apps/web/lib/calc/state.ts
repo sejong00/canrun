@@ -69,7 +69,12 @@ export type CalcState = {
   sort: SortKey;
   /** 카드 포커스 모델 id */
   focus?: string;
+  /** 카탈로그 밖 모델 — Hugging Face 저장소 id(`org/repo`). 브라우저가 HF 에서 불러와 이론 추정으로 계산 (계산기 P2, PROGRESS §4 D57) */
+  hf?: string;
 };
+
+/** HF 저장소 id 형식 (`org/repo`) — URL 에서 온 값 검증용. 입력 해석(주소·Ollama 표기)은 `@canrun/data/hf` parseHfInput */
+export const HF_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,95}\/[A-Za-z0-9][A-Za-z0-9._-]{0,95}$/;
 
 export const CTX_OPTIONS: readonly number[] = HUB_POLICY.matrixCtx;
 export const KV_OPTIONS: readonly KvQuant[] = ['f16', 'q8_0', 'q4_0'];
@@ -203,5 +208,6 @@ export function normalize(state: CalcState, catalog: CatalogLite): CalcState {
   next.cat = CATEGORIES.filter((c) => state.cat.includes(c));
   next.size = SIZE_BUCKETS.filter((s) => state.size.includes(s));
   if (next.focus !== undefined && !catalog.models.some((m) => m.id === next.focus)) next.focus = undefined;
+  if (next.hf !== undefined && !HF_ID_RE.test(next.hf)) next.hf = undefined;
   return next;
 }

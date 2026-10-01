@@ -1,4 +1,4 @@
-Effective September 30, 2026.
+Effective October 1, 2026.
 
 CanRun is built so that you do not have to give us anything to use it. This page explains what that means in practice.
 
@@ -8,6 +8,7 @@ CanRun is built so that you do not have to give us anything to use it. This page
 - **CanRun itself sets no cookies**, and there are no analytics or tracking scripts on the site. Cookies used for advertising are explained under Advertising below.
 - **The calculator runs in your browser.** The GPU, memory and settings you choose are calculated on your device and are not sent to us. Your choices are written into the page address so you can bookmark or share it. If you share that link, whoever receives it can see those choices.
 - **GPU detection stays on your device.** When you press the detect button, your browser tells the page which graphics chip it is using. That check happens only in your browser, and nothing is sent anywhere.
+- **Loading a model that isn't listed sends a request from your browser to Hugging Face.** When you enter a model link in the calculator and press Load, or open a calculator link that already includes a loaded model, your browser asks Hugging Face (huggingface.co) for that model's details and file list. For some models, such as mixture-of-experts models, it also reads the first few megabytes of a model file from Hugging Face's download servers. Hugging Face handles request information such as your IP address under the [Hugging Face privacy policy](https://huggingface.co/privacy). The requests do not go through CanRun's servers, and we can't see which model you loaded. If you don't load a model and don't open such a link, nothing is requested from Hugging Face.
 
 ## Hosting
 

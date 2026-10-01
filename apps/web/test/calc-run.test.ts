@@ -201,3 +201,21 @@ describe('assembleResults — options', () => {
     ).toBeUndefined();
   });
 });
+
+describe('assembleResults — pinned extra model (HF, D57)', () => {
+  it('evaluates the extra model separately: theoretical, not counted or filtered, with a llama.cpp command', () => {
+    const base = seed.models.find((m) => m.id === 'qwen3-8b')!;
+    const rows = seed.modelQuants.filter((r) => r.modelId === 'qwen3-8b').map((r) => ({ ...r, modelId: 'hf-qwen3-8b' }));
+    const model = { ...base, id: 'hf-qwen3-8b', name: 'Qwen3 8B (HF)' };
+    const plain = assembleResults(catalog, withGpu('rtx-4060'))!;
+    const run = assembleResults(catalog, withGpu('rtx-4060', { cat: ['coding'] }), { model, rows })!;
+    expect(run.pinned?.model.id).toBe('hf-qwen3-8b');
+    expect(run.pinned?.combo.baseline.result.confidence).toBe('theoretical');
+    expect(run.pinned?.command).toContain('llama-server -hf');
+    expect(run.all.some((c) => c.model.id === 'hf-qwen3-8b')).toBe(false);
+    expect(run.counts).toEqual(plain.counts);
+    // 같은 레코드면 순수 추정 판정은 카탈로그 모델과 같고(실측 조인은 없다) 라벨만 이론 추정
+    const twin = plain.all.find((c) => c.model.id === 'qwen3-8b')!;
+    expect(run.pinned?.combo.baseline.result.verdict).toBe(twin.combo.baseline.estimate.verdict);
+  });
+});

@@ -22,7 +22,8 @@ const ROOTS = [
 ];
 
 const FORBIDDEN_PACKAGES = ['next-intl', 'next-intl/server', 'zod', 'tailwind-merge', '@canrun/data', 'next/link', 'next/navigation', 'next/dynamic'];
-const ALLOWED_PACKAGES = new Set(['react', 'react/jsx-runtime', 'react-dom', 'clsx', 'class-variance-authority', '@canrun/engine', '@canrun/data/client']);
+// '@canrun/data/hf' 는 계산기의 "목록에 없는 모델"(D57)이 dynamic import 로만 쓴다 — 같은 순수 규칙으로 따라간다
+const ALLOWED_PACKAGES = new Set(['react', 'react/jsx-runtime', 'react-dom', 'clsx', 'class-variance-authority', '@canrun/engine', '@canrun/data/client', '@canrun/data/hf']);
 const FORBIDDEN_FILES = [/[\\/]lib[\\/](catalog|hubs|combos|publish|utils|client-messages)\.ts$/, /[\\/]components[\\/](badges|verdict|estimate|hub-table)\.tsx$/, /[\\/]i18n[\\/]navigation\.ts$/];
 
 const VALUE_IMPORT = /^\s*(?:import|export)\s+(?!type\b)[^;'"]*?\bfrom\s+['"]([^'"]+)['"]/gm;
@@ -42,6 +43,7 @@ function resolveSpec(from: string, spec: string): string | undefined {
   if (spec.startsWith('@/')) base = join(web, spec.slice(2));
   else if (spec.startsWith('.')) base = resolve(dirname(from), spec);
   else if (spec === '@canrun/data/client') base = join(repo, 'packages/data/src/client');
+  else if (spec === '@canrun/data/hf') base = join(repo, 'packages/data/src/hf');
   else if (spec === '@canrun/engine') base = join(repo, 'packages/engine/src/index');
   else return undefined;
   for (const c of [base, `${base}.ts`, `${base}.tsx`, join(base, 'index.ts')]) {

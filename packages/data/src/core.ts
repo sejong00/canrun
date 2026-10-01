@@ -29,6 +29,8 @@ export const GPU_CORE_KEYS = [
 export const MODEL_CORE_KEYS = [
   'id',
   'name',
+  // 계산기 "목록에 없는 모델"(D57)이 HF 주소가 카탈로그 모델이면 그 카드로 안내한다
+  'hfId',
   'paramsB',
   'activeParamsB',
   'arch',

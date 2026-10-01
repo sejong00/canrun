@@ -29,6 +29,7 @@ export function ResultCard({
   hardware,
   prefix,
   focused,
+  external,
 }: {
   locale: string;
   t: CalcTranslators;
@@ -37,6 +38,8 @@ export function ResultCard({
   hardware: ResolvedHardware;
   prefix: string;
   focused: boolean;
+  /** 카탈로그 밖 모델(HF 에서 불러옴, D57) — 허브·콤보 페이지 대신 HF 링크와 실행 명령 */
+  external?: { baseId: string; ggufRepo: string };
 }) {
   const { model, combo } = card;
   const q = combo.display;
@@ -46,7 +49,7 @@ export function ResultCard({
   const custom = hardware.gpu.id === 'custom';
   const detailQuery =
     state.ctx !== HUB_POLICY.referenceCtx || state.kv !== 'f16' ? `?ctx=${card.ctx}&kv=${state.kv}` : '';
-  const comboHref = custom ? undefined : `${prefix}/can-i-run/${model.id}/on/${hardware.gpu.id}${detailQuery}`;
+  const comboHref = custom || external ? undefined : `${prefix}/can-i-run/${model.id}/on/${hardware.gpu.id}${detailQuery}`;
   // 컨텍스트 여유는 돌아가는 카드에만 — F(미탑재·너무 느림)엔 `maxCtx` 가 없고 현재 ctx 를 여유로 보이면 거짓
   const maxCtx = q.result.verdict === 'F' ? undefined : (combo.maxCtx ?? card.ctx);
   const maxCtxText =
@@ -75,10 +78,16 @@ export function ResultCard({
       data-result-card
       data-model-id={model.id}
       aria-current={focused ? 'true' : undefined}
-      className={`flex flex-col gap-2 rounded-lg border p-4 ${focused ? 'border-foreground' : 'border-border'}`}
+      className={`flex min-w-0 flex-col gap-2 rounded-lg border p-4 ${focused ? 'border-foreground' : 'border-border'}`}
     >
       <h3 className="flex flex-wrap items-center gap-2 text-base font-semibold">
-        <a href={`${prefix}/model/${model.id}`}>{model.name}</a>
+        {external ? (
+          <a href={`https://huggingface.co/${external.baseId}`} rel="noopener noreferrer nofollow" target="_blank">
+            {model.name}
+          </a>
+        ) : (
+          <a href={`${prefix}/model/${model.id}`}>{model.name}</a>
+        )}
         <span className="text-xs font-normal text-muted-foreground">
           {model.moe && model.activeParamsB !== undefined
             ? t.calc('paramsMoe', { total: formatParams(locale, model.paramsB), active: formatParams(locale, model.activeParamsB) })
@@ -88,6 +97,7 @@ export function ResultCard({
       <div className="flex flex-wrap items-center gap-2">
         <VerdictChip verdict={baseline} label={t.verdict(baseline)} />
         {combo.reasoning && <Pill>{t.common('reasoningMark')}</Pill>}
+        {external && <Pill tone="info">{t.calc('hfBadge')}</Pill>}
         {model.korean && <Pill tone="info">{t.calc('badgeKorean')}</Pill>}
         <Pill tone={LICENSE_TONE[licenseClass]}>{t.license(licenseClass)}</Pill>
         {measuredText && <Pill tone="info">{measuredText}</Pill>}
@@ -164,8 +174,20 @@ export function ResultCard({
           </table>
         </details>
       )}
+      {card.command && (
+        <div className="flex flex-col gap-1">
+          <p className="text-xs text-muted-foreground">{t.calc('hfCommand')}</p>
+          <code data-hf-command className="block overflow-x-auto whitespace-pre rounded-md bg-muted p-2 text-xs">
+            {card.command}
+          </code>
+        </div>
+      )}
       <p className="flex flex-wrap gap-3 text-sm">
-        {comboHref ? (
+        {external ? (
+          <a href={`https://huggingface.co/${external.ggufRepo}`} rel="noopener noreferrer nofollow" target="_blank">
+            {t.calc('hfViewOnHf')}
+          </a>
+        ) : comboHref ? (
           <>
             <a href={comboHref} data-combo-link>
               {detailsLabel}

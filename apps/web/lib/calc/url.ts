@@ -1,6 +1,6 @@
 /**
  * 계산기 공유 URL 코덱 (P1-3 D31) — 기본값 생략·키 순서 고정·미지 키 삭제. 순수 함수.
- *   gpu=<id|이름|별칭|custom> [kind class vram mem bw fp16] ram ddr os display ctx kv cat min size sort m
+ *   gpu=<id|이름|별칭|custom> [kind class vram mem bw fp16] ram ddr os display ctx kv cat min size sort m hf
  * 홈 GET 폼은 `gpu=<자유 텍스트>` 만 보내고 여기서 별칭·fuzzy 로 해석한다 (해석 실패 = unresolved, 폼에 텍스트 유지).
  */
 import type { CatalogLite } from '@canrun/data/client';
@@ -75,6 +75,7 @@ export function parseCalcQuery(search: string, catalog: CatalogLite, names: GpuN
   state.size = list<SizeBucket>(q.get('size'), SIZE_BUCKETS);
   state.sort = oneOf(q.get('sort'), SORT_KEYS) ?? 'verdict';
   state.focus = q.get('m') ?? undefined;
+  state.hf = q.get('hf')?.trim() || undefined;
   return normalize(state, catalog);
 }
 
@@ -105,6 +106,7 @@ export function serializeCalcQuery(state: CalcState, catalog: CatalogLite): stri
   if (s.size.length > 0) q.set('size', s.size.join(','));
   if (s.sort !== 'verdict') q.set('sort', s.sort);
   if (s.focus !== undefined) q.set('m', s.focus);
+  if (s.hf !== undefined) q.set('hf', s.hf);
   const out = q.toString();
   return out ? `?${out}` : '';
 }

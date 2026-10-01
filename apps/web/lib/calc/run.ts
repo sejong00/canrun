@@ -4,6 +4,7 @@
  */
 import {
   assessCombo,
+  commandPlan,
   compareCombos,
   hardwareConfigs,
   HUB_POLICY,
@@ -12,6 +13,7 @@ import {
   type CatalogLite,
   type ComboAssessment,
   type ModelCore,
+  type ModelQuantCore,
 } from '@canrun/data/client';
 import type { Os, Verdict } from '@canrun/engine';
 import { resolveHardware, type ResolvedHardware } from './hardware';
@@ -34,12 +36,19 @@ export type ResultCard = {
    * `pickConfigCombo`). 사용자 구성과 다르면 "상세" 링크에 부기한다. dGPU 는 `differsFromHubAssumption`(D2) 이 맡는다
    */
   hubConfig?: { ramGB: number; os: Os };
+  /** 불러온 모델(콤보 페이지가 없다)만: 표시 quant 의 llama.cpp 명령 — 콤보 페이지 스니펫과 같은 조립 */
+  command?: string;
 };
 
 export type VerdictCounts = Record<Verdict, number> & { otherQuant: number };
 
+/** 카탈로그 밖 모델(Hugging Face 에서 불러옴, 계산기 P2 D57) — 엔진 입력 레코드 그대로 */
+export type ExtraModel = { model: ModelCore; rows: readonly ModelQuantCore[] };
+
 export type RunResult = {
   hardware: ResolvedHardware;
+  /** 불러온 모델 카드 — 목록 맨 위에 따로 보이고 카운트·필터·정렬에는 들어가지 않는다. 항상 이론 추정 */
+  pinned?: ResultCard;
   /** 필터 전 전체 (정렬됨) */
   all: ResultCard[];
   /** 필터 후 */
@@ -56,7 +65,7 @@ function countVerdicts(cards: readonly ResultCard[]): VerdictCounts {
   return counts;
 }
 
-export function assembleResults(catalog: CatalogLite, rawState: CalcState): RunResult | undefined {
+export function assembleResults(catalog: CatalogLite, rawState: CalcState, extra?: ExtraModel): RunResult | undefined {
   // 하드웨어 종류에 맞지 않는 필드(CPU 프로필의 DDR, Apple 의 OS 등)를 먼저 정리한다
   const state = normalize(rawState, catalog);
   const hardware = resolveHardware(state, catalog);
@@ -118,5 +127,30 @@ export function assembleResults(catalog: CatalogLite, rawState: CalcState): RunR
       verdictRank(c.combo.baseline.result.verdict) >= minRank,
   );
 
-  return { hardware, all, cards, counts: countVerdicts(all) };
+  let pinned: ResultCard | undefined;
+  if (extra) {
+    // 같은 조립 함수에 행만 덧붙인 카탈로그로 평가 — 실측 조인은 없고(벤치 0), 라벨은 이론 추정으로 고정
+    const withExtra = { ...catalog, modelQuants: [...catalog.modelQuants, ...extra.rows] };
+    const ctx = Math.min(state.ctx, extra.model.maxContext);
+    const combo = assessCombo(withExtra, gpu, config, extra.model, {
+      ctx,
+      kvQuant: state.kv,
+      theoretical: true,
+      ramHint: gpu.kind === 'dgpu',
+    });
+    const row = extra.rows.find((r) => r.quant === combo.display.quant);
+    const command =
+      row && combo.display.fits ? commandPlan(gpu, config, extra.model, row, combo.display, { ctx, kvQuant: state.kv }).llamaCpp?.command : undefined;
+    pinned = {
+      model: extra.model,
+      combo,
+      ctx,
+      clamped: ctx < state.ctx,
+      measuredCount: 0,
+      bucket: sizeBucket(extra.model.paramsB),
+      ...(command ? { command } : {}),
+    };
+  }
+
+  return { hardware, all, cards, counts: countVerdicts(all), ...(pinned ? { pinned } : {}) };
 }

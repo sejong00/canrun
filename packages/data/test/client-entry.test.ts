@@ -61,4 +61,48 @@ describe('@canrun/data/client import graph (D26)', () => {
     expect(pkg.exports['./client']).toBe('./src/client.ts');
     expect(pkg.sideEffects).toBe(false);
   });
+
+  it('does not pull in the HF ingestion entry (calculator main bundle stays unchanged)', () => {
+    expect(files.some((f) => /[\\/](hf|gguf)\.ts$/.test(f))).toBe(false);
+  });
+});
+
+/** 모듈 최상위(들여쓰기 0)의 실행문 — 선언(import/export/const/let/function/class/type)이 아닌 호출·대입 */
+const TOP_LEVEL_STATEMENT = /^(?!import\b|export\b|const\b|let\b|var\b|function\b|async\b|class\b|type\b|interface\b|declare\b|enum\b)[A-Za-z_$][\w$.]*\s*(?:\(|=[^=>])/m;
+/** Node 전용 전역 — 브라우저 번들에서 ReferenceError */
+const NODE_GLOBAL = /\b(?:process\.|Buffer\.|require\(|__dirname|__filename)/;
+
+describe('@canrun/data/hf import graph (browser HF ingestion — dynamic import only)', () => {
+  const reached = walk(resolve(dataSrc, 'hf.ts'));
+  const files = [...reached].filter((f) => !f.startsWith('pkg:'));
+  const packages = [...reached].filter((f) => f.startsWith('pkg:'));
+
+  it('reaches only @canrun/engine as an external package (no zod, no node:*)', () => {
+    expect(packages).toEqual([]);
+  });
+
+  it('never reaches schema.ts or index.ts through a value import', () => {
+    expect(files.some((f) => /[\\/](schema|index)\.ts$/.test(f) && f.startsWith(dataSrc))).toBe(false);
+  });
+
+  it('reaches the GGUF header module and the MoE derivation', () => {
+    for (const name of ['hf', 'gguf', 'derive']) {
+      expect(files.some((f) => f.endsWith(`${name}.ts`)), name).toBe(true);
+    }
+  });
+
+  it('has no top-level side effects and no Node-only globals in any reached data module', () => {
+    for (const f of files.filter((x) => x.startsWith(dataSrc))) {
+      const src = readFileSync(f, 'utf8');
+      expect(TOP_LEVEL_STATEMENT.exec(src)?.[0], f).toBeUndefined();
+      expect(NODE_GLOBAL.exec(src)?.[0], f).toBeUndefined();
+    }
+  });
+
+  it('is exposed through the package exports map', () => {
+    const pkg = JSON.parse(readFileSync(resolve(dataSrc, '../package.json'), 'utf8')) as {
+      exports: Record<string, string>;
+    };
+    expect(pkg.exports['./hf']).toBe('./src/hf.ts');
+  });
 });

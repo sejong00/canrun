@@ -26,6 +26,7 @@ export function ResultList({
   hydrated,
   prefix,
   issueUrl,
+  hfMeta,
 }: {
   locale: string;
   catalog: CatalogLite;
@@ -36,6 +37,8 @@ export function ResultList({
   hydrated: boolean;
   prefix: string;
   issueUrl: string;
+  /** 불러온 모델의 HF 저장소 (결과 맨 위 카드의 링크) — D57 */
+  hfMeta?: { baseId: string; ggufRepo: string };
 }) {
   const id = useId();
   const total = catalog.models.length;
@@ -105,6 +108,24 @@ export function ResultList({
               </select>
             </div>
           </div>
+
+          {results.pinned && hfMeta && (
+            <div data-hf-result className="flex min-w-0 flex-col gap-2">
+              <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <ResultCard
+                  locale={locale}
+                  t={t}
+                  card={results.pinned}
+                  state={state}
+                  hardware={results.hardware}
+                  prefix={prefix}
+                  focused={false}
+                  external={hfMeta}
+                />
+              </ul>
+              <p className="text-xs text-muted-foreground">{t.calc('hfNote')}</p>
+            </div>
+          )}
 
           {hiddenFocus && focusModel && (
             <p className="text-sm text-muted-foreground">
