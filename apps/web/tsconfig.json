@@ -7,7 +7,7 @@
     "incremental": true,
     "noEmit": true,
     "plugins": [{ "name": "next" }],
-    "baseUrl": ".",
+    "types": ["node", "mdx"],
     "paths": {
       "@/*": ["./*"]
     }

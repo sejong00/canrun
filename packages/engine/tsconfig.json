@@ -1,4 +1,6 @@
 {
   "extends": "../../tsconfig.base.json",
+  // TypeScript 6 부터 @types 자동 포함이 꺼졌다 — 테스트의 node:* · console 용 (src 순수성은 ESLint 규칙이 지킨다)
+  "compilerOptions": { "types": ["node"] },
   "include": ["src/**/*.ts", "test/**/*.ts"]
 }

@@ -1,4 +1,5 @@
 // eslint-config-next 16 은 flat config 를 직접 제공한다 (FlatCompat 불필요).
+import { fixupConfigRules } from '@eslint/compat';
 import nextCoreWebVitals from 'eslint-config-next/core-web-vitals';
 import nextTypescript from 'eslint-config-next/typescript';
 
@@ -24,8 +25,9 @@ const config = [
   {
     ignores: ['.next/**', 'out/**', 'next-env.d.ts'],
   },
-  ...nextCoreWebVitals,
-  ...nextTypescript,
+  // eslint 10 은 context.getFilename 등 옛 API 를 없앴다 — 아직 그걸 쓰는 플러그인(react·import·jsx-a11y)을 공식 호환 래퍼로 감싼다
+  ...fixupConfigRules(nextCoreWebVitals),
+  ...fixupConfigRules(nextTypescript),
   {
     files: CLIENT_FILES,
     rules: {
