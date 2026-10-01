@@ -1,4 +1,4 @@
-import type { ModelGpuRow, ModelHubData, PricedOption } from '@canrun/data';
+import { isReasoning, type ModelGpuRow, type ModelHubData, type PricedOption } from '@canrun/data';
 import { computeBufferGB, kvGB } from '@canrun/engine';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
@@ -18,7 +18,8 @@ import { PageShell } from '@/components/page-shell';
 import { VerdictBadge, VerdictLegend } from '@/components/verdict';
 import type { Locale } from '@/i18n/routing';
 import { catalog } from '@/lib/catalog';
-import { formatCtx, formatGB, formatInt, formatParams, formatUSD } from '@/lib/format';
+import { formatCtx, formatGB, formatInt, formatParams } from '@/lib/format';
+import { formatPrice, krwNote } from '@/lib/price';
 import { getModelHub } from '@/lib/hubs';
 import type { QA } from '@/lib/jsonld';
 import { comboHref, gpuHref, hfUrl, localeHref, modelHref } from '@/lib/links';
@@ -79,6 +80,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return buildPageMetadata({
     href: modelHref(hub.model.id),
     locale,
+    ogImage: `/og/model/${hub.model.id}-${locale}.png`,
     title: t.hub('metaTitle', { model: hub.model.name }),
     description: t.hub('metaDescription', {
       model: hub.model.name,
@@ -125,7 +127,7 @@ function buildFaq(
   const { great, well } = hub.cheapest;
   const priced = (option: PricedOption) => ({
     gpu: gpuName(t.names, option.gpu),
-    price: formatUSD(locale, option.priceUSD),
+    price: formatPrice(t.common, locale, option.priceUSD),
     date: option.priceAsOf,
     speed: speedPhrase(t.common, t.confidence, locale, option.combo.baseline),
   });
@@ -380,11 +382,11 @@ export default async function ModelHubPage({ params }: Props) {
                   const price =
                     gpu.streetUSD !== undefined && gpu.priceAsOf
                       ? tGpuHub('priceStreet', {
-                          price: formatUSD(locale, gpu.streetUSD),
+                          price: formatPrice(t.common, locale, gpu.streetUSD),
                           date: gpu.priceAsOf,
                         })
                       : gpu.msrpUSD !== undefined
-                        ? tGpuHub('priceMsrp', { price: formatUSD(locale, gpu.msrpUSD) })
+                        ? tGpuHub('priceMsrp', { price: formatPrice(t.common, locale, gpu.msrpUSD) })
                         : t.common('none');
                   return (
                     <tr
@@ -414,8 +416,11 @@ export default async function ModelHubPage({ params }: Props) {
               </tbody>
             </table>
           </ScrollTable>
-          {model.category.includes('reasoning') && (
+          {isReasoning(model) && (
             <p className="text-xs text-muted-foreground">{t.common('reasoningNote')}</p>
+          )}
+          {krwNote(t.common, locale) && (
+            <p className="text-xs text-muted-foreground">{krwNote(t.common, locale)}</p>
           )}
         </section>
 
@@ -436,7 +441,7 @@ export default async function ModelHubPage({ params }: Props) {
                     </a>
                     <span>
                       {t.hub('cheapest', {
-                        price: formatUSD(locale, option.priceUSD),
+                        price: formatPrice(t.common, locale, option.priceUSD),
                         date: option.priceAsOf,
                         speed: speedPhrase(t.common, t.confidence, locale, option.combo.baseline),
                       })}

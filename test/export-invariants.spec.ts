@@ -62,7 +62,7 @@ const FILE_COUNT_MAX = 16_000;
 /** D18 — CF Pages 단일 파일 25 MiB 한도 */
 const FILE_SIZE_MAX = 25 * 1024 * 1024;
 /** 허용 비-HTML 파일 (P1-5 사이트맵·robots·RSS·기본 공유 카드, ads·llms 대비) */
-const ROOT_FILE_ALLOWLIST = /^(?:_redirects|icon\.svg|robots\.txt|sitemap[^/]*\.xml|ads\.txt|llms\.txt|rss\.xml|ko\/rss\.xml|og\/default-(?:en|ko)\.png)$/;
+const ROOT_FILE_ALLOWLIST = /^(?:_redirects|icon\.svg|robots\.txt|sitemap[^/]*\.xml|ads\.txt|llms\.txt|rss\.xml|ko\/rss\.xml|og\/default-(?:en|ko)\.png|og\/(?:gpu|model)\/[a-z0-9.-]+-(?:en|ko)\.png)$/;
 const TXT_ALLOWLIST = new Set(['robots.txt', 'ads.txt', 'llms.txt']);
 const HEAVY_TIMEOUT = 60_000;
 
@@ -272,6 +272,30 @@ describe('hub pages exist for every catalog record (결정 D1 — 허브 전체 
     for (const { id } of models) {
       expect(urls.has(`/model/${id}`), `/model/${id}`).toBe(true);
       expect(urls.has(`/ko/model/${id}`), `/ko/model/${id}`).toBe(true);
+    }
+  });
+});
+
+describe('share cards (D60 — 허브별 og:image)', () => {
+  it('every page has an og:image that exists in out/; hubs use their own card', () => {
+    for (const page of pages) {
+      expect(page.ogImage, page.file).toBeDefined();
+      const path = new URL(page.ogImage!).pathname;
+      expect(existsSync(join(outDir, path.slice(1))), `${page.file} → ${path}`).toBe(true);
+      if (isHub(page)) {
+        const id = page.urlPath.split('/').pop();
+        expect(path, page.file).toBe(`/og/${page.kind}/${id}-${page.locale}.png`);
+      }
+    }
+  });
+});
+
+describe('KRW reference prices (D61 — ko 만, 환산 안내 동반)', () => {
+  it('en pages show no KRW; every ko model hub shows KRW; any page showing KRW also shows the conversion note', () => {
+    for (const page of pages) {
+      if (page.locale === 'en') expect(page.krwPrices, page.file).toBe(0);
+      if (page.locale === 'ko' && page.kind === 'model') expect(page.krwPrices, page.file).toBeGreaterThan(0);
+      if (page.krwPrices > 0) expect(page.krwNote, page.file).toBe(true);
     }
   });
 });

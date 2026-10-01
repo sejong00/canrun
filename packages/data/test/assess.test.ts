@@ -259,7 +259,8 @@ describe('추천 quant·최후 수단 (결정 D4 — 품질 상향 금지, despe
     expect(c.baseline.result.verdict).toBe('B');
     expect(c.baseline.result.mode).toBe('partial-offload');
     expect(c.baseline.gpuFrac).toBeCloseTo(0.6092, 3);
-    expect(c.baseline.verdictReason).toBe('cap-partial');
+    // 10-01 D59: qwen3-14b 는 생각 모드(기본 켜짐) — 리즈닝 임계(원활 12 tok/s)라 8.1 tok/s 는 속도로 B (전엔 부분 오프로드 상한)
+    expect(c.baseline.verdictReason).toBe('speed');
     expect(c.recommended?.quant).toBe('Q4_K_M');
     expect(c.lastResort?.quant).toBe('Q2_K');
     expect(c.lastResort?.result.verdict).toBe('A');
@@ -336,7 +337,8 @@ describe('summaries', () => {
     // 09-30 Gemma 4 12B KV 수정(4배 과대 → 설정 기준)으로 12B 가 4060 에서 B → A(부분 오프로드지만 GPU 90% 이상)
     // 09-30 cpu-moe 보정: qwen3-30b-a3b-2507·kanana-1.5-15.7b-a3b 가 4060 에서 B → A (20 tok/s 이상)
     // 10-01 전문가 부분 배치(D56): gpt-oss-20b(리즈닝 30 → 30.8)·gemma-4-26b-a4b(부분 오프로드 B → cpu-moe) B → A
-    expect(c).toMatchObject({ S: 11, A: 7, B: 11, F: 8, otherQuant: 3 });
+    // 10-01 D59 생각 모드 모델 ×1.5(qwen3·qwen3.5·gemma-4·exaone-4·minicpm5 등): A 7→6, B 11→10, F 8→10
+    expect(c).toMatchObject({ S: 11, A: 6, B: 10, F: 10, otherQuant: 5 });
     expect(hub.faq.referenceLarge?.baseline.fReason).toBe('no-fit');
     expect(hub.benchmarks.every((bp) => bp.gpuId === 'rtx-4060')).toBe(true);
     // 정렬: 기준 판정 비증가, 같은 판정 안에서는 표시 tok/s 비증가
@@ -393,10 +395,12 @@ describe('summaries', () => {
     const hub = summarizeModel(seed, model('qwen3-32b'));
     expect(hub.gpuRows).toHaveLength(seed.gpus.length);
     expect(hub.gpuRows.some((r) => r.gpu.kind === 'cpu')).toBe(true);
-    expect(hub.cheapest.great?.gpu.id).toBe('rtx-3090');
-    expect(hub.cheapest.great?.priceUSD).toBe(1050);
+    // 10-01 D59: qwen3-32b 는 생각 모드 — 쾌적 임계 30 tok/s 라 3090 은 원활, 쾌적 최저가는 4090
+    expect(hub.cheapest.great?.gpu.id).toBe('rtx-4090');
+    expect(hub.cheapest.great?.priceUSD).toBe(2755);
     expect(hub.cheapest.great?.priceAsOf).toBe('2026-08-09');
-    expect(hub.cheapest.well).toBeUndefined();
+    expect(hub.cheapest.well?.gpu.id).toBe('rtx-3090');
+    expect(hub.cheapest.well?.priceUSD).toBe(1050);
     expect(hub.referenceRows.map((r) => r.gpu.id)).toEqual(HUB_POLICY.referenceGpuIds);
   });
 

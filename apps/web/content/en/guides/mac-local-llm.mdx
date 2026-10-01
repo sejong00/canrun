@@ -50,7 +50,7 @@ Bandwidth varies widely: the M4 has <Num kind="bandwidth" gpu="apple-m4" />, the
 
 A faster chip can lift the verdict for the same model. <ComboLink model="llama-3.1-8b" gpu="apple-m4-pro" /> Runs great,<Expect model="llama-3.1-8b" gpu="apple-m4-pro" verdict="S" /> while the same model Runs well on the base M4.<Expect model="llama-3.1-8b" gpu="apple-m4" verdict="A" />
 
-Qwen3 14B Runs slowly on a 16GB <HubLink gpu="apple-m4" /><Expect model="qwen3-14b" gpu="apple-m4" verdict="B" /> but Runs well on a 16GB <HubLink gpu="apple-m5" />, with little margin on both (check `ollama ps`),<Expect model="qwen3-14b" gpu="apple-m5" verdict="A" /> and it also Runs well on the <HubLink gpu="apple-m4-pro" />.<Expect model="qwen3-14b" gpu="apple-m4-pro" verdict="A" />
+Qwen3 14B Runs slowly on a 16GB <HubLink gpu="apple-m4" /> and on a 16GB <HubLink gpu="apple-m5" />, with little margin on both (check `ollama ps`),<Expect model="qwen3-14b" gpu="apple-m4" verdict="B" /><Expect model="qwen3-14b" gpu="apple-m5" verdict="B" /> but Runs well on the <HubLink gpu="apple-m4-pro" />.<Expect model="qwen3-14b" gpu="apple-m4-pro" verdict="A" /> The base M5 does lift a smaller model: Qwen3 8B Runs slowly on the 16GB M4<Expect model="qwen3-8b" gpu="apple-m4" verdict="B" /> and Runs well on the 16GB M5.<Expect model="qwen3-8b" gpu="apple-m5" verdict="A" /> Both Qwen3 models have a thinking mode, which raises the speed they need for each verdict (see the end of this guide).
 
 In CanRun's calculation, once a model fits fully on the GPU, every memory size of that chip gets the same estimate. More memory changes which models and contexts fit on the GPU, not the speed of a model already there, and Apple lists a single bandwidth for the M4 Pro at every memory size.
 
@@ -58,11 +58,11 @@ The exception: the M4 Max and M5 Max each come with a 32-core or a 40-core GPU o
 
 ### MoE and dense models on a Mac
 
-A dense model reads all of its weights for every token; an MoE model reads only the parameters it activates for that token. On a 48GB M4 Pro, Qwen3 30B-A3B (2507) Runs great,<Expect model="qwen3-30b-a3b-2507" gpu="apple-m4-pro" verdict="S" /> while the dense <HubLink model="qwen3-32b" />, which needs a similar <Num kind="needGB" model="qwen3-32b" /> against <Num kind="needGB" model="qwen3-30b-a3b-2507" />, also fits fully but Runs slowly.<Expect model="qwen3-32b" gpu="apple-m4-pro" verdict="B" /> At 24GB on the M4 Pro, gpt-oss-20b Runs great<Expect model="gpt-oss-20b" gpu="apple-m4-pro" verdict="S" /> and the dense Qwen3 14B Runs well,<Expect model="qwen3-14b" gpu="apple-m4-pro" verdict="A" /> even though gpt-oss-20b has the larger file and, as a reasoning model, faces speed thresholds 1.5 times stricter.
+A dense model reads all of its weights for every token; an MoE model reads only the parameters it activates for that token. On a 48GB M4 Pro, Qwen3 30B-A3B (2507) Runs great,<Expect model="qwen3-30b-a3b-2507" gpu="apple-m4-pro" verdict="S" /> while the dense <HubLink model="qwen3-32b" />, which needs a similar <Num kind="needGB" model="qwen3-32b" /> against <Num kind="needGB" model="qwen3-30b-a3b-2507" />, also fits fully but Runs slowly.<Expect model="qwen3-32b" gpu="apple-m4-pro" verdict="B" /> At 24GB on the M4 Pro, gpt-oss-20b Runs great<Expect model="gpt-oss-20b" gpu="apple-m4-pro" verdict="S" /> and the dense Qwen3 14B Runs well,<Expect model="qwen3-14b" gpu="apple-m4-pro" verdict="A" /> even though gpt-oss-20b has the larger file. Both models have a thinking mode, so the same stricter speed thresholds apply to each.
 
 ### A newer generation at the same tier
 
-In the grid, the M5 Pro gets the same verdicts as the M4 Pro for all six models, but not for every model in the catalog. Qwen3 32B at 48GB Runs slowly on the M4 Pro<Expect model="qwen3-32b" gpu="apple-m4-pro" verdict="B" /> and Runs well on the M5 Pro.<Expect model="qwen3-32b" gpu="apple-m5-pro" verdict="A" /> Check your model on the chip's page before comparing generations.
+In the grid, the M5 Pro gets the same verdicts as the M4 Pro for all six models, but not for every model in the catalog. <HubLink model="deepseek-r1-distill-8b" /> Runs well on the M4 Pro<Expect model="deepseek-r1-distill-8b" gpu="apple-m4-pro" verdict="A" /> and Runs great on the M5 Pro,<Expect model="deepseek-r1-distill-8b" gpu="apple-m5-pro" verdict="S" /> while Qwen3 32B at 48GB Runs slowly on both.<Expect model="qwen3-32b" gpu="apple-m4-pro" verdict="B" /><Expect model="qwen3-32b" gpu="apple-m5-pro" verdict="B" /> Check your model on the chip's page before comparing generations.
 
 ## Longer contexts on a Mac
 
@@ -120,7 +120,7 @@ Not modelled: models for MLX, Apple's machine-learning framework (CanRun's estim
 
 On your own Mac, `ollama ps` is the ground truth: SIZE, PROCESSOR (100% GPU) and CONTEXT. For llama.cpp, read the load log.
 
-Verdict names in this guide's text refer to the 8k context, f16 KV baseline. The thresholds:
+Verdict names in this guide's text refer to the 8k context, f16 KV baseline. Models with a thinking mode, such as gpt-oss and Qwen3, spend extra tokens thinking before they answer, so CanRun makes their speed thresholds 1.5× stricter; the legend below does not show this. The thresholds:
 
 <Threshold />
 

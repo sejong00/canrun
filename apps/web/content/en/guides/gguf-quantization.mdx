@@ -130,7 +130,7 @@ Measurements are joined only when the quant matches exactly, so a run of a Q4_K_
 
 <Measured model="gpt-oss-20b" gpu="rtx-5060-ti-16gb" />
 
-At its MXFP4 baseline, <ComboLink model="gpt-oss-20b" gpu="rtx-5060-ti-16gb" /> Runs great.<Expect model="gpt-oss-20b" gpu="rtx-5060-ti-16gb" verdict="S" /> It is a reasoning model, so its speed thresholds are 1.5× stricter.
+At its MXFP4 baseline, <ComboLink model="gpt-oss-20b" gpu="rtx-5060-ti-16gb" /> Runs great.<Expect model="gpt-oss-20b" gpu="rtx-5060-ti-16gb" verdict="S" /> It always thinks before it answers, so its speed thresholds are 1.5× stricter.
 
 Our figures assume Windows with the card driving the display, 32GB of DDR5 system RAM, an 8k context, an f16 KV cache, one model loaded and one request slot, and they cover the language-model file only, not a vision projector (mmproj) file. Ollama and llama.cpp make their own memory estimates, so check the real GPU/CPU split on your machine with `ollama ps` (or the load log in llama.cpp).
 

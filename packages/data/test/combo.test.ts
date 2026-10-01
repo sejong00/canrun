@@ -151,7 +151,8 @@ describe('alternatives (docs/04 §4 ⑥, D4)', () => {
   it('B partial page: smaller model, desperate quant flagged, S GPU (rtx-4060 × qwen3-14b)', () => {
     const alts = altsFor('rtx-4060', 'qwen3-14b');
     // 09-30 Gemma 4 12B KV 수정으로 12B 가 4060 에서 A — '더 작은 모델' 대안이 qwen3.5-9b 에서 gemma-4-12b 로
-    expect(alts.map(label)).toEqual(['smaller-model:gemma-4-12b', 'lower-quant:Q2_K', 'gpu:rtx-3060-12gb']);
+    // 10-01 D59: qwen3-14b 는 생각 모드 — 3060 12GB 로는 쾌적(30 tok/s)이 안 되어 GPU 대안이 5060 Ti 16GB 로
+    expect(alts.map(label)).toEqual(['smaller-model:gemma-4-12b', 'lower-quant:Q2_K', 'gpu:rtx-5060-ti-16gb']);
     expect(alts[1]).toMatchObject({ kind: 'lower-quant', desperate: true });
   });
 
@@ -172,11 +173,8 @@ describe('alternatives (docs/04 §4 ⑥, D4)', () => {
   });
 
   it('unified page prefers the next chip of the same vendor over a dGPU (apple-m4 × qwen3-14b)', () => {
-    expect(altsFor('apple-m4', 'qwen3-14b').map(label)).toEqual([
-      'smaller-model:gemma-3-12b',
-      'lower-quant:Q2_K',
-      'chip:apple-m5',
-    ]);
+    // 10-01 D59: 생각 모드 임계로 Q2_K 대안이 원활에 못 미쳐 빠지고, 다음 칩이 M4 Pro
+    expect(altsFor('apple-m4', 'qwen3-14b').map(label)).toEqual(['smaller-model:gemma-3-12b', 'chip:apple-m4-pro']);
   });
 
   it('CPU profile falls back to a faster model at the same verdict', () => {
@@ -256,7 +254,8 @@ describe('twinGpus (D22) / titleVerdict (D14)', () => {
   it('title verdict follows baseline → recommended quant → RAM hint → F', () => {
     const combo = (gpuId: string, modelId: string) => gpuHub(gpuId).rows.find((r) => r.model.id === modelId)!.combos[0]!;
     expect(titleVerdict(combo('rtx-4060', 'llama-3.1-8b'))).toEqual({ kind: 'baseline', verdict: 'S' });
-    expect(titleVerdict(combo('rtx-4060', 'qwen3-32b'))).toEqual({ kind: 'baseline', verdict: 'B' });
+    // 10-01 D59: qwen3-32b 는 생각 모드 — 기준 양자화는 너무 느려 F, 제목은 Q2_K 의 겨우 가능
+    expect(titleVerdict(combo('rtx-4060', 'qwen3-32b'))).toEqual({ kind: 'quant', verdict: 'B', quant: 'Q2_K' });
     // 10-01 D56: RAM 에는 CPU 쪽 전문가만 — 96GB 가 아니라 64GB 에서 들어간다
     expect(titleVerdict(combo('rtx-5060-ti-16gb', 'gpt-oss-120b'))).toEqual({ kind: 'ram', verdict: 'B', ramGB: 64 });
     expect(titleVerdict(combo('rtx-4060', 'llama-3.3-70b'))).toEqual({ kind: 'none', verdict: 'F' });

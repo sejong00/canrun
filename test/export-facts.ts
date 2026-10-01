@@ -106,6 +106,11 @@ export type PageFacts = {
   scriptSrcs: string[];
   /** `<link rel="preload|modulepreload">` 가 가리키는 스크립트 */
   preloadSrcs: string[];
+  /** `<meta property="og:image">` (D60 허브별 공유 카드) */
+  ogImage?: string;
+  /** 가시 텍스트의 원화 참고 가격 "약 41만 원" 수 · 환산 안내("환율(1달러 1,361원)") 유무 (D61) */
+  krwPrices: number;
+  krwNote: boolean;
 };
 
 // ---------------------------------------------------------------------------
@@ -537,6 +542,7 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
   const faq = visibleFaq(html);
   const description = metaContent(html, /<meta name="description" content="([^"]*)"/);
   const ogDescription = metaContent(html, /<meta property="og:description" content="([^"]*)"/);
+  const ogImage = metaContent(html, /<meta property="og:image" content="([^"]*)"/);
   const verdictSentence = elementsWithAttr(noScript, 'data-verdict-sentence').map((e) => elementText(e.inner))[0];
   // 쌍둥이 GPU 형제 문장 (D22) — pp 비교가 들어가므로 규칙 3 검사 대상
   const twinText = elementsWithAttr(noScript, 'data-twin').map((e) => elementText(e.inner))[0];
@@ -614,6 +620,9 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
     markers,
     scriptSrcs,
     preloadSrcs,
+    ...(ogImage === undefined ? {} : { ogImage }),
+    krwPrices: (visible.match(/약 [\d,]+만 원/g) ?? []).length,
+    krwNote: /환율\(1달러 [\d,]+원\)/.test(visible),
   };
 }
 

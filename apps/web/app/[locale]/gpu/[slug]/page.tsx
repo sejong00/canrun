@@ -16,7 +16,8 @@ import { PageShell } from '@/components/page-shell';
 import { VerdictBadge, VerdictLegend } from '@/components/verdict';
 import type { Locale } from '@/i18n/routing';
 import { catalog } from '@/lib/catalog';
-import { formatGB, formatInt, formatUSD } from '@/lib/format';
+import { formatGB, formatInt } from '@/lib/format';
+import { formatPrice, krwNote } from '@/lib/price';
 import { getGpuHub } from '@/lib/hubs';
 import type { QA } from '@/lib/jsonld';
 import { comboHref, gpuHref, localeHref, modelHref } from '@/lib/links';
@@ -108,6 +109,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return buildPageMetadata({
     href: gpuHref(hub.gpu.id),
     locale,
+    ogImage: `/og/gpu/${hub.gpu.id}-${locale}.png`,
     title: t.hub('metaTitle', { gpu: name, memory }),
     description:
       biggest && biggestModel
@@ -258,9 +260,9 @@ export default async function GpuHubPage({ params }: Props) {
 
   const price =
     gpu.streetUSD !== undefined && gpu.priceAsOf
-      ? tSpec('priceStreet', { price: formatUSD(locale, gpu.streetUSD), date: gpu.priceAsOf })
+      ? tSpec('priceStreet', { price: formatPrice(t.common, locale, gpu.streetUSD), date: gpu.priceAsOf })
       : gpu.msrpUSD !== undefined
-        ? tSpec('priceMsrp', { price: formatUSD(locale, gpu.msrpUSD) })
+        ? tSpec('priceMsrp', { price: formatPrice(t.common, locale, gpu.msrpUSD) })
         : undefined;
 
   return (
@@ -336,6 +338,9 @@ export default async function GpuHubPage({ params }: Props) {
               </div>
             )}
           </dl>
+          {price && krwNote(t.common, locale) && (
+            <p className="text-xs text-muted-foreground">{krwNote(t.common, locale)}</p>
+          )}
         </section>
 
         <section aria-labelledby="summary-heading" className="flex flex-col gap-3">

@@ -2,9 +2,10 @@ import type { Alternative, Gpu, Model } from '@canrun/data';
 import { useLocale, useTranslations } from 'next-intl';
 import { VerdictBadge } from '@/components/verdict';
 import type { Locale } from '@/i18n/routing';
-import { formatGB, formatInt, formatUSD } from '@/lib/format';
+import { formatGB, formatInt } from '@/lib/format';
 import { comboHref, gpuHref, localeHref, modelHref } from '@/lib/links';
 import { gpuName, speedPhrase } from '@/lib/phrases';
+import { formatPrice, krwNote } from '@/lib/price';
 
 /**
  * 대안 카드 (docs/04 §4 ⑥) — 0~3개. 콤보 링크는 호출 측이 링크 허용 여부(D9)를 판단해 `linkTo` 로 준다.
@@ -45,6 +46,7 @@ export function AlternativeCards({
         let body: string;
         let href: string | undefined;
         let verdict: Parameters<typeof VerdictBadge>[0]['verdict'] | undefined;
+        let note: string | undefined;
         switch (alt.kind) {
           case 'larger-model':
           case 'smaller-model':
@@ -109,7 +111,7 @@ export function AlternativeCards({
             title = t('gpu', { model: model.name });
             body = t('gpuBody', {
               gpu: gpuName(names, alt.option.gpu),
-              price: formatUSD(locale, alt.option.priceUSD),
+              price: formatPrice(tCommon, locale, alt.option.priceUSD),
               date: alt.option.priceAsOf,
               speed: speed(alt.option.combo.baseline),
             });
@@ -117,6 +119,7 @@ export function AlternativeCards({
               ? localeHref(locale, comboHref(model.id, alt.option.gpu.id))
               : localeHref(locale, gpuHref(alt.option.gpu.id));
             verdict = alt.option.combo.baseline.result.verdict;
+            note = krwNote(tCommon, locale);
             break;
         }
         return (
@@ -124,6 +127,7 @@ export function AlternativeCards({
             <h3 className="text-sm font-medium">{href ? <a href={href}>{title}</a> : title}</h3>
             {verdict && <VerdictBadge verdict={verdict} />}
             <p className="text-sm text-muted-foreground">{body}</p>
+            {note && <p className="text-xs text-muted-foreground">{note}</p>}
           </li>
         );
       })}

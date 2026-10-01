@@ -670,7 +670,10 @@ export function Num({ kind, model, gpu, quant, ctx, kv }: { kind: string; model?
   );
 }
 
-/** 가격 — 실거래가는 기준일 동반(규칙 2), 없으면 출시가, 둘 다 없으면 빌드 실패 */
+/**
+ * 가격 — 실거래가는 기준일 동반(규칙 2), 없으면 출시가, 둘 다 없으면 빌드 실패.
+ * 본문 속 짧은 값이라 원화 참고값(D61)은 붙이지 않는다 — 원화는 환산 안내를 함께 달 수 있는 허브·콤보 화면에서만.
+ */
 export function Price({ gpu: gpuId }: { gpu: string }) {
   const { locale } = useHub();
   const tSpec = useTranslations('GpuHub');

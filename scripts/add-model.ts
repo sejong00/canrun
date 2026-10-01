@@ -2,7 +2,8 @@
  * 새 모델 추가 — 카탈로그 확장 자동화 (09-30). HF 모델 ID 하나로 models.json·model-quants.json 레코드를 만든다.
  *
  * 실행: pnpm run add-model -- <hfId> [--id <slug>] [--name "<표시명>"] [--gguf <repo>] [--active <B>]
- *                                    [--category chat,coding] [--popularity 1-5] [--max-context N] [--korean] [--dry]
+ *                                    [--category chat,coding] [--thinking always|default-on|default-off|auto]
+ *                                    [--popularity 1-5] [--max-context N] [--korean] [--dry]
  *
  * 하는 일:
  *  1) HF 모델 정보(파라미터 수·라이선스·생성일·다운로드)와 config.json 을 받는다. 게이트 모델은 unsloth 미러 config 로 대체하고 출처에 남긴다.
@@ -12,7 +13,7 @@
  *  4) 레코드를 쓰고, MoE 면 MOE_ARCH 에 한 줄 넣어 nonExpertGB 를 유도, data/meta.json 기준일을 오늘로.
  *     MoE 는 arch.experts/topK(config)를 기록하고, 양자화 행마다 GGUF 헤더를 Range 로 읽어 expertGB·nonExpertGB 를
  *     실측한다(scripts/gguf-header.ts, 10-01). 헤더의 expert_count·expert_used_count 가 config 와 다르면 멈춘다.
- * 사람이 확인할 것(출력에 표시): 카테고리(리즈닝 여부)·표시명·인기도·처음 보는 라이선스 문자열.
+ * 사람이 확인할 것(출력에 표시): 생각 모드(--thinking, 판정 기준 1.5배 — 모델 카드·채팅 템플릿, D59)·카테고리·표시명·인기도·처음 보는 라이선스 문자열.
  * 실행 후: pnpm run validate-data → pnpm test → pnpm build → pnpm run test:export.
  */
 import { execSync } from 'node:child_process';
@@ -136,7 +137,9 @@ export async function measureRows(
 // 실행부
 // ---------------------------------------------------------------------------
 
-type Args = { hfId?: string; id?: string; name?: string; gguf?: string; active?: number; category?: string[]; popularity?: number; maxContext?: number; korean: boolean; dry: boolean };
+type Thinking = 'always' | 'default-on' | 'default-off' | 'auto';
+const THINKING_VALUES: readonly Thinking[] = ['always', 'default-on', 'default-off', 'auto'];
+type Args = { hfId?: string; id?: string; name?: string; gguf?: string; active?: number; category?: string[]; thinking?: Thinking; popularity?: number; maxContext?: number; korean: boolean; dry: boolean };
 
 export function parseArgs(argv: readonly string[]): Args {
   const a: Args = { korean: false, dry: false };
@@ -156,6 +159,11 @@ export function parseArgs(argv: readonly string[]): Args {
     else if (arg === '--gguf') a.gguf = val();
     else if (arg === '--active') a.active = Number(val());
     else if (arg === '--category') a.category = val().split(',');
+    else if (arg === '--thinking') {
+      const v = val();
+      if (!(THINKING_VALUES as readonly string[]).includes(v)) throw new Error(`--thinking must be one of ${THINKING_VALUES.join('|')}`);
+      a.thinking = v as Thinking;
+    }
     else if (arg === '--popularity') a.popularity = Number(val());
     else if (arg === '--max-context') a.maxContext = Number(val());
     else if (!arg.startsWith('--') && a.hfId === undefined) a.hfId = arg;
@@ -241,7 +249,7 @@ async function main(): Promise<void> {
     ...(arch.override ? { attnOverrides: { ...arch.override, sources: [src] } } : {}),
     maxContext: args.maxContext ?? arch.maxContext, license, moe: arch.moe !== undefined,
     ...(moeFields['nonExpertGB'] !== undefined ? { nonExpertGB: moeFields['nonExpertGB'] } : {}),
-    category, ...(args.korean ? { korean: true } : {}),
+    category, ...(args.thinking ? { thinking: args.thinking } : {}), ...(args.korean ? { korean: true } : {}),
     popularity: args.popularity ?? popularityFrom(info.downloads),
     releasedAt: (info.createdAt ?? today).slice(0, 10),
     note: `add-model 생성(${today}). releasedAt = HF createdAt${mirror ? `. gated — arch 는 ${mirror} 미러 config` : ''}`,
@@ -265,7 +273,8 @@ async function main(): Promise<void> {
   }
   const warnings: string[] = [...splitWarnings];
   if (classifyLicense(license) === 'unknown') warnings.push(`라이선스 "${license}" 가 배지 맵(packages/data/src/license.ts)에 없음 — 분류 추가 필요`);
-  if (!args.category) warnings.push('카테고리는 기본값 — 리즈닝(사고 토큰) 모델이면 --category chat,reasoning 으로 다시 (판정 기준 1.5배)');
+  if (!args.category) warnings.push('카테고리는 기본값 — 용도 필터용(리즈닝은 --category chat,reasoning)');
+  if (!args.thinking) warnings.push('생각 모드 미지정 — 모델 카드·채팅 템플릿에 thinking(enable_thinking·<think>·reasoning_effort)이 있으면 --thinking always|default-on|default-off|auto 로 다시 (판정 기준 1.5배, D59)');
   if (!args.maxContext) warnings.push(`최대 컨텍스트 ${arch.maxContext} 는 config 값 — 모델 카드의 기본(네이티브) 길이와 다르면 --max-context 로 (예: Qwen3 은 카드 기준 32768, YaRN 확장 전)`);
   if (!args.name) warnings.push(`표시명 "${name}" 은 자동 — 어색하면 --name 으로`);
   for (const w of warnings) console.log(`  ! ${w}`);

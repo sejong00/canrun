@@ -138,7 +138,7 @@
     "faq1Q": "How accurate are the speed estimates?",
     "faq1A": "Every speed is a band with a confidence label: measured (a public benchmark for this exact GPU, model and quant), calibrated (a bandwidth model fitted to public benchmarks — ±12% for NVIDIA and AMD cards running a dense model fully on the GPU, ±20% otherwise) or theoretical (±30%, outside our calibration set). Drivers, backend, context and thermals move real results within that band.",
     "faq2Q": "What do the four verdicts mean?",
-    "faq2A": "Runs great: the whole model sits on the GPU and generates faster than you read. Runs well: a comfortable wait, including MoE models that keep their experts in system RAM. Runs slowly: it works but crawls (CPU or a GPU/CPU split). Won't run: not enough memory, or too slow to be usable. Reasoning models are judged 1.5× more strictly because they spend tokens thinking.",
+    "faq2A": "Runs great: the whole model sits on the GPU and generates faster than you read. Runs well: a comfortable wait, including MoE models that keep their experts in system RAM. Runs slowly: it works but crawls (CPU or a GPU/CPU split). Won't run: not enough memory, or too slow to be usable. Models with a thinking mode are judged 1.5× more strictly because they spend tokens thinking.",
     "faq3Q": "Is my hardware information sent anywhere?",
     "faq3A": "No. Detection and every calculation run inside your browser; there is no server. A share link only carries the GPU, RAM and settings you picked as URL parameters.",
     "gpuConfirmVariant": "“{text}”: only one memory size is in the catalog — pick it if it matches yours, otherwise enter your specs below.",
@@ -161,7 +161,7 @@
     "hfErrorNoParams": "The parameter count isn't available, so we couldn't calculate it.",
     "hfErrorNetwork": "Couldn't reach Hugging Face. Try again in a moment.",
     "hfBadge": "Loaded from Hugging Face",
-    "hfNote": "Loaded models are theoretical estimates (±30%). File sizes and structure come from Hugging Face. We can't tell whether it is a reasoning model, so the stricter thresholds for reasoning models aren't applied.",
+    "hfNote": "Loaded models are theoretical estimates (±30%). File sizes and structure come from Hugging Face. We can't tell whether it has a thinking mode, so the stricter thresholds for thinking models aren't applied.",
     "hfViewOnHf": "View on Hugging Face",
     "hfCommand": "llama.cpp command",
     "hfInCatalog": "{model} is already in the list — its card is highlighted in the results.",
@@ -286,8 +286,10 @@
     "estimateAlso": "8k estimate {est} tok/s ({low}–{high}, {label})",
     "gb": "{value} GB",
     "none": "—",
-    "reasoningNote": "Reasoning models spend extra tokens thinking, so their speed thresholds are 1.5× stricter (30 / 12 / 3 tok/s).",
-    "reasoningMark": "reasoning model"
+    "reasoningNote": "Models with a thinking mode spend extra tokens thinking, so their speed thresholds are 1.5× stricter (30 / 12 / 3 tok/s). With thinking turned off, a model may do one grade better.",
+    "reasoningMark": "thinking mode",
+    "priceKrw": "{usd} (about {krw} × 10,000 KRW)",
+    "krwNote": "KRW figures are rough conversions of US prices at the {date} exchange rate (1 USD = {rate} KRW) and can differ from prices in Korea."
   },
   "Verdict": {
     "S": "Runs great",
@@ -677,5 +679,12 @@
     "privacyDescription": "What CanRun collects (nothing personal), how the calculator runs in your browser, and what our hosting provider logs.",
     "contactTitle": "Contact",
     "contactDescription": "How to reach CanRun: report a wrong number, ask for a model or GPU to be added, or send feedback by email."
+  },
+  "OgCard": {
+    "gpuSubtitle": "Which local LLMs run on this GPU",
+    "modelSubtitle": "Which GPUs can run this model",
+    "unifiedMemory": "{mem} GB unified memory",
+    "vram": "{mem} GB VRAM",
+    "active": "{n}B active"
   }
 }

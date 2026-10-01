@@ -74,7 +74,7 @@ KV 캐시를 양자화하면 정밀도가 떨어집니다. Ollama FAQ에 따르�
 
 ### 12GB 카드 예시: 들어가느냐 넘치느냐
 
-<ComboLink model="qwen3-14b" gpu="rtx-3060-12gb" />는 8k 컨텍스트, f16 KV 기준으로 쾌적하게 돌릴 수 있습니다<Expect model="qwen3-14b" gpu="rtx-3060-12gb" verdict="S" />. 국내에서 흔한 이 카드의 사용 가능 메모리는 <Num kind="usableGB" gpu="rtx-3060-12gb" />입니다. 8k에서도 필요량이 <Num kind="needGB" model="qwen3-14b" />라 여유가 1GB도 안 됩니다. 16k에서는 f16 KV 기준으로 <Num kind="needGB" model="qwen3-14b" ctx="16384" />가 필요해 사용 가능 메모리를 넘습니다. 그래서 표는 16k f16 조합을 부분 오프로드로 계산합니다. 같은 16k라도 KV 캐시를 q8_0으로 양자화하면 <Num kind="needGB" model="qwen3-14b" ctx="16384" kv="q8_0" />로 들어갑니다. 최대 길이인 32k에서는 q8_0으로도 <Num kind="needGB" model="qwen3-14b" ctx="32768" kv="q8_0" />가 필요해 넘칩니다. q4_0이면 <Num kind="needGB" model="qwen3-14b" ctx="32768" kv="q4_0" />로, 사용 가능 메모리 안에 간신히 들어갑니다. 8k f16, 16k q8_0, 32k q4_0 세 설정은 모두 아슬아슬하게 들어가므로 `ollama ps`의 PROCESSOR 열이 `100% GPU`인지 확인합니다. 다른 카드에서의 결과는 <HubLink model="qwen3-14b" /> 페이지에, 이 카드에서 다른 모델의 결과는 <HubLink gpu="rtx-3060-12gb" /> 페이지에 있습니다.
+<ComboLink model="qwen3-14b" gpu="rtx-3060-12gb" />는 8k 컨텍스트, f16 KV 기준으로 원활하게 돌아갑니다<Expect model="qwen3-14b" gpu="rtx-3060-12gb" verdict="A" />. Qwen3 14B는 생각 모드가 있는 모델이라 CanRun이 속도 기준을 더 엄격하게 잡습니다. 국내에서 흔한 이 카드의 사용 가능 메모리는 <Num kind="usableGB" gpu="rtx-3060-12gb" />입니다. 8k에서도 필요량이 <Num kind="needGB" model="qwen3-14b" />라 여유가 1GB도 안 됩니다. 16k에서는 f16 KV 기준으로 <Num kind="needGB" model="qwen3-14b" ctx="16384" />가 필요해 사용 가능 메모리를 넘습니다. 그래서 표는 16k f16 조합을 부분 오프로드로 계산합니다. 같은 16k라도 KV 캐시를 q8_0으로 양자화하면 <Num kind="needGB" model="qwen3-14b" ctx="16384" kv="q8_0" />로 들어갑니다. 최대 길이인 32k에서는 q8_0으로도 <Num kind="needGB" model="qwen3-14b" ctx="32768" kv="q8_0" />가 필요해 넘칩니다. q4_0이면 <Num kind="needGB" model="qwen3-14b" ctx="32768" kv="q4_0" />로, 사용 가능 메모리 안에 간신히 들어갑니다. 8k f16, 16k q8_0, 32k q4_0 세 설정은 모두 아슬아슬하게 들어가므로 `ollama ps`의 PROCESSOR 열이 `100% GPU`인지 확인합니다. 다른 카드에서의 결과는 <HubLink model="qwen3-14b" /> 페이지에, 이 카드에서 다른 모델의 결과는 <HubLink gpu="rtx-3060-12gb" /> 페이지에 있습니다.
 
 <CtxTable model="qwen3-14b" gpu="rtx-3060-12gb" />
 
@@ -100,7 +100,7 @@ CanRun 계산이 런타임의 실제 동작과 같지는 않습니다. Ollama는
 
 MoE 모델의 조합 페이지에서 전문가를 시스템 RAM에 두는 구성(MoE 전문가 RAM 배치)의 속도는 이론 추정입니다. CanRun은 어텐션 가중치와 KV 캐시를 먼저 GPU에 두고, 남은 VRAM에 들어가는 만큼 전문가를 올린 뒤 나머지만 RAM에 둔다고 보고 계산합니다. 그래서 컨텍스트가 길어지면 RAM으로 가는 전문가도 늘어납니다. 컨텍스트를 늘리면 이 방식으로 바뀌는 조합이 생기는데, 이런 조합의 속도는 참고용으로만 보시기 바랍니다.
 
-본문에서 쾌적하게 돌릴 수 있다고 한 곳은 모두 8k 컨텍스트, f16 KV 기준입니다. 다른 컨텍스트 결과는 표에서 확인할 수 있습니다.
+본문에서 말한 판정은 모두 8k 컨텍스트, f16 KV 기준입니다. 다른 컨텍스트 결과는 표에서 확인할 수 있습니다.
 
 <Threshold />
 

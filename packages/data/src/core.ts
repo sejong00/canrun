@@ -39,6 +39,7 @@ export const MODEL_CORE_KEYS = [
   'moe',
   'nonExpertGB',
   'category',
+  'thinking',
   'korean',
   'popularity',
 ] as const satisfies readonly (keyof Model)[];

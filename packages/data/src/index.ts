@@ -15,12 +15,14 @@ import {
   BenchPointSchema,
   GpuSchema,
   MetaSchema,
+  FxSchema,
   ModelQuantSchema,
   ModelSchema,
   PublishSchema,
   QuantDefSchema,
   type BenchPoint,
   type DataMeta,
+  type FxRate,
   type Gpu,
   type Model,
   type ModelQuantRecord,
@@ -51,6 +53,7 @@ export const schemaRegistry: Readonly<Record<string, ZodType>> = Object.freeze({
   'aliases.json': z.array(AliasSchema),
   'publish.json': PublishSchema,
   'meta.json': MetaSchema,
+  'fx.json': FxSchema,
 });
 
 /** 레지스트리에 등록된 데이터 파일명 목록. */
@@ -67,6 +70,7 @@ export const parseBenchmarks = (json: unknown): BenchPoint[] =>
   z.array(BenchPointSchema).parse(json);
 export const parsePublish = (json: unknown): PublishPlan => PublishSchema.parse(json);
 export const parseMeta = (json: unknown): DataMeta => MetaSchema.parse(json);
+export const parseFx = (json: unknown): FxRate => FxSchema.parse(json);
 
 /**
  * MoE nonExpertGB 유도 근거 — models.json 시드 값과의 일치를 validateAll 이 강제.

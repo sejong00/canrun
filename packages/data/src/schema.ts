@@ -138,6 +138,12 @@ export const ModelSchema = z
      */
     nonExpertGB: z.number().positive().optional(),
     category: z.array(z.enum(['chat', 'coding', 'reasoning', 'vision'])).min(1),
+    /**
+     * 생각(thinking) 모드 — 판정 임계 ×1.5 대상 (docs/02 §5, PROGRESS §4 D59). 공식 모델 카드·채팅 템플릿 기준:
+     * always = 늘 생각한다(R1 계열·gpt-oss) · default-on / default-off = 켜고 끌 수 있고 기본이 켜짐/꺼짐 ·
+     * auto = 기본값에서 모델이 스스로 정한다. 없으면 생각 모드 없음. category 의 reasoning 은 용도 필터일 뿐 판정과 무관
+     */
+    thinking: z.enum(['always', 'default-on', 'default-off', 'auto']).optional(),
     korean: z.boolean().optional(),
     popularity: z.number().int().min(1).max(5),
     releasedAt: isoDate,
@@ -227,6 +233,20 @@ export const ModelQuantSchema = z
  * `scripts/sync-models.ts` 가 데이터를 실제로 바꿀 때 갱신하고, 수동 데이터 커밋은 함께 갱신한다(PROGRESS §3).
  */
 export const MetaSchema = z.object({ dataUpdated: isoDate }).strict();
+
+/**
+ * 원화 환산용 환율 — `data/fx.json` (10-01, PROGRESS §4 D61). 한국어 페이지의 가격은 미국 실거래가 × 이 값의 참고가다
+ * (국내 판매가 아님 — 화면에 그렇게 적는다). 출처 = ECB 기준환율(EUR→KRW ÷ EUR→USD), 주간 data-sync 가 갱신.
+ */
+export const FxSchema = z
+  .object({
+    usdKrw: z.number().positive(),
+    asOf: isoDate,
+    sources: z.array(z.string().url()).min(1),
+  })
+  .strict();
+
+export type FxRate = z.infer<typeof FxSchema>;
 
 export type DataMeta = z.infer<typeof MetaSchema>;
 

@@ -17,6 +17,7 @@
  *      충돌은 즉시 실패
  *   3. `data/aliases.json` → `out/_redirects` 생성 (scripts/build-redirects.ts)
  *   4. 사이트맵·robots.txt·RSS 생성 (scripts/build-sitemaps.ts — P1-5)
+ *   5. GPU·모델 허브별 공유 카드 PNG `out/og/{gpu,model}/<id>-<locale>.png` (scripts/og-cards.ts — D60)
  *
  * 검증: test/export-invariants.spec.ts (pnpm test:export) — 허용목록 외 `.txt` 0건·`__next` 0·파일 수 한도,
  * 뒤로가기(history) 경로에서 실패 요청 0 은 e2e/smoke.spec.ts 가 본다.
@@ -27,6 +28,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildRedirects, loadAliases } from './build-redirects';
 import { buildSitemaps } from './build-sitemaps';
+import { renderHubOgImages } from './og-cards';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const outDir = resolve(repoRoot, 'apps/web/out');
@@ -115,8 +117,10 @@ writeFileSync(join(outDir, '_redirects'), redirects, 'utf8');
 
 // --- 4. 사이트맵·robots·RSS (P1-5) -------------------------------------------
 const seoFiles = buildSitemaps(repoRoot, outDir);
+// 5. 허브별 공유 카드 (10-01 D60) — 판정 개수가 데이터를 따라가도록 빌드마다 다시 그린다
+const ogCards = await renderHubOgImages(outDir);
 
 console.log(
   `[postbuild] pruned ${pruned.txtFiles} RSC .txt + ${pruned.nextDirs} __next.* dirs ` +
-    `(${pruned.emptyDirs} emptied dirs removed), flattened ${flattened} en entries to root, _redirects written, ${seoFiles.join(' ')}`,
+    `(${pruned.emptyDirs} emptied dirs removed), flattened ${flattened} en entries to root, _redirects written, ${seoFiles.join(' ')}, ${ogCards} og cards`,
 );

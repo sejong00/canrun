@@ -6,7 +6,7 @@ Each model gets one of four verdicts. The baseline is the Q4_K_M quant, an 8k co
 
 <Threshold />
 
-For reasoning models, which write long chains of thought before answering, the speed thresholds are 1.5 times higher, because you wait for many more tokens per answer. When a model does not reach a good verdict at Q4_K_M, the pages also show what a smaller quant or more system RAM would change.
+For models with a thinking mode, which write out their reasoning before answering, the speed thresholds are 1.5 times higher, because you wait for many more tokens per answer. Models that let you switch thinking on and off use the same thresholds. We check the official model card and chat template to see whether a model has a thinking mode. When a model does not reach a good verdict at Q4_K_M, the pages also show what a smaller quant or more system RAM would change.
 
 ## Memory
 

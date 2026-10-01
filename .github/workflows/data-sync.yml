@@ -38,6 +38,9 @@ jobs:
           # 선택 — 공개 API 는 무토큰으로 충분, gated repo(meta-llama 등)만 필요 (docs/05 §8)
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
 
+      - name: Update KRW exchange rate (ECB reference, data/fx.json — D61)
+        run: pnpm exec tsx scripts/sync-fx.ts
+
       - name: Validate before PR (zod + cross-file)
         run: pnpm validate-data
 

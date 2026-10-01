@@ -229,8 +229,9 @@ export function toModelQuant(model: ModelCore, row?: QuantRowInput): ModelQuant 
 }
 
 /** 리즈닝 모델 → 판정 임계 ×1.5 (docs/02 §5). 운영 정의는 category (결정 D5). */
-export function isReasoning(model: Pick<ModelCore, 'category'>): boolean {
-  return model.category.includes('reasoning');
+export function isReasoning(model: Pick<ModelCore, 'thinking'>): boolean {
+  // 10-01 D59: 생각 모드가 있으면(늘·켜고 끄기·자동) — 켜면 답 하나에 기다리는 토큰이 크게 늘어난다. 전엔 category 의 reasoning(D5)
+  return model.thinking !== undefined;
 }
 
 // ---------------------------------------------------------------------------

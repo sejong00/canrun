@@ -72,6 +72,7 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
   },
   'ollama-context-length': {
     ...PUBLISHED,
+    dateModified: '2026-10-01',
     grids: {},
     related: ['kv-cache-context', 'vram-requirements', 'gguf-quantization'],
     locales: {
@@ -139,6 +140,7 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
   },
   'mac-local-llm': {
     ...PUBLISHED,
+    dateModified: '2026-10-01',
     grids: {
       apple: {
         gpus: ['apple-m4', 'apple-m4-pro', 'apple-m4-max-40c', 'apple-m5-pro'],
