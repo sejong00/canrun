@@ -17,3 +17,9 @@ paths = [
   # pnpm lockfile 의 integrity 해시는 generic-api-key 오탐원
   '''(^|/)pnpm-lock\.yaml$''',
 ]
+# 정규식 단위 예외(파일 전체 아님): GGUF 메타데이터 키 — 점으로 이은 소문자 식별자(`qwen35moe.expert_count` 등)가
+# generic-api-key 에 `key: '…'` 로 걸린다(10-01 scripts/gguf-header.test.ts 합성 헤더). 실제 키는 이 모양이 아니다
+regexTarget = "match"
+regexes = [
+  '''key: '[a-z0-9_]+(?:\.[a-z0-9_]+)+'''',
+]
