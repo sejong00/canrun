@@ -72,9 +72,9 @@ export function AlternativeCards({
           case 'cpu-moe':
             title = t('cpuMoe');
             body =
-              alt.nCpuMoeMin !== undefined && alt.nCpuMoeMin < alt.nCpuMoe
-                ? t('cpuMoeBody', { n: alt.nCpuMoe, min: alt.nCpuMoeMin })
-                : t('cpuMoeBodyNoMin', { n: alt.nCpuMoe });
+              alt.nCpuMoe < alt.layers
+                ? t('cpuMoeBody', { n: alt.nCpuMoe })
+                : t('cpuMoeBodyAll', { n: alt.nCpuMoe });
             href = '#snippet';
             break;
           case 'ram-upgrade':

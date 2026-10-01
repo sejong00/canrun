@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { MOE_TG_CAP_TOKS } from '../src/constants';
 import { bytesPerTokenGB, ppEstimate, resolveEff, tgEstimate } from '../src/speed';
 import type { Hardware } from '../src/types';
-import { GPT_OSS_20B, QWEN3_8B_Q4, QWEN35_35B_A3B_Q4, RTX_3060_12GB, RTX_4090 } from './fixtures';
+import { CPU_MOE_RAM_EFF } from '../src/constants';
+import { GPT_OSS_20B, QWEN3_8B_Q4, QWEN35_35B_A3B_Q4, QWEN36_35B_A3B_Q4_SPLIT, RTX_3060_12GB, RTX_4090 } from './fixtures';
 
 describe('resolveEff (§3.2)', () => {
   it('uses class defaults (nvidia dense 0.70, moe 0.45)', () => {
@@ -54,6 +55,26 @@ describe('tgEstimate (§3.1~3.4)', () => {
     const fullGpu = tgEstimate(RTX_3060_12GB, QWEN35_35B_A3B_Q4, { mode: 'full-gpu' }, { ctx: 8192 });
     expect(cpuMoe).toBeGreaterThan(0);
     expect(cpuMoe).toBeLessThanOrEqual(fullGpu);
+  });
+
+  it('cpu-moe with measured split: routed = expertGB × topK/experts, f = N/L (10-01 D56)', () => {
+    const mq = QWEN36_35B_A3B_Q4_SPLIT;
+    const ctx = 8192;
+    const kv = (mq.kvBytesPerToken * ctx) / 1e9;
+    const routed = mq.expertGB! * mq.activeExpertFrac!;
+    const at = (n: number) => tgEstimate(RTX_3060_12GB, mq, { mode: 'cpu-moe', cpuMoeLayers: n }, { ctx });
+    const manual = (n: number) => {
+      const f = n / mq.moeLayers!;
+      const t =
+        (routed * f) / (CPU_MOE_RAM_EFF * RTX_3060_12GB.ramBandwidthGBs) +
+        (mq.nonExpertGB! + routed * (1 - f) + kv) / (resolveEff(RTX_3060_12GB, true) * RTX_3060_12GB.memBandwidthGBs);
+      return 1 / t;
+    };
+    expect(at(40)).toBeCloseTo(manual(40), 6);
+    expect(at(24)).toBeCloseTo(manual(24), 6);
+    // CPU 에 두는 층이 적을수록 빠르고, cpuMoeLayers 가 없으면 전부 RAM(= N = L)
+    expect(at(24)).toBeGreaterThan(at(40));
+    expect(tgEstimate(RTX_3060_12GB, mq, { mode: 'cpu-moe' }, { ctx })).toBeCloseTo(at(40), 6);
   });
 
   it('partial-offload: harmonic mean sits between cpu-only and full-gpu (§3.4)', () => {

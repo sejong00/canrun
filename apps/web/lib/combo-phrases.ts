@@ -147,15 +147,28 @@ export function verdictSentence(t: ComboTranslators, page: ComboPage, locale: Lo
           speed: speed(display),
         });
         break;
-      case 'cpu-moe':
-        sentence = t.combo('verdictCpuMoe', {
-          quant: display.quant,
-          gpuGB: gb(m.gpuGB),
-          ramGB: gb(m.ramGB),
-          verdict,
-          speed: speed(display),
-        });
+      case 'cpu-moe': {
+        // 전문가 층 일부를 GPU 에 둔 배치(10-01 D56)면 그 층 수까지, 전부 RAM 이면 기존 문장
+        const gpuLayers = page.model.arch.layers - (display.result.cpuMoeLayers ?? page.model.arch.layers);
+        sentence =
+          gpuLayers > 0
+            ? t.combo('verdictCpuMoePartial', {
+                quant: display.quant,
+                gpuLayers,
+                gpuGB: gb(m.gpuGB),
+                ramGB: gb(m.ramGB),
+                verdict,
+                speed: speed(display),
+              })
+            : t.combo('verdictCpuMoe', {
+                quant: display.quant,
+                gpuGB: gb(m.gpuGB),
+                ramGB: gb(m.ramGB),
+                verdict,
+                speed: speed(display),
+              });
         break;
+      }
       case 'cpu-only':
         sentence = t.combo('verdictCpuOnly', {
           quant: display.quant,

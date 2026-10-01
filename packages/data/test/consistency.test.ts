@@ -27,6 +27,60 @@ describe('cross-file consistency (validateAll)', () => {
   });
 });
 
+describe('MoE measured split (model-quants expertGB/nonExpertGB, 10-01)', () => {
+  const moeRow = seed.modelQuants.find((mq) => mq.modelId === 'gpt-oss-20b')!;
+  const denseRow = seed.modelQuants.find((mq) => mq.modelId === 'llama-3.1-8b')!;
+  const withRow = (row: (typeof seed.modelQuants)[number]) => ({
+    ...seed,
+    modelQuants: seed.modelQuants.map((mq) =>
+      mq.modelId === row.modelId && mq.quant === row.quant ? row : mq,
+    ),
+  });
+
+  it('seed: gpt-oss-20b MXFP4 carries the header-measured split (GPU non-expert 1.30GB, not the derived 0.65)', () => {
+    expect(moeRow).toMatchObject({ quant: 'MXFP4', expertGB: 10.18, nonExpertGB: 1.3 });
+  });
+
+  it('rejects a split on a dense model row', () => {
+    const problems = validateAll(withRow({ ...denseRow, expertGB: 1, nonExpertGB: 1 }));
+    expect(problems.some((p) => p.includes('llama-3.1-8b') && p.includes('only for MoE'))).toBe(true);
+  });
+
+  it('rejects a half-set split and a split larger than the file', () => {
+    const { nonExpertGB: _dropped, ...half } = moeRow;
+    expect(validateAll(withRow(half)).some((p) => p.includes('set together'))).toBe(true);
+    const tooBig = validateAll(withRow({ ...moeRow, expertGB: moeRow.fileGB, nonExpertGB: 0.5 }));
+    expect(tooBig.some((p) => p.includes('> fileGB'))).toBe(true);
+  });
+});
+
+describe('MoE arch.experts/topK (10-01)', () => {
+  const withModel = (id: string, arch: Record<string, unknown>) => ({
+    ...seed,
+    models: seed.models.map((m) => (m.id === id ? { ...m, arch: { ...m.arch, ...arch } } : m)),
+  });
+
+  it('every MoE model has experts/topK (topK < experts) and agrees with MOE_ARCH', () => {
+    for (const model of seed.models.filter((m) => m.activeParamsB !== undefined)) {
+      expect(model.arch.experts, model.id).toBeDefined();
+      expect(model.arch.topK!, model.id).toBeLessThan(model.arch.experts!);
+      const arch = MOE_ARCH[model.id];
+      if (arch) expect([model.arch.experts, model.arch.topK], model.id).toEqual([arch.experts, arch.topK]);
+    }
+  });
+
+  it('catches a missing pair, topK ≥ experts, MOE_ARCH drift and experts on a dense model', () => {
+    const missing = validateAll(withModel('gemma-4-26b-a4b', { experts: undefined, topK: undefined }));
+    expect(missing.some((p) => p.includes('gemma-4-26b-a4b') && p.includes('requires arch.experts'))).toBe(true);
+    const inverted = validateAll(withModel('gemma-4-26b-a4b', { experts: 8, topK: 8 }));
+    expect(inverted.some((p) => p.includes('must be <'))).toBe(true);
+    const drift = validateAll(withModel('gpt-oss-20b', { experts: 64 }));
+    expect(drift.some((p) => p.includes('!= MOE_ARCH 32'))).toBe(true);
+    const dense = validateAll(withModel('llama-3.1-8b', { experts: 8, topK: 2 }));
+    expect(dense.some((p) => p.includes('llama-3.1-8b') && p.includes('only for MoE'))).toBe(true);
+  });
+});
+
 describe('seed scale (docs/06 P0-3)', () => {
   it('has the 42-strong core catalog (32 desktop dgpu + 10-class unified) plus extras', () => {
     const desktopDgpu = seed.gpus.filter((g) => g.kind === 'dgpu' && g.form === 'desktop');
@@ -90,11 +144,14 @@ describe('MoE nonExpertGB derivation (P0-2 잠정값 확정)', () => {
     expect(Math.abs(derived - model!.nonExpertGB!)).toBeLessThanOrEqual(0.02);
   });
 
-  it('models without documented expert structure omit nonExpertGB (근거 없는 값 금지)', () => {
+  it('models outside MOE_ARCH omit model-level nonExpertGB — 양자화 행별 헤더 실측이 대신 (10-01)', () => {
     for (const id of ['gemma-4-26b-a4b', 'qwen3.5-122b-a10b']) {
       const model = seed.models.find((m) => m.id === id);
       expect(model?.moe).toBe(true);
       expect(model?.nonExpertGB).toBeUndefined();
+      const rows = seed.modelQuants.filter((mq) => mq.modelId === id);
+      expect(rows.length).toBeGreaterThan(0);
+      for (const row of rows) expect(row.nonExpertGB, `${id}/${row.quant}`).toBeDefined();
     }
   });
 });

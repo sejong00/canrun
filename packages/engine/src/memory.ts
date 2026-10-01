@@ -81,8 +81,22 @@ export function usableRamGB(hw: Pick<Hardware, 'ramGB'>): number {
  * 더 작은 양자화는 줄이지 않는다 — Q2_K·UD 파일은 어텐션·공유 텐서를 평균보다 높은 정밀도로 두는 경우가 많아
  * 줄이면 VRAM 을 과소 계산한다(--n-cpu-moe 명령이 OOM — PROGRESS §4 D23 과 같은 방향). 기준 양자화는 원값 그대로.
  */
-export function nonExpertGBFor(mq: Pick<ModelQuant, 'quant' | 'nonExpertGB'>): number | undefined {
+export function nonExpertGBFor(
+  mq: Pick<ModelQuant, 'quant' | 'nonExpertGB' | 'expertGB'>,
+): number | undefined {
   if (mq.nonExpertGB === undefined) return undefined;
+  // GGUF 헤더 실측 행(expertGB 동반)은 그 파일의 값 그대로 (10-01, PROGRESS §4 D56)
+  if (mq.expertGB !== undefined) return mq.nonExpertGB;
   if (mq.quant === 'Q4_K_M' || mq.quant === 'MXFP4') return mq.nonExpertGB;
   return mq.nonExpertGB * Math.max(1, QUANT_BPW[mq.quant] / QUANT_BPW.Q4_K_M);
+}
+
+/**
+ * 라우팅 전문가 텐서 GB — 실측 행은 `expertGB`, 아니면 파일 − 비전문가(유도 경로: token_embd·MTP 가 전문가 쪽에 섞여
+ * 층당 전문가 크기를 약간 크게 본다 = `--n-cpu-moe` 가 보수적).
+ */
+export function expertGBFor(mq: ModelQuant): number | undefined {
+  if (mq.expertGB !== undefined) return mq.expertGB;
+  const nonExpert = nonExpertGBFor(mq);
+  return nonExpert === undefined ? undefined : Math.max(0, weightsGB(mq) - nonExpert);
 }

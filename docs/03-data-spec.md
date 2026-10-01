@@ -20,12 +20,17 @@ Gpu { id, name, aliases[],  // 검색 별칭 + P1-3 계산기 콤보박스·GPU 
      priceAsOf?,         // streetUSD/KRW 존재 시 필수 (CLAUDE.md 규칙 2)
      popular:boolean, note?, sources[] }
 Model { id, family, name, hfId, paramsB, activeParamsB?,   // moe ⇒ activeParamsB 필수
-     arch:{layers, kvHeads, headDim, attnType:'full'|'swa'|'mla'|'hybrid', kvBytesPerTokenF16},  // 바이트/tok f16 사전계산 (SWA/MLA/하이브리드 보정 반영)
+     arch:{layers, kvHeads, headDim, attnType:'full'|'swa'|'mla'|'hybrid', kvBytesPerTokenF16, experts?, topK?},  // 바이트/tok f16 사전계산 (SWA/MLA/하이브리드 보정 반영)
+     // experts·topK (10-01 D56): MoE 전용, 둘 다 있거나 둘 다 없음, topK < experts. validateAll 이 모든 MoE 모델에 요구하고 MOE_ARCH 와 대조.
+     //   출처 config.json(num_experts·num_local_experts·n_routed_experts / num_experts_per_tok·top_k_experts·experts_per_token), GGUF expert_count·expert_used_count 로 교차 확인
      attnOverrides?:{kvBytesPerTokenF16, reason, sources[]},  // 비-full 전용, arch.kvBytesPerTokenF16과 일치(미러) — 존재 시 sync가 arch 자동 갱신 안 함 (§5.1)
-     maxContext, license, moe:boolean, nonExpertGB?,   // MoE attention+shared GB (derive.ts 유도)
+     maxContext, license, moe:boolean, nonExpertGB?,   // MoE attention+shared GB (derive.ts 균등 bpw 유도) — 10-01 부터 행 실측(ModelQuant.nonExpertGB)이 우선, 이 값은 bpw 사다리 폴백
      category:('chat'|'coding'|'reasoning'|'vision')[] (min 1),
      korean?:boolean, popularity:1..5, releasedAt, note?, sources[] }
-ModelQuant { modelId, quant:QuantId, fileGB, ggufRepo, fileName?, sources[] }   // 실제 GGUF 크기 (decimal GB, 분할 합산)
+ModelQuant { modelId, quant:QuantId, fileGB, expertGB?, nonExpertGB?, ggufRepo, fileName?, sources[] }   // 실제 GGUF 크기 (decimal GB, 분할 합산)
+     // expertGB·nonExpertGB (10-01 D56): GGUF 헤더 실측(scripts/gguf-header.ts), MoE 행 전용, 둘 다 있거나 둘 다 없음, expertGB + nonExpertGB ≤ fileGB + 0.02 (validateAll).
+     //   expertGB = 트렁크 층의 `_exps`·`_chexps` 텐서 합. nonExpertGB = GPU 상주분 — token_embd 제외(llama.cpp 는 입력층을 CPU 에 둔다, 출력층 없는 tied 모델은 포함),
+     //   MTP·NextN 블록 제외(기본 로드 안 함). 엔진 cpu-moe 배치·속도의 입력(docs/02 §3.3). sync-models 가 새 행·바뀐 파일만 다시 잰다(§5.1 ⑤)
      // fileName (P1-2 D20, PROGRESS §4 09-29): repo 상대 실파일 경로 /^[^\s/][^\s]*\.gguf$/i — 분할이면 첫 조각 `…-00001-of-0000N.gguf`,
      //   UD 변형은 이름의 `UD-` 유지(플레인 파일이 없는 unsloth repo의 Q4_K_M 행 등). zod는 optional이지만 validateAll이 전 행 존재를
      //   강제(빌드가 호출), 값은 sync-models가 기록(§5.1 ④). 콤보 스니펫 `-hf {repo}:{tag}` 태그·다운로드 안내의 원천
@@ -165,6 +170,8 @@ KV = KiB/tok(f16). 파일 크기 = 실측 GGUF(decimal GB), 출처 repo 명기.
 2. 원본 repo `config.json` fetch → layers/kv_heads/head_dim/ctx → `kvBytesPerTokenF16` 재계산. 하이브리드/SWA/MLA는 `attnOverrides` 수동 필드 우선(자동 추출 불가 케이스).
 3. diff 있으면 PR 자동 생성(리뷰 후 머지·배포 — 리포트 SUSPICIOUS·ERROR 0이면 Claude가 위임 처리, 그 외는 사람 승인. `docs/PROGRESS.md` §3) — 데이터 조작 방지 + 리뷰 기록.
 4. **`fileName` 기록(P1-2 D20)**: quant별로 매칭된 파일의 repo 상대 경로를 `fileName`에 기록(1의 크기 갱신과 같은 매칭 결과). **드래프트 파일은 제외** — basename 접두 `mmproj-`·`mtp-`·`eagle3-`는 매칭·크기 합산 모두에서 뺀다(gemma-4 MTP/EAGLE 드래프트가 fileGB에 합산되던 버그 교정 — repo 이름의 `MTP`는 무관). 단일 파일이거나 일관된 분할 세트(`-0000N-of-0000M`, 첫 조각을 기록)가 아니면 `error`(ambiguous match)로 리포트하고 반영하지 않는다. 레코드 키 순서는 `ggufRepo` 뒤에 `fileName`(한 레코드 한 줄 직렬화 유지).
+5. **MoE 분할 재측정(10-01 D56)**: MoE 모델 행 중 `expertGB`·`nonExpertGB` 가 없거나 이번 동기화에서 fileGB·fileName 이 바뀐 행, 새 양자화 행의 GGUF 헤더를 Range 로 읽어(파일당 4~16MB, 분할은 조각마다) 분할을 다시 잰다 → 리포트 field `split`(auto). 분할 값이 없던 행의 측정 실패는 manual(다음 동기화 재시도), **분할 값이 있던 행의 파일이 바뀌었는데 재측정이 실패·보류되면 suspicious**(옛 분할이 남으므로 위임 머지를 멈춤). config 의 experts/topK 변화는 manual.
+
 ### 5.2 `new-model-alert.ts` (출시 전 주 1회 → P1-5 출시부터 일 1회): HF trending + 지정 org 신규 릴리스 감지(`text-generation`·`image-text-to-text`) → 카탈로그·기보고·리팩·OCR 전용·타 org 파생 제외 → 새 후보가 있으면 요약 GitHub issue 1건 생성("48h 내 페이지" SLA는 출시 후 — `04-seo-content-plan.md` §8).
 ### 5.3 가격 (`prices.json`): 주간 수동/반자동(정찰 소스: 아마존 표시가, 다나와 최저가). `priceAsOf` 없는 가격 표시 금지. TechPowerUp 등 DB **통째 스크래핑 금지**(개별 사실 확인·출처 기재만) — 법적 리스크 정책.
 

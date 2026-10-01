@@ -197,17 +197,28 @@ export function unifiedCpuBandwidth(gpu: Pick<Gpu, 'effClass' | 'memBandwidthGBs
   return gpu.memBandwidthGBs * ratio;
 }
 
-/** 카탈로그 모델 (+ 등록 quant 행) → 엔진 ModelQuant. 행이 없으면 bpw 폴백 경로. */
-export function toModelQuant(
-  model: ModelCore,
-  row?: Pick<ModelQuantCore, 'quant' | 'fileGB'>,
-): ModelQuant {
+/** 엔진 입력으로 넘기는 quant 행 필드 — MoE 행은 GGUF 헤더 실측 분할(expertGB·nonExpertGB)이 붙을 수 있다 */
+export type QuantRowInput = Pick<ModelQuantCore, 'quant' | 'fileGB'> &
+  Partial<Pick<ModelQuantCore, 'expertGB' | 'nonExpertGB'>>;
+
+/**
+ * 카탈로그 모델 (+ 등록 quant 행) → 엔진 ModelQuant. 행이 없으면 bpw 폴백 경로.
+ * MoE: 행 실측 분할이 있으면 그 값(모델 수준 유도값보다 우선), 토큰당 전문가 비율 = topK/experts,
+ * 전문가 층 수 = arch.layers — 엔진이 VRAM 여유만큼 전문가 층을 GPU 에 둔다 (10-01 D56).
+ */
+export function toModelQuant(model: ModelCore, row?: QuantRowInput): ModelQuant {
+  const measured = row?.expertGB !== undefined && row.nonExpertGB !== undefined;
+  const moe = model.activeParamsB !== undefined;
+  const { experts, topK } = model.arch;
   return {
     paramsB: model.paramsB,
     activeParamsB: model.activeParamsB,
     kvBytesPerToken: model.arch.kvBytesPerTokenF16,
     attnType: model.arch.attnType,
-    nonExpertGB: model.nonExpertGB,
+    nonExpertGB: measured ? row.nonExpertGB : model.nonExpertGB,
+    ...(measured ? { expertGB: row.expertGB } : {}),
+    ...(moe && experts !== undefined && topK !== undefined ? { activeExpertFrac: topK / experts } : {}),
+    ...(moe ? { moeLayers: model.arch.layers } : {}),
     maxContext: model.maxContext,
     quant: row?.quant ?? 'Q4_K_M',
     fileGB: row?.fileGB,
@@ -245,10 +256,11 @@ export function baselineRow<R extends Pick<ModelQuantCore, 'quant' | 'fileGB'>>(
 export function isTheoretical(gpu: GpuCore, model: ModelCore, mode: Mode): boolean {
   // MoE 계수가 검증되지 않은 클래스 (constants.ts EFF: intel-arc)
   if (model.moe && EFF[gpu.effClass].moe === undefined) return true;
-  // cpu-moe 속도는 검증점이 없다 (docs/02 §3.3 앵커 대비 과소 — PROGRESS §5)
+  // cpu-moe: 공개 실측(NVIDIA 35점) 평균 오차 10.3%·±20% 안 89% 지만 최대 40% — 보정 추정(±20%) 근거가 안 되어
+  // 가장 넓은 라벨 ±30% 를 쓴다. 표시 범위 밖 4점은 모두 과소 추정(실제가 더 빠름, 회귀가 강제) (10-01 D56)
   if (mode === 'cpu-moe') return true;
-  // nonExpertGB 미확정 MoE 가 부분 오프로드로 떨어지면 엔진이 dense 경로로 계산한다
-  if (model.moe && model.nonExpertGB === undefined && mode === 'partial-offload') return true;
+  // 비전문가 크기(행 실측·모델 유도 둘 다)가 없는 MoE 는 엔진이 dense 부분 오프로드 경로로 계산한다
+  if (model.moe && mode === 'partial-offload') return true;
   // llama.cpp 구동 미검증 커스텀 아키텍처
   if (HUB_POLICY.unverifiedArchModelIds.includes(model.id)) return true;
   // FP16 크리플 구형 GPU — 계수 도출 표본(RTX 30~50·RDNA3/4) 밖
@@ -316,6 +328,9 @@ export type MeasuredJoin = {
 export type QuantAssessment = {
   quant: QuantId;
   fileGB: number;
+  /** MoE 행의 GGUF 헤더 실측 분할 — ctx 계단·행렬(estimateAt)이 같은 값으로 다시 계산하도록 실어 나른다 */
+  expertGB?: number;
+  nonExpertGB?: number;
   ggufRepo: string;
   tier: QuantTier;
   /** 표시 결과 — 실측이 조인되면 measured(중앙값), 아니면 estimate 와 동일 */
@@ -444,6 +459,8 @@ export function assessQuant(input: AssessQuantInput): QuantAssessment {
   return {
     quant: row.quant,
     fileGB: row.fileGB,
+    ...(row.expertGB !== undefined ? { expertGB: row.expertGB } : {}),
+    ...(row.nonExpertGB !== undefined ? { nonExpertGB: row.nonExpertGB } : {}),
     ggufRepo: row.ggufRepo,
     tier,
     result,
@@ -480,7 +497,7 @@ export function estimateAt(
   gpu: GpuCore,
   config: HwConfig,
   model: ModelCore,
-  row: Pick<ModelQuantCore, 'quant' | 'fileGB'>,
+  row: QuantRowInput,
   opts: { ctx: number; kvQuant?: KvQuant; theoretical?: boolean },
 ): { fit: FitResult; result: Result } {
   const mq = toModelQuant(model, row);

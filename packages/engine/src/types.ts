@@ -67,8 +67,17 @@ export type ModelQuant = {
   kvBytesPerToken: number;
   /** KV 스케일링 표시용 (SWA/MLA/하이브리드 보정은 사전 계산값에 반영됨) */
   attnType: 'full' | 'swa' | 'mla' | 'hybrid';
-  /** MoE: attention+shared 텐서 크기 GB (cpu-moe 판정) */
+  /**
+   * MoE: GPU 에 상주하는 비전문가 텐서 GB(어텐션·공유 전문가·라우터·출력층 — llama.cpp 는 token_embd 를 CPU 에 둔다).
+   * `expertGB` 와 함께 오면 그 GGUF 파일 헤더 실측값, 없으면 기준 양자화에서 균등 bpw 로 유도한 값(§3.3).
+   */
   nonExpertGB?: number;
+  /** MoE: 라우팅 전문가 텐서 합 GB (GGUF 헤더 실측, MTP 블록 제외) — 있으면 nonExpertGB 도 실측값 */
+  expertGB?: number;
+  /** MoE: 토큰당 쓰는 전문가 비율 topK/experts — 전문가 읽기량 = expertGB × 이 값 (§3.3) */
+  activeExpertFrac?: number;
+  /** MoE: 전문가가 있는 층 수 — `--n-cpu-moe` 층 단위 배치(§2.4-2). 없으면 전문가 전부 RAM 가정 */
+  moeLayers?: number;
   maxContext: number;
 };
 
@@ -103,6 +112,8 @@ export type Result = {
   tgTokS: TgEstimate;
   ppTokS?: { est: number };
   confidence: Confidence;
+  /** cpu-moe: 전문가를 CPU(시스템 RAM)에 두는 층 수 — `--n-cpu-moe` 값 (§2.4-2) */
+  cpuMoeLayers?: number;
   /** 요청 quant가 불가(F)일 때 탐색된 대안 */
   bestQuant?: QuantId;
 };

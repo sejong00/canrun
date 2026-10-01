@@ -10,6 +10,8 @@
  *     처음 보는 model_type, MLA·압축 어텐션·Mamba·conv 등은 "보류"로 멈춘다 — 엔진이 그 메모리를 모델링하지 않아 판정이 틀린다.
  *  3) GGUF 저장소를 고른다(공식 → ggml-org → bartowski → unsloth → lmstudio-community, Q4_K_M 이 있는 첫 곳) — 파일명·크기는 트리에서.
  *  4) 레코드를 쓰고, MoE 면 MOE_ARCH 에 한 줄 넣어 nonExpertGB 를 유도, data/meta.json 기준일을 오늘로.
+ *     MoE 는 arch.experts/topK(config)를 기록하고, 양자화 행마다 GGUF 헤더를 Range 로 읽어 expertGB·nonExpertGB 를
+ *     실측한다(scripts/gguf-header.ts, 10-01). 헤더의 expert_count·expert_used_count 가 config 와 다르면 멈춘다.
  * 사람이 확인할 것(출력에 표시): 카테고리(리즈닝 여부)·표시명·인기도·처음 보는 라이선스 문자열.
  * 실행 후: pnpm run validate-data → pnpm test → pnpm build → pnpm run test:export.
  */
@@ -24,8 +26,9 @@ import {
   parseModels,
   type ModelQuantRecord,
 } from '../packages/data/src/index';
+import { measureSplit } from './gguf-header';
 import { fetchConfig, fetchTree, serializeRecords, type TreeEntry } from './hf-common';
-import { matchQuantFiles, primaryFile, sumFileGB } from './sync-models';
+import { extractMoe, matchQuantFiles, primaryFile, sumFileGB } from './sync-models';
 
 type QuantId = ModelQuantRecord['quant'];
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -99,9 +102,7 @@ export function classifyArch(config: unknown): ArchResult {
   const maxContext = posInt(cfg['max_position_embeddings'] ?? top['max_position_embeddings']);
   if (!layers || !kvHeads || !headDim || !maxContext) return { kind: 'unsupported', reason: 'config 필드 누락(layers·kv heads·head_dim·max_position_embeddings)' };
 
-  const experts = posInt(cfg['num_experts'] ?? cfg['num_local_experts'] ?? cfg['n_routed_experts']);
-  const topK = posInt(cfg['num_experts_per_tok']);
-  const moe = experts && topK ? { experts, topK } : undefined;
+  const moe = extractMoe(config);
   const vision = 'vision_config' in top;
   const full = layers * kvHeads * headDim * 4;
 
@@ -231,6 +232,72 @@ export function quantRowsFrom(tree: readonly TreeEntry[], repo: string, modelId:
   return rows;
 }
 
+/** GGUF 헤더 실측 중 add-model 이 쓰는 값 (gguf-header.measureSplit 의 부분집합) */
+export type RowMeasure = {
+  expertGB: number;
+  nonExpertGB: number;
+  trunkLayers: number;
+  expertCount?: number;
+  expertUsed?: number;
+};
+export type MeasureRowFn = (repo: string, fileName: string) => Promise<RowMeasure>;
+
+/** 행에 분할을 넣는다 — 키 순서는 시드와 같게 fileGB 바로 뒤 */
+function withSplit(row: ModelQuantRecord, m: RowMeasure): ModelQuantRecord {
+  const { modelId, quant, fileGB, ggufRepo, fileName, sources } = row;
+  return { modelId, quant, fileGB, expertGB: m.expertGB, nonExpertGB: m.nonExpertGB, ggufRepo, ...(fileName !== undefined ? { fileName } : {}), sources };
+}
+
+/**
+ * MoE 행별 분할 실측 + 헤더 대조. problems(쓰기 중단): 헤더 expert_count·expert_used_count ≠ config.
+ * warnings(진행): 측정 실패·합이 파일보다 큼(그 행은 분할 없이 기록) · 트렁크 층 수 ≠ config layers.
+ */
+export async function measureRows(
+  rows: readonly ModelQuantRecord[],
+  moe: { experts: number; topK: number },
+  layers: number,
+  measure: MeasureRowFn,
+): Promise<{ rows: ModelQuantRecord[]; problems: string[]; warnings: string[] }> {
+  const problems: string[] = [];
+  const warnings: string[] = [];
+  const out: ModelQuantRecord[] = [];
+  for (const row of rows) {
+    const label = `${row.quant} ${row.ggufRepo}/${row.fileName ?? ''}`;
+    if (row.fileName === undefined) {
+      warnings.push(`${label}: 파일명 없음 — 분할 측정 생략`);
+      out.push(row);
+      continue;
+    }
+    let m: RowMeasure;
+    try {
+      m = await measure(row.ggufRepo, row.fileName);
+    } catch (err) {
+      warnings.push(`${label}: GGUF 헤더 측정 실패(${err instanceof Error ? err.message : String(err)}) — 분할 없이 기록, 다음 sync-models 가 다시 잰다`);
+      out.push(row);
+      continue;
+    }
+    if (m.expertCount !== undefined && m.expertCount !== moe.experts) {
+      problems.push(`${label}: 헤더 expert_count ${m.expertCount} ≠ config ${moe.experts}`);
+    }
+    if (m.expertUsed !== undefined && m.expertUsed !== moe.topK) {
+      problems.push(`${label}: 헤더 expert_used_count ${m.expertUsed} ≠ config ${moe.topK}`);
+    }
+    if (m.expertCount === undefined || m.expertUsed === undefined) {
+      warnings.push(`${label}: 헤더에 expert_count/expert_used_count 없음 — config 값만 사용`);
+    }
+    if (m.trunkLayers !== layers) {
+      warnings.push(`${label}: 헤더 트렁크 층 ${m.trunkLayers} ≠ config num_hidden_layers ${layers} — arch.layers 확인`);
+    }
+    if (m.expertGB + m.nonExpertGB > row.fileGB + 0.02) {
+      warnings.push(`${label}: 측정 합 ${(m.expertGB + m.nonExpertGB).toFixed(2)}GB > fileGB ${row.fileGB} — 분할 없이 기록`);
+      out.push(row);
+      continue;
+    }
+    out.push(withSplit(row, m));
+  }
+  return { rows: out, problems, warnings };
+}
+
 // ---------------------------------------------------------------------------
 // 실행부
 // ---------------------------------------------------------------------------
@@ -315,7 +382,14 @@ async function main(): Promise<void> {
   const src = mirror ? configUrl(mirror) : configUrl(hfId);
 
   let moeFields: Record<string, unknown> = {};
+  const splitWarnings: string[] = [];
   if (arch.moe) {
+    const measured = await measureRows(rows, arch.moe, arch.arch.layers, (repo, fileName) => measureSplit(repo, fileName, { token }));
+    if (measured.problems.length > 0) {
+      throw new Error(`GGUF 헤더의 MoE 구조가 config 와 다름 — 쓰지 않음:\n  ${measured.problems.join('\n  ')}`);
+    }
+    rows = measured.rows;
+    splitWarnings.push(...measured.warnings);
     const active = args.active ?? activeFromName(hfId);
     if (active === undefined) throw new Error('MoE 활성 파라미터를 이름에서 못 읽음 — --active <B> 로 지정(모델 카드 기준)');
     const q4 = rows.find((r) => r.quant === 'Q4_K_M')!;
@@ -326,7 +400,10 @@ async function main(): Promise<void> {
   const record: Record<string, unknown> = {
     id, family: familyOf(name), name, hfId, paramsB,
     ...(moeFields['activeParamsB'] !== undefined ? { activeParamsB: moeFields['activeParamsB'] } : {}),
-    arch: { layers: arch.arch.layers, kvHeads: arch.arch.kvHeads, headDim: arch.arch.headDim, attnType: arch.attnType, kvBytesPerTokenF16: arch.arch.kvBytesPerTokenF16 },
+    arch: {
+      layers: arch.arch.layers, kvHeads: arch.arch.kvHeads, headDim: arch.arch.headDim, attnType: arch.attnType, kvBytesPerTokenF16: arch.arch.kvBytesPerTokenF16,
+      ...(arch.moe ? { experts: arch.moe.experts, topK: arch.moe.topK } : {}),
+    },
     ...(arch.override ? { attnOverrides: { ...arch.override, sources: [src] } } : {}),
     maxContext: args.maxContext ?? arch.maxContext, license, moe: arch.moe !== undefined,
     ...(moeFields['nonExpertGB'] !== undefined ? { nonExpertGB: moeFields['nonExpertGB'] } : {}),
@@ -334,7 +411,8 @@ async function main(): Promise<void> {
     popularity: args.popularity ?? popularityFrom(info.downloads),
     releasedAt: (info.createdAt ?? today).slice(0, 10),
     note: `add-model 생성(${today}). releasedAt = HF createdAt${mirror ? `. gated — arch 는 ${mirror} 미러 config` : ''}`,
-    sources: [hfUrl(hfId), ...(mirror ? [configUrl(mirror)] : [])],
+    // MoE 는 experts/topK 의 출처로 config.json 을 명시 (게이트면 미러 config)
+    sources: [hfUrl(hfId), ...(mirror ? [configUrl(mirror)] : arch.moe ? [configUrl(hfId)] : [])],
   };
 
   // 스키마 검증 — 쓰기 전에. 교차 검증은 쓴 뒤 validate-data 로(MOE_ARCH 를 새로 읽어야 해서 별도 프로세스)
@@ -347,8 +425,11 @@ async function main(): Promise<void> {
 
   console.log(`\n${hfId} → ${id} (${name}) · ${arch.modelType} · ${arch.attnType}${arch.moe ? ` · MoE ${arch.moe.experts}E top-${arch.moe.topK}` : ''}`);
   console.log(`  KV ${arch.arch.kvBytesPerTokenF16} B/token · maxContext ${arch.maxContext} · params ${paramsB}B · license ${license} · popularity ${String(record['popularity'])} · category ${category.join(',')}`);
-  for (const r of rows) console.log(`  ${r.quant.padEnd(10)} ${String(r.fileGB).padStart(7)} GB  ${r.ggufRepo}/${r.fileName ?? ''}`);
-  const warnings: string[] = [];
+  for (const r of rows) {
+    const split = r.expertGB !== undefined ? `  (expert ${r.expertGB} · non-expert ${String(r.nonExpertGB)} GB)` : '';
+    console.log(`  ${r.quant.padEnd(10)} ${String(r.fileGB).padStart(7)} GB  ${r.ggufRepo}/${r.fileName ?? ''}${split}`);
+  }
+  const warnings: string[] = [...splitWarnings];
   if (classifyLicense(license) === 'unknown') warnings.push(`라이선스 "${license}" 가 배지 맵(packages/data/src/license.ts)에 없음 — 분류 추가 필요`);
   if (!args.category) warnings.push('카테고리는 기본값 — 리즈닝(사고 토큰) 모델이면 --category chat,reasoning 으로 다시 (판정 기준 1.5배)');
   if (!args.maxContext) warnings.push(`최대 컨텍스트 ${arch.maxContext} 는 config 값 — 모델 카드의 기본(네이티브) 길이와 다르면 --max-context 로 (예: Qwen3 은 카드 기준 32768, YaRN 확장 전)`);

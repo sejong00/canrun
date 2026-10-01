@@ -81,8 +81,13 @@ usable(cpu)    = usableRam = ram − 4GB (OS)     // usableRam = 모든 kind의 
 0. kind=cpu: 1~3 없이 곧바로 4 → 실패 시 5
 1. full-gpu:  need ≤ usable(hw)  — dgpu vram−osReserve / unified ram×0.70 (통합 풀 전량 탑재도 full-gpu) → 최고 속도
    unified는 실패 시 곧바로 4 (2·3은 dgpu 전용)
-2. cpu-moe (dgpu + MoE만): nonExpertGB + kv + buffer ≤ usable(dgpu) && (weights − nonExpertGB) ≤ usableRam
-   → VRAM 상주 = nonExpert+kv+buffer. 속도는 RAM 대역폭 지배 (§3.3). 12~16GB 카드로 120B MoE 구동하는 2026 표준 경로
+2. cpu-moe (dgpu + MoE만): nonExpertGB + kv + buffer ≤ usable(dgpu) 이면, 남는 VRAM 에 전문가 층을 채운다 (10-01 D56)
+   perLayer  = expertGB / moeLayers
+   gpuLayers = clamp(floor((usable − nonExpert − kv − buffer) / perLayer) − CPU_MOE_GPU_LAYER_MARGIN(1), 0, moeLayers − 1)
+   N(= --n-cpu-moe) = moeLayers − gpuLayers,  RAM 조건: perLayer × N + (weights − expertGB − nonExpertGB) ≤ usableRam
+   → VRAM 상주 = nonExpert + GPU 전문가 + kv + buffer. moeLayers 가 없는 입력은 N = 전부(전문가 전량 RAM, 09-30 가정).
+   llama.cpp b7410(2025-12-15, PR #16653) 이후 기본 `--fit on` 과 Ollama 0.30+(llama-server 위임)가 같은 방향으로
+   자동 배치한다(비전문가 우선 → 남는 VRAM 만큼 전문가 층 → 나머지 층 전문가만 CPU). 12~16GB 카드로 30B~120B MoE 구동하는 표준 경로
 3. partial-offload (dgpu + MoE 아님 — dense와 nonExpertGB 없는 MoE): kv+buffer는 GPU 상주, 가중치만 분할
    gpuW = min(weights, usable(dgpu) − kv − buffer)   // > 0 이어야 함
    cpuW = weights − gpuW ≤ usableRam
@@ -122,16 +127,19 @@ tg = eff × memBandwidthGBs / bytesPerToken
 - Phase 2: 기기×모델급 실측이 n≥3 쌓이면 `effOverride`로 대체(주간 배치 재학습). 그때까지 위 표 = 클래스 기본값.
 
 ### 3.3 cpu-moe 모드 속도
-**09-30 개정(PROGRESS §4 D55)** — 토큰 시간 = RAM 몫 + GPU 몫(직렬):
+**10-01 개정(PROGRESS §4 D56, 엔진 0.4.0)** — 전문가 일부 GPU 배치. 토큰 시간 = RAM 몫 + GPU 몫(직렬):
 ```
-routedGB   = fileGB × (activeParamsB / paramsB) − nonExpertGB(q)   // 라우팅 전문가만 RAM 에서 읽는다
-t = routedGB / (CPU_MOE_RAM_EFF × ramBandwidthGBs)                  // CPU_MOE_RAM_EFF = 0.5 (공개 실측 역산)
-  + (nonExpertGB(q) + kvReadGB) / (eff_gpu(moe) × memBandwidthGBs)   // 어텐션·공유 텐서·KV 는 GPU
+routed = expertGB × activeExpertFrac(= topK / experts)              // 토큰당 읽는 라우팅 전문가
+f      = N / moeLayers                                              // CPU 에 둔 전문가 층 비율 (§2.4-2 의 N)
+t = routed × f / (CPU_MOE_RAM_EFF × ramBandwidthGBs)                 // CPU_MOE_RAM_EFF = 0.5
+  + (nonExpertGB + routed × (1 − f) + kvReadGB) / (eff_gpu(moe) × memBandwidthGBs)
 tg = min(1 / t, full-gpu 값)
 ```
-`nonExpertGB(q)` = 기준 양자화(Q4_K_M·MXFP4) 파일에서 유도한 값, 더 큰 양자화는 bpw 비율로 키우고 줄이지는 않는다(엔진 `nonExpertGBFor`). 전문가를 **전부** RAM 에 둔다고 가정 — 보수적(VRAM 여유만큼 일부를 GPU 에 두면 20~30% 빠르다). 이전 식(`eff_cpu × ramBW / (fileGB × active/params)`)은 공유 텐서까지 RAM 속도로 읽어 약 2.5× 과소였다.
-실측 앵커: RTX 3060 12GB + DDR5로 Qwen3.6-35B-A3B ≈ 51~53 tok/s(전문가 일부 GPU), gpt-oss-120b + 5090 + `--n-cpu-moe 21` = 8~9.6 tok/s(DDR4 서버). 회귀 검증점은 §7.
-- P1-2 커맨드 스니펫(`packages/data/src/snippet.ts`, 엔진 무변경): `--n-cpu-moe N`에 **N = layers**(이 모델의 전문가 층 전부를 CPU로 — 위 속도식·fit 판정의 가정)와 **N_min**(VRAM에 맞는 최소 N — 더 빠르지만 검증점 없음)을 함께 표시하며, **페이지의 추정치는 N = layers 기준**이다. `N_min = min(layers, max(1, layers − floor((usable − nonExpert − kv − buffer) / ((fileGB − nonExpert)/layers)) + (네이티브 quant 또는 UD 파일이면 1))` — 네이티브 quant(MXFP4)·Unsloth Dynamic(UD) 파일의 +1층 여유는 `nonExpertGB` 과소(`01` §9 D23) 보정.
+- **입력 정의(GGUF 헤더 실측, 데이터 레이어 `model-quants.json` 행 필드)**: `expertGB` = 이름에 `_exps` 가 든 라우팅 전문가 텐서 합(트렁크 층만). `nonExpertGB` = GPU 에 상주하는 나머지(어텐션·공유 전문가·라우터·출력층·dense FFN). llama.cpp 는 입력층 `token_embd` 를 항상 CPU 에 두므로 제외한다. 다만 출력층이 없는 tied 모델은 GPU 에 출력층으로 복제되므로 포함한다. MTP·NextN 블록은 기본 로드가 아니라(`load_mtp=false` → TENSOR_SKIP) 둘 다에서 뺀다. 파싱 합계 = 파일 크기 ±0.02GB 로 33행 검증.
+- **실측이 없는 입력(bpw 사다리·엔진 단독 호출)**: `nonExpertGB` 는 기준 양자화에서 균등 bpw 로 유도한 값이다. 더 큰 양자화는 bpw 비율로 키우고 줄이지는 않는다(`nonExpertGBFor`). `expertGB` = 파일 − 비전문가. `activeExpertFrac` 도 없으면 09-30 식(`활성 슬라이스 − 비전문가` 를 전부 RAM 에서)으로 계산한다.
+- **보정**: `CPU_MOE_RAM_EFF` = 0.5. 공개 실측에 N 을 적힌 그대로 넣고 맞췄다(η 0.45·0.55 보다 편향이 작다). 회귀 42점 기준으로 전체 평균 오차는 11.1%, 편향 −2.4%, ±20% 안 35점, 최대 39.7%다. NVIDIA(CUDA) 35점은 평균 10.3%, ±20% 안 89%, AMD ROCm 7점은 평균 14.9%, 최대 27.7%다. Vulkan(−31~+84%)·8채널 서버 RAM(CPU 연산 한계로 +30% 일관)·32k 이상 깊은 컨텍스트 서버 측정은 제외했다. 목록은 `packages/engine/test/fixtures.ts` `CPU_MOE_CASES`.
+- **명령(데이터 레이어 `snippet.ts`)**: `-ngl all --n-cpu-moe N` 으로 추정과 같은 배치를 명시한다(명시하면 llama.cpp fit 의 가중치 배치는 꺼진다). 각주는 두 가지다. 메모리 부족 시 1~2 올리라는 안내, 그리고 b7410+ 는 두 옵션 없이도 자동 배치된다는 안내다. Ollama 0.30+ 는 자동 배치라 명령을 보여 주되 버전을 안내한다.
+- **이력**: 09-30(D55)은 RAM 몫을 라우팅 전문가만으로 고쳤다(이전 ~2.5× 과소). 10-01(D56)은 전문가 일부 GPU 배치를 넣고, 실측 분할로 gpt-oss(유도 0.65/0.81 vs 실측 1.30/1.69GB)·UD 파일의 비전문가 과소를 해소했다. 이로써 D23 의 +1층 여유를 `CPU_MOE_GPU_LAYER_MARGIN` 으로 일반화했다.
 
 ### 3.4 partial-offload (dense) — 절벽 경고
 `tg ≈ 1 / (gpuFrac/tg_gpu + (1−gpuFrac)/tg_cpu)` (조화 평균). gpuFrac < 0.9면 B등급 상한. UI에 "dense 모델 부분 오프로드는 급감" 고정 경고 + 실측 예시(gpt-oss-120b: 5090 naive 3.4 vs cpu-moe 9.6 tok/s).
@@ -147,7 +155,7 @@ kvRead 항이 자연 반영 (예: 4090 Qwen3-8B: 8k에서 118 → 16k에서 95 �
 - `calibrated`: 클래스 계수 검증 범위 내 조합 → **클래스별 밴드: NVIDIA·AMD dGPU dense ±12% / 그 외 클래스·모든 MoE·부분 오프로드 ±20%** (§7 검증 최대 오차 17.1%를 상회하도록 설정 — 밴드가 검증값보다 좁으면 안 됨). 실측 누적 시 기기별로 축소
 - `rough`: **pp(프롬프트 처리) 전용** 4번째 라벨 — **±40%**(§3.5, est×0.6~1.4). tg·판정에는 쓰지 않으며, 엔진 `Result.confidence`(§1)에는 없고 데이터 레이어가 pp 표시에만 붙인다(P1-2 D13, PROGRESS §4 09-29)
 - `theoretical`: 신형 기기/특이 아키텍처 등 검증 밖 → **±30%** 밴드 + "제출로 검증에 참여" CTA
-  - 판정 주체는 데이터 레이어(`EvaluateOptions.theoretical`). P1-1 규칙(`packages/data/src/assess.ts` `isTheoretical`): ① MoE × MoE 계수가 없는 클래스(현재 intel-arc — §3.2) ② mode = cpu-moe(09-30 보정 후에도 유지 — 전문가 전부 RAM 공개 실측 3점 오차 12% 이내지만, 전문가 일부 GPU 배치·OS·백엔드 편차가 커 ±30%) ③ `nonExpertGB` 없는 MoE가 부분 오프로드로 떨어진 경우(엔진이 dense 경로로 계산) ④ llama.cpp 구동이 검증되지 않은 커스텀 아키텍처(HyperCLOVA X SEED Think 14B) ⑤ FP16 크리플 GPU(`fp16Tflops` < 1 — GTX 10, 계수 도출 표본 밖. `01` §9 P1-1 개정: GPU 판정 유지 + 주의 배지) ⑥ 통합 메모리 칩의 cpu-only(cpu 계수 검증점은 데스크톱 DDR5뿐 — CPU측 대역폭은 `01` §3 `unifiedCpuBandwidth`로 GPU 경로 이하로 제한)
+  - 판정 주체는 데이터 레이어(`EvaluateOptions.theoretical`). P1-1 규칙(`packages/data/src/assess.ts` `isTheoretical`): ① MoE × MoE 계수가 없는 클래스(현재 intel-arc — §3.2) ② mode = cpu-moe(10-01 부분 배치 개정 후에도 유지 — NVIDIA 공개 실측 35점 평균 오차 10.3%·±20% 안 89% 지만 최대 40% 라 보정 추정(±20%, 검증 최대 오차 이상이어야 함)을 못 단다. 가장 넓은 라벨 ±30% 를 쓰고, 그 표시 범위 밖 공개 점 4개는 모두 과소 추정(실제가 더 빠름) — verify-regression 5 가 "표시 범위를 넘는 과대 추정 없음"을 강제) ③ 비전문가 크기(행 실측·모델 유도 둘 다)가 없는 MoE가 부분 오프로드로 떨어진 경우(엔진이 dense 경로로 계산) ④ llama.cpp 구동이 검증되지 않은 커스텀 아키텍처(HyperCLOVA X SEED Think 14B) ⑤ FP16 크리플 GPU(`fp16Tflops` < 1 — GTX 10, 계수 도출 표본 밖. `01` §9 P1-1 개정: GPU 판정 유지 + 주의 배지) ⑥ 통합 메모리 칩의 cpu-only(cpu 계수 검증점은 데스크톱 DDR5뿐 — CPU측 대역폭은 `01` §3 `unifiedCpuBandwidth`로 GPU 경로 이하로 제한)
 
 ## 5. 판정 임계값 (ctx 8k, Q4_K_M 기준)
 ```
@@ -168,7 +176,7 @@ VRAM 합산 − GPU당 buffer 중복. tg ≈ 단일 카드 계수 × 0.68 (2×30
 - 가중치: 실제 GGUF 11종 대조 **MAE 0.7% / max 1.6%**
 - KV: 아키텍처 7종 공식값 **전수 일치**
 - 속도: 실측 12점 대조 **MAE 6.3% / max 17.1%** (worst: M4 Pro −17%, 5060Ti MoE −15% → 클래스 계수 한계, Phase 2 기기별 보정 대상)
-- cpu-moe(09-30): 전문가 전부 RAM 공개 실측 3점(3060 Ti+DDR5-6800 gpt-oss-120b 24.85 · 5080+DDR5-4800 Qwen3.5-35B-A3B Q4_K_M 51.0·Q8_0 35.7) 각 ±20% 이내 + MAE < 12% (verify-regression 5)
+- cpu-moe(09-30 → 10-01): 전문가 전부 RAM 공개 실측 3점(3060 Ti+DDR5-6800 gpt-oss-120b 24.85 · 5080+DDR5-4800 Qwen3.5-35B-A3B Q4_K_M 51.0·Q8_0 35.7) 각 ±20% 이내 + 전문가 일부 GPU 배치(`--n-cpu-moe N`)를 포함한 공개 실측 전체 MAE < 12%·±20% 안 ≥ 80%·전부 ±40% 안 (verify-regression 5)
 - 판정: RTX 4060 8GB에서 8B Q4_K_M "가능"(실측 38~42 tok/s로 확인) / 14B Q4_K_M "풀 오프로드 불가" — 커뮤니티 통념과 일치
 - CI 이식 시 print 스크립트가 아닌 **assertion 테스트로 변환**할 것 (Windows cp949 콘솔 인코딩 이슈가 외부 리뷰에서 재현됨)
 
@@ -192,3 +200,5 @@ expect(['A','B']).toContain(fit(m4max_128, llama33_70b_q4).verdict)    // meas 9
 - MoE bytes/token 근사는 공유 텐서를 과소평가 → 계수에 흡수(§3.2), 고속 소형 MoE에서 오차↑(5090에서 30B-A3B는 오버헤드 지배로 대역폭 모델 상한 이탈 — 235 tok/s 상한 캡 적용).
 - LocalScore류 컨텍스트 가중 수치와 tg128 단문 수치는 조건이 다름 — 실측 수집 시 ctx 필드 필수.
 - 열/전력 제한(노트북), 듀얼채널 미구성 RAM 등 사용자 환경 편차는 밴드로만 흡수.
+- full-gpu 판정은 파일 크기 전체를 VRAM 에 넣어 계산한다 — llama.cpp 가 CPU 에 두는 `token_embd`·로드하지 않는 MTP 블록(Qwen3.5/3.6 약 0.9GB)까지 포함한 보수 쪽 근사(10-01 D56, cpu-moe 경로만 실측 분할 사용).
+- cpu-moe 의 `--n-cpu-moe` 는 층 평균 전문가 크기로 정한다 — Q4_K_M 류 혼합 레시피는 층마다 ffn_down 정밀도가 달라 층 크기가 최대 ~1.15× 차이(GPU 에 남는 뒤쪽 층이 무겁다) → 여유 1층(`CPU_MOE_GPU_LAYER_MARGIN`).

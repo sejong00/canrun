@@ -107,6 +107,14 @@ export const ModelSchema = z
       attnType: z.enum(['full', 'swa', 'mla', 'hybrid']),
       /** 사전 계산 (KiB/tok 아님 — 바이트/tok, f16). SWA/MLA/하이브리드 보정 반영값. */
       kvBytesPerTokenF16: z.number().positive(),
+      /**
+       * MoE 전용: 레이어당 라우팅 전문가 수 · 토큰당 활성 전문가 수 (공유 전문가 제외).
+       * 출처 = 원본 config.json(num_experts·num_local_experts·n_routed_experts / num_experts_per_tok·top_k_experts),
+       * GGUF 헤더 `<arch>.expert_count`·`expert_used_count` 와 대조. 둘 다 있거나 둘 다 없거나.
+       * 모든 MoE 모델 필수·MOE_ARCH 일치는 validateAll 이 강제.
+       */
+      experts: z.number().int().positive().optional(),
+      topK: z.number().int().positive().optional(),
     }),
     /**
      * 비-full attention(swa/mla/hybrid) KV 수동 고정 — docs/03 §5.1 "수동 필드 우선".
@@ -124,7 +132,10 @@ export const ModelSchema = z
     maxContext: z.number().int().positive(),
     license: z.string().min(1),
     moe: z.boolean(),
-    /** MoE: attention+shared 텐서 GB — packages/data/src/derive.ts 유도값 (consistency 테스트로 고정) */
+    /**
+     * MoE: attention+shared 텐서 GB — packages/data/src/derive.ts 유도값 (consistency 테스트로 고정).
+     * bpw 균등 근사라 과소 추정 경향 — 행 단위 헤더 실측 `model-quants.nonExpertGB` 가 있으면 그쪽이 정확.
+     */
     nonExpertGB: z.number().positive().optional(),
     category: z.array(z.enum(['chat', 'coding', 'reasoning', 'vision'])).min(1),
     korean: z.boolean().optional(),
@@ -144,6 +155,19 @@ export const ModelSchema = z
         message: `${model.id}: attnOverrides is only for non-full attention (docs/03 §5.1)`,
       });
     }
+    if ((model.arch.experts === undefined) !== (model.arch.topK === undefined)) {
+      ctx.addIssue({ code: 'custom', message: `${model.id}: arch.experts and arch.topK must be set together` });
+    }
+    if (
+      model.arch.experts !== undefined &&
+      model.arch.topK !== undefined &&
+      model.arch.topK >= model.arch.experts
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `${model.id}: arch.topK ${model.arch.topK} must be < arch.experts ${model.arch.experts}`,
+      });
+    }
     if (
       model.attnOverrides &&
       model.attnOverrides.kvBytesPerTokenF16 !== model.arch.kvBytesPerTokenF16
@@ -155,23 +179,43 @@ export const ModelSchema = z
     }
   });
 
-export const ModelQuantSchema = z.object({
-  modelId: slug,
-  quant: QuantIdSchema,
-  /** 실제 GGUF 파일 크기 (decimal GB, 분할 파일 합산) */
-  fileGB: z.number().positive(),
-  ggufRepo: z.string().min(1),
-  /**
-   * repo 내 실파일 경로 — 스니펫 태그·다운로드 안내의 정본 (P1-2, docs/03 §1·§5.1 ④).
-   * 분할이면 첫 조각(`…-00001-of-0000N.gguf`), UD 변형은 파일명에 `UD-` 가 남는다.
-   * zod 는 optional(sync 가 구 시드를 읽어 채워야 하므로) — 전 행 존재는 validateAll 이 강제.
-   */
-  fileName: z
-    .string()
-    .regex(/^[^\s/][^\s]*\.gguf$/i, 'fileName must be a repo-relative *.gguf path')
-    .optional(),
-  sources,
-});
+export const ModelQuantSchema = z
+  .object({
+    modelId: slug,
+    quant: QuantIdSchema,
+    /** 실제 GGUF 파일 크기 (decimal GB, 분할 파일 합산) */
+    fileGB: z.number().positive(),
+    /**
+     * MoE 전용 — GGUF 헤더 실측 텐서 분할 (scripts/gguf-header.ts, 10-01). decimal GB(1e9) 2자리.
+     * expertGB: 라우팅 전문가 텐서(`_exps`·`_chexps`) — 트렁크 블록만(MTP/NextN 블록 제외).
+     * nonExpertGB: GPU 상주 비전문가 — 어텐션·노름·공유 전문가·라우터·dense FFN·output.
+     *   token_embd 는 llama.cpp 가 항상 CPU 에 두므로 제외, 단 output.weight 가 없는(임베딩 공유) 모델은
+     *   GPU 출력층 복제분으로 1회 포함. 기본 미적재 MTP 블록 제외.
+     * 둘 다 있거나 둘 다 없거나(아래 refine). MoE 모델 행만·합 ≤ fileGB+0.02 는 validateAll.
+     * 없는 행은 모델 단위 nonExpertGB(derive.ts 유도)가 근사값.
+     */
+    expertGB: z.number().positive().optional(),
+    nonExpertGB: z.number().positive().optional(),
+    ggufRepo: z.string().min(1),
+    /**
+     * repo 내 실파일 경로 — 스니펫 태그·다운로드 안내의 정본 (P1-2, docs/03 §1·§5.1 ④).
+     * 분할이면 첫 조각(`…-00001-of-0000N.gguf`), UD 변형은 파일명에 `UD-` 가 남는다.
+     * zod 는 optional(sync 가 구 시드를 읽어 채워야 하므로) — 전 행 존재는 validateAll 이 강제.
+     */
+    fileName: z
+      .string()
+      .regex(/^[^\s/][^\s]*\.gguf$/i, 'fileName must be a repo-relative *.gguf path')
+      .optional(),
+    sources,
+  })
+  .superRefine((mq, ctx) => {
+    if ((mq.expertGB === undefined) !== (mq.nonExpertGB === undefined)) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `${mq.modelId}/${mq.quant}: expertGB and nonExpertGB must be set together`,
+      });
+    }
+  });
 
 /**
  * 인덱싱 배치 계획 — `data/publish.json` (docs/04 §3, P1-2 결정 D9).

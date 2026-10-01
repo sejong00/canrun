@@ -27,12 +27,12 @@ const HF_BASE = 'https://huggingface.co';
 
 const RETRYABLE = new Set([429, 500, 502, 503, 504]);
 
-function authHeaders(token?: string): Record<string, string> {
+export function authHeaders(token?: string): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-/** 429/5xx 1회 재시도(2s 백오프) 후 응답 반환 — 상태 판정은 호출자 몫. */
-async function fetchWithRetry(
+/** 429/5xx 1회 재시도(2s 백오프) 후 응답 반환 — 상태 판정은 호출자 몫. (GGUF 헤더 Range 읽기도 공용) */
+export async function fetchWithRetry(
   url: string,
   headers: Record<string, string>,
   fetchImpl: FetchLike,
@@ -89,10 +89,10 @@ export async function fetchConfig(hfId: string, opts: HfFetchOpts = {}): Promise
 
 /**
  * 정수여도 소수점 1자리(.0)로 쓰는 float 필드 — 시드 표기 관행
- * (CLAUDE.md 스타일: 속도 tok/s 소수 1자리; fileGB/fp16Tflops 는 물리량 표식).
+ * (CLAUDE.md 스타일: 속도 tok/s 소수 1자리; fileGB·expertGB·nonExpertGB/fp16Tflops 는 물리량 표식).
  * 라운드트립 테스트가 시드 전 파일과의 바이트 일치를 강제한다.
  */
-const FLOAT_1DP_FIELDS = new Set(['fileGB', 'fp16Tflops', 'tgTokS']);
+const FLOAT_1DP_FIELDS = new Set(['fileGB', 'expertGB', 'nonExpertGB', 'fp16Tflops', 'tgTokS']);
 
 function stringifyInline(value: unknown, key?: string): string {
   if (typeof value === 'number') {

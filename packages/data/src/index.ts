@@ -70,7 +70,8 @@ export const parseMeta = (json: unknown): DataMeta => MetaSchema.parse(json);
 
 /**
  * MoE nonExpertGB 유도 근거 — models.json 시드 값과의 일치를 validateAll 이 강제.
- * 전문가 수/topK 출처: research/models.md §1D·1E + HF 모델 카드.
+ * 전문가 수/topK 출처: research/models.md §1D·1E + HF 모델 카드. models.json arch.experts/topK 와 일치 강제(10-01).
+ * 행 단위 GGUF 헤더 실측(model-quants expertGB/nonExpertGB)이 있으면 이 유도값보다 정확하다.
  */
 export const MOE_ARCH: Readonly<Record<string, MoeArch>> = Object.freeze({
   'gpt-oss-20b': { totalParamsB: 20.9, activeParamsB: 3.6, experts: 32, topK: 4 },
@@ -100,6 +101,9 @@ export type SeedFiles = {
 export function validateAll(files: SeedFiles): string[] {
   const problems: string[] = [];
   const modelIds = new Set(files.models.map((model) => model.id));
+  const moeModelIds = new Set(
+    files.models.filter((model) => model.activeParamsB !== undefined).map((model) => model.id),
+  );
   const gpuIds = new Set(files.gpus.map((gpu) => gpu.id));
 
   // model-quants.modelId 는 카탈로그 FK · fileName 은 전 행 필수 (sync-models 가 기록, P1-2)
@@ -109,6 +113,20 @@ export function validateAll(files: SeedFiles): string[] {
     }
     if (mq.fileName === undefined) {
       problems.push(`model-quants/${mq.modelId}/${mq.quant}: fileName missing — run sync-models`);
+    }
+    // MoE 헤더 실측 분할(10-01): MoE 모델 행만 · 둘 다 함께 · 전문가+비전문가 ≤ 파일 크기(+반올림 0.02)
+    if (mq.expertGB !== undefined || mq.nonExpertGB !== undefined) {
+      const id = `model-quants/${mq.modelId}/${mq.quant}`;
+      if (!moeModelIds.has(mq.modelId)) {
+        problems.push(`${id}: expertGB/nonExpertGB only for MoE models (activeParamsB)`);
+      }
+      if (mq.expertGB === undefined || mq.nonExpertGB === undefined) {
+        problems.push(`${id}: expertGB and nonExpertGB must be set together`);
+      } else if (mq.expertGB + mq.nonExpertGB > mq.fileGB + 0.02) {
+        problems.push(
+          `${id}: expertGB ${mq.expertGB} + nonExpertGB ${mq.nonExpertGB} > fileGB ${mq.fileGB}`,
+        );
+      }
     }
   }
 
@@ -159,6 +177,24 @@ export function validateAll(files: SeedFiles): string[] {
     }
     if (MOE_ARCH[model.id] && model.nonExpertGB === undefined) {
       problems.push(`models/${model.id}: MOE_ARCH exists but nonExpertGB missing`);
+    }
+
+    // MoE 구조(arch.experts/topK): MoE 모델 필수 · topK < experts · MOE_ARCH 와 일치 · dense 모델엔 없음
+    const { experts, topK } = model.arch;
+    if (model.activeParamsB !== undefined) {
+      if (experts === undefined || topK === undefined) {
+        problems.push(`models/${model.id}: MoE model requires arch.experts and arch.topK`);
+      } else if (topK >= experts) {
+        problems.push(`models/${model.id}: arch.topK ${topK} must be < arch.experts ${experts}`);
+      }
+    } else if (experts !== undefined || topK !== undefined) {
+      problems.push(`models/${model.id}: arch.experts/topK only for MoE models (activeParamsB)`);
+    }
+    if (arch && experts !== undefined && experts !== arch.experts) {
+      problems.push(`models/${model.id}: arch.experts ${experts} != MOE_ARCH ${arch.experts}`);
+    }
+    if (arch && topK !== undefined && topK !== arch.topK) {
+      problems.push(`models/${model.id}: arch.topK ${topK} != MOE_ARCH ${arch.topK}`);
     }
 
     // full attention 모델은 kvBytesPerTokenF16 이 GQA 공식과 일치해야 한다 (docs/02 §2.2)

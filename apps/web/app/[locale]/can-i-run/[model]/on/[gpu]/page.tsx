@@ -171,7 +171,7 @@ export default async function ComboPage({ params }: Props) {
             },
           }
         : plan?.llamaCpp
-          ? { ollamaOmitted: plan.ollamaOmitted === 'sharded' ? tSnippet('ollamaSharded') : tSnippet('ollamaNoMoe') }
+          ? { ollamaOmitted: tSnippet('ollamaSharded') }
           : {}),
       notes: plan ? llamaNotes(tSnippet, locale, plan, kvGB(model.arch.kvBytesPerTokenF16, cell.ctx, 'q8_0')) : [],
     };

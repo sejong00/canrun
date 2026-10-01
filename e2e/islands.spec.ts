@@ -77,12 +77,16 @@ for (const locale of LOCALES) {
   }
 
   test.describe(`${locale} combo island Ollama block follows the cell both ways (review fix)`, () => {
-    test('8k·f16 omitted → q4_0 cell shows the Ollama command → back to omitted', async ({ page }) => {
-      // 8k·f16 은 cpu-moe(Ollama 생략), 8k·q4_0 은 full-gpu(Ollama 가능) — data 로 확인한 쌍 (29쌍 중 하나)
+    test('8k·f16 cpu-moe → q4_0 full-gpu cell swaps the Ollama command and notes → back', async ({ page }) => {
+      // 8k·f16 은 cpu-moe(Ollama 0.30+ 자동 전문가 배치 각주), 8k·q4_0 은 full-gpu — data 로 확인한 쌍
+      // (10-01 D56 부터 cpu-moe 도 Ollama 명령을 보여 준다 — 생략은 분할 GGUF 뿐이라 셀마다 바뀌지 않는다)
       const problems = collectProblems(page);
+      const moeNote = locale === 'ko' ? 'Ollama 0.30 이상' : 'Ollama 0.30 and later';
+      const notes = page.locator('figure[data-snippet="ollama"] [data-snippet-notes="ollama"]');
       await open(page, localePath(locale, '/can-i-run/kanana-1.5-15.7b-a3b/on/rtx-4070'));
-      await expect(page.locator('figure[data-snippet-omitted="ollama"]')).toHaveCount(1);
-      await expect(page.locator('figure[data-snippet="ollama"]')).toHaveCount(0);
+      await expect(page.locator('figure[data-snippet-omitted="ollama"]')).toHaveCount(0);
+      await expect(page.locator('figure[data-snippet="ollama"]')).toHaveCount(1);
+      await expect(notes).toContainText(moeNote);
       await expect(page.locator('[data-ctx-slider]')).toBeEnabled();
 
       await page.locator('[data-kv-toggle] input[value="q4_0"]').check();
@@ -94,21 +98,20 @@ for (const locale of LOCALES) {
       await expect(code).toContainText('q4_0');
       await expect(code).toContainText('OLLAMA_FLASH_ATTENTION');
       await expect(page.locator('figure[data-snippet="ollama"] [data-snippet-code="ollama-repl"]')).toContainText('num_ctx 8192');
-      await expect(page.locator('figure[data-snippet-omitted="ollama"]')).toHaveCount(0);
+      await expect(notes).not.toContainText(moeNote);
 
       await page.locator('button[data-ctx-reset]').click();
-      await expect(page.locator('figure[data-snippet-omitted="ollama"]')).toHaveCount(1);
-      await expect(page.locator('figure[data-snippet="ollama"]')).toHaveCount(0);
+      await expect(notes).toContainText(moeNote);
+      await expect(page.locator('figure[data-snippet="ollama"] [data-snippet-code="ollama"]')).not.toContainText('OLLAMA_KV_CACHE_TYPE');
       expect(problems).toEqual([]);
     });
 
     test('every ctx step keeps exactly one Ollama state and the command matches the selected ctx', async ({ page }) => {
-      // 8k 에 Ollama 가 있고 어떤 셀에선 생략되는 페이지 (정방향 37쌍 중 하나)
+      // 8k full-gpu, 긴 ctx 에선 cpu-moe·미탑재로 바뀌는 페이지 — 셀마다 Ollama 블록이 정확히 하나
       await open(page, localePath(locale, '/can-i-run/gpt-oss-20b/on/rtx-5070-ti'));
       const slider = page.locator('[data-ctx-slider]');
       await expect(slider).toBeEnabled();
       const ticks = await page.locator('button[data-ctx-tick]').all();
-      let omittedSeen = 0;
       for (const tick of ticks) {
         const ctx = (await tick.getAttribute('data-ctx-tick')) ?? '';
         await tick.click();
@@ -121,9 +124,7 @@ for (const locale of LOCALES) {
         if (withCode && hasCommand) {
           await expect(page.locator('figure[data-snippet="ollama"] [data-snippet-code="ollama"]')).toContainText(ctx);
         }
-        if (omitted) omittedSeen += 1;
       }
-      expect(omittedSeen, 'this page must exercise an omitted cell').toBeGreaterThan(0);
     });
   });
 

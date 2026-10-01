@@ -104,14 +104,34 @@ describe('4) verdict sanity: RTX 4060 8GB (windows display, usable ≈ 7.4GB)', 
   });
 });
 
-describe('5) cpu-moe: RAM 몫 = 라우팅 전문가만 (09-30 보정, docs/02 §3.3)', () => {
-  const errors = CPU_MOE_CASES.map(({ hw, mq, ctx, measuredTg }) => (tgEstimate(hw, mq, { mode: 'cpu-moe' }, { ctx }) - measuredTg) / measuredTg);
+describe('5) cpu-moe: 전문가 일부 GPU 배치까지 공개 실측 대조 (09-30 → 10-01 D56, docs/02 §3.3·§7)', () => {
+  const errors = CPU_MOE_CASES.map(
+    ({ hw, mq, ctx, nCpuMoe, measuredTg }) =>
+      (tgEstimate(hw, mq, { mode: 'cpu-moe', cpuMoeLayers: nCpuMoe }, { ctx }) - measuredTg) / measuredTg,
+  );
+  const abs = errors.map(Math.abs);
 
-  it.each(CPU_MOE_CASES.map((c, i) => [c.label, i] as const))('%s within ±20%%', (_label, i) => {
-    expect(Math.abs(errors[i]!)).toBeLessThanOrEqual(0.2);
+  it.each(CPU_MOE_CASES.flatMap((c, i) => (c.strict ? [[c.label, i] as const] : [])))('%s within ±20%% (09-30 strict)', (_label, i) => {
+    expect(abs[i]!).toBeLessThanOrEqual(0.2);
   });
 
-  it('MAE < 12%', () => {
-    expect(errors.reduce((a, b) => a + Math.abs(b), 0) / errors.length).toBeLessThan(0.12);
+  it('MAE < 12% over every public point', () => {
+    expect(abs.reduce((a, b) => a + b, 0) / abs.length).toBeLessThan(0.12);
+  });
+
+  it('≥ 80% of points within ±20%, every point within ±40%', () => {
+    expect(abs.filter((e) => e <= 0.2).length / abs.length).toBeGreaterThanOrEqual(0.8);
+    expect(Math.max(...abs)).toBeLessThan(0.4);
+  });
+
+  it('표시 범위(이론 추정 est×0.7~1.3) 밖은 과소 추정뿐 — 실제가 범위보다 느린 점은 없다 (docs/02 §4 ②)', () => {
+    CPU_MOE_CASES.forEach((c, i) => {
+      const est = c.measuredTg * (1 + errors[i]!);
+      expect(c.measuredTg, c.label).toBeGreaterThanOrEqual(est * 0.7);
+    });
+  });
+
+  it('has enough points to mean something', () => {
+    expect(CPU_MOE_CASES.length).toBeGreaterThanOrEqual(35);
   });
 });

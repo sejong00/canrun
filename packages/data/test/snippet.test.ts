@@ -11,7 +11,7 @@ import {
   ggufTag,
   hardwareConfigs,
   isUdFile,
-  nCpuMoeMin,
+  assessQuant,
   shardCount,
   type HwConfig,
 } from '../src/index';
@@ -98,26 +98,28 @@ describe('commandPlan — llama.cpp', () => {
     expect(p.ollama?.autoOffload).toBe(true);
   });
 
-  it('cpu-moe: -ngl all --n-cpu-moe layers, with the minimal N (rtx-3060-12gb × qwen3.5-35b-a3b, UD file)', () => {
+  it('cpu-moe: -ngl all --n-cpu-moe N = the engine placement (rtx-3060-12gb × qwen3.5-35b-a3b, UD file)', () => {
     const p = planFor('rtx-3060-12gb', 'qwen3.5-35b-a3b');
+    // 10-01 D56: 추정과 같은 배치 — 앞쪽 24/40층 전문가만 CPU (GGUF 실측 분할 + 여유 1층)
     expect(p.llamaCpp?.command).toBe(
-      'llama-server -hf unsloth/Qwen3.5-35B-A3B-MTP-GGUF:UD-Q4_K_M -c 8192 -ngl all --n-cpu-moe 40 -fa on',
+      'llama-server -hf unsloth/Qwen3.5-35B-A3B-MTP-GGUF:UD-Q4_K_M -c 8192 -ngl all --n-cpu-moe 24 -fa on',
     );
-    // 22 층이 계산상 최소, UD 파일은 D23 여유 +1
-    expect(p.llamaCpp?.nCpuMoeMin).toBe(24);
+    expect(p.llamaCpp?.nCpuMoe).toBe(24);
     expect(p.file).toMatchObject({ tag: 'UD-Q4_K_M', ud: true, shards: 1 });
-    expect(p.ollamaOmitted).toBe('cpu-moe');
-    expect(p.ollama).toBeUndefined();
+    // Ollama 0.30+ 는 llama.cpp 자동 배치로 같은 방식을 쓴다 — 명령 + 버전 각주
+    expect(p.ollamaOmitted).toBeUndefined();
+    expect(p.ollama?.moeAuto).toBe(true);
+    expect(p.ollama?.autoOffload).toBe(false);
   });
 
-  it('F page uses the RAM-hint configuration (rtx-5060-ti-16gb × gpt-oss-120b @96GB, MXFP4 +1 margin — D23)', () => {
+  it('F page uses the RAM-hint configuration (rtx-5060-ti-16gb × gpt-oss-120b @64GB)', () => {
     const p = planFor('rtx-5060-ti-16gb', 'gpt-oss-120b');
     expect(p.llamaCpp?.command).toBe(
-      'llama-server -hf ggml-org/gpt-oss-120b-GGUF:MXFP4 -c 8192 -ngl all --n-cpu-moe 36 -fa on',
+      'llama-server -hf ggml-org/gpt-oss-120b-GGUF:MXFP4 -c 8192 -ngl all --n-cpu-moe 30 -fa on',
     );
-    expect(p.llamaCpp?.nCpuMoeMin).toBe(30);
-    expect(planFor('rtx-4070', 'gpt-oss-20b').llamaCpp?.nCpuMoeMin).toBe(5);
-    expect(planFor('rtx-4060', 'gpt-oss-20b').llamaCpp?.nCpuMoeMin).toBe(13);
+    // 이전(D23) N_min 은 4070 5 · 4060 13 — 비전문가 실측(gpt-oss 1.30/1.69GB)과 일반 여유 1층으로 대체
+    expect(planFor('rtx-4070', 'gpt-oss-20b').llamaCpp?.nCpuMoe).toBe(4);
+    expect(planFor('rtx-4060', 'gpt-oss-20b').llamaCpp?.nCpuMoe).toBe(13);
   });
 
   it('no-fit without a RAM hint: no commands (rtx-4060 × llama-3.3-70b)', () => {
@@ -155,12 +157,15 @@ describe('commandPlan — llama.cpp', () => {
   });
 });
 
-describe('nCpuMoeMin keeps the GPU side within usable VRAM for every cpu-moe combo', () => {
-  it('holds over dGPU × MoE × RAM options (with the D23 margin)', () => {
+describe('--n-cpu-moe N keeps the GPU side within usable VRAM for every cpu-moe combo (10-01 D56)', () => {
+  it('holds over dGPU × MoE × rows × RAM options, measured from each row’s GGUF split', () => {
     let checked = 0;
+    let partial = 0;
     for (const g of seed.gpus.filter((x) => x.kind === 'dgpu')) {
-      for (const m of seed.models.filter((x) => x.moe && x.nonExpertGB !== undefined)) {
+      for (const m of seed.models.filter((x) => x.moe)) {
         for (const r of seed.modelQuants.filter((x) => x.modelId === m.id)) {
+          // 모든 MoE 행은 GGUF 헤더 실측 분할을 갖는다 (validateAll)
+          expect(r.expertGB, `${m.id} ${r.quant}`).toBeDefined();
           for (const ramGB of [32, 64, 96, 128]) {
             const config: HwConfig = {
               gpuId: g.id,
@@ -168,25 +173,32 @@ describe('nCpuMoeMin keeps the GPU side within usable VRAM for every cpu-moe com
               assumedRam: false,
               hw: dgpuHardware(g, ramGB, 89.6),
             };
-            const n = nCpuMoeMin(config, m, r, { ctx: 8192, kvQuant: 'f16' });
-            if (n === undefined) continue;
+            const q = assessQuant({ gpu: g, config, model: m, row: r, tier: 'ok', benchmarks: [] });
+            if (!q.fits || q.result.mode !== 'cpu-moe') continue;
+            const p = commandPlan(g, config, m, r, q);
+            const n = p.llamaCpp!.nCpuMoe!;
             checked += 1;
             expect(n).toBeGreaterThanOrEqual(1);
             expect(n).toBeLessThanOrEqual(m.arch.layers);
-            if (n === m.arch.layers) continue;
-            const perLayer = (r.fileGB - m.nonExpertGB!) / m.arch.layers;
+            if (n < m.arch.layers) partial += 1;
+            const perLayer = r.expertGB! / m.arch.layers;
             const gpuSide =
-              m.nonExpertGB! +
+              r.nonExpertGB! +
               perLayer * (m.arch.layers - n) +
               kvGB(m.arch.kvBytesPerTokenF16, 8192) +
               computeBufferGB(8192);
-            expect(gpuSide, `${g.id} ${m.id} ${r.quant} @${ramGB}`).toBeLessThanOrEqual(
-              usableGB(config.hw) + 1e-9,
-            );
+            expect(gpuSide, `${g.id} ${m.id} ${r.quant} @${ramGB}`).toBeLessThanOrEqual(usableGB(config.hw) + 1e-9);
+            // 여유 1층을 빼면 GPU 에 한 층 더 들어갈 수도 있었다 — 배치가 VRAM 을 놀리지 않는다
+            if (n > 1 && n < m.arch.layers) {
+              expect(gpuSide + perLayer * 2, `${g.id} ${m.id} ${r.quant} @${ramGB} slack`).toBeGreaterThan(
+                usableGB(config.hw),
+              );
+            }
           }
         }
       }
     }
-    expect(checked).toBeGreaterThan(2000);
+    expect(checked).toBeGreaterThan(1500);
+    expect(partial).toBeGreaterThan(500);
   });
 });

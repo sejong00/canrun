@@ -1,5 +1,6 @@
 /** add-model 순수 코어 — 네트워크·fs 없음. config 픽스처는 09-30 실제 HF config 를 축약. */
 import { describe, expect, it } from 'vitest';
+import type { ModelQuantRecord } from '../packages/data/src/index';
 import type { TreeEntry } from './hf-common';
 import {
   activeFromName,
@@ -7,6 +8,7 @@ import {
   displayName,
   familyOf,
   mapLicense,
+  measureRows,
   parseArgs,
   popularityFrom,
   quantRowsFrom,
@@ -121,5 +123,51 @@ describe('GGUF repo choice and quant rows', () => {
       hfId: 'Qwen/Qwen3-4B', dry: true, category: ['chat', 'reasoning'], popularity: 4,
     });
     expect(() => parseArgs(['--id'])).toThrow();
+  });
+});
+
+describe('MoE — experts/topK from config, per-row split from the GGUF header (10-01)', () => {
+  it('classifyArch reads Gemma 4 top_k_experts (MoE structure from config)', () => {
+    const r = classifyArch({
+      model_type: 'gemma4',
+      text_config: {
+        model_type: 'gemma4_text', num_hidden_layers: 30, num_attention_heads: 16, num_key_value_heads: 8, head_dim: 256,
+        sliding_window: 1024, layer_types: layers(25, 5), max_position_embeddings: 262144, num_experts: 128, top_k_experts: 8,
+      },
+    });
+    expect(r).toMatchObject({ kind: 'ok', moe: { experts: 128, topK: 8 } });
+  });
+
+  const row = (quant: ModelQuantRecord['quant'], fileGB: number): ModelQuantRecord => ({
+    modelId: 'm', quant, fileGB, ggufRepo: 'org/m-GGUF', fileName: `m-${quant}.gguf`, sources: ['https://huggingface.co/org/m-GGUF'],
+  });
+  const ok = { expertGB: 17.55, nonExpertGB: 0.82, trunkLayers: 48, expertCount: 128, expertUsed: 8 };
+
+  it('writes expertGB/nonExpertGB right after fileGB for each measured row', async () => {
+    const calls: string[] = [];
+    const res = await measureRows([row('Q4_K_M', 18.56)], { experts: 128, topK: 8 }, 48, (repo, fileName) => {
+      calls.push(`${repo}/${fileName}`);
+      return Promise.resolve(ok);
+    });
+    expect(calls).toEqual(['org/m-GGUF/m-Q4_K_M.gguf']);
+    expect(res.problems).toEqual([]);
+    expect(res.warnings).toEqual([]);
+    expect(Object.keys(res.rows[0]!)).toEqual(['modelId', 'quant', 'fileGB', 'expertGB', 'nonExpertGB', 'ggufRepo', 'fileName', 'sources']);
+    expect(res.rows[0]).toMatchObject({ expertGB: 17.55, nonExpertGB: 0.82 });
+  });
+
+  it('stops on a header/config expert mismatch; warns on a trunk-layer mismatch', async () => {
+    const res = await measureRows([row('Q4_K_M', 18.56)], { experts: 64, topK: 8 }, 40, () => Promise.resolve(ok));
+    expect(res.problems).toEqual([expect.stringContaining('expert_count 128 ≠ config 64')]);
+    expect(res.warnings).toEqual([expect.stringContaining('트렁크 층 48 ≠ config num_hidden_layers 40')]);
+  });
+
+  it('keeps the row without a split when the fetch fails or the split exceeds the file', async () => {
+    const res = await measureRows([row('Q4_K_M', 18.56), row('Q8_0', 10)], { experts: 128, topK: 8 }, 48, (_repo, fileName) =>
+      fileName === 'm-Q4_K_M.gguf' ? Promise.reject(new Error('HTTP 503')) : Promise.resolve(ok),
+    );
+    expect(res.rows.map((r) => r.expertGB)).toEqual([undefined, undefined]);
+    expect(res.problems).toEqual([]);
+    expect(res.warnings).toEqual([expect.stringContaining('HTTP 503'), expect.stringContaining('> fileGB 10')]);
   });
 });

@@ -20,7 +20,7 @@ export type CtxCellView = {
   command?: string;
   /** Ollama 블록 — serveHint 는 OS 별 안내("PowerShell …"/"터미널:") */
   ollama?: { code: string; replSet: string; notes: string[]; serveHint: string };
-  /** llama.cpp 명령은 있는데 Ollama 가 안 되는 셀(cpu-moe·분할 GGUF)의 생략 사유 문장 */
+  /** llama.cpp 명령은 있는데 Ollama 가 안 되는 셀(분할 GGUF)의 생략 사유 문장 */
   ollamaOmitted?: string;
   notes: { key: string; text: string }[];
 };
@@ -97,8 +97,8 @@ function applyCell(cell: CtxCellView, initialCell: CtxCellView | undefined) {
 }
 
 /**
- * Ollama 블록을 셀 상태로 다시 그린다 — 양방향(리뷰 반영): 8k 에 Ollama 가 있던 페이지에서 cpu-moe 셀로 가면 생략 사유로,
- * 8k 에 생략이던 페이지(cpu-moe)에서 더 작은 ctx 의 full-gpu 셀로 가면 명령 블록으로. 마크업은 서버 `CommandSnippet` 과
+ * Ollama 블록을 셀 상태로 다시 그린다 — 양방향(리뷰 반영): 명령·각주(cpu-moe 셀은 Ollama 0.30+ 자동 배치 안내)를 셀 값으로,
+ * 생략 셀(분할 GGUF)이면 생략 사유로. 10-01 D56 부터 cpu-moe 도 명령이 있다. 마크업은 서버 `CommandSnippet` 과
  * 같은 구조(figcaption → 안내 p → 코드 영역 → 각주 ul)이고, 코드 영역은 llama.cpp 영역을 복제해 스타일·a11y 속성을 맞춘다.
  */
 function renderOllama(source: CtxCellView) {

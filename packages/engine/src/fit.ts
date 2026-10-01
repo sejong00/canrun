@@ -1,8 +1,9 @@
 /** fit 판정 — docs/02-engine-spec.md §2.4. */
 
-import { QUANT_BPW, QUANT_LADDER } from './constants';
+import { CPU_MOE_GPU_LAYER_MARGIN, QUANT_BPW, QUANT_LADDER } from './constants';
 import {
   computeBufferGB,
+  expertGBFor,
   kvGB,
   osReserveGB,
   usableGB,
@@ -20,6 +21,8 @@ export type FitResult = {
   vram: VramBreakdown;
   /** partial-offload 에서 GPU 상주 비율 (0~1) */
   gpuFrac?: number;
+  /** cpu-moe: 전문가를 CPU 에 두는 층 수(`--n-cpu-moe`). `moeLayers` 없는 입력이면 생략 = 전문가 전부 RAM */
+  cpuMoeLayers?: number;
   /** fits=false 일 때 더 낮은 quant 탐색 결과 (§2.4-5, IQ2_M 까지) */
   bestQuant?: QuantId;
 };
@@ -78,16 +81,36 @@ function fitOnce(hw: Hardware, mq: ModelQuant, weights: number, opts?: FitOption
 
   const usableRam = usableRamGB(hw);
 
-  // 2. cpu-moe (MoE 전용, dgpu): nonExpert+kv+buffer ≤ vram && expert ≤ RAM
+  // 2. cpu-moe (MoE 전용, dgpu): 비전문가+kv+buffer 를 GPU 에 두고, 남는 VRAM 만큼 전문가 층을 GPU 에 채운 뒤
+  //    나머지 층(앞쪽 N 층 — `--n-cpu-moe N`)의 전문가만 RAM 에 둔다 (10-01 D56: llama.cpp --fit 기본 배치와 같은 방향).
+  //    moeLayers 가 없는 입력은 층 단위 배치를 못 하므로 전문가 전부 RAM (09-30 가정).
   if (hw.kind === 'dgpu' && isMoe(mq)) {
     const nonExpert = nonExpertGBFor(mq)!;
-    const expert = weights - nonExpert;
-    if (nonExpert + kv + buffer <= pool && expert <= usableRam) {
-      return {
-        fits: true,
-        mode: 'cpu-moe',
-        vram: breakdown(nonExpert, kv, buffer, osReserve, limit),
-      };
+    const expert = expertGBFor(mq)!;
+    // token_embd(llama.cpp 는 항상 CPU)·MTP 등 — 실측 행에서만 0 보다 크다
+    const cpuSide = Math.max(0, weights - expert - nonExpert);
+    const avail = pool - nonExpert - kv - buffer;
+    if (avail >= 0) {
+      const layers = mq.moeLayers;
+      let cpuExpert = expert;
+      let cpuMoeLayers: number | undefined;
+      if (layers !== undefined && layers > 0 && expert > 0) {
+        const perLayer = expert / layers;
+        const gpuLayers = Math.min(
+          layers - 1,
+          Math.max(0, Math.floor(avail / perLayer) - CPU_MOE_GPU_LAYER_MARGIN),
+        );
+        cpuMoeLayers = layers - gpuLayers;
+        cpuExpert = perLayer * cpuMoeLayers;
+      }
+      if (cpuExpert + cpuSide <= usableRam) {
+        return {
+          fits: true,
+          mode: 'cpu-moe',
+          vram: breakdown(nonExpert + (expert - cpuExpert), kv, buffer, osReserve, limit),
+          ...(cpuMoeLayers !== undefined ? { cpuMoeLayers } : {}),
+        };
+      }
     }
   }
 
@@ -130,11 +153,12 @@ export function fit(hw: Hardware, mq: ModelQuant, opts?: FitOptions): FitResult 
   const candidates = [...QUANT_LADDER].filter((q) => QUANT_BPW[q] < requestedBpw).reverse(); // 높은 품질부터
   for (const quant of candidates) {
     const w = weightsGBFromBpw(mq.paramsB, quant);
-    // MoE 는 nonExpert 도 quant 에 비례 축소된다고 근사
+    // MoE 는 nonExpert 도 quant 에 비례 축소된다고 근사 (실측 expertGB 는 그 파일 전용이라 버리고 유도 경로로)
     const scaled: ModelQuant = {
       ...mq,
       quant,
       fileGB: undefined,
+      expertGB: undefined,
       nonExpertGB:
         mq.nonExpertGB === undefined ? undefined : mq.nonExpertGB * (w / weightsGB(mq)),
     };

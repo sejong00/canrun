@@ -1,6 +1,8 @@
 /** fit 판정 유닛 — docs/02 §2.4 + §8 시드. */
 import { describe, expect, it } from 'vitest';
+import { CPU_MOE_GPU_LAYER_MARGIN } from '../src/constants';
 import { fit } from '../src/fit';
+import { computeBufferGB, kvGB, usableGB, usableRamGB } from '../src/memory';
 import type { Hardware, ModelQuant } from '../src/types';
 import {
   LLAMA31_8B_Q4,
@@ -8,6 +10,7 @@ import {
   M4_MAX_128,
   QWEN3_14B_Q4,
   QWEN35_35B_A3B_Q4,
+  QWEN36_35B_A3B_Q4_SPLIT,
   RTX_3060_12GB,
   RTX_4060_8GB,
 } from './fixtures';
@@ -34,6 +37,41 @@ describe('§2.4 mode ordering', () => {
     expect(r.mode).toBe('cpu-moe');
     // cpu-moe VRAM 상주분은 nonExpert + kv + buffer
     expect(r.vram.weights).toBeCloseTo(QWEN35_35B_A3B_Q4.nonExpertGB!, 6);
+  });
+
+  it('2. cpu-moe with moeLayers: fills spare VRAM with expert layers, minus the margin (10-01 D56)', () => {
+    const mq = QWEN36_35B_A3B_Q4_SPLIT;
+    const r = fit(RTX_3060_12GB, mq);
+    expect(r.mode).toBe('cpu-moe');
+    const n = r.cpuMoeLayers!;
+    const perLayer = mq.expertGB! / mq.moeLayers!;
+    const fixed = mq.nonExpertGB! + kvGB(mq.kvBytesPerToken, 8192) + computeBufferGB(8192);
+    const usable = usableGB(RTX_3060_12GB);
+    // GPU 에 남긴 전문가 층은 VRAM 에 들어가고, 여유층(MARGIN)을 빼기 전 한 층 더는 넘친다
+    expect(fixed + perLayer * (mq.moeLayers! - n)).toBeLessThanOrEqual(usable);
+    expect(fixed + perLayer * (mq.moeLayers! - n + CPU_MOE_GPU_LAYER_MARGIN + 1)).toBeGreaterThan(usable);
+    expect(n).toBeGreaterThan(0);
+    expect(n).toBeLessThan(mq.moeLayers!);
+    expect(r.vram.weights).toBeCloseTo(mq.nonExpertGB! + perLayer * (mq.moeLayers! - n), 6);
+  });
+
+  it('2. cpu-moe without moeLayers keeps every expert in RAM (09-30 assumption)', () => {
+    const r = fit(RTX_3060_12GB, { ...QWEN36_35B_A3B_Q4_SPLIT, moeLayers: undefined });
+    expect(r.mode).toBe('cpu-moe');
+    expect(r.cpuMoeLayers).toBeUndefined();
+    expect(r.vram.weights).toBeCloseTo(QWEN36_35B_A3B_Q4_SPLIT.nonExpertGB!, 6);
+  });
+
+  it('2. cpu-moe RAM check counts only the CPU-side experts and token_embd', () => {
+    const mq = QWEN36_35B_A3B_Q4_SPLIT;
+    const n = fit(RTX_3060_12GB, mq).cpuMoeLayers!;
+    const cpuSide = (mq.expertGB! / mq.moeLayers!) * n + (mq.fileGB! - mq.expertGB! - mq.nonExpertGB!);
+    // 전문가 전량(19.5GB)은 못 담지만 CPU 몫은 담는 RAM
+    const ramGB = Math.ceil(cpuSide) + 4;
+    const hw: Hardware = { ...RTX_3060_12GB, ramGB };
+    expect(usableRamGB(hw)).toBeLessThan(mq.expertGB!);
+    expect(fit(hw, mq).mode).toBe('cpu-moe');
+    expect(fit({ ...hw, ramGB: ramGB - 2 }, mq).mode).not.toBe('cpu-moe');
   });
 
   it('2. cpu-moe requires expert weights to fit in usable RAM', () => {

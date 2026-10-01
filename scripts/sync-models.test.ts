@@ -6,11 +6,14 @@ import {
   applyChanges,
   buildSyncPlan,
   extractArch,
+  extractMoe,
   matchQuantFiles,
   parseArgs,
+  planSplitChanges,
   renderReport,
   sumFileGB,
   type Change,
+  type MeasureSplitFn,
   type SyncInput,
   primaryFile,
   withKeyAfter,
@@ -570,5 +573,154 @@ describe('buildSyncPlan — 새 양자화 행 (카탈로그 확장 자동화, 09
       sources: ['https://huggingface.co/org/test-8b-GGUF'],
     });
     expect(() => parseModelQuants(input.rawQuants)).not.toThrow();
+  });
+});
+
+// --- MoE 행별 분할 (GGUF 헤더 실측, 10-01) ----------------------------------
+
+describe('extractMoe', () => {
+  it('reads the routed-expert count and top-k under each family key name', () => {
+    expect(extractMoe({ num_experts: 128, num_experts_per_tok: 8 })).toEqual({ experts: 128, topK: 8 }); // Qwen3
+    expect(extractMoe({ num_local_experts: 32, experts_per_token: 4, num_experts_per_tok: 4 })).toEqual({ experts: 32, topK: 4 }); // gpt-oss
+    expect(extractMoe({ text_config: { num_experts: 128, top_k_experts: 8 } })).toEqual({ experts: 128, topK: 8 }); // Gemma 4
+    expect(extractMoe({ n_routed_experts: 320, n_shared_experts: 1, num_experts_per_tok: 8 })).toEqual({ experts: 320, topK: 8 }); // Solar Open2
+    expect(extractMoe({ num_hidden_layers: 32 })).toBeUndefined();
+    expect(extractMoe(null)).toBeUndefined();
+  });
+});
+
+describe('planSplitChanges + applyChanges — MoE split', () => {
+  const moeModel = fullModel({
+    id: 'moe-30b',
+    hfId: 'org/moe-30b',
+    paramsB: 30.5,
+    activeParamsB: 3.3,
+    moe: true,
+    arch: { layers: 48, kvHeads: 4, headDim: 128, attnType: 'full', kvBytesPerTokenF16: 98304, experts: 128, topK: 8 },
+  });
+  const repo = 'org/moe-30b-GGUF';
+  const row = (over: Record<string, unknown> = {}): Record<string, unknown> =>
+    quantRow({ modelId: 'moe-30b', fileGB: 18.56, ggufRepo: repo, fileName: 'm-Q4_K_M.gguf', sources: [`https://huggingface.co/${repo}`], ...over });
+  const measured = { expertGB: 17.55, nonExpertGB: 0.82 };
+  type Values = Record<string, { expertGB: number; nonExpertGB: number } | Error>;
+  const fakeMeasure = (values: Values): { fn: MeasureSplitFn; calls: string[] } => {
+    const calls: string[] = [];
+    const fn: MeasureSplitFn = (r, fileName) => {
+      calls.push(`${r}:${fileName}`);
+      const v = values[fileName];
+      if (v === undefined) return Promise.reject(new Error(`unexpected ${fileName}`));
+      return v instanceof Error ? Promise.reject(v) : Promise.resolve(v);
+    };
+    return { fn, calls };
+  };
+
+  it('measures MoE rows without a split, writes expertGB/nonExpertGB right after fileGB', async () => {
+    const input = makeInput({ models: [moeModel, fullModel()], quants: [row(), quantRow({ fileName: 'test-8b-Q4_K_M.gguf' })] });
+    const { fn, calls } = fakeMeasure({ 'm-Q4_K_M.gguf': measured });
+    const changes = await planSplitChanges(input, buildSyncPlan(input), fn);
+    expect(calls).toEqual([`${repo}:m-Q4_K_M.gguf`]); // dense 행은 재지 않는다
+    expect(changes).toEqual([
+      expect.objectContaining({ id: 'moe-30b/Q4_K_M', field: 'split', kind: 'auto', next: 'expert 17.55 / non-expert 0.82', split: measured }),
+    ]);
+    applyChanges(changes, input);
+    expect(Object.keys(input.rawQuants[0]!).slice(0, 6)).toEqual(['modelId', 'quant', 'fileGB', 'expertGB', 'nonExpertGB', 'ggufRepo']);
+    expect(input.rawQuants[0]).toMatchObject(measured);
+    expect(() => parseModelQuants(input.rawQuants)).not.toThrow();
+  });
+
+  it('skips rows that already have a split unless this sync changed their size', async () => {
+    const tree = (gb: number) => new Map([[repo, [file('m-Q4_K_M.gguf', Math.round(gb * 1e9))]]]);
+    const steady = makeInput({ models: [moeModel], quants: [row(measured)], treeByRepo: tree(18.56) });
+    const idle = fakeMeasure({});
+    expect(await planSplitChanges(steady, buildSyncPlan(steady), idle.fn)).toEqual([]);
+    expect(idle.calls).toEqual([]);
+
+    const grown = makeInput({ models: [moeModel], quants: [row(measured)], treeByRepo: tree(18.9) });
+    const remeasure = fakeMeasure({ 'm-Q4_K_M.gguf': { expertGB: 17.86, nonExpertGB: 0.84 } });
+    expect(await planSplitChanges(grown, buildSyncPlan(grown), remeasure.fn)).toEqual([
+      expect.objectContaining({
+        kind: 'auto',
+        old: 'expert 17.55 / non-expert 0.82',
+        next: 'expert 17.86 / non-expert 0.84',
+        note: 'GGUF 헤더 실측 — 파일 크기 변경',
+      }),
+    ]);
+
+    const same = makeInput({ models: [moeModel], quants: [row(measured)], treeByRepo: tree(18.9) });
+    const unchanged = fakeMeasure({ 'm-Q4_K_M.gguf': measured });
+    expect(await planSplitChanges(same, buildSyncPlan(same), unchanged.fn)).toEqual([]);
+    expect(unchanged.calls).toHaveLength(1);
+  });
+
+  it('measures new auto quant rows of MoE models and applies the split after the row is inserted', async () => {
+    const tree = new Map([[repo, [file('m-Q4_K_M.gguf', 18_560_000_000), file('m-Q8_0.gguf', 32_480_000_000)]]]);
+    const input = makeInput({ models: [moeModel], quants: [row(measured)], treeByRepo: tree });
+    const { fn } = fakeMeasure({ 'm-Q8_0.gguf': { expertGB: 30.8, nonExpertGB: 1.34 } });
+    const planned = buildSyncPlan(input);
+    const changes = [...planned, ...(await planSplitChanges(input, planned, fn))];
+    expect(changes.find((c) => c.field === 'split')).toEqual(
+      expect.objectContaining({ id: 'moe-30b/Q8_0', note: 'GGUF 헤더 실측 — 새 양자화 행' }),
+    );
+    applyChanges(changes, input);
+    expect(input.rawQuants[1]).toEqual({
+      modelId: 'moe-30b',
+      quant: 'Q8_0',
+      fileGB: 32.48,
+      expertGB: 30.8,
+      nonExpertGB: 1.34,
+      ggufRepo: repo,
+      fileName: 'm-Q8_0.gguf',
+      sources: [`https://huggingface.co/${repo}`],
+    });
+  });
+
+  it('reports a failed or implausible measurement as manual and leaves the row untouched', async () => {
+    const input = makeInput({
+      models: [moeModel],
+      quants: [row(), row({ quant: 'Q8_0', fileGB: 32.48, fileName: 'm-Q8_0.gguf' })],
+    });
+    const { fn } = fakeMeasure({ 'm-Q4_K_M.gguf': new Error('HTTP 503 for x'), 'm-Q8_0.gguf': { expertGB: 40, nonExpertGB: 2 } });
+    const changes = await planSplitChanges(input, [], fn);
+    expect(changes.map((c) => [c.id, c.kind])).toEqual([
+      ['moe-30b/Q4_K_M', 'manual'],
+      ['moe-30b/Q8_0', 'manual'],
+    ]);
+    expect(changes[0]?.note).toContain('HTTP 503');
+    expect(changes[1]?.note).toContain('fileGB 32.48 초과');
+    const before = JSON.stringify(input.rawQuants);
+    applyChanges(changes, input);
+    expect(JSON.stringify(input.rawQuants)).toBe(before);
+    expect(renderReport(changes)).toContain('| moe-30b/Q8_0 | split | — | expert 40 / non-expert 2 | — | manual |');
+  });
+
+  it('flags a failed re-measurement of a changed file as suspicious (stale split would stay)', async () => {
+    const input = makeInput({ models: [moeModel], quants: [row(measured)] });
+    const sizeChange: Change = { file: 'model-quants.json', id: 'moe-30b/Q4_K_M', field: 'fileGB', old: 18.55, next: 18.9, kind: 'auto' };
+    const { fn } = fakeMeasure({ 'm-Q4_K_M.gguf': new Error('HTTP 503 for x') });
+    const changes = await planSplitChanges(input, [sizeChange], fn);
+    expect(changes.map((c) => [c.id, c.field, c.kind])).toEqual([['moe-30b/Q4_K_M', 'split', 'suspicious']]);
+    expect(changes[0]?.note).toContain('파일 크기 변경');
+    // 적용할 값은 없다 — 분할은 그대로, 위임 머지만 멈춘다
+    const before = JSON.stringify(input.rawQuants);
+    applyChanges(changes, input);
+    expect(JSON.stringify(input.rawQuants)).toBe(before);
+  });
+
+  it('honours the --only model filter', async () => {
+    const input = makeInput({ models: [moeModel], quants: [row()] });
+    const { fn, calls } = fakeMeasure({});
+    expect(await planSplitChanges(input, [], fn, { modelIds: new Set(['other']) })).toEqual([]);
+    expect(calls).toEqual([]);
+  });
+
+  it('flags a config experts/topK drift as manual; no model-level nonExpertGB noise once every row is measured', () => {
+    const drifted: ConfigResult = {
+      config: { num_hidden_layers: 48, num_attention_heads: 32, num_key_value_heads: 4, head_dim: 128, num_experts: 64, num_experts_per_tok: 8 },
+    };
+    const input = makeInput({ models: [moeModel], quants: [row(measured)], configByHfId: new Map([['org/moe-30b', drifted]]) });
+    const changes = buildSyncPlan(input);
+    expect(changes.find((c) => c.field === 'arch.experts')).toEqual(expect.objectContaining({ old: 128, next: 64, kind: 'manual' }));
+    expect(changes.find((c) => c.field === 'arch.topK')).toBeUndefined();
+    expect(changes.find((c) => c.field === 'nonExpertGB')).toBeUndefined();
   });
 });

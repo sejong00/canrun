@@ -89,14 +89,16 @@ describe('measured join (결정 D4)', () => {
     expect(c.recommended).toBeUndefined();
   });
 
-  it('dGPU 오프로드 모드면 호스트가 달라 주입하지 않는다 (RAM 힌트 96GB cpu-moe)', () => {
+  it('dGPU 오프로드 모드면 호스트가 달라 주입하지 않는다 (RAM 힌트 64GB cpu-moe)', () => {
     const hint = combo('rtx-5090', 'gpt-oss-120b').ramHint!;
-    expect(hint.ramGB).toBe(96);
-    expect(hint.verdict).toBe('B');
+    // 10-01 D56: RAM 에는 CPU 쪽 전문가(앞쪽 21층)만 — 96GB 가 아니라 64GB 에서 들어간다
+    expect(hint.ramGB).toBe(64);
+    expect(hint.verdict).toBe('A');
     expect(hint.mode).toBe('cpu-moe');
     expect(hint.result.confidence).toBe('theoretical');
-    // 09-30 cpu-moe 보정(라우팅 전문가만 RAM) — 이전 13.92
-    expect(hint.result.tgTokS.est).toBeCloseTo(22.18, 1);
+    expect(hint.result.cpuMoeLayers).toBe(21);
+    // 09-30 22.18(전문가 전부 RAM) → 10-01 전문가 15층 GPU 배치. 공개 실측 5090 + DDR5-6400 --n-cpu-moe 24 = 37.59
+    expect(hint.result.tgTokS.est).toBeCloseTo(35.33, 1);
   });
 
   it('Q4_K_XL 실측은 Q4_K_M 에 조인되지 않는다', () => {
@@ -173,9 +175,10 @@ describe('판정 사유 = 실제로 걸린 규칙 (P1-1 리뷰)', () => {
     expect(c.baseline.verdictReason).toBe('cap-full-gpu-only');
   });
 
-  // 09-30 cpu-moe 보정 뒤 기본 구성(RAM 32GB)의 비-리즈닝 cpu-moe 는 전부 20 이상 — 리즈닝(기준 ×1.5 = 30)으로 규칙을 고정
-  it('cpu-moe 는 원활 기준 미만이면 B — 리즈닝은 30 (rtx-4060 × gpt-oss-20b)', () => {
-    const c = combo('rtx-4060', 'gpt-oss-20b');
+  // 기본 구성(RAM 32GB)의 비-리즈닝 cpu-moe 는 전부 20 이상 — 리즈닝(기준 ×1.5 = 30)으로 규칙을 고정.
+  // 10-01 D56 부분 배치로 rtx-4060 × gpt-oss-20b 는 30.8 → A, 남은 B 는 8GB 급 노트북·3050
+  it('cpu-moe 는 원활 기준 미만이면 B — 리즈닝은 30 (rtx-3050-8gb × gpt-oss-20b)', () => {
+    const c = combo('rtx-3050-8gb', 'gpt-oss-20b');
     expect(c.baseline.result.mode).toBe('cpu-moe');
     expect(c.baseline.result.verdict).toBe('B');
     expect(c.baseline.verdictReason).toBe('cap-cpu-moe');
@@ -208,21 +211,24 @@ describe('theoretical 규칙 (docs/02 §4, 결정 D4)', () => {
     expect(combo('arc-b580', 'gpt-oss-20b').baseline.result.confidence).toBe('theoretical');
   });
 
-  it('cpu-moe 는 검증점이 없어 theoretical (rtx-3060-12gb × qwen3.5-35b-a3b)', () => {
+  it('cpu-moe 는 최대 오차가 밴드를 넘어 theoretical (rtx-3060-12gb × qwen3.5-35b-a3b)', () => {
     const c = combo('rtx-3060-12gb', 'qwen3.5-35b-a3b');
     expect(c.baseline.result.mode).toBe('cpu-moe');
     expect(c.baseline.result.verdict).toBe('A');
     expect(c.baseline.result.confidence).toBe('theoretical');
-    // 20.4 tok/s ≥ 20 → A 에서 멈춤: S 는 full-gpu 전용
+    // 43.2 tok/s ≥ 20 → A 에서 멈춤: S 는 full-gpu 전용
     expect(c.baseline.verdictReason).toBe('cap-full-gpu-only');
-    expect(c.baseline.memory.ramGB).toBeCloseTo(21.41, 2);
+    // 10-01 D56: RAM 은 앞쪽 24층 전문가(11.72) + token_embd·MTP 블록(1.09) — 이전(전문가 전부) 21.41
+    expect(c.baseline.result.cpuMoeLayers).toBe(24);
+    expect(c.baseline.memory.ramGB).toBeCloseTo(12.81, 2);
   });
 
-  it('nonExpertGB 없는 MoE 의 부분 오프로드 (rtx-5080 × gemma-4-26b-a4b)', () => {
+  it('GGUF 실측 분할이 있는 MoE 는 모델 수준 nonExpertGB 가 없어도 cpu-moe (rtx-5080 × gemma-4-26b-a4b)', () => {
+    // 10-01 D56 이전엔 dense 부분 오프로드 + B 상한(백로그 「엔진 후속」②)
     const c = combo('rtx-5080', 'gemma-4-26b-a4b');
-    expect(c.baseline.result.mode).toBe('partial-offload');
+    expect(c.baseline.result.mode).toBe('cpu-moe');
     expect(c.baseline.result.confidence).toBe('theoretical');
-    expect(c.baseline.verdictReason).toBe('cap-partial');
+    expect(c.baseline.result.verdict).toBe('A');
   });
 
   it('검증 안 된 아키텍처·FP16 크리플 GPU', () => {
@@ -329,7 +335,8 @@ describe('summaries', () => {
     // 09-30 카탈로그 확장 1차: 소형 4종(Llama 3.2·MiniCPM5) S, qwen3.6-35b-a3b A(형제 qwen3.5 와 동일), 30B급 dense 3종 B(부분 오프로드)
     // 09-30 Gemma 4 12B KV 수정(4배 과대 → 설정 기준)으로 12B 가 4060 에서 B → A(부분 오프로드지만 GPU 90% 이상)
     // 09-30 cpu-moe 보정: qwen3-30b-a3b-2507·kanana-1.5-15.7b-a3b 가 4060 에서 B → A (20 tok/s 이상)
-    expect(c).toMatchObject({ S: 11, A: 5, B: 13, F: 8, otherQuant: 3 });
+    // 10-01 전문가 부분 배치(D56): gpt-oss-20b(리즈닝 30 → 30.8)·gemma-4-26b-a4b(부분 오프로드 B → cpu-moe) B → A
+    expect(c).toMatchObject({ S: 11, A: 7, B: 11, F: 8, otherQuant: 3 });
     expect(hub.faq.referenceLarge?.baseline.fReason).toBe('no-fit');
     expect(hub.benchmarks.every((bp) => bp.gpuId === 'rtx-4060')).toBe(true);
     // 정렬: 기준 판정 비증가, 같은 판정 안에서는 표시 tok/s 비증가

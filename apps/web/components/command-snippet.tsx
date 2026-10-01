@@ -100,7 +100,7 @@ export function CommandSnippet({
           </>
         ) : (
           <p className="text-sm text-muted-foreground">
-            {plan.ollamaOmitted === 'sharded' ? t('ollamaSharded') : t('ollamaNoMoe')}
+            {t('ollamaSharded')}
           </p>
         )}
       </figure>

@@ -49,6 +49,7 @@ const PUBLISHED = { status: 'published', reviewedAt: '2026-09-30', datePublished
 export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
   'vram-requirements': {
     ...PUBLISHED,
+    dateModified: '2026-10-01',
     grids: {
       tiers: {
         gpus: ['rtx-4060', 'rtx-3060-12gb', 'rtx-4070', 'rtx-5070', 'rtx-5060-ti-16gb', 'rtx-3090', 'rtx-4090', 'rtx-5090'],
@@ -88,6 +89,7 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
   },
   'gguf-quantization': {
     ...PUBLISHED,
+    dateModified: '2026-10-01',
     grids: {},
     related: ['vram-requirements', 'kv-cache-context', 'korean-open-llms'],
     locales: {
@@ -105,6 +107,7 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
   },
   'korean-open-llms': {
     ...PUBLISHED,
+    dateModified: '2026-10-01',
     grids: {
       korean: {
         gpus: ['rtx-4060', 'rtx-3060-12gb', 'rtx-5060-ti-16gb', 'rtx-3090', 'rtx-5090', 'apple-m4-pro'],
@@ -158,6 +161,7 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
   },
   'kv-cache-context': {
     ...PUBLISHED,
+    dateModified: '2026-10-01',
     grids: {},
     related: ['ollama-context-length', 'vram-requirements', 'gguf-quantization'],
     locales: {

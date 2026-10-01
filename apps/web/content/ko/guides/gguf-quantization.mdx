@@ -85,7 +85,7 @@ ollama run hf.co/bartowski/mistralai_Mistral-Small-3.2-24B-Instruct-2506-GGUF:IQ
 
 한 단계 낮춘다고 늘 해결되지는 않습니다. CanRun 추정으로는 <ComboLink model="qwen3-14b" gpu="rtx-4060" />도 Q4_K_M으로 겨우 돌아가는 정도입니다<Expect model="qwen3-14b" gpu="rtx-4060" verdict="B" />. IQ4_XS로 낮춰도 <Num kind="needGB" model="qwen3-14b" quant="IQ4_XS" />가 필요해 사용 가능 메모리 <Num kind="usableGB" gpu="rtx-4060" />를 한참 넘습니다. CanRun 계산으로는 한 단계 낮춰도 판정이 그대로입니다. 가장 작은 파일인 2비트 Q2_K(품질 손실 큼)도 <Num kind="needGB" model="qwen3-14b" quant="Q2_K" />로 여전히 사용 가능 메모리를 넘습니다. 그래도 가중치의 90% 이상이 GPU에 올라가 판정이 좋아지므로, CanRun은 이 조합에서 Q2_K에 ‘품질 손실 큼’을 붙여 최후 수단으로 따로 보여 줍니다.
 
-MoE 모델은 따로 봐야 합니다. 한국 모델인 <HubLink model="kanana-1.5-15.7b-a3b" />를 RTX 3060 12GB에서 Q4_K_M으로 쓰면 <Num kind="needGB" model="kanana-1.5-15.7b-a3b" />가 필요해 사용 가능 메모리 <Num kind="usableGB" gpu="rtx-3060-12gb" />를 넘습니다. IQ4_XS로 낮추면 <Num kind="needGB" model="kanana-1.5-15.7b-a3b" quant="IQ4_XS" />라서 CanRun 계산으로는 그 안에 들어가지만, 여유는 크지 않습니다. 다만 MoE 전문가를 시스템 RAM에 두는 경우의 속도는 이론 추정(±30%)입니다. 전문가를 전부 RAM에 둔다고 보고 계산한 보수적인 값이라, VRAM이 남아 일부를 GPU에 두면 더 빠를 수 있습니다. 이 조합을 Q4_K_M으로 쓸 때와 16GB 카드에서 Qwen3 30B-A3B (2507)를 쓸 때가 여기에 해당합니다. 그래서 이런 경우에 생기는 판정 차이는 결론으로 삼지 않습니다.
+MoE 모델은 따로 봐야 합니다. 한국 모델인 <HubLink model="kanana-1.5-15.7b-a3b" />를 RTX 3060 12GB에서 Q4_K_M으로 쓰면 <Num kind="needGB" model="kanana-1.5-15.7b-a3b" />가 필요해 사용 가능 메모리 <Num kind="usableGB" gpu="rtx-3060-12gb" />를 넘습니다. IQ4_XS로 낮추면 <Num kind="needGB" model="kanana-1.5-15.7b-a3b" quant="IQ4_XS" />라서 CanRun 계산으로는 그 안에 들어가지만, 여유는 크지 않습니다. 다만 MoE 전문가를 시스템 RAM에 두는 경우의 속도는 이론 추정(±30%)입니다. CanRun은 VRAM에 들어가는 만큼 전문가를 GPU에 두고 나머지만 RAM에 둔다고 보고 계산하지만, 운영체제·백엔드·RAM 구성에 따라 실제 속도 차이가 큽니다. 이 조합을 Q4_K_M으로 쓸 때와 16GB 카드에서 Qwen3 30B-A3B (2507)를 쓸 때가 여기에 해당합니다. 그래서 이런 경우에 생기는 판정 차이는 결론으로 삼지 않습니다.
 
 ## Q8_0·Q6_K로 올릴 때 드는 비용
 
@@ -119,7 +119,7 @@ dense 모델은 토큰을 하나 만들 때마다 가중치 전체를 읽습니�
 
 파일 크기는 Hugging Face 저장소에 올라온 실제 GGUF 파일의 크기이고, 단위는 10진 GB입니다. 필요 메모리는 파일, KV 캐시, 연산 버퍼(계산 중간값을 담는 작업 메모리)를 더한 것으로, 추정이 아니라 공식으로 계산한 값입니다. 품질 등급은 양자화 종류마다 정해 둔 것이고, 모델마다 잰 것이 아닙니다. 실제 손실은 모델과 작업에 따라 다릅니다.
 
-속도와 판정은 오차 범위와 신뢰 라벨을 붙인 추정치입니다. 보정된 추정의 오차 범위는 NVIDIA·AMD 그래픽카드에서 dense 모델을 GPU에만 올릴 때 ±12%입니다. 부분 오프로드, MoE, 그 밖의 하드웨어에서는 ±20%입니다. 이론 추정은 ±30%이며, MoE 전문가를 시스템 RAM에 두는 경우가 대표적입니다. 이 경우는 전문가를 전부 RAM에 둔다고 보고 계산한 보수적인 값이라, VRAM이 남아 일부를 GPU에 두면 더 빠를 수 있습니다. 이 가이드에 나온 양자화별 판정 표 세 개는 모든 행이 보정된 추정입니다.
+속도와 판정은 오차 범위와 신뢰 라벨을 붙인 추정치입니다. 보정된 추정의 오차 범위는 NVIDIA·AMD 그래픽카드에서 dense 모델을 GPU에만 올릴 때 ±12%입니다. 부분 오프로드, MoE, 그 밖의 하드웨어에서는 ±20%입니다. 이론 추정은 ±30%이며, MoE 전문가를 시스템 RAM에 두는 경우가 대표적입니다. 이 경우 CanRun은 VRAM에 들어가는 만큼 전문가를 GPU에 두고, 나머지만 RAM에 둔다고 보고 계산합니다. 이 가이드에 나온 양자화별 판정 표 세 개는 모든 행이 보정된 추정입니다.
 
 공개 벤치마크에서 실제로 잰 속도는 양자화가 정확히 같을 때만 보여 줍니다. 예를 들어 Q4_K_XL로 잰 값을 Q4_K_M의 속도로 쓰지 않습니다. 이 가이드에서 공개 벤치마크 결과가 있는 것은 <ComboLink model="gpt-oss-20b" gpu="rtx-5060-ti-16gb" />의 MXFP4 한 건입니다. llama.cpp GitHub 토론에 올라온 값으로, Ollama가 아니라 llama.cpp로 2k 컨텍스트에서 쟀습니다. 조건이 달라서 CanRun의 8k 추정 범위와 나란히 보여 줍니다. CanRun 추정으로는 쾌적하게 돌아가는 조합입니다<Expect model="gpt-oss-20b" gpu="rtx-5060-ti-16gb" verdict="S" />.
 

@@ -1,6 +1,6 @@
 /** 스키마 게이트 — CLAUDE.md 규칙 2 를 zod 가 강제하는지 확인. */
 import { describe, expect, it } from 'vitest';
-import { GpuSchema, ModelSchema } from '../src/schema';
+import { GpuSchema, ModelQuantSchema, ModelSchema } from '../src/schema';
 import { loadSeed } from './seed';
 
 const validGpu = {
@@ -76,6 +76,45 @@ describe('structural refinements', () => {
     };
     expect(ModelSchema.safeParse(model).success).toBe(false);
     expect(ModelSchema.safeParse({ ...model, activeParamsB: 3 }).success).toBe(true);
+  });
+
+  it('arch.experts/topK: integers, set together, topK < experts (10-01)', () => {
+    const model = {
+      id: 'test-moe',
+      family: 'test',
+      name: 'Test MoE',
+      hfId: 'test/test',
+      paramsB: 30,
+      activeParamsB: 3,
+      arch: { layers: 48, kvHeads: 4, headDim: 128, attnType: 'full', kvBytesPerTokenF16: 98304, experts: 128, topK: 8 },
+      maxContext: 32768,
+      license: 'Apache-2.0',
+      moe: true,
+      category: ['chat'],
+      popularity: 3,
+      releasedAt: '2026-01-01',
+      sources: ['https://example.com/model'],
+    };
+    expect(ModelSchema.safeParse(model).success).toBe(true);
+    const arch = (over: Record<string, unknown>) => ({ ...model, arch: { ...model.arch, ...over } });
+    expect(ModelSchema.safeParse(arch({ topK: undefined })).success).toBe(false);
+    expect(ModelSchema.safeParse(arch({ topK: 128 })).success).toBe(false);
+    expect(ModelSchema.safeParse(arch({ experts: 12.5 })).success).toBe(false);
+  });
+
+  it('model-quants expertGB/nonExpertGB are optional but must come together (10-01)', () => {
+    const row = {
+      modelId: 'test-moe',
+      quant: 'Q4_K_M',
+      fileGB: 18.56,
+      ggufRepo: 'org/test-GGUF',
+      fileName: 'test-Q4_K_M.gguf',
+      sources: ['https://huggingface.co/org/test-GGUF'],
+    };
+    expect(ModelQuantSchema.safeParse(row).success).toBe(true);
+    expect(ModelQuantSchema.safeParse({ ...row, expertGB: 17.55, nonExpertGB: 0.82 }).success).toBe(true);
+    expect(ModelQuantSchema.safeParse({ ...row, expertGB: 17.55 }).success).toBe(false);
+    expect(ModelQuantSchema.safeParse({ ...row, nonExpertGB: 0.82 }).success).toBe(false);
   });
 });
 

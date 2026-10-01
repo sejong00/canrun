@@ -7,7 +7,6 @@ import {
   ctxMatrix,
   hardwareConfigs,
   maxCtxAtVerdict,
-  nCpuMoeMin,
   ppRange,
   summarizeGpu,
   summarizeModel,
@@ -50,14 +49,6 @@ const modelHub = (id: string) => {
 function altsFor(gpuId: string, modelId: string, configIndex = 0): Alternative[] {
   const hub = gpuHub(gpuId);
   const combo = hub.rows.find((r) => r.model.id === modelId)!.combos[configIndex]!;
-  const display = combo.display;
-  const nMin =
-    display.fits && display.result.mode === 'cpu-moe'
-      ? nCpuMoeMin(hub.configs[configIndex]!, model(modelId), row(modelId, display.quant), {
-          ctx: 8192,
-          kvQuant: 'f16',
-        })
-      : undefined;
   return alternatives({
     catalog: seed,
     gpu: gpu(gpuId),
@@ -66,7 +57,6 @@ function altsFor(gpuId: string, modelId: string, configIndex = 0): Alternative[]
     modelHub: modelHub(modelId),
     model: model(modelId),
     combo,
-    ...(nMin !== undefined ? { nCpuMoeMin: nMin } : {}),
   });
 }
 
@@ -82,7 +72,7 @@ const label = (a: Alternative) =>
             ? a.option.gpu.id
             : 'ramGB' in a
               ? a.ramGB
-              : `${a.nCpuMoe}/${a.nCpuMoeMin}`
+              : `${a.nCpuMoe}/${a.layers}`
   }`;
 
 describe('ctxMatrix (docs/04 §4 ③) — rtx-4060 × llama-3.1-8b Q4_K_M', () => {
@@ -174,9 +164,10 @@ describe('alternatives (docs/04 §4 ⑥, D4)', () => {
 
   it('cpu-moe page carries the expert-offload setting (rtx-3060-12gb × qwen3-30b-a3b-2507)', () => {
     // 09-30 cpu-moe 보정으로 이 조합이 A — 대안이 "더 작은 모델·낮은 양자화" 에서 "더 큰 모델" 로
+    // 10-01 D56: 대안 카드의 --n-cpu-moe 는 엔진 배치 하나(앞쪽 24/48층 전문가만 RAM)
     expect(altsFor('rtx-3060-12gb', 'qwen3-30b-a3b-2507').map(label)).toEqual([
       'larger-model:qwen3.5-35b-a3b',
-      'cpu-moe:48/24',
+      'cpu-moe:24/48',
     ]);
   });
 
@@ -266,7 +257,8 @@ describe('twinGpus (D22) / titleVerdict (D14)', () => {
     const combo = (gpuId: string, modelId: string) => gpuHub(gpuId).rows.find((r) => r.model.id === modelId)!.combos[0]!;
     expect(titleVerdict(combo('rtx-4060', 'llama-3.1-8b'))).toEqual({ kind: 'baseline', verdict: 'S' });
     expect(titleVerdict(combo('rtx-4060', 'qwen3-32b'))).toEqual({ kind: 'baseline', verdict: 'B' });
-    expect(titleVerdict(combo('rtx-5060-ti-16gb', 'gpt-oss-120b'))).toEqual({ kind: 'ram', verdict: 'B', ramGB: 96 });
+    // 10-01 D56: RAM 에는 CPU 쪽 전문가만 — 96GB 가 아니라 64GB 에서 들어간다
+    expect(titleVerdict(combo('rtx-5060-ti-16gb', 'gpt-oss-120b'))).toEqual({ kind: 'ram', verdict: 'B', ramGB: 64 });
     expect(titleVerdict(combo('rtx-4060', 'llama-3.3-70b'))).toEqual({ kind: 'none', verdict: 'F' });
   });
 });

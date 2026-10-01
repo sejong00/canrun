@@ -8,7 +8,6 @@ import {
   commandPlan,
   comboPublishState,
   ctxMatrix,
-  nCpuMoeMin,
   pickConfigCombo,
   ppRange,
   twinGpus,
@@ -83,10 +82,6 @@ export function getCombo(modelId: string, gpuId: string): ComboPage | undefined 
   const qRow = catalog.modelQuants.find((r) => r.modelId === modelId && r.quant === q.quant)!;
 
   const plan = commandPlan(gpu, qConfig, model, qRow, q);
-  const nMin =
-    q.fits && q.result.mode === 'cpu-moe'
-      ? nCpuMoeMin(qConfig, model, qRow, { ctx: 8192, kvQuant: 'f16' })
-      : undefined;
 
   const page: ComboPage = {
     gpu,
@@ -114,7 +109,6 @@ export function getCombo(modelId: string, gpuId: string): ComboPage | undefined 
       modelHub,
       model,
       combo,
-      ...(nMin !== undefined ? { nCpuMoeMin: nMin } : {}),
     }),
     adjacent: adjacentCombos(catalog, catalog.publish, gpu, model),
     twins: twinGpus(gpu, catalog.gpus),

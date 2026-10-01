@@ -2,7 +2,7 @@
 
 import { CPU_MOE_RAM_EFF, EFF, MOE_TG_CAP_TOKS, PP_COEF } from './constants';
 import type { FitResult } from './fit';
-import { kvGB, nonExpertGBFor, weightsGB } from './memory';
+import { expertGBFor, kvGB, nonExpertGBFor, weightsGB } from './memory';
 import type { Hardware, KvQuant, ModelQuant } from './types';
 
 export type SpeedOptions = { ctx?: number; kvQuant?: KvQuant };
@@ -43,18 +43,38 @@ function tgCpuOnly(hw: Hardware, mq: ModelQuant, bytes: number): number {
 }
 
 /**
- * cpu-moe(§3.3, 09-30 보정): 토큰 시간 = RAM 몫 + GPU 몫(직렬).
- * - RAM 몫: **라우팅 전문가만** = 활성 슬라이스 − 비전문가(nonExpertGB, 균등 bpw — derive.ts 와 같은 가정) ÷ (CPU_MOE_RAM_EFF × RAM 대역폭)
- * - GPU 몫: 비전문가 + KV 읽기 ÷ (GPU 클래스 MoE 효율 × VRAM 대역폭)
- * 전문가를 **전부** RAM 에 둔다고 가정(보수적 — 일부를 GPU 에 남기면 더 빠르다). 상한은 full-gpu 값.
- * (이전 식은 활성 슬라이스 전체를 RAM 속도로 읽어 ~2.5× 과소 — PROGRESS §4 09-30)
+ * cpu-moe(§3.3): 토큰 시간 = RAM 몫 + GPU 몫(직렬). 10-01 개정(D56) — 전문가 일부 GPU 배치.
+ * - 전문가 읽기량 routed = expertGB × topK/experts (실측 행). 없으면 활성 슬라이스 − 비전문가(09-30 식).
+ * - CPU 에 둔 층 비율 f = cpuMoeLayers / moeLayers (fit 이 VRAM 여유로 정한 `--n-cpu-moe`). 정보가 없으면 f = 1(전부 RAM).
+ * - RAM 몫: routed × f ÷ (CPU_MOE_RAM_EFF × RAM 대역폭)
+ * - GPU 몫: (비전문가 + routed × (1 − f) + KV 읽기) ÷ (GPU 클래스 MoE 효율 × VRAM 대역폭)
+ * 상한은 full-gpu 값. (09-30 이전 식은 활성 파라미터 전체를 RAM 속도로 읽어 ~2.5× 과소 — PROGRESS §4 D55)
  */
-function tgCpuMoe(hw: Hardware, mq: ModelQuant, bytes: number): number {
-  const activeGB = weightsGB(mq) * (mq.activeParamsB! / mq.paramsB);
-  const nonExpert = Math.min(nonExpertGBFor(mq) ?? 0, activeGB);
-  const routedGB = activeGB - nonExpert;
-  const gpuGB = bytes - routedGB; // = 비전문가 + KV 읽기
-  const seconds = routedGB / (CPU_MOE_RAM_EFF * hw.ramBandwidthGBs) + gpuGB / (resolveEff(hw, true) * hw.memBandwidthGBs);
+function tgCpuMoe(
+  hw: Hardware,
+  mq: ModelQuant,
+  bytes: number,
+  kvRead: number,
+  cpuMoeLayers?: number,
+): number {
+  const nonExpertGB = nonExpertGBFor(mq) ?? 0;
+  let routed: number;
+  let nonExpert: number;
+  if (mq.activeExpertFrac !== undefined) {
+    routed = (expertGBFor(mq) ?? 0) * mq.activeExpertFrac;
+    nonExpert = nonExpertGB;
+  } else {
+    const activeGB = weightsGB(mq) * (mq.activeParamsB! / mq.paramsB);
+    nonExpert = Math.min(nonExpertGB, activeGB);
+    routed = activeGB - nonExpert;
+  }
+  const f =
+    cpuMoeLayers !== undefined && mq.moeLayers !== undefined && mq.moeLayers > 0
+      ? Math.min(1, cpuMoeLayers / mq.moeLayers)
+      : 1;
+  const ramGB = routed * f;
+  const gpuGB = nonExpert + routed * (1 - f) + kvRead;
+  const seconds = ramGB / (CPU_MOE_RAM_EFF * hw.ramBandwidthGBs) + gpuGB / (resolveEff(hw, true) * hw.memBandwidthGBs);
   return Math.min(1 / seconds, tgFullGpu(hw, mq, bytes));
 }
 
@@ -69,16 +89,17 @@ function tgPartial(hw: Hardware, mq: ModelQuant, bytes: number, gpuFrac: number)
 export function tgEstimate(
   hw: Hardware,
   mq: ModelQuant,
-  fitResult: Pick<FitResult, 'mode' | 'gpuFrac'>,
+  fitResult: Pick<FitResult, 'mode' | 'gpuFrac' | 'cpuMoeLayers'>,
   opts?: SpeedOptions,
 ): number {
   const ctx = opts?.ctx ?? DEFAULT_CTX;
   const bytes = bytesPerTokenGB(mq, ctx, opts?.kvQuant);
+  const kvRead = kvGB(mq.kvBytesPerToken, ctx, opts?.kvQuant);
   switch (fitResult.mode) {
     case 'full-gpu':
       return tgFullGpu(hw, mq, bytes);
     case 'cpu-moe':
-      return tgCpuMoe(hw, mq, bytes);
+      return tgCpuMoe(hw, mq, bytes, kvRead, fitResult.cpuMoeLayers);
     case 'partial-offload':
       return tgPartial(hw, mq, bytes, fitResult.gpuFrac ?? 0);
     case 'cpu-only':

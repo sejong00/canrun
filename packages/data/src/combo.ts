@@ -203,7 +203,8 @@ export function twinGpus<G extends GpuCore>(gpu: G, gpus: readonly G[]): G[] {
 export type Alternative =
   | { kind: 'larger-model' | 'smaller-model' | 'faster-model'; model: Model; combo: ComboAssessment }
   | { kind: 'lower-quant' | 'higher-quant'; q: QuantAssessment; desperate: boolean }
-  | { kind: 'cpu-moe'; nCpuMoe: number; nCpuMoeMin?: number }
+  /** nCpuMoe = 표시 결과의 `--n-cpu-moe` (엔진 배치), layers = 전문가 층 수 — 같으면 전문가 전부 RAM */
+  | { kind: 'cpu-moe'; nCpuMoe: number; layers: number }
   | { kind: 'ram-upgrade'; ramGB: number; quant: QuantId; verdict: Verdict; result: Result }
   | { kind: 'ram-config'; ramGB: number; combo: ComboAssessment }
   | { kind: 'chip'; gpu: Gpu; combo: ComboAssessment }
@@ -219,7 +220,6 @@ export type AlternativesInput = {
   modelHub: ModelHubData;
   model: Model;
   combo: ComboAssessment;
-  nCpuMoeMin?: number;
 };
 
 const A_RANK = verdictRank('A');
@@ -282,8 +282,8 @@ export function alternatives(input: AlternativesInput): Alternative[] {
   if (display.fits && display.result.mode === 'cpu-moe') {
     out.push({
       kind: 'cpu-moe',
-      nCpuMoe: model.arch.layers,
-      ...(input.nCpuMoeMin !== undefined ? { nCpuMoeMin: input.nCpuMoeMin } : {}),
+      nCpuMoe: display.result.cpuMoeLayers ?? model.arch.layers,
+      layers: model.arch.layers,
     });
   } else if (
     combo.ramHint &&
