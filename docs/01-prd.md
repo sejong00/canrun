@@ -119,7 +119,7 @@
 
 ## 9. 엣지 케이스 (엔진·UI 공통 처리 목록)
 
-- 멀티 GPU(2×3090 등): VRAM 합산은 되지만 대역폭은 합산 안 됨 — P1은 "멀티 GPU는 베타: VRAM 합산, 속도는 단일 GPU 기준 ~0.68×" 명시(`02-engine-spec.md` §6).
+- 멀티 GPU(2×3090 등): VRAM 합산은 되지만 대역폭은 합산 안 됨 — **10-01(D58) 계산기에 "GPU 수"(같은 GPU 2~4장, 베타·이론 추정)**: VRAM 합산·GPU 마다 연산 버퍼, 속도는 단일 카드 식 그대로(공개 실측 10점 전부 보수 쪽), `-sm tensor` 는 안내만(`02-engine-spec.md` §6). 허브·콤보는 1장 기준.
 - 통합 메모리(Mac/Strix Halo): "VRAM" 대신 사용 가능 메모리 = RAM × 기본 0.7 (macOS wired limit 안내 툴팁).
 - 노트북 GPU: 데스크톱과 별개 SKU로 취급(예: "RTX 4090 Laptop"은 16GB·576GB/s — 혼동 방지 경고 배지).
 - iGPU/구형 GPU(FP16 미지원 GTX 10 등): ~~CPU 추론 권장 판정으로 폴백~~ → P1-1: GPU 판정 유지 + theoretical(±30%) 라벨 + "FP16 성능 낮음 — 프롬프트 처리 매우 느림" 주의 배지(`fp16Tflops` < 1). tg는 대역폭 지배라 Pascal에서도 GPU가 CPU보다 빠르다 — CPU 폴백은 사용자를 더 느린 경로로 보낸다(PROGRESS §4 09-29).

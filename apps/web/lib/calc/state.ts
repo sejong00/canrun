@@ -61,6 +61,8 @@ export type CalcState = {
   os?: Os;
   /** dGPU 가 화면 출력 담당 (OS 예약 VRAM) */
   display: boolean;
+  /** 같은 dGPU 장수 2~4 (1 이면 생략) — 멀티 GPU 베타(docs/02 §6, D58): VRAM 합산·층 나눠 올리기, 이론 추정 */
+  gpus?: number;
   ctx: number;
   kv: KvQuant;
   cat: Category[];
@@ -77,6 +79,8 @@ export type CalcState = {
 export const HF_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,95}\/[A-Za-z0-9][A-Za-z0-9._-]{0,95}$/;
 
 export const CTX_OPTIONS: readonly number[] = HUB_POLICY.matrixCtx;
+/** 같은 dGPU 장수 선택지 */
+export const GPU_COUNT_OPTIONS: readonly number[] = [1, 2, 3, 4];
 export const KV_OPTIONS: readonly KvQuant[] = ['f16', 'q8_0', 'q4_0'];
 /** dGPU 시스템 RAM 선택지 (GB) */
 export const DGPU_RAM_OPTIONS: readonly number[] = [8, 16, 24, 32, 48, 64, 96, 128, 192, 256];
@@ -209,5 +213,12 @@ export function normalize(state: CalcState, catalog: CatalogLite): CalcState {
   next.size = SIZE_BUCKETS.filter((s) => state.size.includes(s));
   if (next.focus !== undefined && !catalog.models.some((m) => m.id === next.focus)) next.focus = undefined;
   if (next.hf !== undefined && !HF_ID_RE.test(next.hf)) next.hf = undefined;
+  // 멀티 GPU 는 dGPU(카탈로그·커스텀) 에만 — 통합·CPU 로 바뀌면 지운다. 1장은 기본값이라 생략
+  const dgpuChoice =
+    next.hardware.kind === 'none' ||
+    next.hardware.kind === 'unresolved' ||
+    (next.hardware.kind === 'catalog' && findGpu(catalog, next.hardware.gpuId)?.kind === 'dgpu') ||
+    (next.hardware.kind === 'custom' && next.hardware.custom.kind === 'dgpu');
+  if (next.gpus !== undefined && (!dgpuChoice || next.gpus === 1 || !GPU_COUNT_OPTIONS.includes(next.gpus))) next.gpus = undefined;
   return next;
 }

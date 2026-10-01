@@ -95,7 +95,8 @@ export function memoryText(
 ): string {
   const m = q.memory;
   if (q.fReason === 'no-fit') return tMemory('need', { need: formatGB(locale, m.needGB) });
-  const total = gpu.kind === 'dgpu' ? (gpu.vramGB ?? 0) : m.gpuUsableGB;
+  // dGPU 분모는 엔진의 물리 한도 — 멀티 GPU(§6, D58)면 VRAM 합. 1장이면 vramGB 와 같다
+  const total = gpu.kind === 'dgpu' ? q.result.vram.limit || (gpu.vramGB ?? 0) : m.gpuUsableGB;
   switch (q.result.mode) {
     case 'full-gpu':
       return tMemory('gpu', { used: formatGB(locale, m.gpuGB), total: formatGB(locale, total) });

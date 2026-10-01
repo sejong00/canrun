@@ -116,6 +116,8 @@ export type DgpuOptions = {
   os?: Os;
   /** 이 GPU 가 화면 출력을 담당하는가 (OS 예약 VRAM, docs/02 §2.3) */
   isDisplayGpu?: boolean;
+  /** 같은 GPU 장수 — 계산기 멀티 GPU(docs/02 §6 베타, D58). 허브·콤보는 1장 */
+  gpuCount?: number;
 };
 
 /** dGPU + 지정 시스템 RAM 의 엔진 하드웨어 (RAM 힌트 계산에도 쓴다). */
@@ -135,6 +137,7 @@ export function dgpuHardware(
     ramBandwidthGBs,
     effClass: gpu.effClass,
     isDisplayGpu: opts.isDisplayGpu ?? true,
+    ...(opts.gpuCount !== undefined && opts.gpuCount > 1 ? { gpuCount: opts.gpuCount } : {}),
   };
 }
 
@@ -425,6 +428,8 @@ export function assessQuant(input: AssessQuantInput): QuantAssessment {
   const joinable =
     fitResult.fits &&
     (config.hw.kind !== 'dgpu' || fitResult.mode === 'full-gpu') &&
+    // 실측은 1장 기준 — 멀티 GPU(D58) 구성에는 붙이지 않는다
+    (config.hw.gpuCount ?? 1) === 1 &&
     ctx === HUB_POLICY.referenceCtx &&
     kvQuant === 'f16';
   const points = joinable ? measuredPoints(input.benchmarks, gpu.id, model.id, row.quant) : [];
@@ -631,6 +636,7 @@ function ramHintFor(
       hw: dgpuHardware(gpu, ramGB, config.hw.ramBandwidthGBs, {
         os: config.hw.os,
         isDisplayGpu: config.hw.isDisplayGpu,
+        ...(config.hw.gpuCount !== undefined ? { gpuCount: config.hw.gpuCount } : {}),
       }),
     };
     const assessed = assessQuant({

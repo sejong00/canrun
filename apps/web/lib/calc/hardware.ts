@@ -20,8 +20,10 @@ import {
 export type ResolvedHardware = {
   gpu: GpuCore;
   config: HwConfig;
-  /** 커스텀 하드웨어 — 추정은 전부 이론(±30%) */
+  /** 커스텀 하드웨어·멀티 GPU — 추정은 전부 이론(±30%) */
   theoretical: boolean;
+  /** 같은 dGPU 장수 (1 이상) */
+  gpuCount: number;
   /** 실제 평가에 쓰인 값 (기본값 채움) */
   ramGB: number;
   os: HwConfig['hw']['os'];
@@ -78,13 +80,15 @@ export function resolveHardware(state: CalcState, catalog: CatalogLite): Resolve
     const ramGB = hw.custom.kind === 'unified' ? hw.custom.memGB! : (state.ramGB ?? HUB_POLICY.dgpuRamGB);
     const gpu = customGpu(hw.custom, ramGB);
     const os = osLocked(hw, catalog) ?? state.os ?? defaultOs(hw, catalog);
+    const gpuCount = hw.custom.kind === 'dgpu' ? (state.gpus ?? 1) : 1;
     const [config] = hardwareConfigs(gpu, catalog.gpus, {
       ramGB,
       os,
       isDisplayGpu: state.display,
       ramBandwidthGBs: ddrBandwidth(catalog, state.ddr),
+      ...(gpuCount > 1 ? { gpuCount } : {}),
     });
-    return config ? { gpu, config, theoretical: true, ramGB, os } : undefined;
+    return config ? { gpu, config, theoretical: true, ramGB, os, gpuCount } : undefined;
   }
 
   let gpu = findGpu(catalog, hw.gpuId);
@@ -96,19 +100,23 @@ export function resolveHardware(state: CalcState, catalog: CatalogLite): Resolve
     gpu.kind === 'dgpu'
       ? (state.ramGB ?? defaultRam(hw, catalog))
       : snapRam(state.ramGB ?? defaultRam(hw, catalog), ramOptions(hw, catalog));
+  // 멀티 GPU(D58)는 보정 표본 밖 — 이론 추정으로 고정
+  const gpuCount = gpu.kind === 'dgpu' ? (state.gpus ?? 1) : 1;
   const [config] = hardwareConfigs(gpu, catalog.gpus, {
     ramGB,
     os,
     isDisplayGpu: state.display,
     ramBandwidthGBs: ddrBandwidth(catalog, state.ddr),
+    ...(gpuCount > 1 ? { gpuCount } : {}),
   });
-  return config ? { gpu, config, theoretical: false, ramGB, os } : undefined;
+  return config ? { gpu, config, theoretical: gpuCount > 1, ramGB, os, gpuCount } : undefined;
 }
 
 /** 허브 가정(D2)과 다른 항목 — "상세 (허브 가정 기준)" 라벨 조건 (D33) */
 export function differsFromHubAssumption(state: CalcState, resolved: ResolvedHardware): boolean {
   if (resolved.gpu.kind !== 'dgpu') return false;
   return (
+    resolved.gpuCount > 1 ||
     resolved.ramGB !== HUB_POLICY.dgpuRamGB ||
     resolved.os !== HUB_POLICY.dgpuOs ||
     !state.display ||

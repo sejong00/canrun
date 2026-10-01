@@ -129,6 +129,15 @@ export const CPU_MOE_RAM_EFF = 0.5;
 // source: docs/02 §3.3 (policy)
 export const CPU_MOE_GPU_LAYER_MARGIN = 1;
 
+/**
+ * 멀티 GPU(§6, 베타) tg 계수 — 같은 GPU N 장에 층을 나눠 올리면(-sm layer, 기본) 토큰마다 GPU 를 차례로 지나므로 시간은
+ * 단일 카드에 전부 올린 것과 같다(대역폭 비합산). 공개 실측(10-01 수집)에서 70B급 2~4장의 실효 대역폭은 카드 1장 피크의
+ * 75~90% 로 단일 카드 클래스 계수(0.70)보다 높고, 장수를 늘린 손실은 CUDA 최근 빌드 0~3% — 추가 감속 없음(1.0)이 공개 10점 전부
+ * 보수 쪽(−22~0%)이다. 회귀는 test/fixtures.ts MULTI_GPU_CASES. (docs/02 §6 옛 표기 "×0.68" 은 근거 해석 오류 — 10-01 정정)
+ */
+// source: https://github.com/XiongjieDai/GPU-Benchmarks-on-LLM-Inference (2×/4× 3090·4090·A6000·A40·RTX 4000 Ada, Llama 3 70B Q4_K_M) · https://github.com/ggml-org/llama.cpp/pull/19378 (4×4090 70B layer 21.25) · https://github.com/ggml-org/llama.cpp/discussions/15013#discussioncomment-14472498 (2×V100 Qwen2 72B Q4_0) · https://github.com/ggml-org/llama.cpp/discussions/15021#discussioncomment-18122692 (2×7900 XTX ROCm Gemma 4 31B Q8_0) · https://github.com/ggml-org/llama.cpp/discussions/20252#discussioncomment-16080503 (A40 1→3장 동일 속도)
+export const MULTI_GPU_TG_FACTOR = 1;
+
 /** 고속 소형 MoE 대역폭 모델 상한 이탈 캡 (§9: 5090에서 30B-A3B 오버헤드 지배, 실측 141.6 tok/s) */
 // source: https://www.hardware-corner.net/gpu-ranking-local-llm/ (RTX 5090 Qwen3-30B-A3B) — 캡 값 자체는 docs/02 §9 (policy)
 export const MOE_TG_CAP_TOKS = 235;

@@ -1,6 +1,6 @@
 /**
  * 계산기 공유 URL 코덱 (P1-3 D31) — 기본값 생략·키 순서 고정·미지 키 삭제. 순수 함수.
- *   gpu=<id|이름|별칭|custom> [kind class vram mem bw fp16] ram ddr os display ctx kv cat min size sort m hf
+ *   gpu=<id|이름|별칭|custom> [kind class vram mem bw fp16] gpus ram ddr os display ctx kv cat min size sort m hf
  * 홈 GET 폼은 `gpu=<자유 텍스트>` 만 보내고 여기서 별칭·fuzzy 로 해석한다 (해석 실패 = unresolved, 폼에 텍스트 유지).
  */
 import type { CatalogLite } from '@canrun/data/client';
@@ -63,6 +63,7 @@ export function parseCalcQuery(search: string, catalog: CatalogLite, names: GpuN
     const match = matchGpu(gpuRaw, catalog.gpus, { names });
     state.hardware = match.kind === 'exact' ? { kind: 'catalog', gpuId: match.id } : { kind: 'unresolved', text: gpuRaw };
   }
+  state.gpus = num(q.get('gpus'), 1, 8);
   state.ramGB = num(q.get('ram'), 1, 2048);
   state.ddr = oneOf(q.get('ddr'), DDR_KINDS) ?? DEFAULT_DDR;
   state.os = oneOf(q.get('os'), OS_VALUES);
@@ -95,6 +96,7 @@ export function serializeCalcQuery(state: CalcState, catalog: CatalogLite): stri
     if (hw.custom.bandwidthGBs !== undefined) q.set('bw', String(hw.custom.bandwidthGBs));
     if (hw.custom.fp16Tflops !== undefined) q.set('fp16', String(hw.custom.fp16Tflops));
   }
+  if (s.gpus !== undefined) q.set('gpus', String(s.gpus));
   if (s.ramGB !== undefined) q.set('ram', String(s.ramGB));
   if (s.ddr !== DEFAULT_DDR) q.set('ddr', s.ddr);
   if (s.os !== undefined) q.set('os', s.os);

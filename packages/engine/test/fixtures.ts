@@ -362,3 +362,28 @@ export const CPU_MOE_CASES: readonly CpuMoeCase[] = [
   c('3060 12GB + DDR4-3200, Qwen3.6-35B-A3B MTP-IQ4_XS -ncmoe 20', nv(360, DDR4_3200), Q36_MTP_IQ4, 20, 41.7, S1T7L56A),
   c('3060 12GB + DDR4-3200, Qwen3.6-35B-A3B MTP-IQ4_XS -ncmoe 22', nv(360, DDR4_3200), Q36_MTP_IQ4, 22, 41.6, S1T7L56A),
 ];
+
+// ---------- 6) 멀티 GPU (§6 베타, 10-01 D58) — 같은 GPU N 장, 층 나눠 올리기(-sm layer), 모델 전부 VRAM ----------
+export type MultiGpuCase = { label: string; hw: Hardware; mq: ModelQuant; ctx: number; measuredTg: number; source: string };
+
+const multi = (count: number, vramGB: number, bw: number, cls: EffClass): Hardware => ({ ...dgpu(vramGB, bw, cls), gpuCount: count });
+// Llama 3 70B Q4_K_M — 42.52GB(bartowski), 80층 × kv 8 × 128 → 320 KiB/tok
+const L3_70B_Q4 = dense(42.52, 320, 70.6);
+// Qwen2 72B Q4_0 — 38.53 GiB = 41.37GB, 80층 × kv 8 × 128 → 320 KiB/tok
+const Q2_72B_Q40 = dense(41.37, 320, 72.7);
+// Gemma 4 31B Q8_0 — 30.38 GiB = 32.62GB, swa (전역 10/60층 × kv 4 × 512) → 80 KiB/tok (카탈로그 gemma-4-31b)
+const G4_31B_Q8 = { ...dense(32.62, 80, 30.7), quant: 'Q8_0' as const, attnType: 'swa' as const };
+const XD = 'https://github.com/XiongjieDai/GPU-Benchmarks-on-LLM-Inference';
+
+export const MULTI_GPU_CASES: readonly MultiGpuCase[] = [
+  { label: '2×3090 Llama 3 70B Q4_K_M tg512', hw: multi(2, 24, 936, 'nvidia'), mq: L3_70B_Q4, ctx: 512, measuredTg: 16.57, source: XD },
+  { label: '4×3090 Llama 3 70B Q4_K_M tg512', hw: multi(4, 24, 936, 'nvidia'), mq: L3_70B_Q4, ctx: 512, measuredTg: 17.07, source: XD },
+  { label: '2×4090 Llama 3 70B Q4_K_M tg512', hw: multi(2, 24, 1008, 'nvidia'), mq: L3_70B_Q4, ctx: 512, measuredTg: 19.22, source: XD },
+  { label: '4×4090 Llama 3 70B Q4_K_M tg512', hw: multi(4, 24, 1008, 'nvidia'), mq: L3_70B_Q4, ctx: 512, measuredTg: 19.8, source: XD },
+  { label: '4×4090 Llama 70B Q4_K_M tg128 (2026, -sm layer)', hw: multi(4, 24, 1008, 'nvidia'), mq: L3_70B_Q4, ctx: 128, measuredTg: 21.25, source: 'https://github.com/ggml-org/llama.cpp/pull/19378' },
+  { label: '4×A6000 Llama 3 70B Q4_K_M tg512', hw: multi(4, 48, 768, 'nvidia'), mq: L3_70B_Q4, ctx: 512, measuredTg: 14.44, source: XD },
+  { label: '4×A40 Llama 3 70B Q4_K_M tg512', hw: multi(4, 48, 696, 'nvidia'), mq: L3_70B_Q4, ctx: 512, measuredTg: 11.99, source: XD },
+  { label: '4×RTX 4000 Ada Llama 3 70B Q4_K_M tg512', hw: multi(4, 20, 360, 'nvidia'), mq: L3_70B_Q4, ctx: 512, measuredTg: 7.36, source: XD },
+  { label: '2×V100 32GB Qwen2 72B Q4_0 tg128', hw: multi(2, 32, 900, 'nvidia'), mq: Q2_72B_Q40, ctx: 128, measuredTg: 17.22, source: 'https://github.com/ggml-org/llama.cpp/discussions/15013#discussioncomment-14472498' },
+  { label: '2×7900 XTX ROCm Gemma 4 31B Q8_0 tg128', hw: multi(2, 24, 960, 'amd'), mq: G4_31B_Q8, ctx: 128, measuredTg: 22.97, source: 'https://github.com/ggml-org/llama.cpp/discussions/15021#discussioncomment-18122692' },
+];

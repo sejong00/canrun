@@ -53,6 +53,11 @@ export type Hardware = {
   effOverride?: number;
   /** OS 예약 차감 여부 (디스플레이 출력 담당 GPU) */
   isDisplayGpu?: boolean;
+  /**
+   * dgpu 전용: 같은 GPU 장수 (기본 1, §6 베타). VRAM 은 합산, 연산 버퍼는 GPU 마다, OS 예약은 화면 출력 GPU 1장분.
+   * 속도는 층 나눠 올리기(llama.cpp 기본 -sm layer) — 토큰마다 GPU 를 차례로 지나므로 대역폭은 합산되지 않는다
+   */
+  gpuCount?: number;
 };
 
 export type ModelQuant = {

@@ -165,7 +165,10 @@ export function CalculatorIsland({
         </p>
       )}
       {results && results.hardware.theoretical && (
-        <p className="rounded-lg border border-verdict-b-fg/40 bg-verdict-b-bg p-3 text-sm text-verdict-b-fg">{t.calc('customNotice')}</p>
+        <p className="rounded-lg border border-verdict-b-fg/40 bg-verdict-b-bg p-3 text-sm text-verdict-b-fg">
+          {state.hardware.kind === 'custom' ? t.calc('customNotice') : t.calc('multiGpuNotice', { n: results.hardware.gpuCount })}
+          {state.hardware.kind === 'custom' && results.hardware.gpuCount > 1 ? ` ${t.calc('multiGpuNotice', { n: results.hardware.gpuCount })}` : ''}
+        </p>
       )}
       {hydrated && results && (
         <ShareButton t={t} url={shareUrl} shareText={shareTextFor(t, locale, state, results.hardware)} />
@@ -209,7 +212,8 @@ function shareTextFor(
       mem: formatMemGB(locale, c.kind === 'dgpu' ? (c.vramGB ?? 0) : (c.memGB ?? 0)),
     });
   }
-  return t.share('text', { gpu: gpuName(t.names, hw.gpu) });
+  const name = gpuName(t.names, hw.gpu);
+  return t.share('text', { gpu: hw.gpuCount > 1 ? t.calc('gpuTimes', { gpu: name, n: hw.gpuCount }) : name });
 }
 
 function assumptionText(
@@ -242,7 +246,7 @@ function assumptionText(
   if (gpu.kind === 'dgpu') {
     return t.calc('assumeDgpu', {
       ...common,
-      gpu: name,
+      gpu: hw.gpuCount > 1 ? t.calc('gpuTimes', { gpu: name, n: hw.gpuCount }) : name,
       vram: formatInt(locale, gpu.vramGB ?? 0),
       ddr: t.calc(state.ddr),
       display: config.hw.isDisplayGpu ? t.calc('assumeDisplay') : '',

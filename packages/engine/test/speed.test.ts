@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { MOE_TG_CAP_TOKS } from '../src/constants';
 import { bytesPerTokenGB, ppEstimate, resolveEff, tgEstimate } from '../src/speed';
 import type { Hardware } from '../src/types';
-import { CPU_MOE_RAM_EFF } from '../src/constants';
+import { CPU_MOE_RAM_EFF, MULTI_GPU_TG_FACTOR } from '../src/constants';
 import { GPT_OSS_20B, QWEN3_8B_Q4, QWEN35_35B_A3B_Q4, QWEN36_35B_A3B_Q4_SPLIT, RTX_3060_12GB, RTX_4090 } from './fixtures';
 
 describe('resolveEff (§3.2)', () => {
@@ -132,5 +132,15 @@ describe('ppEstimate (§3.5)', () => {
   it('undefined when Tflops missing or class unverified', () => {
     expect(ppEstimate({ effClass: 'nvidia' })).toBeUndefined();
     expect(ppEstimate({ effClass: 'cpu', fp16Tflops: 1 })).toBeUndefined();
+  });
+});
+
+describe('§6 multi-GPU speed (beta)', () => {
+  it('layer split: same bandwidth model as one big card, times MULTI_GPU_TG_FACTOR', () => {
+    const one: Hardware = { ...RTX_4090, gpuCount: 1 };
+    const two: Hardware = { ...RTX_4090, gpuCount: 2 };
+    const a = tgEstimate(one, QWEN3_8B_Q4, { mode: 'full-gpu' }, { ctx: 8192 });
+    const b = tgEstimate(two, QWEN3_8B_Q4, { mode: 'full-gpu' }, { ctx: 8192 });
+    expect(b).toBeCloseTo(a * MULTI_GPU_TG_FACTOR, 6);
   });
 });

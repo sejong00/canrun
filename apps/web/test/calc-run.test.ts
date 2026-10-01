@@ -219,3 +219,18 @@ describe('assembleResults — pinned extra model (HF, D57)', () => {
     expect(run.pinned?.combo.baseline.result.verdict).toBe(twin.combo.baseline.estimate.verdict);
   });
 });
+
+describe('assembleResults — multi-GPU (D58, beta)', () => {
+  it('2× RTX 3090: Llama 3.3 70B Q4 runs fully on the GPUs, every estimate theoretical, combo link labelled', () => {
+    const one = assembleResults(catalog, withGpu('rtx-3090', { ramGB: 64 }))!;
+    const two = assembleResults(catalog, withGpu('rtx-3090', { ramGB: 64, gpus: 2 }))!;
+    expect(two.hardware.gpuCount).toBe(2);
+    expect(two.hardware.theoretical).toBe(true);
+    const card = (r: typeof one) => r.all.find((c) => c.model.id === 'llama-3.3-70b')!;
+    expect(card(one).combo.baseline.result.mode).not.toBe('full-gpu');
+    expect(card(two).combo.baseline.result.mode).toBe('full-gpu');
+    expect(card(two).combo.baseline.result.vram.limit).toBe(48);
+    expect(two.all.every((c) => c.combo.display.result.confidence === 'theoretical')).toBe(true);
+    expect(differsFromHubAssumption(withGpu('rtx-3090', { gpus: 2 }), two.hardware)).toBe(true);
+  });
+});

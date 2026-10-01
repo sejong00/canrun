@@ -146,3 +146,15 @@ describe('hf= (카탈로그 밖 모델, D57)', () => {
     expect(normalize({ ...defaultState(), hf: 'x/y' }, catalog).hf).toBe('x/y');
   });
 });
+
+describe('gpus= (멀티 GPU, D58)', () => {
+  it('round-trips 2–4 identical dGPUs right after the hardware keys; drops 1, out-of-range and non-dGPU', () => {
+    const s: CalcState = { ...defaultState(), hardware: { kind: 'catalog', gpuId: 'rtx-3090' }, gpus: 2, ramGB: 64 };
+    expect(serializeCalcQuery(s, catalog)).toBe('?gpu=rtx-3090&gpus=2&ram=64');
+    expect(roundTrip(s).gpus).toBe(2);
+    expect(parseCalcQuery('?gpu=rtx-3090&gpus=1', catalog).gpus).toBeUndefined();
+    expect(parseCalcQuery('?gpu=rtx-3090&gpus=7', catalog).gpus).toBeUndefined();
+    expect(parseCalcQuery('?gpu=apple-m4&gpus=2', catalog).gpus).toBeUndefined();
+    expect(parseCalcQuery('?gpu=custom&kind=dgpu&vram=24&bw=936&gpus=3', catalog).gpus).toBe(3);
+  });
+});

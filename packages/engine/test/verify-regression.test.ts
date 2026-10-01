@@ -10,11 +10,13 @@
  *  5) cpu-moe(전문가 RAM) 3점: 각 ±20% 이내 + MAE < 12% (09-30 보정 — 이전 식은 ~2.5× 과소)
  */
 import { describe, expect, it } from 'vitest';
+import { fit } from '../src/fit';
 import { evaluate } from '../src/index';
 import { kvBytesPerToken, kvGB, weightsGBFromBpw } from '../src/memory';
 import { tgEstimate } from '../src/speed';
 import {
   CPU_MOE_CASES,
+  MULTI_GPU_CASES,
   GPT_OSS_20B,
   KV_CASES,
   LLAMA31_8B_Q4,
@@ -133,5 +135,24 @@ describe('5) cpu-moe: 전문가 일부 GPU 배치까지 공개 실측 대조 (09
 
   it('has enough points to mean something', () => {
     expect(CPU_MOE_CASES.length).toBeGreaterThanOrEqual(35);
+  });
+});
+
+describe('6) multi-GPU layer split (§6 beta, D58): 공개 실측 10점', () => {
+  const errors = MULTI_GPU_CASES.map(({ hw, mq, ctx, measuredTg }) => {
+    const r = fit(hw, mq, { ctx });
+    expect(r.mode).toBe('full-gpu');
+    return (tgEstimate(hw, mq, r, { ctx }) - measuredTg) / measuredTg;
+  });
+
+  it('every point within ±30% (theoretical band) and never more than 5% optimistic', () => {
+    for (const e of errors) {
+      expect(Math.abs(e)).toBeLessThanOrEqual(0.3);
+      expect(e).toBeLessThanOrEqual(0.05);
+    }
+  });
+
+  it('MAE < 15%', () => {
+    expect(errors.reduce((a, b) => a + Math.abs(b), 0) / errors.length).toBeLessThan(0.15);
   });
 });

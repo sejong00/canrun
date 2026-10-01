@@ -127,7 +127,7 @@
     "measuredBadge": "{n, plural, one {# measured run} other {# measured runs}}",
     "measuredElsewhere": "{n, plural, one {# measured run} other {# measured runs}} used for the 8k / f16 verdict — see details",
     "cardDetails": "Details",
-    "cardDetailsHub": "Details (hub assumptions: 32 GB RAM, Windows, display GPU, DDR5-5600)",
+    "cardDetailsHub": "Details (hub assumptions: 1 GPU, 32 GB RAM, Windows, display GPU, DDR5-5600)",
     "cardDetailsHubOther": "Details (hub page uses {ram} GB, {os})",
     "cardHowToRun": "How to run",
     "cardModelHub": "Model page",
@@ -166,7 +166,11 @@
     "hfCommand": "llama.cpp command",
     "hfInCatalog": "{model} is already in the list — its card is highlighted in the results.",
     "hfErrorNoBase": "This GGUF repository doesn't name its original model, so we can't read its configuration. Try the original model's link instead.",
-    "hfErrorNoBaseQuant": "This GGUF repository has no Q4_K_M file, which we use as the baseline. Try the original model's link instead."
+    "hfErrorNoBaseQuant": "This GGUF repository has no Q4_K_M file, which we use as the baseline. Try the original model's link instead.",
+    "gpuCountLabel": "Number of GPUs",
+    "gpuCountOption": "{n, plural, one {# GPU} other {# GPUs}}",
+    "gpuTimes": "{n}× {gpu}",
+    "multiGpuNotice": "Multiple GPUs are a beta: we add up the VRAM of {n} identical cards and split the layers across them, as llama.cpp does by default. Memory bandwidth does not add up, so speed stays close to one card. Estimates are theoretical (±30%). Recent llama.cpp builds (April 2026 and later) can be faster with -sm tensor."
   },
   "Guides": {
     "indexMetaTitle": "Local LLM guides: VRAM, quantization, context length and Macs",

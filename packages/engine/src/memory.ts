@@ -58,11 +58,17 @@ export function osReserveGB(hw: Pick<Hardware, 'kind' | 'os' | 'isDisplayGpu'>):
   return OS_RESERVE_GB.headless;
 }
 
+/** dGPU 장수 (§6) — 정수 1 이상, dGPU 가 아니면 1 */
+export function gpuCountOf(hw: Pick<Hardware, 'kind' | 'gpuCount'>): number {
+  if (hw.kind !== 'dgpu' || hw.gpuCount === undefined) return 1;
+  return Math.max(1, Math.floor(hw.gpuCount));
+}
+
 /** 모드별 사용 가능 메모리 GB (§2.3). */
 export function usableGB(hw: Hardware): number {
   switch (hw.kind) {
     case 'dgpu':
-      return (hw.vramGB ?? 0) - osReserveGB(hw);
+      return (hw.vramGB ?? 0) * gpuCountOf(hw) - osReserveGB(hw);
     case 'unified':
       return hw.ramGB * UNIFIED_USABLE_FRACTION;
     case 'cpu':

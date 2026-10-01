@@ -11,6 +11,7 @@ import { laptopSibling, matchGpu, gpuTokens, rankGpus, variantStem, type DetectR
 import {
   CTX_OPTIONS,
   DDR_KINDS,
+  GPU_COUNT_OPTIONS,
   KV_OPTIONS,
   defaultOs,
   defaultRam,
@@ -387,6 +388,32 @@ export function HardwareForm({ locale, catalog, names, t, state, dispatch, hydra
                 {(ramList.length > 0 ? ramList : [ramValue]).map((gb) => (
                   <option key={gb} value={gb}>
                     {t.gpuHub('ramOption', { ram: formatInt(locale, gb) })}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* 같은 dGPU 여러 장 (D58, 베타) — VRAM 합산·층 나눠 올리기 */}
+          {isDgpu && (
+            <div className="flex flex-col gap-1">
+              <label htmlFor={`${id}-gpus`} className="text-sm font-medium">
+                {t.calc('gpuCountLabel')}
+              </label>
+              <select
+                id={`${id}-gpus`}
+                name="gpus"
+                className={SELECT}
+                value={state.gpus ?? 1}
+                disabled={!hydrated}
+                onChange={(e) => {
+                  const n = Number(e.currentTarget.value);
+                  dispatch({ type: 'gpus', gpus: n > 1 ? n : undefined });
+                }}
+              >
+                {GPU_COUNT_OPTIONS.map((n) => (
+                  <option key={n} value={n}>
+                    {t.calc('gpuCountOption', { n })}
                   </option>
                 ))}
               </select>

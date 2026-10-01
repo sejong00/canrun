@@ -1,8 +1,8 @@
 /** 속도 모델 — docs/02-engine-spec.md §3. */
 
-import { CPU_MOE_RAM_EFF, EFF, MOE_TG_CAP_TOKS, PP_COEF } from './constants';
+import { CPU_MOE_RAM_EFF, EFF, MOE_TG_CAP_TOKS, MULTI_GPU_TG_FACTOR, PP_COEF } from './constants';
 import type { FitResult } from './fit';
-import { expertGBFor, kvGB, nonExpertGBFor, weightsGB } from './memory';
+import { expertGBFor, gpuCountOf, kvGB, nonExpertGBFor, weightsGB } from './memory';
 import type { Hardware, KvQuant, ModelQuant } from './types';
 
 export type SpeedOptions = { ctx?: number; kvQuant?: KvQuant };
@@ -23,6 +23,11 @@ export function resolveEff(
   return moe ? (cls.moe ?? cls.dense) : cls.dense;
 }
 
+/** GPU 쪽 효율 — 멀티 GPU(§6)는 층 나눠 올리기의 GPU 간 전달·동기화 몫만큼 낮춘다 */
+function gpuEff(hw: Hardware, moe: boolean): number {
+  return resolveEff(hw, moe) * (gpuCountOf(hw) > 1 ? MULTI_GPU_TG_FACTOR : 1);
+}
+
 /** 토큰당 읽기 바이트 GB: weightsRead(MoE 는 active 비율 스케일) + kvRead(ctx) (§3.1). */
 export function bytesPerTokenGB(mq: ModelQuant, ctx: number, kvQuant?: KvQuant): number {
   const w = weightsGB(mq);
@@ -32,7 +37,7 @@ export function bytesPerTokenGB(mq: ModelQuant, ctx: number, kvQuant?: KvQuant):
 
 /** full-gpu(§3.1) — MoE 는 §9 상한 캡. */
 function tgFullGpu(hw: Hardware, mq: ModelQuant, bytes: number): number {
-  const tg = (resolveEff(hw, isMoe(mq)) * hw.memBandwidthGBs) / bytes;
+  const tg = (gpuEff(hw, isMoe(mq)) * hw.memBandwidthGBs) / bytes;
   return isMoe(mq) ? Math.min(tg, MOE_TG_CAP_TOKS) : tg;
 }
 
@@ -74,7 +79,7 @@ function tgCpuMoe(
       : 1;
   const ramGB = routed * f;
   const gpuGB = nonExpert + routed * (1 - f) + kvRead;
-  const seconds = ramGB / (CPU_MOE_RAM_EFF * hw.ramBandwidthGBs) + gpuGB / (resolveEff(hw, true) * hw.memBandwidthGBs);
+  const seconds = ramGB / (CPU_MOE_RAM_EFF * hw.ramBandwidthGBs) + gpuGB / (gpuEff(hw, true) * hw.memBandwidthGBs);
   return Math.min(1 / seconds, tgFullGpu(hw, mq, bytes));
 }
 

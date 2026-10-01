@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { CPU_MOE_GPU_LAYER_MARGIN } from '../src/constants';
 import { fit } from '../src/fit';
-import { computeBufferGB, kvGB, usableGB, usableRamGB } from '../src/memory';
+import { computeBufferGB, kvGB, osReserveGB, usableGB, usableRamGB } from '../src/memory';
 import type { Hardware, ModelQuant } from '../src/types';
 import {
   LLAMA31_8B_Q4,
@@ -13,6 +13,7 @@ import {
   QWEN36_35B_A3B_Q4_SPLIT,
   RTX_3060_12GB,
   RTX_4060_8GB,
+  RTX_4090,
 } from './fixtures';
 
 describe('§2.4 mode ordering', () => {
@@ -160,5 +161,25 @@ describe('§2.4-5 bestQuant search (fail → lower quant loop down to IQ2_M)', (
     const r = fit(tiny, { ...LLAMA33_70B_Q4, quant: 'Q4_K_M' }); // 70B: IQ2_M ≈25.9GB > 모든 경로
     expect(r.fits).toBe(false);
     expect(r.bestQuant).toBeUndefined();
+  });
+});
+
+describe('§6 multi-GPU (beta): same GPU × N', () => {
+  const two3090: Hardware = { ...RTX_4090, vramGB: 24, memBandwidthGBs: 936, gpuCount: 2 };
+  const one3090: Hardware = { ...two3090, gpuCount: 1 };
+
+  it('sums VRAM, keeps the display reserve once and a compute buffer per GPU', () => {
+    expect(usableGB(two3090)).toBeCloseTo(48 - osReserveGB(two3090), 6);
+    expect(usableGB(two3090) - usableGB(one3090)).toBeCloseTo(24, 6);
+    const r = fit(two3090, LLAMA33_70B_Q4);
+    expect(r.mode).toBe('full-gpu');
+    expect(r.vram.limit).toBe(48);
+    expect(r.vram.buffer).toBeCloseTo(2 * computeBufferGB(8192), 6);
+    expect(fit(one3090, LLAMA33_70B_Q4).mode).not.toBe('full-gpu');
+  });
+
+  it('ignores gpuCount on non-dGPU hardware and treats < 1 as 1', () => {
+    expect(usableGB({ ...M4_MAX_128, gpuCount: 4 })).toBeCloseTo(usableGB(M4_MAX_128), 6);
+    expect(usableGB({ ...one3090, gpuCount: 0 })).toBeCloseTo(usableGB(one3090), 6);
   });
 });

@@ -4,6 +4,7 @@ import { CPU_MOE_GPU_LAYER_MARGIN, QUANT_BPW, QUANT_LADDER } from './constants';
 import {
   computeBufferGB,
   expertGBFor,
+  gpuCountOf,
   kvGB,
   osReserveGB,
   usableGB,
@@ -56,7 +57,8 @@ function breakdown(
 function fitOnce(hw: Hardware, mq: ModelQuant, weights: number, opts?: FitOptions): FitResult {
   const ctx = opts?.ctx ?? DEFAULT_CTX;
   const kv = kvGB(mq.kvBytesPerToken, ctx, opts?.kvQuant);
-  const buffer = computeBufferGB(ctx);
+  // 연산 버퍼는 GPU 마다 따로 (§6 멀티 GPU — 장수 1 이면 그대로)
+  const buffer = computeBufferGB(ctx) * gpuCountOf(hw);
   const osReserve = osReserveGB(hw);
   const need = weights + kv + buffer;
 
@@ -72,7 +74,7 @@ function fitOnce(hw: Hardware, mq: ModelQuant, weights: number, opts?: FitOption
   }
 
   const pool = usableGB(hw); // dgpu: vram−osReserve, unified: ram×0.70
-  const limit = hw.kind === 'dgpu' ? (hw.vramGB ?? 0) : hw.ramGB;
+  const limit = hw.kind === 'dgpu' ? (hw.vramGB ?? 0) * gpuCountOf(hw) : hw.ramGB;
 
   // 1. full-gpu (unified 포함 — 통합 풀에 전량 탑재)
   if (need <= pool) {
