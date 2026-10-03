@@ -44,15 +44,24 @@ import type { BenchPoint, Gpu, Model, ModelQuantRecord, QuantDef } from './schem
  * 허브 판정 정책 — 한 곳에 모은다 (docs/01 §3, 계획 단계 결정 D2·D4 — docs/PROGRESS.md §4).
  */
 // source: docs/01 §3 (policy)
+const DGPU_RAM_GB = 32;
+// source: docs/01 §3 (policy)
+const RAM_HINT_GB = [64, 96, 128] as const;
+// source: docs/01 §3 (policy)
 export const HUB_POLICY = Object.freeze({
   /** dGPU 허브의 시스템 RAM 가정 (GB) */
-  dgpuRamGB: 32,
+  dgpuRamGB: DGPU_RAM_GB,
   /** dGPU 시스템 RAM 대역폭은 이 CPU 프로필(gpus.json)에서 조회 — 매직넘버 금지 */
   dgpuRamProfileId: 'cpu-ddr5-5600-2ch',
   /** dGPU 는 Windows 디스플레이 GPU 가정 (osReserve 0.6GB, docs/02 §2.3) */
   dgpuOs: 'windows' as const,
   /** RAM 업그레이드 힌트 후보 (GB, 오름차순) */
-  ramHintGB: [64, 96, 128] as const,
+  ramHintGB: RAM_HINT_GB,
+  /**
+   * dGPU 콤보 페이지 "시스템 RAM 용량별 판정" 계단 (GB, 오름차순 — 10-03 D64): 가장 흔한 저사양 16GB(실측 리그도 16GB)
+   * + 가정값 + RAM 힌트 후보. 따로 적지 않고 유도해 가정값·힌트와 어긋나지 않게 한다
+   */
+  comboRamGB: [16, DGPU_RAM_GB, ...RAM_HINT_GB] as readonly number[],
   /** 판정 기준 컨텍스트 (docs/02 §5) */
   referenceCtx: 8192,
   /** "최대 컨텍스트" 계단 — 기준 8k 부터 */

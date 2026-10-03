@@ -785,6 +785,59 @@ describe('guide pages (P1-4)', () => {
   });
 });
 
+describe('memory-size verdict lists and the system RAM toggle (10-03 D64)', () => {
+  const RANK: Record<string, number> = { F: 0, B: 1, A: 2, S: 3 };
+  const kindOfGpu = (gpuId: string) => gpus.find((g) => g.id === gpuId)?.kind;
+
+  it('dGPU combos show the 16–128 GB list with the RAM toggle exactly when the top verdict changes, otherwise the "same" phrase', () => {
+    let listed = 0;
+    for (const page of requireCombos()) {
+      if (kindOfGpu(page.combo!.gpuId) !== 'dgpu') {
+        expect(page.markers.ramToggle, `${page.file} RAM toggle off dGPU`).toBe(false);
+        expect(page.ramSame, `${page.file} RAM phrase off dGPU`).toBe(false);
+        continue;
+      }
+      const rams = page.ramSteps.map((r) => r.ram);
+      expect([0, 5], `${page.file} RAM rows ${rams.join(',')}`).toContain(rams.length);
+      const hasList = rams.length === 5;
+      expect(page.markers.ramToggle, `${page.file} toggle ⇔ list`).toBe(hasList);
+      expect(page.ramSame, `${page.file} "same verdict" phrase ⇔ no list`).toBe(!hasList);
+      if (!hasList) continue;
+      listed += 1;
+      expect(rams, page.file).toEqual([16, 32, 64, 96, 128]);
+      // 목록이 있으면 맨 위 판정이 실제로 바뀐다 — 설명 문구는 판정이 바뀌는지에 따라 갈린다
+      const keys = new Set(page.ramSteps.map((r) => [r.verdict, r.quant, r.displayVerdict, r.fits].join('|')));
+      expect(keys.size, `${page.file} list without any change`).toBeGreaterThan(1);
+      const verdicts = new Set(page.ramSteps.map((r) => `${r.verdict}|${r.displayVerdict}`));
+      expect(page.ramCaption, `${page.file} caption`).toBe(verdicts.size > 1 ? 'verdict' : 'file');
+      // 기준 판정은 RAM 이 늘수록 내려가지 않는다
+      for (let i = 1; i < page.ramSteps.length; i += 1) {
+        expect(RANK[page.ramSteps[i]!.verdict]!, `${page.file} ${rams[i - 1]}→${rams[i]} GB`).toBeGreaterThanOrEqual(
+          RANK[page.ramSteps[i - 1]!.verdict]!,
+        );
+      }
+    }
+    expect(listed, 'no dGPU combo lists RAM steps').toBeGreaterThan(0);
+  });
+
+  it('every list marks the page configuration once, and its badge is the header verdict; en and ko twins agree', () => {
+    const map = byUrl();
+    for (const page of requireCombos().filter((p) => p.ramSteps.length > 0)) {
+      const assumed = page.ramSteps.filter((r) => r.assumed);
+      expect(assumed.length, `${page.file} [data-assumed] rows`).toBe(1);
+      expect(assumed[0]!.verdict, `${page.file} assumed row vs header`).toBe(page.headerVerdict);
+      expect(page.ramSteps.filter((r) => r.commands).length, `${page.file} [data-commands] rows`).toBeLessThanOrEqual(1);
+      if (page.locale !== 'en') continue;
+      const twin = map.get(localePath('ko', page.urlPath))!;
+      expect(twin.ramSteps, `${page.urlPath} ko twin rows`).toEqual(page.ramSteps);
+    }
+  });
+
+  it('the live summary is empty in static HTML (filled only after interaction — D28)', () => {
+    for (const page of requireCombos()) expect(page.liveSummary ?? '', `${page.file} [data-live-summary]`).toBe('');
+  });
+});
+
 describe('islands SSR (P1-3 D28 · price sort)', () => {
   it('every combo page renders the ctx/KV controls and keeps the static ctx table; every model hub renders the sort control', () => {
     for (const page of requireCombos()) {

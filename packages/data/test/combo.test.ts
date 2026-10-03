@@ -4,14 +4,20 @@ import {
   adjacentCombos,
   alternatives,
   assessCombo,
+  commandPlan,
   ctxMatrix,
   hardwareConfigs,
+  HUB_POLICY,
   maxCtxAtVerdict,
   ppRange,
+  ramSensitive,
+  ramSteps,
+  ramVerdictChanges,
   summarizeGpu,
   summarizeModel,
   titleVerdict,
   twinGpus,
+  verdictRank,
   vramBreakdown,
   type Alternative,
   type GpuHubData,
@@ -313,5 +319,99 @@ describe('ctxMatrix planRow — 콤보 아일랜드 props (P1-3 결정 D28)', ()
     // planRow 없이는 붙지 않는다 (기존 콤보 표 경로)
     const plain = ctxMatrix(g, hardwareConfigs(g, seed.gpus)[0]!, model('qwen3-14b'), r);
     expect(plain.rows[0]![0]!.plan).toBeUndefined();
+  });
+});
+
+describe('ramSteps — dGPU 시스템 RAM 계단 (10-03 D64)', () => {
+  // 수치를 고정하지 않고 카탈로그 전체로 돈다 — 모델·GPU 가 늘거나 엔진 문턱이 움직여도 성질만 본다
+  const full = loadSeed();
+  const dgpus = full.gpus.filter((g) => g.kind === 'dgpu');
+  const all = dgpus.flatMap((g) =>
+    full.models.map((m) => {
+      const config = hardwareConfigs(g, full.gpus)[0]!;
+      const combo = assessCombo(full, g, config, m);
+      return { g, m, config, combo, steps: ramSteps(full, g, m, { config, combo }) };
+    }),
+  );
+  const fp = (q: { quant: string; fits: boolean; result: { verdict: string; mode: string; tgTokS: { est: number } } }) =>
+    [q.quant, q.fits, q.result.verdict, q.result.mode, q.result.tgTokS.est].join('|');
+
+  it('walks 16·32·64·96·128 GB, reusing the page combo at the assumed RAM; unified and CPU get none', () => {
+    expect(HUB_POLICY.comboRamGB).toEqual([16, HUB_POLICY.dgpuRamGB, ...HUB_POLICY.ramHintGB]);
+    for (const { combo, steps } of all) {
+      expect(steps.map((s) => s.ramGB)).toEqual([...HUB_POLICY.comboRamGB]);
+      expect(steps.find((s) => s.ramGB === HUB_POLICY.dgpuRamGB)!.combo).toBe(combo);
+      for (const s of steps) expect(s.config.hw.ramGB).toBe(s.ramGB);
+    }
+    for (const g of full.gpus.filter((x) => x.kind !== 'dgpu')) {
+      const config = hardwareConfigs(g, full.gpus)[0]!;
+      const m = full.models[0]!;
+      expect(ramSteps(full, g, m, { config, combo: assessCombo(full, g, config, m) })).toEqual([]);
+    }
+  });
+
+  it('the explicit 32 GB path (user RAM + RAM hint) matches the assumed-RAM page combo — policy parity', () => {
+    for (const { g, m, combo } of all) {
+      const explicit = assessCombo(full, g, hardwareConfigs(g, full.gpus, { ramGB: HUB_POLICY.dgpuRamGB })[0]!, m, { ramHint: true });
+      expect(fp(explicit.baseline), `${m.id}@${g.id} baseline`).toBe(fp(combo.baseline));
+      expect(fp(explicit.display), `${m.id}@${g.id} display`).toBe(fp(combo.display));
+      expect(explicit.ramHint?.ramGB, `${m.id}@${g.id} ram hint`).toBe(combo.ramHint?.ramGB);
+    }
+  });
+
+  it('RAM only decides whether a quant fits — a quant that fits keeps its mode, verdict, speed and command', () => {
+    let compared = 0;
+    for (const { g, m, steps } of all) {
+      const top = steps.at(-1)!;
+      for (const s of steps) {
+        for (const q of s.combo.perQuant.filter((x) => x.fits)) {
+          const ref = top.combo.perQuant.find((x) => x.quant === q.quant)!;
+          const where = `${m.id}@${g.id} ${q.quant} ${s.ramGB}GB`;
+          expect(ref.fits, where).toBe(true);
+          expect([q.result.mode, q.result.verdict, q.result.tgTokS.est, q.result.cpuMoeLayers, q.gpuFrac, q.result.confidence], where).toEqual([
+            ref.result.mode,
+            ref.result.verdict,
+            ref.result.tgTokS.est,
+            ref.result.cpuMoeLayers,
+            ref.gpuFrac,
+            ref.result.confidence,
+          ]);
+          const qRow = full.modelQuants.find((r) => r.modelId === m.id && r.quant === q.quant)!;
+          expect(commandPlan(g, s.config, m, qRow, q).llamaCpp?.command, where).toBe(
+            commandPlan(g, top.config, m, qRow, ref).llamaCpp?.command,
+          );
+          compared += 1;
+        }
+      }
+    }
+    expect(compared).toBeGreaterThan(0);
+  });
+
+  it('the baseline verdict never drops as RAM grows, and the RAM-hint title agrees with the list', () => {
+    for (const { g, m, combo, steps } of all) {
+      for (let i = 1; i < steps.length; i += 1) {
+        expect(
+          verdictRank(steps[i]!.combo.baseline.result.verdict),
+          `${m.id}@${g.id} ${steps[i - 1]!.ramGB}→${steps[i]!.ramGB}GB`,
+        ).toBeGreaterThanOrEqual(verdictRank(steps[i - 1]!.combo.baseline.result.verdict));
+      }
+      // 제목 "RAM 64GB면 B" 와 목록의 64GB 행이 같은 답
+      if (combo.ramHint) {
+        const at = steps.find((s) => s.ramGB === combo.ramHint!.ramGB)!;
+        expect(at.combo.baseline.result.verdict, `${m.id}@${g.id}`).toBe(combo.ramHint.verdict);
+        expect(at.combo.display.quant, `${m.id}@${g.id}`).toBe(combo.ramHint.q.quant);
+      }
+    }
+  });
+
+  it('some pages change with RAM (gpt-oss-120b on an 8 GB card does), most do not; verdict changes imply sensitivity', () => {
+    const sensitive = all.filter((c) => ramSensitive(c.steps));
+    expect(sensitive.length).toBeGreaterThan(0);
+    expect(sensitive.length).toBeLessThan(all.length / 2);
+    for (const c of all) if (ramVerdictChanges(c.steps)) expect(ramSensitive(c.steps)).toBe(true);
+    const oss = all.find((c) => c.m.id === 'gpt-oss-120b' && c.g.id === 'rtx-4060')!;
+    expect(ramSensitive(oss.steps)).toBe(true);
+    const small = all.find((c) => c.m.id === 'llama-3.1-8b' && c.g.id === 'rtx-4090')!;
+    expect(ramSensitive(small.steps)).toBe(false);
   });
 });

@@ -1,4 +1,13 @@
-import { ggufPublisher, isFp16Crippled, maxCtxAtVerdict, ppRange, type PpRange, type QuantAssessment } from '@canrun/data';
+import {
+  commandPlan,
+  ggufPublisher,
+  HUB_POLICY,
+  isFp16Crippled,
+  maxCtxAtVerdict,
+  ppRange,
+  type PpRange,
+  type QuantAssessment,
+} from '@canrun/data';
 import { kvGB } from '@canrun/engine';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
@@ -8,9 +17,10 @@ import { AlternativeCards } from '@/components/alternative-cards';
 import { GgufSourceBadge, LicenseBadge, Pill } from '@/components/badges';
 import { Breadcrumbs } from '@/components/breadcrumbs';
 import { CommandSnippet } from '@/components/command-snippet';
+import { ConfigVerdictList } from '@/components/config-verdict-list';
 import { CtxMatrixTable } from '@/components/ctx-matrix';
-import { CtxKvControls, type CtxCellView } from '@/components/islands/ctx-kv-controls';
-import { llamaNotes, ollamaNotes } from '@/lib/snippet-phrases';
+import { CtxKvControls, type CtxCellView, type CtxKvRam, type RamPlanView } from '@/components/islands/ctx-kv-controls';
+import { llamaNotes, ollamaNotes, snippetFileText } from '@/lib/snippet-phrases';
 import { SpeedCell } from '@/components/estimate';
 import { Faq } from '@/components/faq';
 import { BenchTable, ScrollTable, TABLE_CLASS } from '@/components/hub-table';
@@ -30,7 +40,7 @@ import {
 } from '@/lib/combo-phrases';
 import { getCombo } from '@/lib/combos';
 import { formatCtx, formatGB, formatInt } from '@/lib/format';
-import { comboHref, localeHref, modelHref } from '@/lib/links';
+import { calculatorHref, comboHref, localeHref, modelHref } from '@/lib/links';
 import { canLinkCombo } from '@/lib/publish';
 import { gpuName, modeKey, shortGpuName, speedPhrase, type Translate } from '@/lib/phrases';
 import { buildPageMetadata } from '@/lib/seo';
@@ -176,6 +186,68 @@ export default async function ComboPage({ params }: Props) {
       notes: plan ? llamaNotes(tSnippet, locale, plan, kvGB(model.arch.kvBytesPerTokenF16, cell.ctx, 'q8_0')) : [],
     };
   });
+  // 시스템 RAM 토글 (10-03 D64) — 맨 위 판정이 RAM 계단에서 바뀌는 dGPU 페이지만. 엔진을 싣지 않고 서버가 RAM 마다 완성한
+  // 판정 문장(헤더와 같은 verdictSentence)과, 들어가는 양자화마다 실행 계획 1개(명령은 RAM 과 무관 — 양자화로 중복 제거)를 넘긴다.
+  // 정적 기준 RAM(qConfig — 보통 32GB, RAM 힌트 페이지는 힌트 RAM)은 정적 블록이 그 자체라 문장·계획을 싣지 않는다
+  let ramToggle: CtxKvRam | undefined;
+  if (page.ramSensitive) {
+    const initialRam = page.qConfig.ramGB;
+    const plans: RamPlanView[] = [];
+    const planOf = new Map<string, number>();
+    const options = page.ramSteps.map((step) => {
+      const d = step.combo.display;
+      const isInitial = step.ramGB === initialRam;
+      let plan = -1;
+      if (!isInitial && d.fits) {
+        if (!planOf.has(d.quant)) {
+          const row = catalog.modelQuants.find((r) => r.modelId === model.id && r.quant === d.quant)!;
+          const cp = commandPlan(gpu, step.config, model, row, d);
+          if (cp.llamaCpp) {
+            planOf.set(d.quant, plans.length);
+            plans.push({
+              intro: tSnippet('intro', { quant: cp.file.tag }),
+              file: snippetFileText(tSnippet, locale, cp),
+              command: cp.llamaCpp.command,
+              notes: llamaNotes(tSnippet, locale, cp, kvQ8).map((n) => n.text),
+              ...(cp.ollama
+                ? {
+                    ollama: {
+                      code: `${cp.ollama.serve}\n${cp.ollama.run}`,
+                      replSet: cp.ollama.replSet,
+                      notes: ollamaNotes(tSnippet, cp),
+                      serveHint: cp.os === 'windows' ? tSnippet('serveWindows') : tSnippet('serveUnix'),
+                    },
+                  }
+                : { ollamaOmitted: tSnippet('ollamaSharded') }),
+            });
+          }
+        }
+        plan = planOf.get(d.quant) ?? -1;
+      }
+      return {
+        ram: step.ramGB,
+        label: t.gpuHub('ramOption', { ram: formatInt(locale, step.ramGB) }),
+        summary: isInitial
+          ? ''
+          : t.combo('hintPrefix', { ram: formatInt(locale, step.ramGB) }) +
+            verdictSentence(t, { ...page, combo: step.combo, config: step.config }, locale),
+        plan,
+      };
+    });
+    ramToggle = {
+      options,
+      plans,
+      initial: initialRam,
+      calcHref: localeHref(locale, calculatorHref(`?gpu=${gpu.id}&m=${model.id}`)),
+      labels: {
+        legend: tCtx('ram'),
+        locked: tCtx('ramLocked', { ram: formatInt(locale, initialRam) }),
+        calcLink: tCtx('calcLink'),
+        llamaCpp: tSnippet('llamaCpp'),
+        ollama: tSnippet('ollama'),
+      },
+    };
+  }
   // 메모리 열의 분모 — dGPU 는 VRAM 전체, 통합은 GPU 사용 가능량 (허브 표와 동일)
   const memTotal = gpu.kind === 'dgpu' ? (gpu.vramGB ?? 0) : q.memory.gpuUsableGB;
 
@@ -193,12 +265,19 @@ export default async function ComboPage({ params }: Props) {
             fp16: gb(gpu.fp16Tflops ?? 0),
           })
         : t.combo('specCpu', { ram: formatInt(locale, page.config.ramGB), bandwidth: gb(gpu.memBandwidthGBs) });
+  const ramFloor = HUB_POLICY.comboRamGB[0]!;
+  const ramCeil = HUB_POLICY.comboRamGB.at(-1)!;
   const assumption =
     gpu.kind === 'dgpu'
       ? t.gpuHub('assumeDgpu', { ram: formatInt(locale, page.config.ramGB) })
       : gpu.kind === 'unified'
         ? t.gpuHub('assumeUnified')
         : t.gpuHub('assumeCpu');
+  // dGPU: RAM 계단 전체에서 맨 위 판정이 같으면 그 사실만 한 구절로 (10-03 D64) — 바뀌면 "시스템 RAM 용량별 판정" 목록
+  const ramSame =
+    gpu.kind === 'dgpu' && !page.ramSensitive
+      ? t.combo('ramSame', { min: formatInt(locale, ramFloor), max: formatInt(locale, ramCeil) })
+      : undefined;
 
   // pp 는 항상 범위 + rough 라벨 (규칙 3, D13)
   const ppText = (r: PpRange) =>
@@ -279,6 +358,7 @@ export default async function ComboPage({ params }: Props) {
           </div>
           <p className="text-sm text-muted-foreground">
             {spec} {assumption}
+            {ramSame && <span data-ram-same>{ramSame}</span>}
             {twinText && <span data-twin> {twinText}</span>}
           </p>
         </header>
@@ -291,17 +371,30 @@ export default async function ComboPage({ params }: Props) {
             <p className="text-sm text-muted-foreground">
               {t.combo('configCaption', { ram: formatInt(locale, page.config.ramGB) })}
             </p>
-            <ul className="flex flex-wrap gap-3">
-              {page.configCombos.map((c) => (
-                <li key={c.ramGB} className="flex items-center gap-2 rounded-md border border-border px-2 py-1 text-sm">
-                  <span className="tabular-nums">{t.gpuHub('ramOption', { ram: formatInt(locale, c.ramGB) })}</span>
-                  <VerdictBadge verdict={c.baseline.result.verdict} />
-                  {c.display.fReason !== 'no-fit' && (
-                    <span className="text-xs text-muted-foreground tabular-nums">{speed(c.display)}</span>
-                  )}
-                </li>
-              ))}
-            </ul>
+            <ConfigVerdictList
+              rows={page.configCombos.map((c, i) => ({ ramGB: c.ramGB, combo: c, assumed: i === page.configIndex }))}
+            />
+          </section>
+        )}
+
+        {page.ramSensitive && (
+          <section aria-labelledby="ram-heading" className="flex flex-col gap-2">
+            <h2 id="ram-heading" className="text-xl font-semibold tracking-tight">
+              {t.combo('ramStepsTitle')}
+            </h2>
+            <p data-ram-caption={page.ramVerdictChanges ? 'verdict' : 'file'} className="text-sm text-muted-foreground">
+              {t.combo(page.ramVerdictChanges ? 'ramStepsCaption' : 'ramStepsCaptionFile', {
+                ram: formatInt(locale, page.config.ramGB),
+              })}
+            </p>
+            <ConfigVerdictList
+              rows={page.ramSteps.map((step) => ({
+                ramGB: step.ramGB,
+                combo: step.combo,
+                assumed: step.ramGB === page.config.ramGB,
+                commands: page.usesRamHint && step.ramGB === page.qConfig.ramGB,
+              }))}
+            />
           </section>
         )}
 
@@ -311,7 +404,11 @@ export default async function ComboPage({ params }: Props) {
           </h2>
           <ScrollTable label={t.combo('quantTitle', { model: model.name, gpu: name })}>
             <table className={TABLE_CLASS}>
-              <caption>{t.combo('quantCaption', { count: combo.perQuant.length })}</caption>
+              <caption>
+                {gpu.kind === 'dgpu'
+                  ? t.combo('quantCaptionRam', { count: combo.perQuant.length, ram: formatInt(locale, page.config.ramGB) })
+                  : t.combo('quantCaption', { count: combo.perQuant.length })}
+              </caption>
               <thead>
                 <tr>
                   <th scope="col">{tTable('quant')}</th>
@@ -391,7 +488,7 @@ export default async function ComboPage({ params }: Props) {
 
         <section aria-labelledby="ctx-heading" className="flex flex-col gap-3">
           <h2 id="ctx-heading" className="text-xl font-semibold tracking-tight">
-            {t.combo('ctxTitle')}
+            {t.combo(ramToggle ? 'ctxTitleRam' : 'ctxTitle')}
           </h2>
           <CtxKvControls
             cells={cells}
@@ -400,13 +497,14 @@ export default async function ComboPage({ params }: Props) {
             kvQuants={page.matrix.kvQuants}
             initial={{ ctx: 8192, kv: 'f16' }}
             labels={{
-              title: tCtx('title'),
+              title: tCtx(ramToggle ? 'titleWithRam' : 'title'),
               ctx: tCtx('ctx'),
               kv: tCtx('kv'),
-              reset: tCtx('reset'),
+              reset: tCtx(ramToggle ? 'resetAll' : 'reset'),
               commandNone: tCtx('commandNone'),
               commandFollows: tCtx('commandFollows'),
             }}
+            {...(ramToggle ? { ram: ramToggle } : {})}
           />
           <CtxMatrixTable matrix={page.matrix} caption={t.combo('ctxCaption', { quant: q.quant })} headline={q} />
           <p className="text-sm text-muted-foreground">

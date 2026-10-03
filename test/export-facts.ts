@@ -13,7 +13,7 @@ import { STATIC_PAGE_SLUGS } from '../apps/web/content/pages';
 export type Locale = 'en' | 'ko';
 export type PageKind = 'home' | 'gpu' | 'model' | 'combo' | 'calculator' | 'guide' | 'guides-index' | 'static' | 'other';
 
-export type GpuRecord = { id: string; name: string; aliases?: string[] };
+export type GpuRecord = { id: string; name: string; aliases?: string[]; kind?: 'dgpu' | 'unified' | 'cpu' };
 export type ModelRecord = { id: string; name: string };
 
 export type PageFacts = {
@@ -59,6 +59,8 @@ export type PageFacts = {
   robotsNoindex: boolean;
   h1Count: number;
   verdictSentence?: string;
+  /** `[data-live-summary]` SSR 텍스트 — 상호작용 전엔 비어 있어야 한다 (D28) */
+  liveSummary?: string;
   /** `a[data-adjacent]` href */
   adjacentHrefs: string[];
   /** `a[data-combo-link]` href (허브의 "상세" 링크) */
@@ -67,6 +69,17 @@ export type PageFacts = {
   snippets: Array<{ kind: string; text: string }>;
   /** `[data-no-run]` — 어떤 구성으로도 실행 명령을 만들 수 없는 콤보(미탑재 + RAM 힌트 없음) */
   noRun: boolean;
+  /**
+   * 메모리 용량별 판정 행 `[data-ram-step]` (통합·CPU 는 메모리 옵션, dGPU 는 시스템 RAM 계단 — 10-03 D64):
+   * verdict = 행 배지(기준 양자화), displayVerdict·quant·fits = 표시 양자화
+   */
+  ramSteps: Array<{ ram: number; verdict: string; displayVerdict: string; quant: string; fits: boolean; assumed: boolean; commands: boolean }>;
+  /** `[data-ram-caption]` 값 ('verdict' | 'file') — dGPU RAM 목록 설명의 갈래 */
+  ramCaption?: string;
+  /** `[data-ram-same]` — RAM 계단에서 맨 위 판정이 같다는 구절 (RAM 목록이 없는 dGPU 콤보) */
+  ramSame: boolean;
+  /** 헤더 판정 문장의 배지 `[data-verdict-sentence] [data-verdict]` */
+  headerVerdict?: string;
   /** D15 — GPU명 마스킹 후 숫자 토큰 다중집합 (정렬, `|` 결합). 콤보 페이지만 */
   numberFingerprint: string;
   /** D16 — 마스킹된 문장 단위의 인터닝 id (중복 포함, 8자 미만 제외). 콤보 페이지만 */
@@ -97,6 +110,8 @@ export type PageFacts = {
     guideDraft: boolean;
     /** `[data-guides-empty]` 목차 빈 상태 */
     guidesEmpty: boolean;
+    /** `fieldset[data-ram-toggle]` — 콤보 아일랜드의 시스템 RAM 토글 (10-03 D64) */
+    ramToggle: boolean;
     /** 가이드 본문 안 `<p>` 속 블록 요소 수 (하이드레이션 불일치 원인 — 0 이어야 한다) */
     blockInParagraph: number;
   };
@@ -522,6 +537,7 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
     guideData: elementsWithAttr(noScript, 'data-guide-data').length,
     guideDraft: elementsWithAttr(noScript, 'data-guide-draft').length > 0,
     guidesEmpty: elementsWithAttr(noScript, 'data-guides-empty').length > 0,
+    ramToggle: elementsWithAttr(noScript, 'data-ram-toggle').length > 0,
     blockInParagraph: blockInParagraphCount(guideBody),
   };
   // 가이드 본문의 문장 단위 — 규칙 3 검사 대상(임계값 범례 `[data-threshold]` 는 밴드 없는 정책 문장이라 제외)
@@ -548,6 +564,20 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
   const twinText = elementsWithAttr(noScript, 'data-twin').map((e) => elementText(e.inner))[0];
   const altCardTexts = elementsWithAttr(noScript, 'data-alt-card').map((e) => elementText(e.inner));
   const noRun = elementsWithAttr(noScript, 'data-no-run').length > 0;
+  const ramStepEls = elementsWithAttr(noScript, 'data-ram-step');
+  const ramSteps = ramStepEls.map((e) => ({
+    ram: Number(attrValue(e.openTag, 'data-ram-step')),
+    verdict: attrValue(e.inner, 'data-verdict') ?? '',
+    displayVerdict: attrValue(e.openTag, 'data-display-verdict') ?? '',
+    quant: attrValue(e.openTag, 'data-quant') ?? '',
+    fits: attrValue(e.openTag, 'data-fits') === 'true',
+    assumed: hasAttr(e.openTag, 'data-assumed'),
+    commands: hasAttr(e.openTag, 'data-commands'),
+  }));
+  // 행 문장(용량 · 표시 양자화 판정 · 속도)은 규칙 3 검사 대상
+  const ramStepTexts = ramStepEls.map((e) => elementText(e.inner));
+  const ramCaption = elementsWithAttr(noScript, 'data-ram-caption').map((e) => attrValue(e.openTag, 'data-ram-caption'))[0];
+  const headerVerdict = attrValue(elementsWithAttr(noScript, 'data-verdict-sentence')[0]?.inner ?? '', 'data-verdict');
   const snippets = elementsWithAttr(noScript, 'data-snippet').map((e) => ({
     kind: attrValue(e.openTag, 'data-snippet') ?? '',
     text: decodeEntities((e.inner.match(/<code\b[^>]*>([\s\S]*?)<\/code>/)?.[1] ?? '').replace(TAG_RE, '')).trim(),
@@ -579,6 +609,7 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
     verdictSentence ?? '',
     twinText ?? '',
     liveSummary ?? '',
+    ...ramStepTexts,
     ...guideTexts,
     ...altCardTexts,
     ...ddTexts,
@@ -611,6 +642,11 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
     comboLinkHrefs,
     snippets,
     noRun,
+    ramSteps,
+    ...(ramCaption === undefined ? {} : { ramCaption }),
+    ramSame: elementsWithAttr(noScript, 'data-ram-same').length > 0,
+    ...(headerVerdict === undefined ? {} : { headerVerdict }),
+    ...(liveSummary === undefined ? {} : { liveSummary }),
     numberFingerprint: fingerprint,
     textUnitIds,
     textChars,

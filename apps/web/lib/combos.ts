@@ -10,6 +10,9 @@ import {
   ctxMatrix,
   pickConfigCombo,
   ppRange,
+  ramSensitive,
+  ramSteps,
+  ramVerdictChanges,
   twinGpus,
   vramBreakdown,
   type AdjacentCombos,
@@ -26,6 +29,7 @@ import {
   type ModelQuantRecord,
   type PpRange,
   type QuantAssessment,
+  type RamStep,
   type VramBreakdown,
 } from '@canrun/data';
 import { catalog, findGpu, findModel } from './catalog';
@@ -42,6 +46,12 @@ export type ComboPage = {
   combo: ComboAssessment;
   /** 이 구성의 전 RAM 옵션 조합 (통합·CPU 의 "메모리 용량별 판정") */
   configCombos: ComboAssessment[];
+  /** dGPU: 시스템 RAM 계단(16·32·64·96·128GB)마다의 평가 — 페이지 RAM 단계는 `combo` 그대로 (10-03 D64). 통합·CPU 는 [] */
+  ramSteps: RamStep[];
+  /** 계단 안에서 맨 위 판정이 바뀌는가 — 참이면 "시스템 RAM 용량별 판정" 목록과 RAM 토글을 그린다 */
+  ramSensitive: boolean;
+  /** 판정 자체가 바뀌는가 (거짓이면 쓸 수 있는 파일·fit 만 바뀜 — 목록 설명이 갈림) */
+  ramVerdictChanges: boolean;
   /** 스니펫·대안·행렬이 기준으로 삼는 quant — display, F 면 RAM 힌트 구성의 quant */
   q: QuantAssessment;
   qConfig: HwConfig;
@@ -82,6 +92,7 @@ export function getCombo(modelId: string, gpuId: string): ComboPage | undefined 
   const qRow = catalog.modelQuants.find((r) => r.modelId === modelId && r.quant === q.quant)!;
 
   const plan = commandPlan(gpu, qConfig, model, qRow, q);
+  const steps = ramSteps(catalog, gpu, model, { config, combo });
 
   const page: ComboPage = {
     gpu,
@@ -92,6 +103,9 @@ export function getCombo(modelId: string, gpuId: string): ComboPage | undefined 
     config,
     combo,
     configCombos,
+    ramSteps: steps,
+    ramSensitive: ramSensitive(steps),
+    ramVerdictChanges: ramVerdictChanges(steps),
     q,
     qConfig,
     qRow,

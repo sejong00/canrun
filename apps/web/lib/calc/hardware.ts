@@ -123,3 +123,21 @@ export function differsFromHubAssumption(state: CalcState, resolved: ResolvedHar
     state.ddr !== 'ddr5-5600'
   );
 }
+
+/**
+ * 결과 카드 "상세" 링크(콤보 페이지)의 쿼리 — 콤보 아일랜드가 처음 열 때만 읽는다(D28·D64).
+ * ctx·KV 가 기본(8k·f16)이 아니면 그 셀(`ctx`·`kv`), 기본이면 1장 dGPU 의 시스템 RAM 이 콤보 RAM 계단 안일 때 `ram`
+ * (32GB 도 붙인다 — RAM 힌트 페이지는 정적 기준이 64·96GB 라 32GB 사용자가 그 RAM 으로 열리지 않게). 콤보 페이지는 RAM 이
+ * 판정을 바꾸지 않는 페이지면 `ram` 을 무시한다.
+ */
+export function comboDetailQuery(
+  state: Pick<CalcState, 'ctx' | 'kv'>,
+  resolved: Pick<ResolvedHardware, 'gpu' | 'gpuCount' | 'ramGB'>,
+  cardCtx: number,
+): string {
+  if (state.ctx !== HUB_POLICY.referenceCtx || state.kv !== 'f16') return `?ctx=${cardCtx}&kv=${state.kv}`;
+  if (resolved.gpu.kind === 'dgpu' && resolved.gpuCount === 1 && HUB_POLICY.comboRamGB.includes(resolved.ramGB)) {
+    return `?ram=${resolved.ramGB}`;
+  }
+  return '';
+}

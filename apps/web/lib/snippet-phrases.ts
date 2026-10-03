@@ -41,6 +41,15 @@ export function llamaNotes(t: Translate, locale: string, plan: CommandPlan, kvQ8
   return notes;
 }
 
+/** 파일 줄 ("파일: … (GB, repo).") — 정적 `CommandSnippet` 과 RAM 토글의 결과 블록(10-03 D64)이 같이 쓴다 */
+export function snippetFileText(t: Translate, locale: string, plan: CommandPlan): string {
+  const size = formatGB(locale, plan.file.fileGB, 2);
+  const file = plan.file.name ?? plan.file.tag;
+  return plan.file.shards > 1
+    ? t('fileSharded', { file, rest: plan.file.shards - 1, size, repo: plan.file.repo })
+    : t('file', { file, size, repo: plan.file.repo });
+}
+
 /** Ollama 블록 각주 — 컨텍스트 기본값 안내 · 자동 오프로드 */
 export function ollamaNotes(t: Translate, plan: CommandPlan): string[] {
   if (!plan.ollama) return [];

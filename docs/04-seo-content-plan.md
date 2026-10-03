@@ -47,7 +47,7 @@
 - sitemap: 유형별 분할(sitemap-gpus/models/combos-en/combos-ko/guides) + lastmod = 데이터 갱신일.
 
 ## 4. 콤보 페이지 품질 요건 (스케일드 콘텐츠 판정 방어 체크리스트)
-페이지당 **고유 데이터 ≥8개**: ①quant×fit 표(수치 전부 조합 고유) ②VRAM 분해 바 ③ctx별 메모리/속도 곡선 ④예상 pp/tg±밴드 ⑤실측 표(있으면) ⑥대안 3종 추천 로직 결과 ⑦실행 커맨드(플래그가 조합 의존: -ngl, --n-cpu-moe N 값) ⑧FAQ(수치 삽입형). "깊이 테스트": GPU명 가리고도 페이지 구분 가능해야 함 — P1-2 구현(D15): GPU명·id·별칭 마스킹 후 숫자 다중집합 지문이 로케일 내 전 콤보에서 유일 + 시드 PRNG 3페이지 기록(쌍둥이 GPU는 FP16·pp·가격·인접 GPU로 구분, §3 D22). 보일러플레이트 문장 비율 < 60% — 측정(D16): 콤보의 ≥50%에 나타나는 문장 단위(p/li/h/td/th/dt/dd/caption/code, 이름 마스킹) 글자 비율 < 0.6.
+페이지당 **고유 데이터 ≥8개**: ①quant×fit 표(수치 전부 조합 고유) ②VRAM 분해 바 ③ctx별 메모리/속도 곡선 ④예상 pp/tg±밴드 ⑤실측 표(있으면) ⑥대안 3종 추천 로직 결과 ⑦실행 커맨드(플래그가 조합 의존: -ngl, --n-cpu-moe N 값) ⑧FAQ(수치 삽입형) — 선택 요소로 dGPU 콤보의 "시스템 RAM 용량별 판정"(16~128GB, 맨 위 판정이 RAM 에 따라 바뀌는 페이지만 — 10-03 D64, PROGRESS §4). 제목·description·헤더 판정·FAQ 는 RAM 32GB 가정 그대로라 RAM 목록이 이 불변식(FAQ 답 = JSON-LD, 제목 유일)을 바꾸지 않는다. "깊이 테스트": GPU명 가리고도 페이지 구분 가능해야 함 — P1-2 구현(D15): GPU명·id·별칭 마스킹 후 숫자 다중집합 지문이 로케일 내 전 콤보에서 유일 + 시드 PRNG 3페이지 기록(쌍둥이 GPU는 FP16·pp·가격·인접 GPU로 구분, §3 D22). 보일러플레이트 문장 비율 < 60% — 측정(D16): 콤보의 ≥50%에 나타나는 문장 단위(p/li/h/td/th/dt/dd/caption/code, 이름 마스킹) 글자 비율 < 0.6.
 
 ## 5. 구조화 데이터 (JSON-LD, 템플릿 레벨)
 - `/calculator` `SoftwareApplication`(무료) · 콤보/허브 `FAQPage`(3문항, 수치 포함 답) + `BreadcrumbList` · 실측 섹션 `Dataset`(P2: 공개 데이터셋 — 백링크 자석) · 가이드 `Article`+`author`(실명 E-E-A-T — P1-4 사용자 결정으로 우선 브랜드 Organization "CanRun", 레지스트리 한 줄로 실명 전환 가능, D41) + 3단 `BreadcrumbList`(홈 › 가이드 › 글).

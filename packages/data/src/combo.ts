@@ -19,7 +19,9 @@ import {
   type Verdict,
 } from '@canrun/engine';
 import {
+  assessCombo,
   estimateAt,
+  hardwareConfigs,
   HUB_POLICY,
   needWeightsGB,
   toModelQuant,
@@ -32,7 +34,7 @@ import {
   type QuantAssessment,
   type SeedCatalog,
 } from './assess';
-import type { GpuCore, ModelCore, ModelQuantCore } from './core';
+import type { CatalogCore, GpuCore, ModelCore, ModelQuantCore } from './core';
 import { comboKey, comboPublishState, indexableCombos } from './publish';
 import type { Gpu, Model, PublishPlan } from './schema';
 import { commandPlan, cpuMoeFlagLayers, type CommandPlan } from './snippet';
@@ -221,6 +223,51 @@ export function vramBreakdown(q: QuantAssessment, modelId: string): VramBreakdow
     },
     ram: { weights: q.memory.ramGB, usable: q.memory.ramUsableGB },
   };
+}
+
+// ---------------------------------------------------------------------------
+// 시스템 RAM 계단 (dGPU — 10-03 D64)
+// ---------------------------------------------------------------------------
+
+export type RamStep = { ramGB: number; config: HwConfig; combo: ComboAssessment };
+
+/**
+ * dGPU 콤보를 시스템 RAM 계단(`HUB_POLICY.comboRamGB`)마다 평가한다 — 콤보 페이지 "시스템 RAM 용량별 판정" 목록과
+ * RAM 토글의 정본. 페이지 구성과 같은 RAM 단계는 `base` 를 그대로 써서 허브·제목·헤더 판정과 바이트까지 같다.
+ * 다른 단계는 같은 정책 구성(DDR·OS·화면 출력)에 RAM 만 바꾸고 RAM 힌트도 계산한다(16GB 단계의 "RAM 32GB면 …").
+ * dGPU 에서 RAM 은 cpu-moe·부분 오프로드·CPU 전용이 "들어가느냐"만 가른다 — 들어가는 양자화의 모드·속도·명령은
+ * RAM 과 무관하다(combo.test 가 카탈로그 전체로 고정). 통합 메모리·CPU 는 [] (메모리 옵션별 판정은 허브 구성 목록).
+ */
+export function ramSteps(
+  catalog: CatalogCore,
+  gpu: GpuCore,
+  model: ModelCore,
+  base: { config: HwConfig; combo: ComboAssessment },
+): RamStep[] {
+  if (gpu.kind !== 'dgpu') return [];
+  return HUB_POLICY.comboRamGB.map((ramGB): RamStep => {
+    if (ramGB === base.config.ramGB) return { ramGB, config: base.config, combo: base.combo };
+    const config = hardwareConfigs(gpu, catalog.gpus, { ramGB })[0]!;
+    return { ramGB, config, combo: assessCombo(catalog, gpu, config, model, { ramHint: true }) };
+  });
+}
+
+/** 맨 위 판정을 가르는 값 — 기준 판정 · 표시 양자화 · 표시 판정 · 표시 양자화가 들어가는지 */
+function headlineKey(combo: ComboAssessment): string {
+  const { baseline, display } = combo;
+  return [baseline.result.verdict, display.quant, display.result.verdict, display.fits].join('|');
+}
+
+/** 계단 안에서 맨 위 판정(기준·표시 양자화·판정·fit)이 바뀌는가 — 콤보 페이지가 RAM 목록·토글을 그리는 조건 */
+export function ramSensitive(steps: readonly RamStep[]): boolean {
+  return new Set(steps.map((s) => headlineKey(s.combo))).size > 1;
+}
+
+/** 계단 안에서 판정 자체(기준 또는 표시)가 바뀌는가 — 아니면 쓸 수 있는 파일·fit 만 바뀐다(목록 설명 문구가 갈림) */
+export function ramVerdictChanges(steps: readonly RamStep[]): boolean {
+  return (
+    new Set(steps.map((s) => `${s.combo.baseline.result.verdict}|${s.combo.display.result.verdict}`)).size > 1
+  );
 }
 
 // ---------------------------------------------------------------------------

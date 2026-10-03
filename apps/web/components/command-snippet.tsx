@@ -1,7 +1,7 @@
 import type { CommandPlan } from '@canrun/data';
 import { useLocale, useTranslations } from 'next-intl';
-import { formatGB, formatInt } from '@/lib/format';
-import { llamaNotes, ollamaNotes } from '@/lib/snippet-phrases';
+import { formatInt } from '@/lib/format';
+import { llamaNotes, ollamaNotes, snippetFileText } from '@/lib/snippet-phrases';
 
 /**
  * 실행 커맨드 (docs/04 §4 ⑦, docs/01 §9) — llama.cpp / Ollama 블록. 명령 문자열은 데이터 레이어(snippet.ts)
@@ -36,8 +36,6 @@ export function CommandSnippet({
 }) {
   const locale = useLocale();
   const t = useTranslations('Snippet');
-  const gb = (v: number) => formatGB(locale, v, 2);
-
   if (!plan.llamaCpp) {
     return (
       <p className="rounded-lg border border-border p-4 text-sm text-muted-foreground">
@@ -49,15 +47,7 @@ export function CommandSnippet({
   const llama = plan.llamaCpp;
   const notes = llamaNotes(t, locale, plan, kvGB);
 
-  const fileText =
-    plan.file.shards > 1
-      ? t('fileSharded', {
-          file: plan.file.name ?? plan.file.tag,
-          rest: plan.file.shards - 1,
-          size: gb(plan.file.fileGB),
-          repo: plan.file.repo,
-        })
-      : t('file', { file: plan.file.name ?? plan.file.tag, size: gb(plan.file.fileGB), repo: plan.file.repo });
+  const fileText = snippetFileText(t, locale, plan);
 
   const oNotes = ollamaNotes(t, plan);
 

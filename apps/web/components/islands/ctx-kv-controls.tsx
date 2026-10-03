@@ -1,11 +1,14 @@
 'use client';
 import { useEffect, useId, useState, useSyncExternalStore } from 'react';
+import { comboPreset } from '@/lib/combo-preset';
 import { useHydrated } from '@/lib/hydration';
 
 /**
- * 콤보 페이지 ctx 슬라이더 · KV 토글 (docs/01 F3, P1-3 결정 D28) — 엔진 미탑재.
+ * 콤보 페이지 ctx 슬라이더 · KV 토글 (docs/01 F3, P1-3 결정 D28) + 시스템 RAM 토글 (10-03 D64) — 엔진 미탑재.
  * 서버가 ctx×KV 셀마다 만든 문장·명령(규칙 3 밴드 포함)을 props 로 받아, 선택한 셀을 정적 표에서 강조하고
  * 요약 문장과 실행 커맨드 블록(llama.cpp·Ollama·각주)을 그 셀의 것으로 바꾼다. URL 은 건드리지 않는다.
+ * RAM 토글(맨 위 판정이 RAM 에 따라 바뀌는 dGPU 페이지만)은 정적 스니펫을 건드리지 않는다 — 다른 RAM 을 고르면
+ * ctx·KV 를 8k·f16 으로 고정하고, 서버가 만든 그 RAM 의 판정 문장·파일·명령을 아일랜드가 직접 그린다.
  * 상태 갱신은 이벤트 핸들러에서만 (react-hooks 7, D36).
  */
 export type CtxCellView = {
@@ -36,6 +39,38 @@ export type CtxKvLabels = {
   commandFollows: string;
 };
 
+/** RAM 단계의 실행 계획 — 들어가는 양자화마다 1개(명령은 RAM 과 무관해 양자화로 중복 제거) */
+export type RamPlanView = {
+  /** "IQ4_XS 파일을 쓰는 명령입니다…" */
+  intro: string;
+  /** "파일: … (GB, repo)." */
+  file: string;
+  command: string;
+  notes: string[];
+  ollama?: { code: string; replSet: string; notes: string[]; serveHint: string };
+  ollamaOmitted?: string;
+};
+
+export type RamOptionView = {
+  ram: number;
+  /** "16GB" */
+  label: string;
+  /** 서버가 완성한 문장 ("시스템 RAM 16GB 기준: {판정 문장}") — 정적 기준 RAM 은 '' */
+  summary: string;
+  /** plans 인덱스 — 이 RAM 에서 표시 양자화가 들어가지 않으면 -1 */
+  plan: number;
+};
+
+export type CtxKvRam = {
+  options: RamOptionView[];
+  plans: RamPlanView[];
+  /** 정적 표·명령이 계산된 RAM (보통 32GB, RAM 힌트 페이지는 힌트 RAM) */
+  initial: number;
+  /** 계산기 주소 (`…/calculator?gpu=…&m=…`) — RAM 모드에서만 `&ram=N` 을 붙여 그린다(정적 HTML 에 쿼리 링크 없음) */
+  calcHref: string;
+  labels: { legend: string; locked: string; calcLink: string; llamaCpp: string; ollama: string };
+};
+
 export type CtxKvProps = {
   cells: CtxCellView[];
   ctxs: number[];
@@ -43,21 +78,12 @@ export type CtxKvProps = {
   kvQuants: string[];
   initial: { ctx: number; kv: string };
   labels: CtxKvLabels;
+  ram?: CtxKvRam;
 };
 
 const subscribeNoop = () => () => {};
 const readSearch = () => (typeof window === 'undefined' ? '' : window.location.search);
 const readServer = () => '';
-
-function preset(search: string, p: CtxKvProps): { ctxIdx: number; kv: string } {
-  const q = new URLSearchParams(search);
-  const ctx = Number(q.get('ctx'));
-  const kv = q.get('kv') ?? '';
-  return {
-    ctxIdx: p.ctxs.includes(ctx) ? p.ctxs.indexOf(ctx) : p.ctxs.indexOf(p.initial.ctx),
-    kv: p.kvQuants.includes(kv) ? kv : p.initial.kv,
-  };
-}
 
 function findCell(p: CtxKvProps, ctx: number, kv: string): CtxCellView | undefined {
   return p.cells.find((c) => c.ctx === ctx && c.kv === kv);
@@ -83,12 +109,17 @@ function setNotes(selector: string, notes: { key: string; text: string }[]) {
   if (keep) ul.append(keep);
 }
 
+/** 정적 마크업(서버 컴포넌트 출력)에서 `attr` 값이 `value` 인 요소만 aria-current — undefined 면 전부 해제 */
+function markCurrent(attr: string, value: string | undefined) {
+  for (const el of document.querySelectorAll<HTMLElement>(`[${attr}]`)) {
+    if (el.getAttribute(attr) === value) el.setAttribute('aria-current', 'true');
+    else el.removeAttribute('aria-current');
+  }
+}
+
 /** 정적 마크업(서버 컴포넌트 출력, React 가 소유하지 않음)을 셀 값으로 바꾼다 */
 function applyCell(cell: CtxCellView, initialCell: CtxCellView | undefined) {
-  for (const td of document.querySelectorAll<HTMLElement>('[data-ctx-cell]')) {
-    if (td.dataset.ctxCell === `${cell.ctx}:${cell.kv}`) td.setAttribute('aria-current', 'true');
-    else td.removeAttribute('aria-current');
-  }
+  markCurrent('data-ctx-cell', `${cell.ctx}:${cell.kv}`);
   const source = cell.command ? cell : initialCell;
   if (!source?.command) return;
   setText('[data-snippet-code="llama.cpp"]', source.command);
@@ -143,17 +174,88 @@ function renderOllama(source: CtxCellView) {
   }
 }
 
+const NOTES_CLASS = 'list-disc pl-5 text-xs text-muted-foreground';
+
+/** 아일랜드가 직접 그리는 코드 영역 — 정적 `CommandSnippet` 과 같은 모양, 다른 data 훅(정적 블록 교체와 섞이지 않게) */
+function Code({ code, label, name }: { code: string; label: string; name: string }) {
+  return (
+    <div
+      role="region"
+      aria-label={label}
+      tabIndex={0}
+      className="overflow-x-auto rounded-md border border-border bg-muted p-3 focus-visible:outline-2 focus-visible:outline-ring"
+    >
+      <pre className="text-xs leading-5 whitespace-pre">
+        <code data-ram-code={name}>{code}</code>
+      </pre>
+    </div>
+  );
+}
+
+/** 다른 RAM 을 골랐을 때의 결과 블록 — 파일·llama.cpp·Ollama 명령(그 RAM 에서 들어갈 때만)과 계산기 링크 */
+function RamResult({ ram, option }: { ram: CtxKvRam; option: RamOptionView }) {
+  const plan = ram.plans[option.plan];
+  return (
+    <div data-ram-result={option.ram} className="flex basis-full flex-col gap-3">
+      {plan && (
+        <>
+          <p className="text-muted-foreground">{plan.intro}</p>
+          <p className="break-all">{plan.file}</p>
+          <p className="font-medium">{ram.labels.llamaCpp}</p>
+          <Code code={plan.command} label={ram.labels.llamaCpp} name="llama.cpp" />
+          <ul className={NOTES_CLASS}>
+            {plan.notes.map((text) => (
+              <li key={text}>{text}</li>
+            ))}
+          </ul>
+          <p className="font-medium">{ram.labels.ollama}</p>
+          {plan.ollama ? (
+            <>
+              <p className="text-xs text-muted-foreground">{plan.ollama.serveHint}</p>
+              <Code code={plan.ollama.code} label={ram.labels.ollama} name="ollama" />
+              <ul className={NOTES_CLASS}>
+                {plan.ollama.notes.map((text) => (
+                  <li key={text}>{text}</li>
+                ))}
+                <li>
+                  <code>{plan.ollama.replSet}</code>
+                </li>
+              </ul>
+            </>
+          ) : (
+            <p className="text-muted-foreground">{plan.ollamaOmitted}</p>
+          )}
+        </>
+      )}
+      <a data-ram-calc href={`${ram.calcHref}&ram=${option.ram}`} className="self-start underline underline-offset-4">
+        {ram.labels.calcLink}
+      </a>
+    </div>
+  );
+}
+
 export function CtxKvControls(p: CtxKvProps) {
   const id = useId();
   const hydrated = useHydrated();
   const search = useSyncExternalStore(subscribeNoop, readSearch, readServer);
-  const initialPreset = preset(search, p);
+  const ram = p.ram;
+  const initialPreset = comboPreset(search, {
+    ctxs: p.ctxs,
+    kvQuants: p.kvQuants,
+    initial: p.initial,
+    ...(ram ? { ram: { options: ram.options.map((o) => o.ram), initial: ram.initial } } : {}),
+  });
   const [picked, setPicked] = useState<{ ctxIdx: number; kv: string } | undefined>(undefined);
+  const [ramPicked, setRamPicked] = useState<number | undefined>(undefined);
   const current = picked ?? initialPreset;
+  const currentRam = ramPicked ?? initialPreset.ram ?? ram?.initial;
+  const ramOption = hydrated && ram && currentRam !== ram.initial ? ram.options.find((o) => o.ram === currentRam) : undefined;
+  const initialIdx = p.ctxs.indexOf(p.initial.ctx);
   const ctx = p.ctxs[current.ctxIdx] ?? p.initial.ctx;
   const cell = findCell(p, ctx, current.kv);
   const initialCell = findCell(p, p.initial.ctx, p.initial.kv);
   const isInitial = ctx === p.initial.ctx && current.kv === p.initial.kv;
+  const locked = !hydrated || ramOption !== undefined;
 
   const update = (next: { ctxIdx: number; kv: string }) => {
     setPicked(next);
@@ -161,11 +263,24 @@ export function CtxKvControls(p: CtxKvProps) {
     if (target) applyCell(target, initialCell);
   };
 
-  // 프리셋(?ctx=&kv=, 계산기 딥링크)은 핸들러 없이 들어오므로 하이드레이션 뒤 정적 마크업만 맞춘다 (setState 없음)
+  // 다른 RAM: ctx·KV 를 8k·f16 으로 돌리고(정적 스니펫도 8k·f16 으로) 정적 ctx 표 강조는 지운다 — 표는 정적 RAM 기준이다
+  const pickRam = (next: number) => {
+    setRamPicked(next);
+    const other = next !== ram?.initial;
+    markCurrent('data-ram-step', other ? String(next) : undefined);
+    if (!other) return;
+    setPicked({ ctxIdx: initialIdx, kv: p.initial.kv });
+    if (initialCell) applyCell(initialCell, initialCell);
+    markCurrent('data-ctx-cell', undefined);
+  };
+
+  // 프리셋(?ctx=&kv=&ram=, 계산기 딥링크)은 핸들러 없이 들어오므로 하이드레이션 뒤 정적 마크업만 맞춘다 (setState 없음)
   useEffect(() => {
-    if (hydrated && picked === undefined && cell && !isInitial) applyCell(cell, initialCell);
-  }, [hydrated, picked, cell, initialCell, isInitial]);
-  const live = hydrated && cell && !isInitial ? cell : undefined;
+    if (!hydrated || picked !== undefined || ramPicked !== undefined) return;
+    if (ramOption) markCurrent('data-ram-step', String(ramOption.ram));
+    else if (cell && !isInitial) applyCell(cell, initialCell);
+  }, [hydrated, picked, ramPicked, ramOption, cell, initialCell, isInitial]);
+  const live = hydrated && !ramOption && cell && !isInitial ? cell : undefined;
   // 정적 명령 블록이 없는 페이지(8k·f16 미탑재)는 명령을 쓸 곳이 없다 — "아래 명령" 문장을 붙이지 않는다 (재검증)
   const commandNote = !live || !initialCell?.command ? '' : live.command ? p.labels.commandFollows : p.labels.commandNone;
 
@@ -175,6 +290,24 @@ export function CtxKvControls(p: CtxKvProps) {
       aria-label={p.labels.title}
       className="flex flex-wrap items-end gap-4 rounded-lg border border-border p-4 text-sm"
     >
+      {ram && (
+        <fieldset data-ram-toggle className="flex basis-full flex-wrap items-center gap-x-3 gap-y-1">
+          <legend className="mb-1">{ram.labels.legend}</legend>
+          {ram.options.map((o) => (
+            <label key={o.ram} className="flex min-h-6 items-center gap-1 tabular-nums">
+              <input
+                type="radio"
+                name={`${id}-ram`}
+                value={o.ram}
+                checked={currentRam === o.ram}
+                disabled={!hydrated}
+                onChange={() => pickRam(o.ram)}
+              />
+              {o.label}
+            </label>
+          ))}
+        </fieldset>
+      )}
       <div className="flex min-w-56 flex-1 flex-col gap-1">
         <label htmlFor={`${id}-ctx`}>
           {p.labels.ctx}: <output htmlFor={`${id}-ctx`}>{p.ctxLabels[current.ctxIdx]}</output>
@@ -188,7 +321,7 @@ export function CtxKvControls(p: CtxKvProps) {
           step={1}
           value={current.ctxIdx}
           aria-valuetext={p.ctxLabels[current.ctxIdx]}
-          disabled={!hydrated}
+          disabled={locked}
           onChange={(e) => update({ ctxIdx: Number(e.currentTarget.value), kv: current.kv })}
           className="h-7 w-full"
         />
@@ -198,7 +331,7 @@ export function CtxKvControls(p: CtxKvProps) {
               key={label}
               type="button"
               data-ctx-tick={p.ctxs[i]}
-              disabled={!hydrated}
+              disabled={locked}
               aria-pressed={i === current.ctxIdx}
               onClick={() => update({ ctxIdx: i, kv: current.kv })}
               className="min-h-6 px-1 aria-pressed:font-semibold aria-pressed:text-foreground"
@@ -217,7 +350,7 @@ export function CtxKvControls(p: CtxKvProps) {
               name={`${id}-kv`}
               value={kv}
               checked={current.kv === kv}
-              disabled={!hydrated}
+              disabled={locked}
               onChange={() => update({ ctxIdx: current.ctxIdx, kv })}
             />
             {kv}
@@ -227,8 +360,11 @@ export function CtxKvControls(p: CtxKvProps) {
       <button
         type="button"
         data-ctx-reset
-        disabled={!hydrated || isInitial}
-        onClick={() => update({ ctxIdx: p.ctxs.indexOf(p.initial.ctx), kv: p.initial.kv })}
+        disabled={!hydrated || (isInitial && !ramOption)}
+        onClick={() => {
+          if (ramOption) pickRam(ram!.initial);
+          update({ ctxIdx: initialIdx, kv: p.initial.kv });
+        }}
         className="min-h-6 text-xs text-muted-foreground underline-offset-4 hover:underline disabled:invisible"
       >
         {p.labels.reset}
@@ -237,11 +373,13 @@ export function CtxKvControls(p: CtxKvProps) {
         data-live-summary
         data-ctx={live ? String(live.ctx) : undefined}
         data-kv={live ? live.kv : undefined}
+        data-ram={ramOption ? String(ramOption.ram) : undefined}
         aria-live="polite"
         className="basis-full text-muted-foreground"
       >
-        {live ? [live.summary, commandNote].filter(Boolean).join(' ') : ''}
+        {ramOption ? `${ramOption.summary} ${ram!.labels.locked}` : live ? [live.summary, commandNote].filter(Boolean).join(' ') : ''}
       </p>
+      {ramOption && <RamResult ram={ram!} option={ramOption} />}
     </fieldset>
   );
 }

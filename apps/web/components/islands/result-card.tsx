@@ -1,11 +1,11 @@
 'use client';
-import { classifyLicense, HUB_POLICY, type QuantAssessment } from '@canrun/data/client';
+import { classifyLicense, type QuantAssessment } from '@canrun/data/client';
 import type { CalcTranslators } from '@/components/islands/calc-shared';
 import { Pill, type PillTone } from '@/components/pill';
 import { SpeedCellCore } from '@/components/speed-text';
 import { VerdictChip } from '@/components/verdict-chip';
 import { formatCtx, formatGB, formatInt, formatParams } from '@/lib/format';
-import { differsFromHubAssumption, type ResolvedHardware } from '@/lib/calc/hardware';
+import { comboDetailQuery, differsFromHubAssumption, type ResolvedHardware } from '@/lib/calc/hardware';
 import type { ResultCard as Card } from '@/lib/calc/run';
 import type { CalcState } from '@/lib/calc/state';
 import { memoryText, modeKey, noteLines, quantText, speedPhrase } from '@/lib/phrases';
@@ -47,8 +47,7 @@ export function ResultCard({
   const notes = noteLines({ reason: t.reason, hint: t.hint, verdict: t.verdict, common: t.common }, locale, combo, hardware.gpu.kind, false);
   const licenseClass = classifyLicense(model.license);
   const custom = hardware.gpu.id === 'custom';
-  const detailQuery =
-    state.ctx !== HUB_POLICY.referenceCtx || state.kv !== 'f16' ? `?ctx=${card.ctx}&kv=${state.kv}` : '';
+  const detailQuery = comboDetailQuery(state, hardware, card.ctx);
   const comboHref = custom || external ? undefined : `${prefix}/can-i-run/${model.id}/on/${hardware.gpu.id}${detailQuery}`;
   // 컨텍스트 여유는 돌아가는 카드에만 — F(미탑재·너무 느림)엔 `maxCtx` 가 없고 현재 ctx 를 여유로 보이면 거짓
   const maxCtx = q.result.verdict === 'F' ? undefined : (combo.maxCtx ?? card.ctx);

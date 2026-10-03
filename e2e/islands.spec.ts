@@ -1,5 +1,5 @@
 /**
- * 아일랜드 E2E (P1-3 이월분): 콤보 페이지 ctx 슬라이더·KV 토글(D28)과 모델 허브 가격 정렬.
+ * 아일랜드 E2E (P1-3 이월분): 콤보 페이지 ctx 슬라이더·KV 토글(D28)·시스템 RAM 토글(10-03 D64)과 모델 허브 가격 정렬.
  * 브라우저에서만 드러나는 것 — 하이드레이션 후 컨트롤 활성, 정적 표 셀 강조·요약 문장이 정적 셀과 같은 수치,
  * 실행 명령 교체, 그리고 지연 청크 없음(초기 스크립트만) + 뒤로가기 실패 요청 0(D18).
  */
@@ -146,6 +146,132 @@ for (const locale of LOCALES) {
       await expect(summary).toHaveAttribute('data-ctx', '65536');
       await expect(summary).toContainText('VRAM');
       await expect(summary).toContainText('RAM');
+    });
+  });
+
+  test.describe(`${locale} combo system RAM toggle (10-03 D64)`, () => {
+    // 16GB 에서는 기준 파일이 안 들어가 다른 양자화로 바뀌는 페이지 — 기대값은 정적 목록의 data 속성에서 읽는다(하드코딩 금지)
+    const ramPath = localePath(locale, '/can-i-run/qwen3-30b-a3b-2507/on/rtx-4060');
+    const BELOW = /commands below|아래 (실행 )?명령/;
+
+    test('picking another RAM locks ctx/KV, shows that RAM verdict and command, and the static block stays', async ({ page }) => {
+      const problems = collectProblems(page);
+      const chunks = trackChunkRequests(page);
+      await open(page, ramPath);
+      const chunksAfterLoad = chunks();
+      const toggle = page.locator('[data-ram-toggle]');
+      await expect(toggle.locator('input').first()).toBeEnabled();
+      const staticCommand = (await page.locator('[data-snippet-code="llama.cpp"]').textContent()) ?? '';
+      const assumedRam = (await page.locator('[data-ram-step][data-assumed]').getAttribute('data-ram-step')) ?? '';
+      await expect(toggle.locator(`input[value="${assumedRam}"]`)).toBeChecked();
+
+      const row = page.locator('[data-ram-step="16"]');
+      const quant = (await row.getAttribute('data-quant')) ?? '';
+      expect(await row.getAttribute('data-fits')).toBe('true');
+      expect(quant).not.toBe(await page.locator('[data-ram-step][data-assumed]').getAttribute('data-quant'));
+
+      await toggle.locator('input[value="16"]').check();
+      const summary = page.locator('[data-live-summary]');
+      await expect(summary).toHaveAttribute('data-ram', '16');
+      await expect(summary).not.toHaveAttribute('data-ctx', /.*/);
+      await expect(summary).toContainText(quant);
+      expect((await summary.textContent()) ?? '', 'rule 3 band').toMatch(RANGE_RE);
+      await expect(summary).not.toHaveText(BELOW);
+      await expect(row).toHaveAttribute('aria-current', 'true');
+      await expect(page.locator('[data-ctx-cell][aria-current]')).toHaveCount(0);
+      await expect(page.locator('[data-ctx-slider]')).toBeDisabled();
+      await expect(page.locator('[data-kv-toggle] input').first()).toBeDisabled();
+
+      // 아일랜드가 그리는 결과 블록: 설명·파일 줄·명령이 모두 고른 RAM 의 양자화를 따른다
+      const result = page.locator('[data-ram-result="16"]');
+      await expect(result.locator('p').nth(0), 'intro line').toContainText(quant);
+      await expect(result.locator('p').nth(1), 'file line').toContainText(quant);
+      await expect(result.locator('[data-ram-code="llama.cpp"]')).toContainText(quant);
+      await expect(result.locator('[data-ram-code="llama.cpp"]')).toContainText('-c 8192');
+      await expect(result.locator('a[data-ram-calc]')).toHaveAttribute('href', /calculator\?gpu=rtx-4060.*&ram=16/);
+      // 정적 스니펫(정적 기준 RAM)은 그대로
+      await expect(page.locator('[data-snippet-code="llama.cpp"]')).toHaveText(staticCommand);
+
+      // 처음 RAM 으로 돌아가면 잠금이 풀리고 결과 블록이 사라진다
+      await toggle.locator(`input[value="${assumedRam}"]`).check();
+      await expect(page.locator('[data-ctx-slider]')).toBeEnabled();
+      await expect(summary).toHaveText('');
+      await expect(page.locator('[data-ram-result]')).toHaveCount(0);
+      await expect(page.locator('[data-ram-step][aria-current]')).toHaveCount(0);
+
+      // 되돌리기 버튼은 RAM 도 처음으로
+      await toggle.locator('input[value="64"]').check();
+      await expect(summary).toHaveAttribute('data-ram', '64');
+      await page.locator('button[data-ctx-reset]').click();
+      await expect(toggle.locator(`input[value="${assumedRam}"]`)).toBeChecked();
+      await expect(summary).toHaveText('');
+      await expect(page.locator('[data-snippet-code="llama.cpp"]')).toHaveText(staticCommand);
+
+      await page.waitForLoadState('networkidle');
+      expect(chunks(), 'no lazy chunk after interaction').toBe(chunksAfterLoad);
+      expect(problems, 'console errors / failed requests').toEqual([]);
+    });
+
+    test('?ram=16 opens in the same state (calculator deep link)', async ({ page }) => {
+      const problems = collectProblems(page);
+      await open(page, `${ramPath}?ram=16&ctx=32768`);
+      await expect(page.locator('[data-ram-toggle] input[value="16"]')).toBeChecked();
+      await expect(page.locator('[data-live-summary]')).toHaveAttribute('data-ram', '16');
+      await expect(page.locator('[data-ram-step="16"]')).toHaveAttribute('aria-current', 'true');
+      await expect(page.locator('[data-ctx-slider]')).toBeDisabled();
+      await expect(page.locator('[data-ctx-tick="8192"]')).toHaveAttribute('aria-pressed', 'true');
+      expect(problems).toEqual([]);
+    });
+
+    test('a RAM-hint page starts at the hint RAM; a RAM where nothing fits shows no command', async ({ page }) => {
+      await open(page, localePath(locale, '/can-i-run/gpt-oss-120b/on/rtx-4060'));
+      const commandsRow = page.locator('[data-ram-step][data-commands]');
+      await expect(commandsRow).toHaveCount(1);
+      const hintRam = (await commandsRow.getAttribute('data-ram-step')) ?? '';
+      await expect(page.locator(`[data-ram-toggle] input[value="${hintRam}"]`)).toBeChecked();
+      expect(await page.locator('[data-ram-step="16"]').getAttribute('data-fits')).toBe('false');
+      await page.locator('[data-ram-toggle] input[value="16"]').check();
+      await expect(page.locator('[data-live-summary]')).toHaveAttribute('data-ram', '16');
+      await expect(page.locator('[data-live-summary]')).not.toHaveText(BELOW);
+      await expect(page.locator('[data-ram-result="16"] [data-ram-code]')).toHaveCount(0);
+      await expect(page.locator('[data-ram-result="16"] a[data-ram-calc]')).toBeVisible();
+      await expect(page.locator('figure[data-snippet="llama.cpp"]')).toBeVisible();
+    });
+
+    test('a page without a static run command shows the command a bigger RAM allows, never "the commands below"', async ({ page }) => {
+      await open(page, localePath(locale, '/can-i-run/llama-3.3-70b/on/rtx-5060'));
+      await expect(page.locator('[data-no-run]')).toBeVisible();
+      const runs = page.locator('[data-ram-step][data-fits="true"]');
+      expect(await runs.count(), 'some RAM step fits').toBeGreaterThan(0);
+      const ram = (await runs.first().getAttribute('data-ram-step')) ?? '';
+      await page.locator(`[data-ram-toggle] input[value="${ram}"]`).check();
+      const summary = page.locator('[data-live-summary]');
+      await expect(summary).toHaveAttribute('data-ram', ram);
+      await expect(summary).not.toHaveText(BELOW);
+      await expect(page.locator(`[data-ram-result="${ram}"] [data-ram-code="llama.cpp"]`)).toContainText('llama-server');
+      await page.locator('[data-ram-toggle] input[value="16"]').check();
+      await expect(summary).toHaveAttribute('data-ram', '16');
+      await expect(summary).not.toHaveText(BELOW);
+      await expect(page.locator('[data-ram-result="16"] [data-ram-code]')).toHaveCount(0);
+      await expect(page.locator('[data-no-run]')).toBeVisible();
+    });
+
+    test('pages whose verdict does not depend on RAM have no toggle and say so', async ({ page }) => {
+      await open(page, localePath(locale, '/can-i-run/qwen3-14b/on/rtx-4060'));
+      await expect(page.locator('[data-ram-toggle]')).toHaveCount(0);
+      await expect(page.locator('[data-ram-step]')).toHaveCount(0);
+      await expect(page.locator('[data-ram-same]')).toHaveCount(1);
+    });
+  });
+
+  test.describe(`${locale} combo RAM toggle on a phone`, () => {
+    test.use({ viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
+
+    test('the RAM result block does not widen the page', async ({ page }) => {
+      await open(page, localePath(locale, '/can-i-run/qwen3-30b-a3b-2507/on/rtx-4060?ram=16'));
+      await expect(page.locator('[data-ram-result="16"] [data-ram-code="llama.cpp"]')).toBeVisible();
+      const scrollX = (await page.evaluate('(() => { window.scrollTo(100, 0); return window.scrollX; })()')) as number;
+      expect(scrollX).toBe(0);
     });
   });
 
