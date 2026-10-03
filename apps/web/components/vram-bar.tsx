@@ -103,17 +103,21 @@ export function VramBar({
     ...(breakdown.ram.weights > 0 ? [ramSegments[0]!] : []),
   ].filter((s) => s.gb > 0);
 
-  // 각주 (10-03 D62): 그래픽카드에 다 올렸는데 파일 일부가 GPU 밖에 있는 이유(입력 임베딩·MTP 블록), MTP 를 켜면 더 드는 양
+  // 각주 (10-03 D62): 그래픽카드에 다 올렸는데 파일 일부가 GPU 밖에 있는 이유(입력 임베딩·MTP 블록), MTP 를 켜면 더 드는 양.
+  // MTP 를 켤 수 없는 모델(EXAONE 4.5 — llama.cpp 가 아직 안 씀)은 "켜면" 문장 없이 안 쓴다고만 쓴다
   const note = breakdown.note;
   const gb2 = (v: number) => formatGB(locale, v, 2);
   const notes: string[] = [];
   if (gpu.kind === 'dgpu' && mode === 'full-gpu' && note.offGpuGB >= OFF_GPU_NOTE_MIN_GB) {
     const args = { off: gb2(note.offGpuGB), file: gb2(note.fileGB) };
     notes.push(
-      note.mtpGB !== undefined ? t('barNoteOffGpuMtp', { ...args, mtp: gb2(note.mtpGB) }) : t('barNoteOffGpu', args),
+      note.mtpGB === undefined
+        ? t('barNoteOffGpu', args)
+        : t(note.mtpLoadable ? 'barNoteOffGpuMtp' : 'barNoteOffGpuMtpUnused', { ...args, mtp: gb2(note.mtpGB) }),
     );
-  } else if (note.mtpGB !== undefined) {
-    notes.push(t('barNoteMtp', { mtp: gb2(note.mtpGB) }));
+  } else if (mode === 'cpu-moe' && note.mtpGB !== undefined) {
+    // cpu-moe: MTP 블록은 GPU 몫에서는 빠졌지만 시스템 RAM 몫(파일 − GPU 가중치)에는 들어 있다 — 위 RAM 막대와 맞게 말한다
+    notes.push(t(note.mtpLoadable ? 'barNoteMtp' : 'barNoteMtpUnused', { mtp: gb2(note.mtpGB) }));
   }
 
   return (

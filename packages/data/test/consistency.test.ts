@@ -1,6 +1,6 @@
 /** 파일 간 정합성 + 시드 규모 — docs/06 P0-3 (GPU 42 코어·모델 20·실측 ~30점). */
 import { describe, expect, it } from 'vitest';
-import { deriveNonExpertGB, MOE_ARCH, validateAll } from '../src/index';
+import { deriveNonExpertGB, MOE_ARCH, MTP_LOADABLE_MODELS, validateAll } from '../src/index';
 import { loadSeed } from './seed';
 
 const seed = loadSeed();
@@ -65,11 +65,23 @@ describe('dense offGpuGB · mtpGB (GGUF header, 10-03 D62)', () => {
     modelQuants: seed.modelQuants.map((mq) => (mq.modelId === row.modelId && mq.quant === row.quant ? row : mq)),
   });
 
-  it('seed: every dense row is measured; MTP rows carry mtpGB inside the off-GPU share', () => {
-    const moeIds = new Set(seed.models.filter((m) => m.activeParamsB !== undefined).map((m) => m.id));
-    expect(seed.modelQuants.filter((mq) => !moeIds.has(mq.modelId) && mq.offGpuGB === undefined)).toEqual([]);
-    expect(seed.modelQuants.filter((mq) => moeIds.has(mq.modelId) && mq.offGpuGB !== undefined)).toEqual([]);
+  // 측정은 필수가 아니다(D62): sync·add-model 은 측정 실패·보류 행을 offGpuGB 없이(파일 전체로) 두고 manual 로 알린다.
+  // 그래서 "모든 dense 행" 대신 백필 때 잰 대표 행만 고정한다 — 주간 동기화의 `pnpm test` 가 새 행 하나로 깨지지 않게
+  it('seed: known dense rows carry the backfilled measurement; MTP rows carry mtpGB inside the off-GPU share', () => {
+    const pick = (modelId: string, quant: string) =>
+      seed.modelQuants.find((mq) => mq.modelId === modelId && mq.quant === quant);
+    expect(pick('llama-3.1-8b', 'Q4_K_M')).toMatchObject({ fileGB: 4.92, offGpuGB: 0.3 });
+    expect(pick('exaone-4.5-33b', 'Q4_K_M')).toMatchObject({ offGpuGB: 0.79, mtpGB: 0.34 });
     expect(dense).toMatchObject({ fileGB: 5.87, offGpuGB: 0.75, mtpGB: 0.17 });
+    const moeIds = new Set(seed.models.filter((m) => m.activeParamsB !== undefined).map((m) => m.id));
+    expect(seed.modelQuants.filter((mq) => moeIds.has(mq.modelId) && mq.offGpuGB !== undefined)).toEqual([]);
+  });
+
+  it('MTP_LOADABLE_MODELS names catalog models whose rows carry an MTP block (EXAONE 4.5 is not one)', () => {
+    for (const id of MTP_LOADABLE_MODELS) {
+      expect(seed.modelQuants.some((mq) => mq.modelId === id && mq.mtpGB !== undefined), id).toBe(true);
+    }
+    expect(MTP_LOADABLE_MODELS).not.toContain('exaone-4.5-33b');
   });
 
   it('rejects offGpuGB on a MoE row and above 25% of the file', () => {

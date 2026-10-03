@@ -173,12 +173,31 @@ export type VramBreakdown = {
   ram: { weights: number; usable: number };
   /**
    * 각주 (10-03 D62): dGPU 전량 탑재일 때 파일 중 그래픽카드에 안 올리는 몫(입력 임베딩 = 시스템 RAM, MTP 블록 = 미적재)과
-   * MTP 블록 크기. MTP 는 GPU 몫에서 뺀 모드(full-gpu·cpu-moe, dGPU)에서만 — 켜면 그만큼과 그 KV 가 더 든다.
+   * MTP 블록 크기. MTP 는 GPU 몫에서 뺀 dGPU 모드에서만 — full-gpu 는 필요량에서 빠져 있고, cpu-moe 는 GPU 몫에서는 빠졌지만
+   * 시스템 RAM 몫(파일 − GPU 가중치)에는 들어 있다(엔진 RAM 검사와 같은 보수 규칙). mtpLoadable = llama.cpp 가 이 모델의
+   * MTP 블록을 `--spec-type draft-mtp` 로 불러올 수 있는지(`MTP_LOADABLE_MODELS`) — 켜면 그만큼과 그 KV 가 더 든다.
    */
-  note: { fileGB: number; offGpuGB: number; mtpGB?: number };
+  note: { fileGB: number; offGpuGB: number; mtpGB?: number; mtpLoadable?: boolean };
 };
 
-export function vramBreakdown(q: QuantAssessment): VramBreakdown {
+/**
+ * llama.cpp 가 MTP 블록을 불러올 수 있는(`--spec-type draft-mtp`) 카탈로그 모델 — 로더가 load_mtp 를 보는 GGUF 아키텍처
+ * qwen35·qwen35moe 인 모델만(10-03 D62 리뷰). exaone4(EXAONE 4.5)는 NextN 층을 조건 없이 TENSOR_SKIP 해 켤 방법이 없다.
+ * 목록 밖 모델은 "불러오지 않는다"까지만 안내한다 — 새 모델을 빠뜨려도 틀린 문장은 나가지 않는 쪽.
+ * source: https://github.com/ggml-org/llama.cpp/blob/cb7934c/src/models/qwen35.cpp#L36-L38
+ * source: https://github.com/ggml-org/llama.cpp/blob/cb7934c/src/models/qwen35moe.cpp#L41
+ * source: https://github.com/ggml-org/llama.cpp/blob/cb7934c/src/models/exaone4.cpp#L39-L44
+ */
+export const MTP_LOADABLE_MODELS: readonly string[] = [
+  'qwen3.5-9b',
+  'qwen3.5-27b',
+  'qwen3.5-35b-a3b',
+  'qwen3.5-122b-a10b',
+  'qwen3.6-35b-a3b',
+  'qwen3.8-27b',
+];
+
+export function vramBreakdown(q: QuantAssessment, modelId: string): VramBreakdown {
   const v = q.result.vram;
   // cpu-moe 는 dGPU 전용, full-gpu 의 offGpuGB > 0 은 dGPU 에서만 생긴다
   const dgpuExcludesMtp =
@@ -187,7 +206,9 @@ export function vramBreakdown(q: QuantAssessment): VramBreakdown {
     note: {
       fileGB: q.fileGB,
       offGpuGB: q.memory.offGpuGB,
-      ...(q.mtpGB !== undefined && dgpuExcludesMtp ? { mtpGB: q.mtpGB } : {}),
+      ...(q.mtpGB !== undefined && dgpuExcludesMtp
+        ? { mtpGB: q.mtpGB, mtpLoadable: MTP_LOADABLE_MODELS.includes(modelId) }
+        : {}),
     },
     gpu: {
       weights: v.weights,

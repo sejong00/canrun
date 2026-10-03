@@ -124,7 +124,7 @@ describe('vramBreakdown / ppRange', () => {
   it('splits GPU and RAM shares for partial offload (rtx-4060 × qwen3-14b)', () => {
     const g = gpu('rtx-4060');
     const combo = assessCombo(seed, g, hardwareConfigs(g, seed.gpus)[0]!, model('qwen3-14b'));
-    const b = vramBreakdown(combo.display);
+    const b = vramBreakdown(combo.display, 'qwen3-14b');
     expect(b.gpu.weights).toBeCloseTo(5.483, 2);
     expect(b.gpu.kv).toBeCloseTo(1.342, 2);
     expect(b.gpu.buffer).toBeCloseTo(0.575, 3);
@@ -139,20 +139,38 @@ describe('vramBreakdown / ppRange', () => {
 
   it('notes the off-GPU share on a dGPU full-GPU fit, and the MTP block where it was left out (10-03 D62)', () => {
     const g = gpu('rtx-4060');
-    const llama = vramBreakdown(assessCombo(seed, g, hardwareConfigs(g, seed.gpus)[0]!, model('llama-3.1-8b')).baseline);
+    const llama = vramBreakdown(
+      assessCombo(seed, g, hardwareConfigs(g, seed.gpus)[0]!, model('llama-3.1-8b')).baseline,
+      'llama-3.1-8b',
+    );
     expect(llama.note).toEqual({ fileGB: 4.92, offGpuGB: expect.closeTo(0.3, 6) as number });
     expect(llama.ram.weights).toBe(0);
     // 부분 오프로드: GPU 밖 몫 각주 없음(RAM 몫에 이미 들어 있다)
-    const qwen14 = vramBreakdown(assessCombo(seed, g, hardwareConfigs(g, seed.gpus)[0]!, model('qwen3-14b')).display);
+    const qwen14 = vramBreakdown(
+      assessCombo(seed, g, hardwareConfigs(g, seed.gpus)[0]!, model('qwen3-14b')).display,
+      'qwen3-14b',
+    );
     expect(qwen14.note.offGpuGB).toBe(0);
-    // cpu-moe(전문가 일부 RAM)도 MTP 는 GPU 몫에서 빠져 있다 → MTP 안내
+    // cpu-moe(전문가 일부 RAM): MTP 는 GPU 몫에서 빠졌지만 RAM 몫(파일 − GPU 가중치)에는 들어 있다 → RAM 몫 기준 MTP 안내
     const g12 = gpu('rtx-3060-12gb');
-    const q36 = vramBreakdown(assessCombo(seed, g12, hardwareConfigs(g12, seed.gpus)[0]!, model('qwen3.6-35b-a3b')).baseline);
-    expect(q36.note.mtpGB).toBeCloseTo(0.9, 6);
+    const q36Combo = assessCombo(seed, g12, hardwareConfigs(g12, seed.gpus)[0]!, model('qwen3.6-35b-a3b')).baseline;
+    expect(q36Combo.result.mode).toBe('cpu-moe');
+    const q36 = vramBreakdown(q36Combo, 'qwen3.6-35b-a3b');
+    expect(q36.note).toMatchObject({ mtpGB: expect.closeTo(0.9, 6) as number, mtpLoadable: true });
+    expect(q36.gpu.weights + q36.ram.weights).toBeCloseTo(22.29, 6);
+    // EXAONE 4.5: MTP 블록은 있지만 llama.cpp(exaone4)가 늘 건너뛴다 — 켤 수 있다는 안내를 하지 않는다
+    const g3090 = gpu('rtx-3090');
+    const exaone = assessCombo(seed, g3090, hardwareConfigs(g3090, seed.gpus)[0]!, model('exaone-4.5-33b')).baseline;
+    expect(exaone.result.mode).toBe('full-gpu');
+    expect(vramBreakdown(exaone, 'exaone-4.5-33b').note).toMatchObject({
+      offGpuGB: expect.closeTo(0.79, 6) as number,
+      mtpGB: 0.34,
+      mtpLoadable: false,
+    });
     // 맥(통합 메모리)은 파일 전체 — 각주 없음
     const m4 = gpu('apple-m4');
     const mac = assessCombo(seed, m4, hardwareConfigs(m4, seed.gpus).at(-1)!, model('qwen3.6-35b-a3b')).baseline;
-    expect(vramBreakdown(mac).note).toEqual({ fileGB: 22.29, offGpuGB: 0 });
+    expect(vramBreakdown(mac, 'qwen3.6-35b-a3b').note).toEqual({ fileGB: 22.29, offGpuGB: 0 });
   });
 
   it('pp is a rough ±40% range for full-GPU fits (rtx-4060 × llama-3.1-8b)', () => {

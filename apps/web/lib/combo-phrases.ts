@@ -139,10 +139,10 @@ export function verdictSentence(t: ComboTranslators, page: ComboPage, locale: Lo
               });
         break;
       case 'partial-offload':
-        // 모자란 양(그래픽카드 몫 기준)과 RAM 에 두는 가중치(파일 기준 — 입력 임베딩 포함)를 GB 로 함께 (10-03 D62)
+        // RAM 에 두는 가중치(파일 기준 — 입력 임베딩 포함, 엔진 RAM 검사와 같은 값) 하나만 GB 로 (10-03 D62).
+        // 모자란 양은 그래픽카드 몫 기준이라 함께 쓰면 두 숫자가 GPU 밖 몫만큼 어긋난다
         sentence = t.combo('verdictPartial', {
           quant: display.quant,
-          short: gb(Math.max(0, m.needGB - m.gpuUsableGB)),
           ram: gb(m.ramGB),
           verdict,
           speed: speed(display),

@@ -32,7 +32,7 @@ Compare each total with what your card can use, not the number on the box: a car
 
 Take <ComboLink model="llama-3.1-8b" gpu="rtx-4060" />, a common first setup. At Ollama's 4k default it needs <Num kind="needGB" model="llama-3.1-8b" ctx="4096" />, and at 8k it needs <Num kind="needGB" model="llama-3.1-8b" ctx="8192" />. Both fit in the <Num kind="usableGB" gpu="rtx-4060" /> the card can use, and at the 8k baseline it Runs great.<Expect model="llama-3.1-8b" gpu="rtx-4060" verdict="S" />
 
-At 16k with an f16 KV cache the need rises to <Num kind="needGB" model="llama-3.1-8b" ctx="16384" />, about all the card can use, so in our model it no longer fits fully, and 32k takes it to <Num kind="needGB" model="llama-3.1-8b" ctx="32768" />. Past that line our model moves part of the weights to system RAM (partial offload). In the 64k f16 cell and the 128k f16 and q8_0 cells, the KV cache alone is larger than the card's usable memory, so our model runs those on the CPU only. The table shows what each does to the verdict and the speed band, and its q8_0 and q4_0 columns show the other way out, a smaller KV cache.
+At 16k with an f16 KV cache the need rises to <Num kind="needGB" model="llama-3.1-8b" ctx="16384" />, about the same as what the card can use; in our calculation it goes slightly over, so it no longer fits fully, and 32k takes it to <Num kind="needGB" model="llama-3.1-8b" ctx="32768" />. Past that line our model moves part of the weights to system RAM (partial offload). In the 64k f16 cell and the 128k f16 and q8_0 cells, the KV cache alone is larger than the card's usable memory, so our model runs those on the CPU only. The table shows what each does to the verdict and the speed band, and its q8_0 and q4_0 columns show the other way out, a smaller KV cache.
 
 <CtxTable model="llama-3.1-8b" gpu="rtx-4060" />
 
@@ -137,7 +137,7 @@ The big slowdown comes when the larger KV cache no longer fits in VRAM and Ollam
 
 ### How much extra memory does a 32k context need?
 
-It depends on the model's KV cache per token. With an f16 KV cache, 32k costs <Num kind="kvGB" model="llama-3.1-8b" ctx="32768" /> for Llama 3.1 8B and <Num kind="kvGB" model="qwen3-32b" ctx="32768" /> for Qwen3 32B, but only <Num kind="kvGB" model="gpt-oss-20b" ctx="32768" /> for gpt-oss-20b with its sliding-window layers. Add the model file and a compute buffer for the total, as in the 32k memory table, and compare it with your card's usable memory.
+It depends on the model's KV cache per token. With an f16 KV cache, 32k costs <Num kind="kvGB" model="llama-3.1-8b" ctx="32768" /> for Llama 3.1 8B and <Num kind="kvGB" model="qwen3-32b" ctx="32768" /> for Qwen3 32B, but only <Num kind="kvGB" model="gpt-oss-20b" ctx="32768" /> for gpt-oss-20b with its sliding-window layers. Add the weights that go on the GPU and a compute buffer for the total, as in the 32k memory table, and compare it with your card's usable memory.
 
 ### Should I turn on q8_0 or q4_0 KV cache in Ollama?
 

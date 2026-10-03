@@ -1,4 +1,10 @@
-import { isReasoning, type ModelGpuRow, type ModelHubData, type PricedOption } from '@canrun/data';
+import {
+  isReasoning,
+  MTP_LOADABLE_MODELS,
+  type ModelGpuRow,
+  type ModelHubData,
+  type PricedOption,
+} from '@canrun/data';
 import { computeBufferGB, kvGB } from '@canrun/engine';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
@@ -76,8 +82,19 @@ function needAt8k(hub: ModelHubData, quant: string) {
   };
 }
 
-/** 이보다 작은 차이(임베딩 공유 모델의 헤더 메타데이터 수십 MB)는 FAQ 에서 따로 설명하지 않는다 */
+/** 이보다 작은 차이(임베딩 공유 모델의 헤더 메타데이터 수십 MB)는 FAQ·행렬 캡션에서 따로 설명하지 않는다 */
 const OFF_GPU_NOTE_MIN_GB = 0.05;
+
+/**
+ * 기준 quant 에서 그래픽카드에 안 올리는 몫이 있을 때 그 이유를 밝히는 문장 키(FAQ 답 꼬리·행렬 캡션 공용, 10-03 D62).
+ * 입력 임베딩만 / MTP 블록도(켜면 불러옴) / MTP 블록도(llama.cpp 가 아직 안 씀 — EXAONE 4.5). 차이가 작으면 없음
+ */
+function offGpuNoteKey(hub: ModelHubData) {
+  const base = needAt8k(hub, hub.baselineQuant);
+  if (base.size - base.gpu < OFF_GPU_NOTE_MIN_GB) return undefined;
+  if (!base.mtp) return 'modelVramOffGpu';
+  return MTP_LOADABLE_MODELS.includes(hub.model.id) ? 'modelVramOffGpuMtp' : 'modelVramOffGpuMtpUnused';
+}
 
 function rowLabel(t: Awaited<ReturnType<typeof translators>>, row: ModelGpuRow, locale: string) {
   const name = gpuName(t.names, row.gpu);
@@ -122,8 +139,8 @@ function buildFaq(
     buffer: formatGB(locale, base.buffer),
   };
   // 그래픽카드에 안 올리는 몫이 있으면 왜 파일보다 작은지(입력 임베딩·MTP)와 맥은 파일 전체라는 점을 덧붙인다
-  const offGpuNote =
-    base.size - base.gpu >= OFF_GPU_NOTE_MIN_GB ? ` ${t.faq(base.mtp ? 'modelVramOffGpuMtp' : 'modelVramOffGpu')}` : '';
+  const offGpuKey = offGpuNoteKey(hub);
+  const offGpuNote = offGpuKey ? ` ${t.faq(offGpuKey)}` : '';
   const items: QA[] = [
     {
       question: t.faq('modelVramQ', { model: model.name }),
@@ -209,6 +226,8 @@ export default async function ModelHubPage({ params }: Props) {
     (r) => r.combo.display.fReason !== 'no-fit' && r.combo.display.result.mode === 'partial-offload',
   );
   const hasUnsloth = hub.quants.some((q) => q.publisher.owner === 'unsloth');
+  // 행렬 캡션도 FAQ 와 같은 조건으로 GPU 밖 몫을 설명한다(임베딩 공유 모델은 생략, MTP 모델은 MTP 까지)
+  const matrixOffGpuKey = offGpuNoteKey(hub);
 
   return (
     <PageShell locale={locale} href={href}>
@@ -329,7 +348,10 @@ export default async function ModelHubPage({ params }: Props) {
           </h2>
           <ScrollTable label={t.hub('matrixTitle')}>
             <table className={TABLE_CLASS}>
-              <caption>{t.hub('matrixCaption')}</caption>
+              <caption>
+                {t.hub('matrixCaption')}
+                {matrixOffGpuKey && ` ${t.faq(matrixOffGpuKey)}`}
+              </caption>
               <thead>
                 <tr>
                   <th scope="col">{tTable('quant')}</th>

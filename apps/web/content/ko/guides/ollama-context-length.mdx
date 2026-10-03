@@ -26,7 +26,7 @@
 
 ### 8GB 카드에서 한 단계씩 늘려 보면
 
-RTX 4060에 <HubLink model="llama-3.1-8b" />를 올리면, Ollama 기본값인 4k에서는 <Num kind="needGB" model="llama-3.1-8b" ctx="4096" />, 8k에서는 <Num kind="needGB" model="llama-3.1-8b" ctx="8192" />가 필요합니다. 둘 다 사용 가능 메모리 <Num kind="usableGB" gpu="rtx-4060" /> 안에 들어가고, 8k에서는 쾌적하게 돌아갑니다<Expect model="llama-3.1-8b" gpu="rtx-4060" verdict="S" />. KV 캐시를 f16으로 두고 16k로 늘리면 <Num kind="needGB" model="llama-3.1-8b" ctx="16384" />가 필요합니다. 사용 가능 메모리를 거의 다 쓰는 양이라, CanRun 계산으로는 GPU에 다 올라가지 않습니다. 32k에서는 <Num kind="needGB" model="llama-3.1-8b" ctx="32768" />가 필요합니다. 이 선을 넘으면 CanRun 계산은 가중치 일부를 시스템 RAM에 두는 부분 오프로드로 보고, 더 길어지면 CPU 전용으로 봅니다. 그만큼 판정과 예상 속도 범위도 낮아집니다. 아래 표는 <ComboLink model="llama-3.1-8b" gpu="rtx-4060" />를 돌릴 때 컨텍스트 길이와 KV 캐시 종류에 따라 결과가 어떻게 달라지는지 보여 줍니다.
+RTX 4060에 <HubLink model="llama-3.1-8b" />를 올리면, Ollama 기본값인 4k에서는 <Num kind="needGB" model="llama-3.1-8b" ctx="4096" />, 8k에서는 <Num kind="needGB" model="llama-3.1-8b" ctx="8192" />가 필요합니다. 둘 다 사용 가능 메모리 <Num kind="usableGB" gpu="rtx-4060" /> 안에 들어가고, 8k에서는 쾌적하게 돌아갑니다<Expect model="llama-3.1-8b" gpu="rtx-4060" verdict="S" />. KV 캐시를 f16으로 두고 16k로 늘리면 <Num kind="needGB" model="llama-3.1-8b" ctx="16384" />가 필요해 사용 가능 메모리와 거의 같아집니다. CanRun 계산으로는 경계를 살짝 넘어 일부가 시스템 RAM으로 갑니다. 32k에서는 <Num kind="needGB" model="llama-3.1-8b" ctx="32768" />가 필요합니다. 이 선을 넘으면 CanRun 계산은 가중치 일부를 시스템 RAM에 두는 부분 오프로드로 보고, 더 길어지면 CPU 전용으로 봅니다. 그만큼 판정과 예상 속도 범위도 낮아집니다. 아래 표는 <ComboLink model="llama-3.1-8b" gpu="rtx-4060" />를 돌릴 때 컨텍스트 길이와 KV 캐시 종류에 따라 결과가 어떻게 달라지는지 보여 줍니다.
 
 <CtxTable model="llama-3.1-8b" gpu="rtx-4060" />
 
@@ -124,7 +124,7 @@ VRAM 안에 들어가는 동안에는 예상 속도가 조금씩만 내려가고
 
 ### 32k 컨텍스트에는 메모리가 얼마나 더 드나요?
 
-모델이 토큰 하나마다 저장하는 KV 캐시 크기에 달려 있습니다. f16 KV 캐시로 32k를 쓰면 Llama 3.1 8B는 <Num kind="kvGB" model="llama-3.1-8b" ctx="32768" />, Qwen3 32B는 <Num kind="kvGB" model="qwen3-32b" ctx="32768" />를 더 씁니다. 슬라이딩 윈도 층이 있는 gpt-oss-20b는 <Num kind="kvGB" model="gpt-oss-20b" ctx="32768" />에 그칩니다. 파일, KV 캐시, 연산 버퍼를 더한 전체 필요량은 위의 32k 메모리 표에서 사용 가능 메모리와 비교해 보면 됩니다.
+모델이 토큰 하나마다 저장하는 KV 캐시 크기에 달려 있습니다. f16 KV 캐시로 32k를 쓰면 Llama 3.1 8B는 <Num kind="kvGB" model="llama-3.1-8b" ctx="32768" />, Qwen3 32B는 <Num kind="kvGB" model="qwen3-32b" ctx="32768" />를 더 씁니다. 슬라이딩 윈도 층이 있는 gpt-oss-20b는 <Num kind="kvGB" model="gpt-oss-20b" ctx="32768" />에 그칩니다. 그래픽카드에 올라가는 가중치, KV 캐시, 연산 버퍼를 더한 전체 필요량은 위의 32k 메모리 표에서 사용 가능 메모리와 비교해 보면 됩니다.
 
 ### Ollama에서 q8_0이나 q4_0 KV 캐시를 켜야 하나요?
 

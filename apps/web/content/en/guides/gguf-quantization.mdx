@@ -92,7 +92,7 @@ IQ4_XS needs <Num kind="needGB" model="gemma-3-12b" quant="IQ4_XS" />, still ove
 
 ### When one step down is not enough
 
-For <ComboLink model="qwen3-14b" gpu="rtx-4060" />, the gap is too wide. At the baseline it Runs slowly,<Expect model="qwen3-14b" gpu="rtx-4060" verdict="B" /> and IQ4_XS still needs <Num kind="needGB" model="qwen3-14b" quant="IQ4_XS" />, far over the <Num kind="usableGB" gpu="rtx-4060" /> the card can use, so one step down does not change the verdict. Only the Heavy loss Q2_K comes close: it needs <Num kind="needGB" model="qwen3-14b" quant="Q2_K" />, about all the card can use.
+For <ComboLink model="qwen3-14b" gpu="rtx-4060" />, the gap is too wide. At the baseline it Runs slowly,<Expect model="qwen3-14b" gpu="rtx-4060" verdict="B" /> and IQ4_XS still needs <Num kind="needGB" model="qwen3-14b" quant="IQ4_XS" />, far over the <Num kind="usableGB" gpu="rtx-4060" /> the card can use, so one step down does not change the verdict. Only the Heavy loss Q2_K comes close: it needs <Num kind="needGB" model="qwen3-14b" quant="Q2_K" />, about the same as what the card can use.
 
 One caveat for MoE models: where a ladder row keeps some of the MoE experts in system RAM, as the Q4_K_M and IQ4_XS rows do for Qwen3 30B-A3B (2507) on the RTX 5060 Ti 16GB, those rows are theoretical (±30%). CanRun keeps as many experts on the GPU as fit and only the rest in RAM, but real speeds on this path still vary with the OS, the backend and the RAM configuration.
 

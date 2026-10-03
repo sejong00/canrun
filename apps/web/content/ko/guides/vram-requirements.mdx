@@ -4,7 +4,7 @@
 
 모델을 GPU에서만 돌리려면 세 가지가 모두 VRAM에 들어가야 합니다. 양자화한 GGUF 파일의 가중치, 컨텍스트의 토큰마다 키(key)와 값(value)을 저장하는 KV 캐시, 계산 중간값을 담는 연산 버퍼입니다. 연산 버퍼는 작지만 컨텍스트가 길수록 조금씩 커집니다.
 
-그래픽카드에 올라가는 가중치는 모델 파일보다 조금 작습니다. llama.cpp가 파일의 두 부분을 그래픽카드에 올리지 않기 때문입니다. 토큰을 벡터로 바꾸는 입력 임베딩 표는 늘 시스템 RAM에 둡니다. Qwen3.5 같은 일부 최신 모델에는 MTP(다중 토큰 예측) 블록이 들어 있는데, 이 블록은 MTP를 켤 때만 불러옵니다. CanRun은 두 부분의 크기를 GGUF 파일 헤더에서 읽어 뺍니다. 대부분의 모델에서는 수백 MB이고, Qwen3.5 계열은 1GB 안팎까지 됩니다. Gemma 3처럼 입력 임베딩 표를 출력층으로도 쓰는 모델은 그래픽카드에 사본을 두므로, 가중치가 파일 크기와 같습니다.
+그래픽카드에 올라가는 가중치는 모델 파일보다 조금 작습니다. llama.cpp가 파일의 두 부분을 그래픽카드에 올리지 않기 때문입니다. 토큰을 벡터로 바꾸는 입력 임베딩 표는 늘 시스템 RAM에 둡니다. Qwen3.5 같은 일부 최신 모델에는 MTP(다중 토큰 예측) 블록이 들어 있는데, 이 블록은 MTP를 켤 때만 불러옵니다. EXAONE 4.5에도 이 블록이 있지만, llama.cpp가 아직 쓰지 않아 아예 불러오지 않습니다. CanRun은 두 부분의 크기를 GGUF 파일 헤더에서 읽어 뺍니다. 대부분의 모델에서는 수백 MB이고, Qwen3.5 계열은 1GB 안팎입니다. 가장 큰 Qwen3.5 122B는 Q4_K_M에서도 2GB가 넘습니다. Gemma 3처럼 입력 임베딩 표를 출력층으로도 쓰는 모델은 그래픽카드에 사본을 두므로, 가중치가 파일 크기와 같습니다.
 
 CanRun은 Q4_K_M 양자화, 8k 컨텍스트, f16 KV 캐시를 기준으로 판정합니다. Q4_K_M은 흔히 기본값으로 쓰는 4비트 GGUF 양자화입니다. gpt-oss만은 원래 배포 형식인 MXFP4를 기준으로 삼습니다.
 
@@ -144,7 +144,7 @@ Ollama를 쓴다면 기본값도 확인해야 합니다. <RuntimeFact id="ollama
 
 ## 이 숫자는 얼마나 확실한가
 
-메모리 수치는 실제 GGUF 파일 크기에 KV 캐시와 연산 버퍼를 더해 공식으로 계산한 값이라, 오차 범위를 붙이지 않습니다. llama.cpp가 그래픽카드에 올리지 않는 부분의 크기는 파일 헤더에서 읽습니다. KV 캐시는 모델 설정 파일(config)로 계산합니다. 실제 파일 크기를 모를 때는 ‘파라미터 수 × 가중치당 비트 수 ÷ 8’로 어림합니다. 이 공식은 실제 파일 11종과 비교해 평균 0.7% 차이가 났습니다. KV 캐시 공식도 7가지 구조에서 일치했습니다.
+메모리 수치는 실제 GGUF 파일 크기와 파일 헤더로 그래픽카드에 올라가는 가중치를 구하고, 여기에 KV 캐시와 연산 버퍼를 더해 공식으로 계산한 값이라 오차 범위를 붙이지 않습니다. 파일 헤더에서는 llama.cpp가 그래픽카드에 올리지 않는 부분의 크기를 읽습니다. KV 캐시는 모델 설정 파일(config)로 계산합니다. 실제 파일 크기를 모를 때는 ‘파라미터 수 × 가중치당 비트 수 ÷ 8’로 어림합니다. 이 공식은 실제 파일 11종과 비교해 평균 0.7% 차이가 났습니다. KV 캐시 공식도 7가지 구조에서 일치했습니다.
 
 속도는 추정치라서 오차 범위와 신뢰 라벨을 함께 붙입니다. ‘실측’은 공개된 측정값입니다. ‘보정된 추정’의 오차 범위는 NVIDIA·AMD 카드에서 dense 모델을 GPU에만 올릴 때 ±12%입니다. MoE나 부분 오프로드, 그 밖의 하드웨어에서는 ±20%입니다. ‘이론 추정’은 MoE 전문가를 RAM에 두는 경우처럼 공개 벤치마크가 적거나 환경에 따른 편차가 큰 구성에 붙이며, 오차 범위는 ±30%입니다. MoE 전문가를 RAM에 두는 경우는 VRAM에 들어가는 만큼 전문가를 GPU에 두고, 나머지만 RAM에 둔다고 보고 계산합니다. 속도 공식을 공개 측정 12건과 비교하면 평균 오차는 6.3%, 최대 오차는 17.1%였습니다.
 
@@ -166,7 +166,7 @@ Ollama를 쓴다면 기본값도 확인해야 합니다. <RuntimeFact id="ollama
 
 ### VRAM 8GB로 로컬 LLM을 돌릴 수 있나요?
 
-8B급 모델이라면 Q4_K_M·8k 컨텍스트에서 돌릴 수 있습니다. <ComboLink model="llama-3.1-8b" gpu="rtx-4060" />는 필요량 <Num kind="needGB" model="llama-3.1-8b" />가 사용 가능 메모리 <Num kind="usableGB" gpu="rtx-4060" /> 안에 들어가 쾌적하게 돌아갑니다<Expect model="llama-3.1-8b" gpu="rtx-4060" verdict="S" />. 여유는 1GB 남짓입니다. 컨텍스트를 16k로 늘리면 f16 KV 캐시에서는 필요량이 <Num kind="needGB" model="llama-3.1-8b" ctx="16384" />로 늘어 사용 가능 메모리를 거의 다 씁니다. CanRun 계산으로는 이때 일부가 시스템 RAM으로 넘어갑니다. 이때 GPU에만 올리려면 KV 캐시를 q8_0으로 양자화하거나 컨텍스트를 줄여야 합니다. 같은 카드에서 Qwen3 14B는 <Num kind="needGB" model="qwen3-14b" />가 필요해 일부를 시스템 RAM에서 돌려야 하고, 겨우 돌아갑니다<Expect model="qwen3-14b" gpu="rtx-4060" verdict="B" />.
+8B급 모델이라면 Q4_K_M·8k 컨텍스트에서 돌릴 수 있습니다. <ComboLink model="llama-3.1-8b" gpu="rtx-4060" />는 필요량 <Num kind="needGB" model="llama-3.1-8b" />가 사용 가능 메모리 <Num kind="usableGB" gpu="rtx-4060" /> 안에 들어가 쾌적하게 돌아갑니다<Expect model="llama-3.1-8b" gpu="rtx-4060" verdict="S" />. 여유는 1GB 남짓입니다. 컨텍스트를 16k로 늘리면 f16 KV 캐시에서는 필요량이 <Num kind="needGB" model="llama-3.1-8b" ctx="16384" />로 늘어 사용 가능 메모리와 거의 같아집니다. CanRun 계산으로는 경계를 살짝 넘어 일부가 시스템 RAM으로 넘어갑니다. 이때 GPU에만 올리려면 KV 캐시를 q8_0으로 양자화하거나 컨텍스트를 줄여야 합니다. 같은 카드에서 Qwen3 14B는 <Num kind="needGB" model="qwen3-14b" />가 필요해 일부를 시스템 RAM에서 돌려야 하고, 겨우 돌아갑니다<Expect model="qwen3-14b" gpu="rtx-4060" verdict="B" />.
 
 ### 모델에 필요한 VRAM은 어떻게 계산하나요?
 
@@ -190,6 +190,7 @@ GGUF 파일 크기에서 출발해 컨텍스트 길이만큼의 KV 캐시와 작
 - [llama.cpp 서버 README](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md): `-ngl`, `--cpu-moe`(MoE 가중치를 모두 CPU에 둠), `--n-cpu-moe N`(앞쪽 N개 층의 MoE 가중치를 CPU에 둠), `-c`, `--cache-type-k`(기본 f16, q8_0·q4_0 선택 가능) 옵션 설명
 - [llama.cpp 소스: 층 배치](https://github.com/ggml-org/llama.cpp/blob/cb7934c/src/llama-model.cpp#L1605-L1607): 토큰 임베딩 표가 있는 입력층은 늘 CPU에 둔다는 코드
 - [llama.cpp 소스: Qwen3.5 모델 불러오기](https://github.com/ggml-org/llama.cpp/blob/cb7934c/src/models/qwen35.cpp#L36-L38): MTP를 요청하지 않으면(기본값) MTP 층을 건너뛴다는 코드
+- [llama.cpp 소스: EXAONE 4 계열 모델 불러오기](https://github.com/ggml-org/llama.cpp/blob/cb7934c/src/models/exaone4.cpp#L39-L44): MTP 층은 파일에 남아 있어도 아직 실행하지 않아 늘 건너뛴다는 코드
 - [llama.cpp PR #16653 (자동 배치)](https://github.com/ggml-org/llama.cpp/pull/16653): 기본으로 켜지는 `--fit` 옵션이 GPU 메모리를 최대한 쓰도록 설정을 자동으로 정한다는 설명, MoE 모델은 dense 가중치를 먼저 GPU에 두고 전문가 가중치를 필요한 만큼 CPU로 옮긴다는 설명, 2025년 12월 병합
 - [Ollama v0.30.0 릴리스 노트](https://github.com/ollama/ollama/releases/tag/v0.30.0): 호환성과 성능을 위해 llama.cpp로 모델을 돌린다는 설명
 - [Ollama 컨텍스트 길이 문서](https://docs.ollama.com/context-length): VRAM 구간별 기본 컨텍스트(4k·32k·256k), CPU 오프로드를 피하라는 권고, `ollama ps`로 확인하는 방법

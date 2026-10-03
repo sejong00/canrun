@@ -89,8 +89,9 @@ usable(cpu)    = usableRam = ram − 4GB (OS)     // usableRam = 모든 kind의 
    resident(unified·cpu) = weights (파일 전체)
    (10-03 D62, 엔진 0.6.0) llama.cpp 는 입력층(token_embd 등)을 항상 CPU 에 두고
    (https://github.com/ggml-org/llama.cpp/blob/cb7934c/src/llama-model.cpp#L1605-L1607), MTP/NextN 층은 load_mtp=false(기본)면
-   TENSOR_SKIP 으로 할당하지 않는다(src/models/qwen35.cpp#L36-L38 · qwen35moe.cpp#L41 · exaone4.cpp#L39-L44,
+   TENSOR_SKIP 으로 할당하지 않는다(src/models/qwen35.cpp#L36-L38 · qwen35moe.cpp#L41,
    llama-model-loader.cpp#L1177-L1185, 기본값 llama-model.cpp#L2943, common/common.cpp#L1661 — `--spec-type draft-mtp` 일 때만 켬).
+   exaone4(EXAONE 4.5)는 load_mtp 와 상관없이 NextN 층을 늘 TENSOR_SKIP 한다(exaone4.cpp#L39-L44 "not executed yet") — 켤 수 없음.
    임베딩 공유(tied) 모델은 출력층 사본이 GPU 에 가므로(llama-model-loader.cpp#L1161-L1168) 절감 0. 통합 메모리는 Metal 이 mmap 의
    [first,last] 범위를 백엔드 버퍼로 감싸(llama-model.cpp#L1856-L1870) 이 바이트가 GPU 범위에 들어갈 수 있어 파일 전체로 둔다.
    unified는 실패 시 곧바로 4 (2·3은 dgpu 전용)
@@ -220,7 +221,7 @@ expect(['A','B']).toContain(fit(m4max_128, llama33_70b_q4).verdict)    // meas 9
 - LocalScore류 컨텍스트 가중 수치와 tg128 단문 수치는 조건이 다름 — 실측 수집 시 ctx 필드 필수.
 - 열/전력 제한(노트북), 듀얼채널 미구성 RAM 등 사용자 환경 편차는 밴드로만 흡수.
 - dGPU full-gpu 필요량은 그래픽카드 상주 가중치(파일 − 입력 임베딩·MTP 블록, GGUF 헤더 실측)로 계산한다(10-03 D62, 엔진 0.6.0 — 그 전엔 파일 전체). 남은 한계:
-  - **MTP 를 켜면**(`--spec-type draft-mtp`, unsloth `*-MTP-GGUF` 행이 유도) MTP 블록(`mtpGB`, Qwen3.6 Q4 0.90GB)과 MTP 컨텍스트 KV 가 더 든다 — 계산하지 않고 분해 바 각주로 안내한다.
+  - **MTP 를 켜면**(`--spec-type draft-mtp`, unsloth `*-MTP-GGUF` 행이 유도 — qwen35·qwen35moe 아키텍처만, 데이터 레이어 `MTP_LOADABLE_MODELS`) MTP 블록(`mtpGB`, Qwen3.6 Q4 0.90GB)과 MTP 컨텍스트 KV 가 더 든다 — 계산하지 않고 분해 바 각주로 안내한다. EXAONE 4.5(exaone4)는 켤 수 없어 "아직 안 쓴다"고만 쓴다. cpu-moe·부분 오프로드의 RAM 몫(파일 − GPU 가중치)에는 MTP 블록이 그대로 들어 있다(보수 — cpu-moe 각주가 밝힌다).
   - **llama.cpp `--fit`(Ollama 0.30+ 도 -ngl 없이 llama-server 를 띄워 같은 경로)** 은 장치마다 1024MiB 를 비워 둔다(https://github.com/ggml-org/llama.cpp/blob/cb7934c/common/common.h#L485). 16GB 이하 카드에서 새로 full-gpu 가 된 빠듯한 셀(예: 8GB × Qwen3.5-9B 32k 필요 6.99 vs 사용 가능 7.4)은 Ollama 에서 부분 오프로드가 될 수 있다(추정) — 가이드·방법론이 `ollama ps` 확인을 안내한다. `llama-server -ngl all` 은 vramGB 가 표기 용량(실제는 GiB — 8GB 카드 = 8.59 decimal GB)이라 여유가 있어 OOM 위험이 낮다.
   - **통합 메모리(맥)는 파일 전체**(Metal mmap 범위, §2.4-1) — 32GB 맥의 Qwen3.5/3.6-35B-A3B 는 여전히 cpu-only(보수).
   - **partial-offload gpuFrac 분모는 파일 전체**(§3.4 주의) — 경계 바로 바깥이 B 로 떨어지는 절벽.

@@ -109,9 +109,19 @@ function model(id: string) {
     memoryAt: [8192, 32768, 131072]
       .filter((c) => c <= m.maxContext)
       .map((c) => {
-        const file = hub.quants.find((q) => q.row.quant === hub.baselineQuant)!.row.fileGB;
+        // 페이지와 같은 규칙(10-03 D62): totalGB = 그래픽카드에 올라가는 가중치 + KV + 버퍼(Num needGB·ModelMemoryTable 기본값),
+        // macTotalGB = 파일 전체 + KV + 버퍼(맥 — memory="unified")
+        const row = hub.matrix.rows.find((r) => r.quant === hub.baselineQuant)!;
         const kv = kvGB(m.arch.kvBytesPerTokenF16, c);
-        return { ctx: c, fileGB: file, kvGB: r1(kv), totalGB: r1(file + kv + computeBufferGB(c)) };
+        const buffer = computeBufferGB(c);
+        return {
+          ctx: c,
+          fileGB: row.fileGB,
+          gpuWeightsGB: row.gpuWeightsGB,
+          kvGB: r1(kv),
+          totalGB: r1(row.gpuWeightsGB + kv + buffer),
+          macTotalGB: r1(row.fileGB + kv + buffer),
+        };
       }),
     cheapest: hub.cheapest,
   };

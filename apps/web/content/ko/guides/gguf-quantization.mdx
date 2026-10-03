@@ -83,7 +83,7 @@ ollama run hf.co/bartowski/mistralai_Mistral-Small-3.2-24B-Instruct-2506-GGUF:IQ
 
 ### 한 단계로는 부족한 경우
 
-한 단계 낮춘다고 늘 해결되지는 않습니다. CanRun 추정으로는 <ComboLink model="qwen3-14b" gpu="rtx-4060" />도 Q4_K_M으로 겨우 돌아가는 정도입니다<Expect model="qwen3-14b" gpu="rtx-4060" verdict="B" />. IQ4_XS로 낮춰도 <Num kind="needGB" model="qwen3-14b" quant="IQ4_XS" />가 필요해 사용 가능 메모리 <Num kind="usableGB" gpu="rtx-4060" />를 한참 넘습니다. CanRun 계산으로는 한 단계 낮춰도 판정이 그대로입니다. 가장 작은 파일인 2비트 Q2_K(품질 손실 큼)는 <Num kind="needGB" model="qwen3-14b" quant="Q2_K" />로 사용 가능 메모리를 거의 다 씁니다. 가중치 대부분이 GPU에 올라가 판정이 좋아지므로, CanRun은 이 조합에서 Q2_K에 ‘품질 손실 큼’을 붙여 최후 수단으로 따로 보여 줍니다.
+한 단계 낮춘다고 늘 해결되지는 않습니다. CanRun 추정으로는 <ComboLink model="qwen3-14b" gpu="rtx-4060" />도 Q4_K_M으로 겨우 돌아가는 정도입니다<Expect model="qwen3-14b" gpu="rtx-4060" verdict="B" />. IQ4_XS로 낮춰도 <Num kind="needGB" model="qwen3-14b" quant="IQ4_XS" />가 필요해 사용 가능 메모리 <Num kind="usableGB" gpu="rtx-4060" />를 한참 넘습니다. CanRun 계산으로는 한 단계 낮춰도 판정이 그대로입니다. 가장 작은 파일인 2비트 Q2_K(품질 손실 큼)는 <Num kind="needGB" model="qwen3-14b" quant="Q2_K" />로 사용 가능 메모리와 거의 같습니다. 가중치 대부분이 GPU에 올라가 판정이 좋아지므로, CanRun은 이 조합에서 Q2_K에 ‘품질 손실 큼’을 붙여 최후 수단으로 따로 보여 줍니다.
 
 MoE 모델은 따로 봐야 합니다. 한국 모델인 <HubLink model="kanana-1.5-15.7b-a3b" />를 RTX 3060 12GB에서 Q4_K_M으로 쓰면 <Num kind="needGB" model="kanana-1.5-15.7b-a3b" />가 필요해 사용 가능 메모리 <Num kind="usableGB" gpu="rtx-3060-12gb" />를 넘습니다. IQ4_XS로 낮추면 <Num kind="needGB" model="kanana-1.5-15.7b-a3b" quant="IQ4_XS" />라서 CanRun 계산으로는 그 안에 들어가지만, 여유는 크지 않습니다. 다만 MoE 전문가를 시스템 RAM에 두는 경우의 속도는 이론 추정(±30%)입니다. CanRun은 VRAM에 들어가는 만큼 전문가를 GPU에 두고 나머지만 RAM에 둔다고 보고 계산하지만, 운영체제·백엔드·RAM 구성에 따라 실제 속도 차이가 큽니다. 이 조합을 Q4_K_M으로 쓸 때와 16GB 카드에서 Qwen3 30B-A3B (2507)를 쓸 때가 여기에 해당합니다. 그래서 이런 경우에 생기는 판정 차이는 결론으로 삼지 않습니다.
 
