@@ -1,5 +1,5 @@
 'use client';
-import { useId, useState, type FormEvent } from 'react';
+import { useId, type FormEvent } from 'react';
 import type { CalcTranslators } from '@/components/islands/calc-shared';
 import type { HfErrorCode } from '@/lib/calc/hf-load';
 
@@ -33,6 +33,8 @@ export function HfModelPanel({
   hasHardware,
   modelMode = false,
   canRemove,
+  text,
+  onTextChange,
   onLoad,
   onRemove,
 }: {
@@ -44,11 +46,15 @@ export function HfModelPanel({
   modelMode?: boolean;
   /** 불러온 모델이 걸려 있거나 불러오는 중 — 다음 불러오기가 실패해도 뺄 수 있게 상태가 아니라 이것으로 정한다 */
   canRemove: boolean;
+  /**
+   * 입력창 글자 — 아일랜드가 갖는다. 모드를 바꾸면 이 패널이 다른 자리에 다시 그려지므로(D65) 패널 안 상태로 두면 친 주소가 사라진다 (리뷰 반영)
+   */
+  text: string;
+  onTextChange: (text: string) => void;
   onLoad: (text: string) => void;
   onRemove: () => void;
 }) {
   const id = useId();
-  const [text, setText] = useState('');
   const submit = (e: FormEvent) => {
     e.preventDefault();
     if (text.trim()) onLoad(text.trim());
@@ -90,7 +96,7 @@ export function HfModelPanel({
           placeholder={t.calc('hfPlaceholder')}
           value={text}
           disabled={!hydrated}
-          onChange={(e) => setText(e.currentTarget.value)}
+          onChange={(e) => onTextChange(e.currentTarget.value)}
           className="h-11 min-w-0 flex-1 rounded-md border border-border bg-background px-3 text-base sm:h-9 sm:text-sm"
         />
         <button

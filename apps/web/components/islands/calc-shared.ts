@@ -168,8 +168,9 @@ export function makeReducer(catalog: CatalogLite) {
       case 'toModel':
         return normalize({ ...state, mode: 'model', ...(action.focus !== undefined ? { focus: action.focus, hf: undefined } : {}) }, catalog);
       case 'useGpu': {
-        // 'hardware' 와 같은 RAM·OS 유지 규칙으로 바꾼 뒤, 통합·CPU 행이면 그 행의 메모리 용량으로 (`m` = 대상 모델은 그대로 강조)
-        const next = withHardware({ ...state, mode: 'hardware' }, { kind: 'catalog', gpuId: action.gpuId }, catalog);
+        // 'hardware' 와 같은 RAM·OS 유지 규칙으로 바꾼 뒤, 통합·CPU 행이면 그 행의 메모리 용량으로 (`m` = 대상 모델은 그대로 강조).
+        // GPU 수는 1장으로 되돌린다 — 행은 1장으로 계산했으니 넘어간 화면도 그 행과 같아야 한다(여러 장이면 전부 이론 추정이 된다, 리뷰 반영)
+        const next = withHardware({ ...state, mode: 'hardware', gpus: undefined }, { kind: 'catalog', gpuId: action.gpuId }, catalog);
         const kind = catalog.gpus.find((g) => g.id === action.gpuId)?.kind;
         return kind !== 'dgpu' && action.ramGB !== undefined ? normalize({ ...next, ramGB: action.ramGB }, catalog) : next;
       }

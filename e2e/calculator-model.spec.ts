@@ -84,6 +84,10 @@ for (const locale of LOCALES) {
       const laptopTypes = await attrs(page, '[data-gpu-row]', 'data-type');
       expect(laptopTypes.length).toBeGreaterThan(0);
       expect(new Set(laptopTypes)).toEqual(new Set(['laptop']));
+      // 노트북 설명은 목록 아래 한 번만, 최저가 상자는 필터와 무관하다고 밝힌다
+      await expect(page.locator('[data-gpu-results]')).toContainText(locale === 'ko' ? '노트북마다 전력 제한' : 'vary from laptop to laptop');
+      await expect(page.locator('[data-gpu-row] h3', { hasText: locale === 'ko' ? '전력 제한' : 'power limits' })).toHaveCount(0);
+      await expect(page.locator('[data-cheapest]')).toContainText(locale === 'ko' ? '필터와 관계없이' : 'regardless of filters');
       await page.locator('[data-gpu-results] label:has(input[value="laptop"])').click();
       await expect(page.locator('[data-gpu-row]')).toHaveCount(GPU_COUNT);
 
@@ -93,7 +97,7 @@ for (const locale of LOCALES) {
       expect(budgetPrices.length).toBeGreaterThan(0);
       for (const p of budgetPrices) expect(p !== null && p <= 500).toBe(true);
       // 실거래가가 없는 행을 뺐다는 안내
-      await expect(page.locator('[data-gpu-results]')).toContainText(locale === 'ko' ? '실거래가가 없는' : 'without a street price');
+      await expect(page.locator('[data-gpu-results]')).toContainText(locale === 'ko' ? '실거래가가 확인되지 않은' : 'without a street price');
       await page.locator('[data-gpu-results] select[name="budget"]').selectOption('');
 
       await page.locator('[data-gpu-results] select[name="gsort"]').selectOption('price');
@@ -159,6 +163,32 @@ for (const locale of LOCALES) {
       await expect.poll(() => new URL(page.url()).searchParams.get('gpu')).toBe(macId);
       await expect(page.locator('[data-result-card]').first()).toBeVisible();
       expect(problems).toEqual([]);
+    });
+
+    test('switching modes keeps what was typed: a GPU name not committed yet and a Hugging Face address', async ({ page }) => {
+      const problems = collectProblems(page);
+      await open(page, calc);
+      const gpuInput = page.locator('form[data-calc-form] input[name="gpu"]');
+      // 메모리 형제가 있는 이름은 자동 반영 없이 blur·Enter 로만 확정된다 — 입력창이 blur 된 직후 폼이 사라져도 남아야 한다
+      await gpuInput.fill('4060 ti');
+      await page.locator('[data-mode-switch] label:has(input[value="model"])').click();
+      await expect(page.locator('[data-model-form]')).toBeVisible();
+      await expect.poll(() => new URL(page.url()).searchParams.get('gpu')).toBe('4060 ti');
+      const hf = page.locator('[data-hf-panel] input[name="hf"]');
+      await hf.fill('Qwen/Qwen3-4B');
+      await page.locator('[data-mode-switch] label:has(input[value="hardware"])').click();
+      await expect(gpuInput).toHaveValue('4060 ti');
+      await expect(hf).toHaveValue('Qwen/Qwen3-4B');
+      expect(problems).toEqual([]);
+    });
+
+    test('a context above the model maximum: the assumption sentence and my-setup line use the length actually computed', async ({ page }) => {
+      await open(page, `${calc}?gpu=rtx-4060&ctx=131072&mode=model&m=${MODEL}`);
+      await expect(page.locator('[data-gpu-row]')).toHaveCount(GPU_COUNT);
+      for (const selector of ['[data-model-assumptions]', '[data-mine-result]']) {
+        await expect(page.locator(selector)).toContainText('32k');
+        await expect(page.locator(selector)).not.toContainText('128k');
+      }
     });
 
     test('the mode switch starts empty, then picking a model fills the list', async ({ page }) => {

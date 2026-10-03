@@ -20,6 +20,7 @@ export function ModelForm({
   state,
   dispatch,
   hydrated,
+  ctx,
   hfName,
   onPick,
 }: {
@@ -28,6 +29,8 @@ export function ModelForm({
   state: CalcState;
   dispatch: Dispatch<CalcAction>;
   hydrated: boolean;
+  /** 목록을 실제로 계산한 컨텍스트 — 모델 최대보다 큰 선택은 최대로 줄어든 값(가정 문장용, select 는 사용자의 선택 그대로) */
+  ctx: number;
   /** 불러온 모델(완료)의 이름 — 있으면 그 모델이 대상 */
   hfName?: string;
   onPick: (modelId: string) => void;
@@ -118,7 +121,7 @@ export function ModelForm({
       </div>
 
       <p data-model-assumptions className="text-sm text-muted-foreground">
-        {t.calc('assumeModelMode', { ctx: formatCtx(state.ctx), kv: state.kv })}
+        {t.calc('assumeModelMode', { ctx: formatCtx(ctx), kv: state.kv })}
       </p>
     </section>
   );

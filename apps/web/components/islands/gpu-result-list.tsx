@@ -72,6 +72,10 @@ export function GpuResultList({
     hwType === 'desktop' ? t.calc('typeDesktop') : hwType === 'laptop' ? t.calc('typeLaptop') : hwType === 'unified' ? t.calc('typeUnified') : t.calc('typeCpu');
   const cheapest = run ? [run.cheapest.great, run.cheapest.well].filter((o): o is PricedOption<GpuCore> => o !== undefined) : [];
   const note = krwNoteFx(t.common, locale, fx);
+  // 최저가 상자는 허브와 같은 규칙으로 전체 목록에서 고른다 — 필터를 걸었을 때만 그렇다고 밝힌다 (리뷰 반영)
+  const filtered = state.type.length > 0 || state.budget !== undefined || state.min !== undefined;
+  // 노트북 행 배지는 짧게, 긴 설명은 목록 아래 한 번만
+  const laptopShown = view?.rows.some((r) => r.gpu.form === 'laptop') ?? false;
 
   return (
     <section aria-labelledby="results-heading" data-gpu-results className="flex flex-col gap-4">
@@ -96,6 +100,7 @@ export function GpuResultList({
 
           <div data-cheapest className="flex flex-col gap-2 rounded-lg border border-border p-3 text-sm">
             <h3 className="font-medium">{t.modelHub('cheapestTitle')}</h3>
+            {filtered && <p className="text-xs text-muted-foreground">{t.calc('cheapestAllRows')}</p>}
             {cheapest.length > 0 ? (
               <ul className="flex flex-col gap-2">
                 {cheapest.map((option) => (
@@ -242,7 +247,7 @@ export function GpuResultList({
                         {gpu.kind !== 'dgpu' && (
                           <span className="text-xs font-normal text-muted-foreground">{t.modelHub('configRam', { ram: formatInt(locale, combo.ramGB) })}</span>
                         )}
-                        {gpu.form === 'laptop' && <Pill tone="caution">{t.gpuHub('badgeLaptop')}</Pill>}
+                        {gpu.form === 'laptop' && <Pill tone="caution">{t.calc('rowLaptop')}</Pill>}
                         {gpu.id === mineId && <Pill tone="info">{t.calc('mineBadge')}</Pill>}
                       </>
                     }
@@ -267,6 +272,7 @@ export function GpuResultList({
               })}
             </ul>
           )}
+          {laptopShown && <p className="text-xs text-muted-foreground">{t.calc('laptopNote')}</p>}
           {run.all.some((r) => r.combo.reasoning) && <p className="text-xs text-muted-foreground">{t.common('reasoningNote')}</p>}
           {run.external && <p className="text-xs text-muted-foreground">{t.calc('hfNote')}</p>}
           {note && <p className="text-xs text-muted-foreground">{note}</p>}

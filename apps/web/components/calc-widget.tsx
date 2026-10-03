@@ -1,7 +1,7 @@
 import { getTranslations } from 'next-intl/server';
 import { GpuPicker } from '@/components/islands/gpu-picker';
 import type { Locale } from '@/i18n/routing';
-import { getCatalogLite } from '@/lib/calc-catalog';
+import { getPickerGpus } from '@/lib/calc-catalog';
 import { clientDict } from '@/lib/client-messages';
 import { GPU_PICKER_MESSAGE_SPEC } from '@/lib/i18n-lite';
 import { calculatorHref, localeHref } from '@/lib/links';
@@ -47,7 +47,7 @@ export async function CalcWidget({
       <div className="flex flex-col gap-2 sm:flex-row">
         <GpuPicker
           locale={locale}
-          gpus={getCatalogLite().gpus}
+          gpus={getPickerGpus()}
           dict={dict}
           inputId={inputId}
           label={t('gpuLabel')}

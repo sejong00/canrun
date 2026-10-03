@@ -90,6 +90,14 @@ describe('calculator reducer — model mode (10-03 D65)', () => {
     expect(reduce(base, { type: 'useGpu', gpuId: 'rtx-3090', ramGB: 32 }).ramGB).toBe(64);
   });
 
+  it('useGpu: a row was assessed as one card, so the GPU count goes back to one (no forced theoretical label)', () => {
+    const multi = reduce(defaultState(), { type: 'restore', state: { ...at('rtx-3090', { ramGB: 64 }), gpus: 2, mode: 'model', focus: 'llama-3.3-70b' } });
+    expect(multi.gpus).toBe(2);
+    const next = reduce(multi, { type: 'useGpu', gpuId: 'rtx-4090' });
+    expect(next).toMatchObject({ mode: 'hardware', hardware: { kind: 'catalog', gpuId: 'rtx-4090' }, ramGB: 64, focus: 'llama-3.3-70b' });
+    expect(next.gpus).toBeUndefined();
+  });
+
   it('type / budget / gsort are normalised; clearGpuFilters clears type, budget and min only', () => {
     let s: CalcState = { ...defaultState(), mode: 'model', focus: 'qwen3-14b', cat: ['chat'] };
     s = reduce(s, { type: 'type', hwType: ['cpu', 'desktop', 'cpu'] });

@@ -785,6 +785,16 @@ describe('guide pages (P1-4)', () => {
   });
 });
 
+describe('GPU picker payload carries no prices (D27 — the msrpUSD exception is calculator-only, 10-03 D65)', () => {
+  it('home and guide pages ship no price fields', () => {
+    const targets = pages.filter((p) => p.kind === 'home' || isGuide(p));
+    expect(targets.length).toBeGreaterThan(2);
+    for (const page of targets) {
+      expect(readFileSync(join(outDir, page.file), 'utf8'), page.file).not.toMatch(/msrpUSD|streetUSD|priceAsOf/);
+    }
+  });
+});
+
 describe('memory-size verdict lists and the system RAM toggle (10-03 D64)', () => {
   const RANK: Record<string, number> = { F: 0, B: 1, A: 2, S: 3 };
   const kindOfGpu = (gpuId: string) => gpus.find((g) => g.id === gpuId)?.kind;

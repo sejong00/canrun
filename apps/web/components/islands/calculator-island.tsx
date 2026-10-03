@@ -101,6 +101,8 @@ export function CalculatorIsland({
   // 카탈로그 밖 모델 (계산기 P2, D57): 불러오기는 사용자가 누르거나 URL 에 hf= 가 있을 때만 — 로더는 dynamic import
   const [hfLoad, setHfLoad] = useState<{ id: string; result: HfLoadResult } | undefined>(undefined);
   const [hfStatus, setHfStatus] = useState<HfPanelStatus>({ kind: 'idle' });
+  // 패널 입력창 글자 — 패널은 모드마다 다른 자리에 그려져 다시 마운트되므로 여기서 갖는다 (리뷰 반영)
+  const [hfText, setHfText] = useState('');
   const catalogIdFor = (hfId: string) => catalog.models.find((m) => m.hfId.toLowerCase() === hfId.toLowerCase())?.id;
   // 불러오기 차례 번호 — 늦게 끝난 이전 요청(다른 모델·빼기 뒤)의 결과는 버린다 (10-01 리뷰)
   const hfSeq = useRef(0);
@@ -212,6 +214,8 @@ export function CalculatorIsland({
       hasHardware={results !== undefined}
       modelMode={modelMode}
       canRemove={state.hf !== undefined || hfStatus.kind === 'loading'}
+      text={hfText}
+      onTextChange={setHfText}
       onLoad={loadHf}
       onRemove={removeHf}
     />
@@ -231,6 +235,7 @@ export function CalculatorIsland({
               state={state}
               dispatch={dispatch}
               hydrated={hydrated}
+              ctx={modelRun?.ctx ?? state.ctx}
               {...(extra ? { hfName: extra.model.name } : {})}
               onPick={pickModel}
             />
@@ -271,7 +276,7 @@ export function CalculatorIsland({
           run={modelRun}
           view={gpuView}
           mine={mine}
-          {...(mine ? { mineMeta: assumptionText(t, locale, state, mine.hardware) } : {})}
+          {...(mine ? { mineMeta: assumptionText(t, locale, { ...state, ctx: mine.ctx }, mine.hardware) } : {})}
           total={catalog.gpus.length}
           hydrated={hydrated}
           prefix={prefix}

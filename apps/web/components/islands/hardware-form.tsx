@@ -173,11 +173,16 @@ export function HardwareForm({ locale, catalog, names, t, state, dispatch, hydra
   useEffect(() => {
     commitRef.current = commitText;
   });
-  // 언마운트 시 대기 중인 blur 확정 취소
+  // 언마운트: 대기 중인 blur 확정은 버리지 않고 바로 확정한다 — 모드 전환 칩·"이 모델이 돌아가는 GPU 보기"를 누르면
+  // 입력창이 blur 된 직후 이 폼이 사라진다(D65). 포커스가 입력창에 남은 채 사라지면(뒤로 가기 복원 등) 예전처럼 버린다 (리뷰 반영)
   useEffect(
     () => () => {
+      const pendingBlur = blurTimer.current !== undefined;
       window.clearTimeout(blurTimer.current);
       window.clearTimeout(autoTimer.current);
+      blurTimer.current = undefined;
+      // 언마운트 시점의 최신 commitText (ref 가 마지막 렌더의 것을 가리킨다)
+      if (pendingBlur) commitRef.current('blur');
     },
     [],
   );
