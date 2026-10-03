@@ -9,8 +9,9 @@
  *    maxContext 는 큐레이션 값(YaRN 등) — 항상 manual.
  * 3) MoE: 기준 quant(Q4_K_M/MXFP4) 크기 변경 시 nonExpertGB 유도값 연쇄 갱신
  *    (validateAll 허용 오차 0.02GB 유지).
- * 4) MoE 행별 텐서 분할(expertGB/nonExpertGB, 10-01): 값이 없거나 이번 동기화에서 파일 크기·파일명이 바뀐 행,
- *    새 양자화 행은 GGUF 헤더를 Range 로 읽어 다시 잰다(scripts/gguf-header.ts). 실패하면 manual — 값은 그대로.
+ * 4) 행별 GGUF 헤더 실측(scripts/gguf-header.ts) — MoE 는 텐서 분할(expertGB/nonExpertGB, 10-01), dense 는 그래픽카드에
+ *    올리지 않는 몫(offGpuGB, 10-03 D62), 둘 다 MTP 블록 크기(mtpGB, 있을 때만). 값이 없거나 이번 동기화에서 파일 크기·파일명이
+ *    바뀐 행, 새 양자화 행은 헤더를 Range 로 읽어 다시 잰다. 실패하면 manual — 값은 그대로.
  *
  * 실행: pnpm run sync-models -- --dry [--report <path>] [--only <modelId>]
  *   --dry 는 data/*.json 을 건드리지 않는다(리포트 파일은 PR body 용도로 작성 허용).
@@ -21,6 +22,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  MAX_OFF_GPU_FRACTION,
   MOE_ARCH,
   deriveNonExpertGB,
   parseModelQuants,
@@ -68,14 +70,21 @@ export type Change = {
   note?: string;
   /** field 'row' — 새 양자화 행(09-30 카탈로그 확장 자동화). applyChanges 가 그 모델의 마지막 행 뒤에 삽입 */
   newRow?: { ggufRepo: string; fileName: string; fileGB: number };
-  /** field 'split' — MoE 행별 GGUF 헤더 실측(10-01). applyChanges 가 fileGB 뒤에 expertGB·nonExpertGB 로 기록 */
+  /**
+   * field 'split'(MoE) · 'offgpu'(dense) — 행별 GGUF 헤더 실측(10-01·10-03). applyChanges 가 fileGB 뒤에
+   * expertGB·nonExpertGB 또는 offGpuGB, 그리고 mtpGB(있을 때) 순서로 기록한다
+   */
   split?: SplitValues;
 };
 
-export type SplitValues = { expertGB: number; nonExpertGB: number };
+/** 행에 기록하는 헤더 실측 — MoE: expertGB·nonExpertGB, dense: offGpuGB. mtpGB 는 0 보다 클 때만 */
+export type SplitValues = { expertGB?: number; nonExpertGB?: number; offGpuGB?: number; mtpGB?: number };
+
+/** 행 하나의 헤더 측정 결과 (gguf-header.measureSplit 의 부분집합). fileGB = Content-Range 기준 파일 크기(알면) */
+export type MeasuredSplit = { expertGB: number; nonExpertGB: number; offGpuGB: number; mtpGB: number; fileGB?: number };
 
 /** 행 하나의 분할 측정 — 실행부는 gguf-header.measureSplit, 테스트는 모킹 */
-export type MeasureSplitFn = (repo: string, fileName: string) => Promise<SplitValues>;
+export type MeasureSplitFn = (repo: string, fileName: string) => Promise<MeasuredSplit>;
 
 /**
  * 기존 모델에 자동으로 붙이는 표준 양자화 (09-30). **Q4_K_M 은 제외** — 판정 기준 양자화라 사람이 고른다
@@ -374,15 +383,56 @@ export function buildSyncPlan(input: SyncInput): Change[] {
   return changes;
 }
 
-const fmtSplit = (v: SplitValues | undefined): string | undefined =>
-  v === undefined ? undefined : `expert ${v.expertGB} / non-expert ${v.nonExpertGB}`;
+const fmtSplit = (v: SplitValues | undefined): string | undefined => {
+  if (v === undefined) return undefined;
+  const parts =
+    v.offGpuGB !== undefined ? [`off-GPU ${v.offGpuGB}`] : [`expert ${String(v.expertGB)}`, `non-expert ${String(v.nonExpertGB)}`];
+  if (v.mtpGB !== undefined) parts.push(`MTP ${v.mtpGB}`);
+  return parts.join(' / ');
+};
+
+const SPLIT_KEYS = ['expertGB', 'nonExpertGB', 'offGpuGB', 'mtpGB'] as const;
+
+const sameSplit = (a: SplitValues, b: SplitValues): boolean => SPLIT_KEYS.every((k) => a[k] === b[k]);
+
+/** 이 행에 기록된 헤더 실측 — MoE 는 분할 둘 다 있을 때, dense 는 offGpuGB 가 있을 때. 없으면 undefined */
+function recordedSplit(mq: ModelQuantRecord, moe: boolean): SplitValues | undefined {
+  const mtp = mq.mtpGB !== undefined ? { mtpGB: mq.mtpGB } : {};
+  if (moe) {
+    return mq.expertGB !== undefined && mq.nonExpertGB !== undefined
+      ? { expertGB: mq.expertGB, nonExpertGB: mq.nonExpertGB, ...mtp }
+      : undefined;
+  }
+  return mq.offGpuGB !== undefined ? { offGpuGB: mq.offGpuGB, ...mtp } : undefined;
+}
+
+/** 측정 결과 → 행에 쓸 값 (MoE/dense 별 필드, MTP 는 있을 때만) */
+function toSplitValues(m: MeasuredSplit, moe: boolean): SplitValues {
+  const mtp = m.mtpGB > 0 ? { mtpGB: m.mtpGB } : {};
+  return moe ? { expertGB: m.expertGB, nonExpertGB: m.nonExpertGB, ...mtp } : { offGpuGB: m.offGpuGB, ...mtp };
+}
+
+/** 기록하면 validateAll 이 거부할 측정 — 다른 파일을 잰 것으로 보고 보류한다. 문제 없으면 undefined */
+function implausible(v: SplitValues, m: MeasuredSplit, fileGB: number): string | undefined {
+  if (m.fileGB !== undefined && Math.abs(m.fileGB - fileGB) > 0.02) {
+    return `측정한 파일 크기 ${m.fileGB}GB ≠ fileGB ${fileGB}`;
+  }
+  if (v.offGpuGB !== undefined) {
+    return v.offGpuGB > fileGB * MAX_OFF_GPU_FRACTION ? `그래픽카드 밖 몫 ${v.offGpuGB}GB 가 fileGB ${fileGB} 의 25% 초과` : undefined;
+  }
+  const gpu = (v.expertGB ?? 0) + (v.nonExpertGB ?? 0);
+  if (gpu > fileGB + 0.02) return `측정 합이 fileGB ${fileGB} 초과`;
+  if (gpu < fileGB * (1 - MAX_OFF_GPU_FRACTION)) return `측정 합이 fileGB ${fileGB} 의 75% 미만`;
+  return undefined;
+}
 
 /**
- * 4) MoE 행별 분할 재측정 — buildSyncPlan 결과(파일 크기·파일명 변경, 새 행)를 보고 잴 행을 고른다.
- * 대상: MoE 모델(activeParamsB) 행 중 분할 값이 없거나 이번 동기화에서 fileGB·fileName 이 바뀐 행 + 새 양자화 행.
- * 측정값이 기존과 같으면 생략. 분할 값이 없던 행의 측정 실패는 manual(다음 동기화가 다시 시도한다).
- * 측정 합이 (갱신된) fileGB 를 넘으면 다른 파일을 잰 것이므로 보류한다 (validateAll 불변식 보호).
- * **분할 값이 있던 행의 파일이 바뀌었는데** 재측정이 실패·보류되면 suspicious — 새 fileGB 옆에 옛 파일의 분할이 남고
+ * 4) 행별 헤더 실측 — buildSyncPlan 결과(파일 크기·파일명 변경, 새 행)를 보고 잴 행을 고른다.
+ * MoE 모델(activeParamsB) 행은 'split'(expertGB·nonExpertGB), dense 행은 'offgpu'(offGpuGB, 10-03 D62) — 둘 다 mtpGB 동반.
+ * 대상: 실측 값이 없거나 이번 동기화에서 fileGB·fileName 이 바뀐 행 + 새 양자화 행.
+ * 측정값이 기존과 같으면 생략. 값이 없던 행의 측정 실패는 manual(다음 동기화가 다시 시도한다 — 그동안 파일 전체로 판정, 보수).
+ * 측정 파일 크기가 fileGB 와 다르거나 값이 validateAll 범위를 벗어나면 다른 파일을 잰 것이므로 보류한다.
+ * **값이 있던 행의 파일이 바뀌었는데** 재측정이 실패·보류되면 suspicious — 새 fileGB 옆에 옛 파일의 값이 남고
  * 다음 동기화는 크기 변화가 없어 다시 재지 않으므로, 위임 머지(SUSPICIOUS 0)를 멈춰 사람이 재측정하게 한다(10-01 리뷰).
  */
 export async function planSplitChanges(
@@ -391,68 +441,67 @@ export async function planSplitChanges(
   measure: MeasureSplitFn,
   opts: { modelIds?: ReadonlySet<string>; concurrency?: number } = {},
 ): Promise<Change[]> {
-  const moeIds = new Set(
-    input.models
-      .filter((m) => m.activeParamsB !== undefined && (opts.modelIds?.has(m.id) ?? true))
-      .map((m) => m.id),
-  );
-  type Target = { id: string; repo: string; fileName?: string; fileGB: number; old?: SplitValues; reason: string };
+  const inScope = new Set(input.models.filter((m) => opts.modelIds?.has(m.id) ?? true).map((m) => m.id));
+  const moeIds = new Set(input.models.filter((m) => m.activeParamsB !== undefined).map((m) => m.id));
+  type Target = { id: string; moe: boolean; repo: string; fileName?: string; fileGB: number; old?: SplitValues; reason: string };
   const targets: Target[] = [];
   for (const mq of input.quants) {
-    if (!moeIds.has(mq.modelId)) continue;
+    if (!inScope.has(mq.modelId)) continue;
+    const moe = moeIds.has(mq.modelId);
     const id = `${mq.modelId}/${mq.quant}`;
     const applied = changes.filter(
       (c) => c.file === 'model-quants.json' && c.id === id && (c.kind === 'auto' || c.kind === 'suspicious'),
     );
     const sizeChange = applied.find((c) => c.field === 'fileGB');
     const nameChange = applied.find((c) => c.field === 'fileName');
-    const old =
-      mq.expertGB !== undefined && mq.nonExpertGB !== undefined
-        ? { expertGB: mq.expertGB, nonExpertGB: mq.nonExpertGB }
-        : undefined;
+    const old = recordedSplit(mq, moe);
     if (old && !sizeChange && !nameChange) continue;
     targets.push({
       id,
+      moe,
       repo: mq.ggufRepo,
       fileName: typeof nameChange?.next === 'string' ? nameChange.next : mq.fileName,
       fileGB: typeof sizeChange?.next === 'number' ? sizeChange.next : mq.fileGB,
       old,
-      reason: !old ? '분할 값 없음' : sizeChange ? '파일 크기 변경' : '파일명 변경',
+      reason: !old ? (moe ? '분할 값 없음' : '그래픽카드 밖 몫 없음') : sizeChange ? '파일 크기 변경' : '파일명 변경',
     });
   }
   for (const c of changes) {
     if (c.field !== 'row' || c.kind !== 'auto' || c.newRow === undefined) continue;
-    if (!moeIds.has(c.id.split('/')[0] ?? '')) continue;
+    const modelId = c.id.split('/')[0] ?? '';
+    if (!inScope.has(modelId)) continue;
     const { ggufRepo, fileName, fileGB } = c.newRow;
-    targets.push({ id: c.id, repo: ggufRepo, fileName, fileGB, reason: '새 양자화 행' });
+    targets.push({ id: c.id, moe: moeIds.has(modelId), repo: ggufRepo, fileName, fileGB, reason: '새 양자화 행' });
   }
 
   const results: Array<Change | undefined> = new Array<Change | undefined>(targets.length);
   const indexed = targets.map((target, i) => ({ target, i }));
   await mapPool(indexed, opts.concurrency ?? 4, async ({ target: t, i }) => {
-    const base = { file: 'model-quants.json' as const, id: t.id, field: 'split', old: fmtSplit(t.old) };
+    const fields = t.moe ? 'expertGB/nonExpertGB' : 'offGpuGB';
+    const base = { file: 'model-quants.json' as const, id: t.id, field: t.moe ? 'split' : 'offgpu', old: fmtSplit(t.old) };
     if (t.fileName === undefined) {
-      results[i] = { ...base, kind: 'manual', note: 'fileName 없음 — 분할 측정 불가' };
+      results[i] = { ...base, kind: 'manual', note: 'fileName 없음 — 헤더 측정 불가' };
       return;
     }
-    let split: SplitValues;
+    let m: MeasuredSplit;
     try {
-      const m = await measure(t.repo, t.fileName);
-      split = { expertGB: m.expertGB, nonExpertGB: m.nonExpertGB };
+      m = await measure(t.repo, t.fileName);
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       results[i] = t.old
-        ? { ...base, kind: 'suspicious', note: `${t.reason} 뒤 GGUF 헤더 재측정 실패(${reason}) — 옛 파일의 분할이 남음, 머지 전 재측정` }
-        : { ...base, kind: 'manual', note: `GGUF 헤더 측정 실패(${reason}) — expertGB/nonExpertGB 그대로` };
+        ? { ...base, kind: 'suspicious', note: `${t.reason} 뒤 GGUF 헤더 재측정 실패(${reason}) — 옛 파일의 값이 남음, 머지 전 재측정` }
+        : { ...base, kind: 'manual', note: `GGUF 헤더 측정 실패(${reason}) — ${fields} 그대로` };
       return;
     }
-    if (t.old && t.old.expertGB === split.expertGB && t.old.nonExpertGB === split.nonExpertGB) return;
-    if (split.expertGB + split.nonExpertGB > t.fileGB + 0.02) {
+    const split = toSplitValues(m, t.moe);
+    if (t.old && sameSplit(t.old, split)) return;
+    const problem = implausible(split, m, t.fileGB);
+    if (problem !== undefined) {
       results[i] = {
         ...base,
         next: fmtSplit(split),
         kind: t.old ? 'suspicious' : 'manual',
-        note: `측정 합이 fileGB ${t.fileGB} 초과 — 다른 파일을 쟀을 수 있음, 미반영${t.old ? ' (옛 파일의 분할이 남음, 머지 전 재측정)' : ''}`,
+        note: `${problem} — 다른 파일을 쟀을 수 있음, 미반영${t.old ? ' (옛 파일의 값이 남음, 머지 전 재측정)' : ''}`,
       };
       return;
     }
@@ -461,7 +510,6 @@ export async function planSplitChanges(
   return results.filter((c): c is Change => c !== undefined);
 }
 
-/** auto/suspicious 변경만 raw 레코드에 반영 (키 순서 보존 — 값 갱신·sources push 만). */
 /** `key` 를 `after` 바로 뒤에 두고(이미 있으면 제자리 갱신) 레코드를 재구성한다. */
 export function withKeyAfter(
   raw: Record<string, unknown>,
@@ -479,10 +527,13 @@ export function withKeyAfter(
   return out;
 }
 
+const isSplitField = (field: string): boolean => field === 'split' || field === 'offgpu';
+
+/** auto/suspicious 변경만 raw 레코드에 반영 (키 순서 보존 — 값 갱신·sources push 만). */
 export function applyChanges(changes: readonly Change[], input: SyncInput): void {
   for (const change of changes) {
     if (change.kind !== 'auto' && change.kind !== 'suspicious') continue;
-    if (change.field === 'row' || change.field === 'split') continue; // 새 행은 인덱스 정렬을 깨므로 맨 마지막에 삽입, 분할은 그 뒤
+    if (change.field === 'row' || isSplitField(change.field)) continue; // 새 행은 인덱스 정렬을 깨므로 맨 마지막에 삽입, 헤더 실측은 그 뒤
     if (change.file === 'model-quants.json') {
       const idx = input.quants.findIndex((mq) => `${mq.modelId}/${mq.quant}` === change.id);
       const raw = idx >= 0 ? input.rawQuants[idx] : undefined;
@@ -519,16 +570,26 @@ export function applyChanges(changes: readonly Change[], input: SyncInput): void
     const { ggufRepo, fileName, fileGB } = change.newRow;
     input.rawQuants.splice(at + 1, 0, { modelId, quant, fileGB, ggufRepo, fileName, sources: [hfUrl(ggufRepo)] });
   }
-  // MoE 분할 — 새 행까지 삽입된 뒤라 (modelId, quant) 로 찾는다. 키는 fileGB 바로 뒤 (expertGB, nonExpertGB)
+  // 헤더 실측 — 새 행까지 삽입된 뒤라 (modelId, quant) 로 찾는다. 키는 fileGB 바로 뒤
+  // (expertGB, nonExpertGB | offGpuGB, mtpGB). 새 측정에 MTP 가 없으면 옛 mtpGB 는 지운다
   for (const change of changes) {
-    if (change.field !== 'split' || change.split === undefined || change.kind !== 'auto') continue;
+    if (!isSplitField(change.field) || change.split === undefined || change.kind !== 'auto') continue;
     const idx = input.rawQuants.findIndex(
       (raw) => `${String(raw['modelId'])}/${String(raw['quant'])}` === change.id,
     );
-    const raw = input.rawQuants[idx];
+    let raw = input.rawQuants[idx];
     if (!raw) throw new Error(`applyChanges: quant row not found for ${change.id}`);
-    const withExpert = withKeyAfter(raw, 'expertGB', change.split.expertGB, 'fileGB');
-    input.rawQuants[idx] = withKeyAfter(withExpert, 'nonExpertGB', change.split.nonExpertGB, 'expertGB');
+    let after = 'fileGB';
+    for (const key of SPLIT_KEYS) {
+      const value = change.split[key];
+      if (value === undefined) {
+        if (key === 'mtpGB' && key in raw) raw = Object.fromEntries(Object.entries(raw).filter(([k]) => k !== key));
+        continue;
+      }
+      raw = withKeyAfter(raw, key, value, after);
+      after = key;
+    }
+    input.rawQuants[idx] = raw;
   }
 }
 
@@ -656,14 +717,14 @@ async function main(): Promise<void> {
 
   const input: SyncInput = { rawModels, rawQuants, models, quants, treeByRepo, configByHfId };
   const planned = buildSyncPlan(input);
-  // MoE 행별 분할 — 헤더만 Range 로 읽는다(행당 수 MB). 측정 실패는 manual 로 리포트
+  // 행별 헤더 실측(MoE 분할·dense 그래픽카드 밖 몫·MTP) — 헤더만 Range 로 읽는다(행당 수 MB). 측정 실패는 manual 로 리포트
   const splitChanges = await planSplitChanges(
     input,
     planned,
     (repo, fileName) => measureSplit(repo, fileName, { token }),
     { modelIds: targetIds },
   );
-  if (splitChanges.length > 0) console.log(`measured ${splitChanges.length} MoE split row(s) from GGUF headers`);
+  if (splitChanges.length > 0) console.log(`measured ${splitChanges.length} row(s) from GGUF headers`);
   const changes = [...planned, ...splitChanges];
   const report = renderReport(changes);
   console.log(`\n${report}`);

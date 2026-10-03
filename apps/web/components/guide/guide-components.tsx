@@ -12,7 +12,16 @@ import type { Locale } from '@/i18n/routing';
 import { catalog, findGpu, findModel } from '@/lib/catalog';
 import { getCombo } from '@/lib/combos';
 import { formatCtx, formatGB, formatInt, formatParams, formatUSD } from '@/lib/format';
-import { GUIDE_COMPONENTS, NUM_KINDS, RUNTIME_FACT_IDS, splitList, type NumKind, type RuntimeFactId } from '@/lib/guide-components';
+import {
+  GUIDE_COMPONENTS,
+  MEMORY_KINDS,
+  NUM_KINDS,
+  RUNTIME_FACT_IDS,
+  splitList,
+  type MemoryKind,
+  type NumKind,
+  type RuntimeFactId,
+} from '@/lib/guide-components';
 import { findGuideGrid, guideEntry, isGuideSlug, isPublished } from '@/lib/guides';
 import { getGpuHub, getModelHub } from '@/lib/hubs';
 import { comboHref, gpuHref, guideHref, localeHref, modelHref } from '@/lib/links';
@@ -225,15 +234,20 @@ export function GpuTierSummary({ gpus }: { gpus: string }) {
   );
 }
 
-/** 모델별 필요 메모리 (기준 quant 파일 + KV + 연산 버퍼) — 엔진 식 그대로 */
-export function ModelMemoryTable({ models, ctx = '8192' }: { models: string; ctx?: string }) {
+/**
+ * 모델별 필요 메모리 (기준 quant 가중치 + KV + 연산 버퍼) — 엔진 식 그대로.
+ * memory="dgpu"(기본): 가중치 = 그래픽카드에 올라가는 몫(입력 임베딩·MTP 블록 제외, 10-03 D62), "unified"(맥): 파일 전체.
+ */
+export function ModelMemoryTable({ models, ctx = '8192', memory = 'dgpu' }: { models: string; ctx?: string; memory?: string }) {
   const { locale, hub } = useHub();
   const t = useTranslations('GuideData');
   const tCommon = useTranslations('Common');
   const c = Number(ctx);
   if (!Number.isFinite(c) || c <= 0) throw new Error(`guide ModelMemoryTable: bad ctx "${ctx}"`);
+  if (!(MEMORY_KINDS as readonly string[]).includes(memory)) throw new Error(`guide ModelMemoryTable: bad memory "${memory}"`);
+  const gpuRule = (memory as MemoryKind) === 'dgpu';
   const list = splitList(models).map((id) => needModel(id, 'ModelMemoryTable'));
-  const caption = t('memoryCaption', { ctx: formatCtx(c) });
+  const caption = t(gpuRule ? 'memoryCaptionGpu' : 'memoryCaption', { ctx: formatCtx(c) });
   return (
     <DataBlock kind="model-memory">
       <ScrollTable label={caption}>
@@ -243,7 +257,7 @@ export function ModelMemoryTable({ models, ctx = '8192' }: { models: string; ctx
             <tr>
               <th scope="col">{t('colModel')}</th>
               <th scope="col">{t('colParams')}</th>
-              <th scope="col">{t('colBaselineFile')}</th>
+              <th scope="col">{t(gpuRule ? 'colBaselineGpu' : 'colBaselineFile')}</th>
               <th scope="col">{t('colKv', { ctx: formatCtx(c) })}</th>
               <th scope="col">{t('colTotal', { ctx: formatCtx(c) })}</th>
             </tr>
@@ -251,9 +265,10 @@ export function ModelMemoryTable({ models, ctx = '8192' }: { models: string; ctx
           <tbody>
             {list.map((model) => {
               const data = getModelHub(model.id)!;
-              const row = data.quants.find((q) => q.row.quant === data.baselineQuant)!.row;
+              const row = data.matrix.rows.find((r) => r.quant === data.baselineQuant)!;
+              const weights = gpuRule ? row.gpuWeightsGB : row.fileGB;
               const kv = kvGB(model.arch.kvBytesPerTokenF16, Math.min(c, model.maxContext));
-              const total = row.fileGB + kv + computeBufferGB(Math.min(c, model.maxContext));
+              const total = weights + kv + computeBufferGB(Math.min(c, model.maxContext));
               return (
                 <tr key={model.id}>
                   <th scope="row">
@@ -265,7 +280,7 @@ export function ModelMemoryTable({ models, ctx = '8192' }: { models: string; ctx
                       : t('paramsDense', { total: formatParams(locale, model.paramsB) })}
                   </td>
                   <td className="tabular-nums whitespace-nowrap">
-                    {row.quant} · {tCommon('gb', { value: formatGB(locale, row.fileGB) })}
+                    {row.quant} · {tCommon('gb', { value: formatGB(locale, weights) })}
                   </td>
                   <td className="tabular-nums whitespace-nowrap">{tCommon('gb', { value: formatGB(locale, kv) })}</td>
                   <td className="tabular-nums whitespace-nowrap">{tCommon('gb', { value: formatGB(locale, total) })}</td>
@@ -275,7 +290,7 @@ export function ModelMemoryTable({ models, ctx = '8192' }: { models: string; ctx
           </tbody>
         </table>
       </ScrollTable>
-      <p className="text-xs text-muted-foreground">{t('memoryNote')}</p>
+      <p className="text-xs text-muted-foreground">{t(gpuRule ? 'memoryNoteGpu' : 'memoryNote')}</p>
     </DataBlock>
   );
 }
@@ -614,17 +629,22 @@ export function Num({ kind, model, gpu, quant, ctx, kv }: { kind: string; model?
   const k = kind as NumKind;
   const c = ctx ? Number(ctx) : 8192;
   const kvq = kv === 'q8_0' || kv === 'q4_0' ? kv : 'f16';
-  const fileOf = (m: Model) => {
+  /** 행렬 행 — fileGB(파일)·gpuWeightsGB(그래픽카드에 올라가는 가중치, 10-03 D62) */
+  const rowOf = (m: Model) => {
     const data = getModelHub(m.id)!;
     const want = quant ?? data.baselineQuant;
-    const row = data.quants.find((q) => q.row.quant === want)?.row;
+    const row = data.matrix.rows.find((r) => r.quant === want);
     if (!row) throw new Error(`guide Num: ${m.id} has no ${want}`);
-    return row.fileGB;
+    return row;
   };
+  const fileOf = (m: Model) => rowOf(m).fileGB;
   let text: string;
   switch (k) {
     case 'fileGB':
       text = tCommon('gb', { value: formatGB(locale, fileOf(needModel(model, 'Num'))) });
+      break;
+    case 'gpuWeightsGB':
+      text = tCommon('gb', { value: formatGB(locale, rowOf(needModel(model, 'Num')).gpuWeightsGB) });
       break;
     case 'kvGB': {
       const m = needModel(model, 'Num');
@@ -632,8 +652,11 @@ export function Num({ kind, model, gpu, quant, ctx, kv }: { kind: string; model?
       break;
     }
     case 'needGB': {
+      // 판정과 같은 규칙: 그래픽카드는 올라가는 가중치만, 통합 메모리 칩(gpu 지정)은 파일 전체 (10-03 D62)
       const m = needModel(model, 'Num');
-      text = tCommon('gb', { value: formatGB(locale, fileOf(m) + kvGB(m.arch.kvBytesPerTokenF16, c, kvq) + computeBufferGB(c)) });
+      const unified = gpu !== undefined && needGpu(gpu, 'Num').kind === 'unified';
+      const weights = unified ? fileOf(m) : rowOf(m).gpuWeightsGB;
+      text = tCommon('gb', { value: formatGB(locale, weights + kvGB(m.arch.kvBytesPerTokenF16, c, kvq) + computeBufferGB(c)) });
       break;
     }
     case 'vramGB': {

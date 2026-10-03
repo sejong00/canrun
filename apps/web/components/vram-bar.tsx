@@ -21,6 +21,9 @@ const TONE: Record<SegmentKey, string> = {
   ramWeights: 'bg-verdict-a-fg',
 };
 
+/** 이보다 작은 GPU 밖 몫(임베딩 공유 모델의 헤더 메타데이터)은 각주로 알리지 않는다 */
+const OFF_GPU_NOTE_MIN_GB = 0.05;
+
 const LABEL_KEY: Record<SegmentKey, string> = {
   weights: 'barWeights',
   kv: 'barKv',
@@ -100,6 +103,19 @@ export function VramBar({
     ...(breakdown.ram.weights > 0 ? [ramSegments[0]!] : []),
   ].filter((s) => s.gb > 0);
 
+  // 각주 (10-03 D62): 그래픽카드에 다 올렸는데 파일 일부가 GPU 밖에 있는 이유(입력 임베딩·MTP 블록), MTP 를 켜면 더 드는 양
+  const note = breakdown.note;
+  const gb2 = (v: number) => formatGB(locale, v, 2);
+  const notes: string[] = [];
+  if (gpu.kind === 'dgpu' && mode === 'full-gpu' && note.offGpuGB >= OFF_GPU_NOTE_MIN_GB) {
+    const args = { off: gb2(note.offGpuGB), file: gb2(note.fileGB) };
+    notes.push(
+      note.mtpGB !== undefined ? t('barNoteOffGpuMtp', { ...args, mtp: gb2(note.mtpGB) }) : t('barNoteOffGpu', args),
+    );
+  } else if (note.mtpGB !== undefined) {
+    notes.push(t('barNoteMtp', { mtp: gb2(note.mtpGB) }));
+  }
+
   return (
     <figure data-vram-bar className="flex flex-col gap-4 rounded-lg border border-border p-4">
       <figcaption className="text-sm text-muted-foreground">{t(showGpu ? 'memoryCaption' : 'memoryCaptionRam')}</figcaption>
@@ -128,6 +144,11 @@ export function VramBar({
           </div>
         ))}
       </dl>
+      {notes.map((text) => (
+        <p key={text} data-vram-note className="text-xs text-muted-foreground">
+          {text}
+        </p>
+      ))}
     </figure>
   );
 }

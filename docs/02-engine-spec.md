@@ -23,6 +23,9 @@ type ModelQuant = {
   kvBytesPerToken: number;                          // 사전 계산값 (03-data-spec)
   attnType: 'full'|'swa'|'mla'|'hybrid';           // KV 스케일링 표시용
   nonExpertGB?: number;                             // MoE: attention+shared 텐서 크기 (cpu-moe 판정)
+  expertGB?: number;                                // MoE: 라우팅 전문가 텐서 (GGUF 헤더 실측 — 있으면 nonExpertGB 도 실측)
+  activeExpertFrac?: number; moeLayers?: number;    // MoE: topK/experts, 전문가 층 수 (§3.3·§2.4-2)
+  offGpuGB?: number;                                // dense: 파일 중 그래픽카드에 안 올리는 GB (헤더 실측, §2.4-1 — 10-03 D62)
   maxContext: number;
 };
 type Result = {
@@ -76,10 +79,20 @@ usable(cpu)    = usableRam = ram − 4GB (OS)     // usableRam = 모든 kind의 
 ```
 
 ### 2.4 fit 판정 순서 (알고리즘)
-정본은 `packages/engine/src/fit.ts` (불일치 시 코드 우선). 기본 ctx 8k, `need = weights + kv + buffer`, MoE 판정 = `activeParamsB`·`nonExpertGB` 둘 다 존재.
+정본은 `packages/engine/src/fit.ts` (불일치 시 코드 우선). 기본 ctx 8k, `need = resident + kv + buffer`, MoE 판정 = `activeParamsB`·`nonExpertGB` 둘 다 존재.
 ```
 0. kind=cpu: 1~3 없이 곧바로 4 → 실패 시 5
 1. full-gpu:  need ≤ usable(hw)  — dgpu vram−osReserve / unified ram×0.70 (통합 풀 전량 탑재도 full-gpu) → 최고 속도
+   resident(dgpu) = gpuResidentGBFor(mq) = weights − offGpuGB  (dense 헤더 실측)
+                  | expertGB + nonExpertGB                       (MoE 헤더 실측 분할)
+                  | weights                                      (실측 없음 — 보수)   … [0, weights] 로 묶음
+   resident(unified·cpu) = weights (파일 전체)
+   (10-03 D62, 엔진 0.6.0) llama.cpp 는 입력층(token_embd 등)을 항상 CPU 에 두고
+   (https://github.com/ggml-org/llama.cpp/blob/cb7934c/src/llama-model.cpp#L1605-L1607), MTP/NextN 층은 load_mtp=false(기본)면
+   TENSOR_SKIP 으로 할당하지 않는다(src/models/qwen35.cpp#L36-L38 · qwen35moe.cpp#L41 · exaone4.cpp#L39-L44,
+   llama-model-loader.cpp#L1177-L1185, 기본값 llama-model.cpp#L2943, common/common.cpp#L1661 — `--spec-type draft-mtp` 일 때만 켬).
+   임베딩 공유(tied) 모델은 출력층 사본이 GPU 에 가므로(llama-model-loader.cpp#L1161-L1168) 절감 0. 통합 메모리는 Metal 이 mmap 의
+   [first,last] 범위를 백엔드 버퍼로 감싸(llama-model.cpp#L1856-L1870) 이 바이트가 GPU 범위에 들어갈 수 있어 파일 전체로 둔다.
    unified는 실패 시 곧바로 4 (2·3은 dgpu 전용)
 2. cpu-moe (dgpu + MoE만): nonExpertGB + kv + buffer ≤ usable(dgpu) 이면, 남는 VRAM 에 전문가 층을 채운다 (10-01 D56)
    perLayer  = expertGB / moeLayers
@@ -89,9 +102,9 @@ usable(cpu)    = usableRam = ram − 4GB (OS)     // usableRam = 모든 kind의 
    llama.cpp b7410(2025-12-15, PR #16653) 이후 기본 `--fit on` 과 Ollama 0.30+(llama-server 위임)가 같은 방향으로
    자동 배치한다(비전문가 우선 → 남는 VRAM 만큼 전문가 층 → 나머지 층 전문가만 CPU). 12~16GB 카드로 30B~120B MoE 구동하는 표준 경로
 3. partial-offload (dgpu + MoE 아님 — dense와 nonExpertGB 없는 MoE): kv+buffer는 GPU 상주, 가중치만 분할
-   gpuW = min(weights, usable(dgpu) − kv − buffer)   // > 0 이어야 함
+   gpuW = min(weights, usable(dgpu) − kv − buffer)   // > 0 이어야 함 (1 이 실패했으니 gpuW < resident ≤ weights — 상한은 그대로)
    cpuW = weights − gpuW ≤ usableRam
-   gpuFrac = gpuW / weights   … 속도 절벽 경고 (§3.4)
+   gpuFrac = gpuW / weights   … 속도 절벽 경고 (§3.4). 분모는 파일 전체(입력 임베딩·MTP 포함 — 보수, §9)
    (c66f9ff 외부 리뷰 정정: 구식 need 비례식 gpuFrac = usable/need, cpuW = weights×(1−gpuFrac)는
     kv·buffer 일부가 CPU로 간다고 가정해 CPU측을 과소평가 → 거짓 양성. 반례 Qwen3-14B Q4·8GB GPU·RAM 7GB
     (usableRam 3GB — 구식 cpuW ≈2.9 탑재 / 정정 ≈3.5 불가)를 fit.test.ts 회귀로 고정)
@@ -99,6 +112,7 @@ usable(cpu)    = usableRam = ram − 4GB (OS)     // usableRam = 모든 kind의 
 5. 전부 실패 → F. 더 낮은 quant 루프로 bestQuant 탐색 (IQ2_M까지):
    사다리 IQ2_M…Q8_0 중 요청 quant보다 bpw 낮은 것을 높은 품질부터, weights = paramsB×bpw/8
    (bpw 폴백 — 실파일 크기는 데이터 레이어 몫), MoE nonExpertGB도 같은 비율로 축소 → 0~4 첫 성공 quant.
+   헤더 실측(offGpuGB·expertGB)은 요청 파일 전용이라 비운다 — 다른 quant 는 resident = weights.
    네이티브(MXFP4·UD-*)·F16은 사다리 제외
 ```
 
@@ -135,14 +149,15 @@ t = routed × f / (CPU_MOE_RAM_EFF × ramBandwidthGBs)                 // CPU_MO
   + (nonExpertGB + routed × (1 − f) + kvReadGB) / (eff_gpu(moe) × memBandwidthGBs)
 tg = min(1 / t, full-gpu 값)
 ```
-- **입력 정의(GGUF 헤더 실측, 데이터 레이어 `model-quants.json` 행 필드)**: `expertGB` = 이름에 `_exps` 가 든 라우팅 전문가 텐서 합(트렁크 층만). `nonExpertGB` = GPU 에 상주하는 나머지(어텐션·공유 전문가·라우터·출력층·dense FFN). llama.cpp 는 입력층 `token_embd` 를 항상 CPU 에 두므로 제외한다. 다만 출력층이 없는 tied 모델은 GPU 에 출력층으로 복제되므로 포함한다. MTP·NextN 블록은 기본 로드가 아니라(`load_mtp=false` → TENSOR_SKIP) 둘 다에서 뺀다. 파싱 합계 = 파일 크기 ±0.02GB 로 33행 검증.
+- **입력 정의(GGUF 헤더 실측, 데이터 레이어 `model-quants.json` 행 필드)**: `expertGB` = 이름에 `_exps` 가 든 라우팅 전문가 텐서 합(트렁크 층만). `nonExpertGB` = GPU 에 상주하는 나머지(어텐션·공유 전문가·라우터·출력층·dense FFN·`token_embd_norm`). llama.cpp 는 입력층(`token_embd`·`per_layer_token_embd`·`position_embd`·`token_types` — LLM_TENSOR_LAYER_INPUT)을 항상 CPU 에 두므로 제외한다. 다만 출력층이 없는 tied 모델은 GPU 에 출력층으로 복제되므로 포함한다. MTP·NextN 블록은 기본 로드가 아니라(`load_mtp=false` → TENSOR_SKIP) 둘 다에서 뺀다. 파싱 합계 = 파일 크기 ±0.02GB 로 33행 검증. `expertGB + nonExpertGB` 가 곧 full-gpu 의 그래픽카드 상주 가중치다(§2.4-1). dense 행은 같은 헤더 읽기로 `offGpuGB`(= 파일 − GPU 상주, 97행)를 둔다(10-03 D62).
 - **실측이 없는 입력(bpw 사다리·엔진 단독 호출)**: `nonExpertGB` 는 기준 양자화에서 균등 bpw 로 유도한 값이다. 더 큰 양자화는 bpw 비율로 키우고 줄이지는 않는다(`nonExpertGBFor`). `expertGB` = 파일 − 비전문가. `activeExpertFrac` 도 없으면 09-30 식(`활성 슬라이스 − 비전문가` 를 전부 RAM 에서)으로 계산한다.
 - **보정**: `CPU_MOE_RAM_EFF` = 0.5. 공개 실측에 N 을 적힌 그대로 넣고 맞췄다(η 0.45·0.55 보다 편향이 작다). 회귀 42점 기준으로 전체 평균 오차는 11.1%, 편향 −2.4%, ±20% 안 35점, 최대 39.7%다. NVIDIA(CUDA) 35점은 평균 10.3%, ±20% 안 89%, AMD ROCm 7점은 평균 14.9%, 최대 27.7%다. Vulkan(−31~+84%)·8채널 서버 RAM(CPU 연산 한계로 +30% 일관)·32k 이상 깊은 컨텍스트 서버 측정은 제외했다. 목록은 `packages/engine/test/fixtures.ts` `CPU_MOE_CASES`.
 - **명령(데이터 레이어 `snippet.ts`)**: `-ngl all --n-cpu-moe N` 으로 추정과 같은 배치를 명시한다(명시하면 llama.cpp fit 의 가중치 배치는 꺼진다). 각주는 두 가지다. 메모리 부족 시 1~2 올리라는 안내, 그리고 b7410+ 는 두 옵션 없이도 자동 배치된다는 안내다. Ollama 0.30+ 는 자동 배치라 명령을 보여 주되 버전을 안내한다.
 - **이력**: 09-30(D55)은 RAM 몫을 라우팅 전문가만으로 고쳤다(이전 ~2.5× 과소). 10-01(D56)은 전문가 일부 GPU 배치를 넣고, 실측 분할로 gpt-oss(유도 0.65/0.81 vs 실측 1.30/1.69GB)·UD 파일의 비전문가 과소를 해소했다. 이로써 D23 의 +1층 여유를 `CPU_MOE_GPU_LAYER_MARGIN` 으로 일반화했다.
 
 ### 3.4 partial-offload (dense) — 절벽 경고
-`tg ≈ 1 / (gpuFrac/tg_gpu + (1−gpuFrac)/tg_cpu)` (조화 평균). gpuFrac < 0.9면 B등급 상한. UI에 "dense 모델 부분 오프로드는 급감" 고정 경고 + 실측 예시(gpt-oss-120b: 5090 naive 3.4 vs cpu-moe 9.6 tok/s).
+`tg ≈ 1 / (gpuFrac/tg_gpu + (1−gpuFrac)/tg_cpu)` (조화 평균). gpuFrac < 0.9면 B등급 상한.
+주의(10-03 D62): full-gpu 경계는 상주량(파일 − 입력 임베딩·MTP)으로 판정하지만 gpuFrac 분모는 파일 전체라, 경계 바로 바깥 셀의 gpuFrac 상한은 `resident / file` 이다(Qwen3.5-9B Q4 0.872·Q8_0 0.862, MiniCPM5-1B 0.826, MiniCPM5-2B Q8_0 0.89 — 0.9 미만). 이런 모델은 S(full-gpu)에서 A 를 건너뛰고 B(cap-partial)로 바로 떨어진다. 실제로는 층 대부분이 GPU 에 있는 상태라 보수 쪽이며, 스니펫 `-ngl floor(gpuFrac × layers)` 도 그만큼 덜 올린다. 분모를 상주량으로 바꾸는 안(판정 41건 변화)은 부분 오프로드 실측 검증이 없어 보류. UI에 "dense 모델 부분 오프로드는 급감" 고정 경고 + 실측 예시(gpt-oss-120b: 5090 naive 3.4 vs cpu-moe 9.6 tok/s).
 
 ### 3.5 프롬프트 처리(pp) — 연산 지배
 `pp ≈ ppCoef × fp16Tflops` — NVIDIA 140/TFLOP, Apple 45, AMD/Intel 30~40 (Vulkan 페널티, 7900 XTX 실측 근거). 표기는 "대략" 수준으로만(±40%) — P1-2부터 **범위 est×0.6~1.4 + 4번째 신뢰 라벨 `rough`(pp 전용, §4)**로 표시한다. 식이 fp16 연산 전제라 **full-gpu(통합 메모리 포함) fit일 때만** 표시하고 부분 오프로드·cpu-moe·cpu-only에선 생략(사유 한 줄). 밴드 상수는 데이터 레이어 정책(`packages/data` `PP_BAND = 0.4`, `// source: docs/02 §3.5 (policy)`) — 엔진 `Result.ppTokS`는 est만 반환(무변경, PROGRESS §4 09-29 D13). 장문 RAG 유저용 참고치.
@@ -204,5 +219,11 @@ expect(['A','B']).toContain(fit(m4max_128, llama33_70b_q4).verdict)    // meas 9
 - MoE bytes/token 근사는 공유 텐서를 과소평가 → 계수에 흡수(§3.2), 고속 소형 MoE에서 오차↑(5090에서 30B-A3B는 오버헤드 지배로 대역폭 모델 상한 이탈 — 235 tok/s 상한 캡 적용).
 - LocalScore류 컨텍스트 가중 수치와 tg128 단문 수치는 조건이 다름 — 실측 수집 시 ctx 필드 필수.
 - 열/전력 제한(노트북), 듀얼채널 미구성 RAM 등 사용자 환경 편차는 밴드로만 흡수.
-- full-gpu 판정은 파일 크기 전체를 VRAM 에 넣어 계산한다 — llama.cpp 가 CPU 에 두는 `token_embd`·로드하지 않는 MTP 블록(Qwen3.5/3.6 약 0.9GB)까지 포함한 보수 쪽 근사(10-01 D56, cpu-moe 경로만 실측 분할 사용).
+- dGPU full-gpu 필요량은 그래픽카드 상주 가중치(파일 − 입력 임베딩·MTP 블록, GGUF 헤더 실측)로 계산한다(10-03 D62, 엔진 0.6.0 — 그 전엔 파일 전체). 남은 한계:
+  - **MTP 를 켜면**(`--spec-type draft-mtp`, unsloth `*-MTP-GGUF` 행이 유도) MTP 블록(`mtpGB`, Qwen3.6 Q4 0.90GB)과 MTP 컨텍스트 KV 가 더 든다 — 계산하지 않고 분해 바 각주로 안내한다.
+  - **llama.cpp `--fit`(Ollama 0.30+ 도 -ngl 없이 llama-server 를 띄워 같은 경로)** 은 장치마다 1024MiB 를 비워 둔다(https://github.com/ggml-org/llama.cpp/blob/cb7934c/common/common.h#L485). 16GB 이하 카드에서 새로 full-gpu 가 된 빠듯한 셀(예: 8GB × Qwen3.5-9B 32k 필요 6.99 vs 사용 가능 7.4)은 Ollama 에서 부분 오프로드가 될 수 있다(추정) — 가이드·방법론이 `ollama ps` 확인을 안내한다. `llama-server -ngl all` 은 vramGB 가 표기 용량(실제는 GiB — 8GB 카드 = 8.59 decimal GB)이라 여유가 있어 OOM 위험이 낮다.
+  - **통합 메모리(맥)는 파일 전체**(Metal mmap 범위, §2.4-1) — 32GB 맥의 Qwen3.5/3.6-35B-A3B 는 여전히 cpu-only(보수).
+  - **partial-offload gpuFrac 분모는 파일 전체**(§3.4 주의) — 경계 바로 바깥이 B 로 떨어지는 절벽.
+  - **속도는 여전히 파일 바이트**(§3.1 `bytesPerToken = fileGB`) — MTP 블록이 있는 dense 모델(Qwen3.5-9B/27B, Qwen3.8-27B, EXAONE 4.5)은 토큰마다 읽지 않는 MTP 바이트만큼 과소 추정(보수). `mtpGB` 를 쓰는 후속 과제.
+  - 실측(llama-server 로그의 `CPU_Mapped model buffer` 에 token_embd, MTP `unused tensor … ignoring` 경고)으로는 아직 대조하지 못했다(하드웨어 없음 — PROGRESS §5).
 - cpu-moe 의 `--n-cpu-moe` 는 층 평균 전문가 크기로 정한다 — Q4_K_M 류 혼합 레시피는 층마다 ffn_down 정밀도가 달라 층 크기가 최대 ~1.15× 차이(GPU 에 남는 뒤쪽 층이 무겁다) → 여유 1층(`CPU_MOE_GPU_LAYER_MARGIN`).

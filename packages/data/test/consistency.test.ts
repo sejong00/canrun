@@ -51,6 +51,37 @@ describe('MoE measured split (model-quants expertGB/nonExpertGB, 10-01)', () => 
     expect(validateAll(withRow(half)).some((p) => p.includes('set together'))).toBe(true);
     const tooBig = validateAll(withRow({ ...moeRow, expertGB: moeRow.fileGB, nonExpertGB: 0.5 }));
     expect(tooBig.some((p) => p.includes('> fileGB'))).toBe(true);
+    // 10-03 D62: GPU 상주량(전문가+비전문가)이 파일의 75% 미만이면 다른 파일을 잰 것
+    const tooSmall = validateAll(withRow({ ...moeRow, expertGB: 5, nonExpertGB: 1 }));
+    expect(tooSmall.some((p) => p.includes('a different file?'))).toBe(true);
+  });
+});
+
+describe('dense offGpuGB · mtpGB (GGUF header, 10-03 D62)', () => {
+  const dense = seed.modelQuants.find((mq) => mq.modelId === 'qwen3.5-9b' && mq.quant === 'Q4_K_M')!;
+  const moeRow = seed.modelQuants.find((mq) => mq.modelId === 'gpt-oss-20b')!;
+  const withRow = (row: (typeof seed.modelQuants)[number]) => ({
+    ...seed,
+    modelQuants: seed.modelQuants.map((mq) => (mq.modelId === row.modelId && mq.quant === row.quant ? row : mq)),
+  });
+
+  it('seed: every dense row is measured; MTP rows carry mtpGB inside the off-GPU share', () => {
+    const moeIds = new Set(seed.models.filter((m) => m.activeParamsB !== undefined).map((m) => m.id));
+    expect(seed.modelQuants.filter((mq) => !moeIds.has(mq.modelId) && mq.offGpuGB === undefined)).toEqual([]);
+    expect(seed.modelQuants.filter((mq) => moeIds.has(mq.modelId) && mq.offGpuGB !== undefined)).toEqual([]);
+    expect(dense).toMatchObject({ fileGB: 5.87, offGpuGB: 0.75, mtpGB: 0.17 });
+  });
+
+  it('rejects offGpuGB on a MoE row and above 25% of the file', () => {
+    expect(validateAll(withRow({ ...moeRow, offGpuGB: 0.5 })).some((p) => p.includes('only for dense'))).toBe(true);
+    expect(validateAll(withRow({ ...dense, offGpuGB: 2 })).some((p) => p.includes('a different file?'))).toBe(true);
+  });
+
+  it('rejects mtpGB without the measurement it came from or larger than the off-GPU share', () => {
+    const { offGpuGB: _dropped, ...unmeasured } = dense;
+    expect(validateAll(withRow(unmeasured)).some((p) => p.includes('mtpGB needs'))).toBe(true);
+    expect(validateAll(withRow({ ...dense, mtpGB: 1 })).some((p) => p.includes('off-GPU share'))).toBe(true);
+    expect(validateAll(withRow({ ...moeRow, mtpGB: 0.9 })).some((p) => p.includes('off-GPU share'))).toBe(true);
   });
 });
 

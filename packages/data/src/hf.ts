@@ -478,6 +478,8 @@ const SPLIT_TOLERANCE_GB = 0.02;
  * - paramsB = info.paramsB → baseSplit.totalParamsB, 둘 다 없으면 no-params.
  * - MoE: activeParamsB = 이름 표기(A3B) → 헤더(total − expert + expert × topK/experts), 없으면 no-params.
  *   모델 nonExpertGB = 헤더 실측 → derive 유도. 기준 행(Q4_K_M)에 실측 expertGB·nonExpertGB.
+ * - 그래픽카드에 안 올리는 몫(입력 임베딩·MTP)은 빼지 않는다 — 파일 전체로 판정(카탈로그 행만 헤더 실측 offGpuGB, D62).
+ *   dense 는 헤더를 새로 읽지 않고, MoE 기준 행은 offGpuGB 0 으로 분할 유도를 막는다(다른 행과 같은 기준).
  * - 표시 값은 카탈로그 관례대로 2자리 반올림(paramsB·activeParamsB·nonExpertGB).
  */
 export function buildHfModel(input: HfModelInput): HfModelResult {
@@ -507,11 +509,13 @@ export function buildHfModel(input: HfModelInput): HfModelResult {
     kvBytesPerTokenF16: arch.override?.kvBytesPerTokenF16 ?? arch.arch.kvBytesPerTokenF16,
     ...(arch.moe ? { experts: arch.moe.experts, topK: arch.moe.topK } : {}),
   };
+  // 기준 행만 헤더 실측 분할을 갖는다. 엔진은 분할이 있으면 그래픽카드 상주량(전문가 + 비전문가)으로 full-gpu 를 판정하는데
+  // (10-03 D62), 다른 행은 파일 전체라 큰 양자화만 전량 탑재되는 사다리 역전이 생길 수 있다 — offGpuGB 0(파일 전체를 셈)으로 막는다
   const toCore = (r: ModelQuantRecord, measured?: { expertGB: number; nonExpertGB: number }): ModelQuantCore => ({
     modelId: r.modelId,
     quant: r.quant,
     fileGB: r.fileGB,
-    ...(measured ? { expertGB: measured.expertGB, nonExpertGB: measured.nonExpertGB } : {}),
+    ...(measured ? { expertGB: measured.expertGB, nonExpertGB: measured.nonExpertGB, offGpuGB: 0 } : {}),
     ggufRepo: r.ggufRepo,
     ...(r.fileName !== undefined ? { fileName: r.fileName } : {}),
   });

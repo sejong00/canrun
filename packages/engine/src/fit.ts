@@ -5,6 +5,7 @@ import {
   computeBufferGB,
   expertGBFor,
   gpuCountOf,
+  gpuResidentGBFor,
   kvGB,
   osReserveGB,
   usableGB,
@@ -60,7 +61,6 @@ function fitOnce(hw: Hardware, mq: ModelQuant, weights: number, opts?: FitOption
   // 연산 버퍼는 GPU 마다 따로 (§6 멀티 GPU — 장수 1 이면 그대로)
   const buffer = computeBufferGB(ctx) * gpuCountOf(hw);
   const osReserve = osReserveGB(hw);
-  const need = weights + kv + buffer;
 
   // cpu 단독 하드웨어는 곧바로 4번 경로
   if (hw.kind === 'cpu') {
@@ -76,9 +76,11 @@ function fitOnce(hw: Hardware, mq: ModelQuant, weights: number, opts?: FitOption
   const pool = usableGB(hw); // dgpu: vram−osReserve, unified: ram×0.70
   const limit = hw.kind === 'dgpu' ? (hw.vramGB ?? 0) * gpuCountOf(hw) : hw.ramGB;
 
-  // 1. full-gpu (unified 포함 — 통합 풀에 전량 탑재)
-  if (need <= pool) {
-    return { fits: true, mode: 'full-gpu', vram: breakdown(weights, kv, buffer, osReserve, limit) };
+  // 1. full-gpu (unified 포함 — 통합 풀에 전량 탑재). dGPU 는 llama.cpp 가 그래픽카드에 올리는 가중치만 센다(10-03 D62):
+  //    입력 임베딩은 시스템 RAM, MTP 블록은 미적재. 통합 메모리는 파일 전체(Metal 은 mmap 범위째 GPU 버퍼로 감싼다)
+  const resident = hw.kind === 'dgpu' ? gpuResidentGBFor(mq, weights) : weights;
+  if (resident + kv + buffer <= pool) {
+    return { fits: true, mode: 'full-gpu', vram: breakdown(resident, kv, buffer, osReserve, limit) };
   }
 
   const usableRam = usableRamGB(hw);
@@ -119,6 +121,7 @@ function fitOnce(hw: Hardware, mq: ModelQuant, weights: number, opts?: FitOption
   // 3. partial-offload (dense, dgpu): kv+buffer 는 GPU 상주, 가중치만 분할.
   //    CPU측 가중치 = weights − max(0, usableVram − kv − buffer) — 외부 리뷰 반영(2026-08):
   //    기존 need 비례식은 kv/buffer 까지 오프로드된다고 가정해 CPU측 부담을 과소평가했다.
+  //    여기 오면 GPU 몫 < 상주 가중치 ≤ 파일이라 상한은 그대로다. gpuFrac 분모는 파일 전체(입력 임베딩·MTP 포함 — 보수, §5 주의)
   if (hw.kind === 'dgpu' && !isMoe(mq) && pool > 0) {
     const gpuWeights = Math.max(0, Math.min(weights, pool - kv - buffer));
     const cpuWeights = weights - gpuWeights;
@@ -160,6 +163,8 @@ export function fit(hw: Hardware, mq: ModelQuant, opts?: FitOptions): FitResult 
       ...mq,
       quant,
       fileGB: undefined,
+      // 헤더 실측(그래픽카드에 안 올리는 몫·전문가 분할)은 그 파일 전용 — 다른 quant 에 옛 값이 남지 않게 비운다
+      offGpuGB: undefined,
       expertGB: undefined,
       nonExpertGB:
         mq.nonExpertGB === undefined ? undefined : mq.nonExpertGB * (w / weightsGB(mq)),

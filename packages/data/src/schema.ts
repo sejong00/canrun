@@ -197,11 +197,23 @@ export const ModelQuantSchema = z
      * nonExpertGB: GPU 상주 비전문가 — 어텐션·노름·공유 전문가·라우터·dense FFN·output.
      *   token_embd 는 llama.cpp 가 항상 CPU 에 두므로 제외, 단 output.weight 가 없는(임베딩 공유) 모델은
      *   GPU 출력층 복제분으로 1회 포함. 기본 미적재 MTP 블록 제외.
-     * 둘 다 있거나 둘 다 없거나(아래 refine). MoE 모델 행만·합 ≤ fileGB+0.02 는 validateAll.
-     * 없는 행은 모델 단위 nonExpertGB(derive.ts 유도)가 근사값.
+     * 둘 다 있거나 둘 다 없거나(아래 refine). MoE 모델 행만·0.75×fileGB ≤ 합 ≤ fileGB+0.02 는 validateAll.
+     * 없는 행은 모델 단위 nonExpertGB(derive.ts 유도)가 근사값. 합 = dGPU 에 전량 올릴 때 그래픽카드에 상주하는 가중치(10-03 D62).
      */
     expertGB: z.number().positive().optional(),
     nonExpertGB: z.number().positive().optional(),
+    /**
+     * dense 전용 — 파일 중 llama.cpp 가 그래픽카드에 올리지 않는 GB (GGUF 헤더 실측, scripts/gguf-header.ts, 10-03 D62).
+     * 입력 임베딩(token_embd — 입력층은 항상 CPU, 임베딩 공유 모델은 출력층 사본이 GPU 에 가서 ≈0)·기본 미적재 MTP/NextN
+     * 블록·헤더 메타데이터. dGPU full-gpu 필요량은 fileGB − 이 값(docs/02 §2.4-1). MoE 행은 fileGB − expertGB − nonExpertGB 로
+     * 같은 값을 유도하므로 두지 않는다. 없으면 파일 전체(보수). dense 만·0 ≤ 값 ≤ 0.25×fileGB 는 validateAll.
+     */
+    offGpuGB: z.number().nonnegative().optional(),
+    /**
+     * MTP/NextN 블록 GB (헤더 실측, 0 보다 클 때만) — llama.cpp 는 `--spec-type draft-mtp` 로 켤 때만 불러온다. 필요량에서는
+     * 이미 빠져 있고(offGpuGB·MoE 분할), 화면은 "켜면 이만큼 + 그 KV 가 더 든다"고 안내한다. 측정 행(offGpuGB 또는 분할)에만.
+     */
+    mtpGB: z.number().positive().optional(),
     ggufRepo: z.string().min(1),
     /**
      * repo 내 실파일 경로 — 스니펫 태그·다운로드 안내의 정본 (P1-2, docs/03 §1·§5.1 ④).

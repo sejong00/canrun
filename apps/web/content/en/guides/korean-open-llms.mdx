@@ -22,14 +22,14 @@ EXAONE 4.5 33B is a vision-language model. Our parameter count includes its visi
 
 ## How much memory each model needs
 
-In CanRun's calculation, a model needs room for its file at the baseline quant, the KV cache (memory holding the conversation so far) in f16, and a compute buffer (the runtime's working memory). The baseline is Q4_K_M, except for Solar Open 2 250B, which has no Q4_K_M GGUF and uses IQ4_XS.
+In CanRun's calculation, a model needs room for its weights at the baseline quant, the KV cache (memory holding the conversation so far) in f16, and a compute buffer (the runtime's working memory). On a graphics card the weights are a little smaller than the file: llama.cpp keeps the input embedding table in system RAM and does not load EXAONE 4.5's multi-token prediction (MTP) block. The baseline is Q4_K_M, except for Solar Open 2 250B, which has no Q4_K_M GGUF and uses IQ4_XS.
 
 <ModelMemoryTable models="exaone-4.0-1.2b,hyperclovax-seed-1.5b,kanana-1.5-8b,hyperclovax-seed-think-14b,kanana-1.5-15.7b-a3b,exaone-4.0-32b,exaone-4.5-33b,solar-open-100b,solar-open2-250b" />
 
 Compare those totals with a card's usable memory, not the box size; a card driving a Windows display keeps some VRAM back (see the table note). At 8k:
 
-- **8GB**, such as the RTX 4060 with <Num kind="usableGB" gpu="rtx-4060" /> usable: up to Kanana 1.5 8B at <Num kind="needGB" model="kanana-1.5-8b" />, with little margin, so check `ollama ps` for 100% GPU.<Expect model="kanana-1.5-8b" gpu="rtx-4060" fits="true" />
-- **12GB**, such as the RTX 3060 12GB with <Num kind="usableGB" gpu="rtx-3060-12gb" />: HyperCLOVA X SEED Think 14B at <Num kind="needGB" model="hyperclovax-seed-think-14b" />, again with little margin.<Expect model="hyperclovax-seed-think-14b" gpu="rtx-3060-12gb" fits="true" />
+- **8GB**, such as the RTX 4060 with <Num kind="usableGB" gpu="rtx-4060" /> usable: up to Kanana 1.5 8B at <Num kind="needGB" model="kanana-1.5-8b" />, with about a gigabyte to spare; check `ollama ps` for 100% GPU.<Expect model="kanana-1.5-8b" gpu="rtx-4060" fits="true" />
+- **12GB**, such as the RTX 3060 12GB with <Num kind="usableGB" gpu="rtx-3060-12gb" />: HyperCLOVA X SEED Think 14B at <Num kind="needGB" model="hyperclovax-seed-think-14b" />, again with about a gigabyte to spare.<Expect model="hyperclovax-seed-think-14b" gpu="rtx-3060-12gb" fits="true" />
 - **16GB**, such as the RTX 5060 Ti 16GB with <Num kind="usableGB" gpu="rtx-5060-ti-16gb" />: Kanana 1.5 15.7B-A3B at <Num kind="needGB" model="kanana-1.5-15.7b-a3b" />, fully on the GPU.<Expect model="kanana-1.5-15.7b-a3b" gpu="rtx-5060-ti-16gb" verdict="S" />
 - **24GB class**, such as the RTX 3090 with <Num kind="usableGB" gpu="rtx-3090" />: EXAONE 4.0 32B at <Num kind="needGB" model="exaone-4.0-32b" /> and EXAONE 4.5 33B at <Num kind="needGB" model="exaone-4.5-33b" />.<Expect model="exaone-4.0-32b" gpu="rtx-3090" verdict="S" /><Expect model="exaone-4.5-33b" gpu="rtx-3090" verdict="S" />
 - **More than any single card here:** Solar Open 100B at <Num kind="needGB" model="solar-open-100b" />; the system-RAM route is below.<Expect model="solar-open-100b" gpu="rtx-5090" fits="false" /> Solar Open 2 250B, left out of the verdict grid, needs far more than any setup there.<Expect model="solar-open2-250b" gpu="rtx-4060" fits="false" /><Expect model="solar-open2-250b" gpu="rtx-3060-12gb" fits="false" /><Expect model="solar-open2-250b" gpu="rtx-5060-ti-16gb" fits="false" /><Expect model="solar-open2-250b" gpu="rtx-3090" fits="false" /><Expect model="solar-open2-250b" gpu="rtx-5090" fits="false" /><Expect model="solar-open2-250b" gpu="apple-m4-pro" fits="false" /> Its hub page rates it, including the experts-in-RAM path, with expert and shared weight sizes read from its GGUF files.
@@ -155,7 +155,7 @@ Because it stays on the GPU and EXAONE 4.0 32B does not. On the RTX 5060 Ti 16GB
 
 ### Which Korean model should I pick for my PC?
 
-The largest one whose 8k memory need fits your card's usable memory and whose license suits your use; CanRun does not rate answer quality. On the RTX 4060, that is up to Kanana 1.5 8B, with little margin (check `ollama ps`).<Expect model="kanana-1.5-8b" gpu="rtx-4060" fits="true" /> On the RTX 3060 12GB, Kanana 1.5 15.7B-A3B fits fully at IQ4_XS; HyperCLOVA X SEED Think 14B also fits, but its GGUF targets NAVER's llama.cpp fork and its speed estimate is theoretical.<Expect model="hyperclovax-seed-think-14b" gpu="rtx-3060-12gb" fits="true" /> On the RTX 5060 Ti 16GB, Kanana 1.5 15.7B-A3B fits at Q4_K_M.<Expect model="kanana-1.5-15.7b-a3b" gpu="rtx-5060-ti-16gb" fits="true" />
+The largest one whose 8k memory need fits your card's usable memory and whose license suits your use; CanRun does not rate answer quality. On the RTX 4060, that is up to Kanana 1.5 8B, with about a gigabyte to spare (check `ollama ps`).<Expect model="kanana-1.5-8b" gpu="rtx-4060" fits="true" /> On the RTX 3060 12GB, Kanana 1.5 15.7B-A3B fits fully at IQ4_XS; HyperCLOVA X SEED Think 14B also fits, but its GGUF targets NAVER's llama.cpp fork and its speed estimate is theoretical.<Expect model="hyperclovax-seed-think-14b" gpu="rtx-3060-12gb" fits="true" /> On the RTX 5060 Ti 16GB, Kanana 1.5 15.7B-A3B fits at Q4_K_M.<Expect model="kanana-1.5-15.7b-a3b" gpu="rtx-5060-ti-16gb" fits="true" />
 
 ## Sources
 

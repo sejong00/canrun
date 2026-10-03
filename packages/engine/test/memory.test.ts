@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   computeBufferGB,
+  gpuResidentGBFor,
   kvBytesPerToken,
   kvGB,
   osReserveGB,
@@ -28,6 +29,33 @@ describe('weightsGB (§2.1)', () => {
     expect(() => weightsGBFromBpw(20.9, 'MXFP4')).toThrow(/native/);
     // fileGB 가 있으면 정상 (환산 없이 실측값 그대로)
     expect(weightsGB({ paramsB: 20.9, quant: 'MXFP4', fileGB: 12.11 })).toBe(12.11);
+  });
+});
+
+describe('gpuResidentGBFor (§2.4-1, 10-03 D62)', () => {
+  const base = { paramsB: 8.03, quant: 'Q4_K_M' as const, fileGB: 4.92 };
+
+  it('offGpuGB (dense header measurement) comes first', () => {
+    expect(gpuResidentGBFor({ ...base, offGpuGB: 0.3 })).toBeCloseTo(4.62, 9);
+    // 둘 다 있으면 offGpuGB 우선
+    expect(gpuResidentGBFor({ ...base, offGpuGB: 0.3, expertGB: 1, nonExpertGB: 1 })).toBeCloseTo(4.62, 9);
+  });
+
+  it('then the MoE measured split, then the whole file', () => {
+    expect(gpuResidentGBFor({ ...base, fileGB: 22.27, expertGB: 19.5, nonExpertGB: 1.59 })).toBeCloseTo(21.09, 9);
+    expect(gpuResidentGBFor(base)).toBe(4.92);
+    // 분할 한쪽만 있으면 유도하지 않는다
+    expect(gpuResidentGBFor({ ...base, nonExpertGB: 1 })).toBe(4.92);
+  });
+
+  it('clamps to [0, weights] so bad data never raises or negates the need', () => {
+    expect(gpuResidentGBFor({ ...base, offGpuGB: -1 })).toBe(4.92);
+    expect(gpuResidentGBFor({ ...base, offGpuGB: 9 })).toBe(0);
+    expect(gpuResidentGBFor({ ...base, expertGB: 4, nonExpertGB: 2 })).toBe(4.92);
+  });
+
+  it('takes an explicit weights size (bpw fallback without fileGB)', () => {
+    expect(gpuResidentGBFor({ paramsB: 8.03, quant: 'Q4_K_M' }, 5)).toBe(5);
   });
 });
 

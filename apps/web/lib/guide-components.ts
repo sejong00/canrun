@@ -19,7 +19,8 @@ export type PropKind =
   | 'verdict'
   | 'bool'
   | 'numKind'
-  | 'fact';
+  | 'fact'
+  | 'memoryKind';
 
 export type ComponentSpec = {
   /** 표·블록 요소 — MDX 에서 자기 줄에만 (문단 안에 넣으면 `<p><div>` 하이드레이션 불일치) */
@@ -32,8 +33,16 @@ export type ComponentSpec = {
 const req = (kind: PropKind) => ({ kind, required: true });
 const opt = (kind: PropKind) => ({ kind, required: false });
 
-export const NUM_KINDS = ['fileGB', 'kvGB', 'needGB', 'vramGB', 'bandwidth', 'usableGB', 'params', 'layers', 'maxContext'] as const;
+/**
+ * Num 종류. needGB = 판정이 비교하는 필요량(가중치 + KV + 버퍼) — 기본은 그래픽카드 규칙(가중치 = gpuWeightsGB, 10-03 D62),
+ * `gpu` 가 통합 메모리 칩이면 파일 전체. gpuWeightsGB = 파일 중 그래픽카드에 올라가는 가중치(입력 임베딩·MTP 블록 제외).
+ */
+export const NUM_KINDS = ['fileGB', 'gpuWeightsGB', 'kvGB', 'needGB', 'vramGB', 'bandwidth', 'usableGB', 'params', 'layers', 'maxContext'] as const;
 export type NumKind = (typeof NUM_KINDS)[number];
+
+/** ModelMemoryTable 의 메모리 종류 — dgpu(기본: 그래픽카드에 올라가는 가중치) · unified(맥: 파일 전체) */
+export const MEMORY_KINDS = ['dgpu', 'unified'] as const;
+export type MemoryKind = (typeof MEMORY_KINDS)[number];
 
 export const RUNTIME_FACT_IDS = ['ollama-default-ctx', 'ollama-kv-cache-type'] as const;
 export type RuntimeFactId = (typeof RUNTIME_FACT_IDS)[number];
@@ -42,7 +51,7 @@ export const GUIDE_COMPONENTS: Readonly<Record<string, ComponentSpec>> = {
   // 블록 데이터 (자체 데이터 인용)
   ComboGrid: { block: true, data: true, props: { grid: req('grid') } },
   GpuTierSummary: { block: true, data: true, props: { gpus: req('gpuList') } },
-  ModelMemoryTable: { block: true, data: true, props: { models: req('modelList'), ctx: opt('ctx') } },
+  ModelMemoryTable: { block: true, data: true, props: { models: req('modelList'), ctx: opt('ctx'), memory: opt('memoryKind') } },
   KvPerTokenTable: { block: true, data: true, props: { models: opt('modelList'), ctxs: opt('ctxList') } },
   QuantSizeTable: { block: true, data: true, props: { model: req('model') } },
   QuantLadder: { block: true, data: true, props: { model: req('model'), gpu: req('gpu') } },

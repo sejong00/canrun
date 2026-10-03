@@ -1,4 +1,4 @@
-GGUF 파일은 Q4_K_M부터 받으면 됩니다. `llama-server -hf`와 Hugging Face의 Ollama 연동은 양자화를 지정하지 않으면 이 파일을 받고, CanRun도 Q4_K_M을 기준으로 판정합니다. IQ4_XS는 대개 10분의 1쯤 작으면서 품질 등급은 같은 ‘균형’입니다. Q8_0은 보통 Q4_K_M보다 1.7배쯤 커서, 컨텍스트에 쓸 메모리까지 남을 때만 고를 만합니다. 예를 들어 <HubLink model="mistral-small-3.2-24b" />는 Q4_K_M·8k에서 <Num kind="needGB" model="mistral-small-3.2-24b" />가 필요합니다. RTX 5060 Ti 16GB에서 쓸 수 있는 <Num kind="usableGB" gpu="rtx-5060-ti-16gb" />를 넘어 일부가 시스템 RAM으로 갑니다. 그래도 CanRun 추정으로는 원활하게 돌아갑니다<Expect model="mistral-small-3.2-24b" gpu="rtx-5060-ti-16gb" verdict="A" />. IQ4_XS는 <Num kind="needGB" model="mistral-small-3.2-24b" quant="IQ4_XS" />라서 CanRun 계산으로는 아슬아슬하게 GPU 메모리에 다 들어갑니다(`ollama ps`로 확인).
+GGUF 파일은 Q4_K_M부터 받으면 됩니다. `llama-server -hf`와 Hugging Face의 Ollama 연동은 양자화를 지정하지 않으면 이 파일을 받고, CanRun도 Q4_K_M을 기준으로 판정합니다. IQ4_XS는 대개 10분의 1쯤 작으면서 품질 등급은 같은 ‘균형’입니다. Q8_0은 보통 Q4_K_M보다 1.7배쯤 커서, 컨텍스트에 쓸 메모리까지 남을 때만 고를 만합니다. 예를 들어 <HubLink model="mistral-small-3.2-24b" />는 Q4_K_M·8k에서 <Num kind="needGB" model="mistral-small-3.2-24b" />가 필요합니다. RTX 5060 Ti 16GB에서 쓸 수 있는 <Num kind="usableGB" gpu="rtx-5060-ti-16gb" />를 넘어 일부가 시스템 RAM으로 갑니다. 그래도 CanRun 추정으로는 원활하게 돌아갑니다<Expect model="mistral-small-3.2-24b" gpu="rtx-5060-ti-16gb" verdict="A" />. IQ4_XS는 <Num kind="needGB" model="mistral-small-3.2-24b" quant="IQ4_XS" />라서 CanRun 계산으로는 1GB쯤 남기고 GPU 메모리에 다 들어갑니다(`ollama ps`로 확인).
 
 ## 양자화 이름 읽는 법 — Q4_K_M·IQ4_XS·Q8_0
 
@@ -63,7 +63,7 @@ Q4_K_M에서 IQ4_XS로 한 단계 낮췄을 때 모델이 GPU에 모두 들어�
 
 ### 16GB 카드: Mistral Small 3.2 24B
 
-<HubLink model="mistral-small-3.2-24b" />를 <HubLink gpu="rtx-5060-ti-16gb" />에 올리면, Q4_K_M·8k에서 <Num kind="needGB" model="mistral-small-3.2-24b" />가 필요해 사용 가능 메모리 <Num kind="usableGB" gpu="rtx-5060-ti-16gb" />를 넘습니다. 넘친 부분이 시스템 RAM으로 가는데, 이를 부분 오프로드라고 합니다. 그래도 가중치의 90% 이상이 GPU에 올라가므로 Q4_K_M 그대로도 원활하게 돌아갈 것으로 봅니다<Expect model="mistral-small-3.2-24b" gpu="rtx-5060-ti-16gb" verdict="A" />. IQ4_XS는 <Num kind="needGB" model="mistral-small-3.2-24b" quant="IQ4_XS" />라서 CanRun 계산으로는 아슬아슬하게 GPU 메모리에 모두 들어갑니다(`ollama ps`로 확인). 아래 표에서 IQ4_XS 행은 판정이 한 단계 좋게 계산됩니다(보정된 추정). Q8_0 행은 가중치의 상당 부분이 시스템 RAM으로 넘어갑니다.
+<HubLink model="mistral-small-3.2-24b" />를 <HubLink gpu="rtx-5060-ti-16gb" />에 올리면, Q4_K_M·8k에서 <Num kind="needGB" model="mistral-small-3.2-24b" />가 필요해 사용 가능 메모리 <Num kind="usableGB" gpu="rtx-5060-ti-16gb" />를 넘습니다. 넘친 부분이 시스템 RAM으로 가는데, 이를 부분 오프로드라고 합니다. 그래도 가중치의 90% 이상이 GPU에 올라가므로 Q4_K_M 그대로도 원활하게 돌아갈 것으로 봅니다<Expect model="mistral-small-3.2-24b" gpu="rtx-5060-ti-16gb" verdict="A" />. IQ4_XS는 <Num kind="needGB" model="mistral-small-3.2-24b" quant="IQ4_XS" />라서 CanRun 계산으로는 1GB쯤 남기고 GPU 메모리에 모두 들어갑니다(`ollama ps`로 확인). 아래 표에서 IQ4_XS 행은 판정이 한 단계 좋게 계산됩니다(보정된 추정). Q8_0 행은 가중치의 상당 부분이 시스템 RAM으로 넘어갑니다.
 
 <QuantLadder model="mistral-small-3.2-24b" gpu="rtx-5060-ti-16gb" />
 
@@ -83,7 +83,7 @@ ollama run hf.co/bartowski/mistralai_Mistral-Small-3.2-24B-Instruct-2506-GGUF:IQ
 
 ### 한 단계로는 부족한 경우
 
-한 단계 낮춘다고 늘 해결되지는 않습니다. CanRun 추정으로는 <ComboLink model="qwen3-14b" gpu="rtx-4060" />도 Q4_K_M으로 겨우 돌아가는 정도입니다<Expect model="qwen3-14b" gpu="rtx-4060" verdict="B" />. IQ4_XS로 낮춰도 <Num kind="needGB" model="qwen3-14b" quant="IQ4_XS" />가 필요해 사용 가능 메모리 <Num kind="usableGB" gpu="rtx-4060" />를 한참 넘습니다. CanRun 계산으로는 한 단계 낮춰도 판정이 그대로입니다. 가장 작은 파일인 2비트 Q2_K(품질 손실 큼)도 <Num kind="needGB" model="qwen3-14b" quant="Q2_K" />로 여전히 사용 가능 메모리를 넘습니다. 그래도 가중치의 90% 이상이 GPU에 올라가 판정이 좋아지므로, CanRun은 이 조합에서 Q2_K에 ‘품질 손실 큼’을 붙여 최후 수단으로 따로 보여 줍니다.
+한 단계 낮춘다고 늘 해결되지는 않습니다. CanRun 추정으로는 <ComboLink model="qwen3-14b" gpu="rtx-4060" />도 Q4_K_M으로 겨우 돌아가는 정도입니다<Expect model="qwen3-14b" gpu="rtx-4060" verdict="B" />. IQ4_XS로 낮춰도 <Num kind="needGB" model="qwen3-14b" quant="IQ4_XS" />가 필요해 사용 가능 메모리 <Num kind="usableGB" gpu="rtx-4060" />를 한참 넘습니다. CanRun 계산으로는 한 단계 낮춰도 판정이 그대로입니다. 가장 작은 파일인 2비트 Q2_K(품질 손실 큼)는 <Num kind="needGB" model="qwen3-14b" quant="Q2_K" />로 사용 가능 메모리를 거의 다 씁니다. 가중치 대부분이 GPU에 올라가 판정이 좋아지므로, CanRun은 이 조합에서 Q2_K에 ‘품질 손실 큼’을 붙여 최후 수단으로 따로 보여 줍니다.
 
 MoE 모델은 따로 봐야 합니다. 한국 모델인 <HubLink model="kanana-1.5-15.7b-a3b" />를 RTX 3060 12GB에서 Q4_K_M으로 쓰면 <Num kind="needGB" model="kanana-1.5-15.7b-a3b" />가 필요해 사용 가능 메모리 <Num kind="usableGB" gpu="rtx-3060-12gb" />를 넘습니다. IQ4_XS로 낮추면 <Num kind="needGB" model="kanana-1.5-15.7b-a3b" quant="IQ4_XS" />라서 CanRun 계산으로는 그 안에 들어가지만, 여유는 크지 않습니다. 다만 MoE 전문가를 시스템 RAM에 두는 경우의 속도는 이론 추정(±30%)입니다. CanRun은 VRAM에 들어가는 만큼 전문가를 GPU에 두고 나머지만 RAM에 둔다고 보고 계산하지만, 운영체제·백엔드·RAM 구성에 따라 실제 속도 차이가 큽니다. 이 조합을 Q4_K_M으로 쓸 때와 16GB 카드에서 Qwen3 30B-A3B (2507)를 쓸 때가 여기에 해당합니다. 그래서 이런 경우에 생기는 판정 차이는 결론으로 삼지 않습니다.
 
@@ -117,7 +117,7 @@ dense 모델은 토큰을 하나 만들 때마다 가중치 전체를 읽습니�
 
 ## 이 숫자는 얼마나 확실한가
 
-파일 크기는 Hugging Face 저장소에 올라온 실제 GGUF 파일의 크기이고, 단위는 10진 GB입니다. 필요 메모리는 파일, KV 캐시, 연산 버퍼(계산 중간값을 담는 작업 메모리)를 더한 것으로, 추정이 아니라 공식으로 계산한 값입니다. 품질 등급은 양자화 종류마다 정해 둔 것이고, 모델마다 잰 것이 아닙니다. 실제 손실은 모델과 작업에 따라 다릅니다.
+파일 크기는 Hugging Face 저장소에 올라온 실제 GGUF 파일의 크기이고, 단위는 10진 GB입니다. 필요 메모리는 그래픽카드에 올라가는 가중치, KV 캐시, 연산 버퍼(계산 중간값을 담는 작업 메모리)를 더한 것으로, 추정이 아니라 공식으로 계산한 값입니다. 그래픽카드에 올라가는 가중치는 파일에서 llama.cpp가 올리지 않는 입력 임베딩 표와 MTP 블록을 뺀 양입니다. 품질 등급은 양자화 종류마다 정해 둔 것이고, 모델마다 잰 것이 아닙니다. 실제 손실은 모델과 작업에 따라 다릅니다.
 
 속도와 판정은 오차 범위와 신뢰 라벨을 붙인 추정치입니다. 보정된 추정의 오차 범위는 NVIDIA·AMD 그래픽카드에서 dense 모델을 GPU에만 올릴 때 ±12%입니다. 부분 오프로드, MoE, 그 밖의 하드웨어에서는 ±20%입니다. 이론 추정은 ±30%이며, MoE 전문가를 시스템 RAM에 두는 경우가 대표적입니다. 이 경우 CanRun은 VRAM에 들어가는 만큼 전문가를 GPU에 두고, 나머지만 RAM에 둔다고 보고 계산합니다. 이 가이드에 나온 양자화별 판정 표 세 개는 모든 행이 보정된 추정입니다.
 

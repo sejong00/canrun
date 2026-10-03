@@ -98,6 +98,22 @@ export function nonExpertGBFor(
 }
 
 /**
+ * dGPU 에 전량 올릴 때 그래픽카드에 상주하는 가중치 GB (§2.4-1, 10-03 D62) — llama.cpp 는 입력 임베딩을 시스템 RAM 에 두고
+ * MTP 블록은 켜지 않으면 불러오지 않는다. 우선순위: `offGpuGB`(dense 헤더 실측) → MoE 실측 분할(expertGB + nonExpertGB)
+ * → 파일 전체. 결과는 [0, weights] 로 묶는다(나쁜 데이터가 필요량을 파일보다 키우거나 음수로 만들지 않게).
+ * 통합 메모리·CPU 는 쓰지 않는다 — Metal 은 mmap 범위째 GPU 버퍼로 감싸 이 바이트가 그 안에 들어갈 수 있다.
+ */
+export function gpuResidentGBFor(
+  mq: Pick<ModelQuant, 'paramsB' | 'quant' | 'fileGB' | 'offGpuGB' | 'expertGB' | 'nonExpertGB'>,
+  weights: number = weightsGB(mq),
+): number {
+  let resident = weights;
+  if (mq.offGpuGB !== undefined) resident = weights - mq.offGpuGB;
+  else if (mq.expertGB !== undefined && mq.nonExpertGB !== undefined) resident = mq.expertGB + mq.nonExpertGB;
+  return Math.min(weights, Math.max(0, resident));
+}
+
+/**
  * 라우팅 전문가 텐서 GB — 실측 행은 `expertGB`, 아니면 파일 − 비전문가(유도 경로: token_embd·MTP 가 전문가 쪽에 섞여
  * 층당 전문가 크기를 약간 크게 본다 = `--n-cpu-moe` 가 보수적).
  */

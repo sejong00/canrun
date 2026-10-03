@@ -107,7 +107,8 @@ describe('ctxMatrix (docs/04 §4 ③) — rtx-4060 × llama-3.1-8b Q4_K_M', () =
   });
 
   it('reports the need even when a cell does not fit, and the max ctx per KV type', () => {
-    expect(cell(131072, 'f16').totalNeedGB).toBeCloseTo(23.8, 1);
+    // 10-03 D62: GPU 경로 필요량은 그래픽카드에 올라가는 가중치(4.92 − 입력 임베딩 0.30) + KV 17.18 + 버퍼 1.7 (전엔 23.8)
+    expect(cell(131072, 'f16').totalNeedGB).toBeCloseTo(23.5, 1);
     // CPU 경로 셀은 엔진이 가중치+KV 만 비교하므로 표시 필요량도 버퍼를 뺀다 (docs/02 §2.4 ④)
     expect(cell(65536, 'f16').mode).toBe('cpu-only');
     expect(cell(65536, 'f16').needGB).toBeLessThan(cell(65536, 'f16').totalNeedGB);
@@ -134,6 +135,24 @@ describe('vramBreakdown / ppRange', () => {
     expect(b.ram.usable).toBe(28);
     // pp 는 full-gpu 에서만 (D13)
     expect(ppRange(combo.display)).toBeUndefined();
+  });
+
+  it('notes the off-GPU share on a dGPU full-GPU fit, and the MTP block where it was left out (10-03 D62)', () => {
+    const g = gpu('rtx-4060');
+    const llama = vramBreakdown(assessCombo(seed, g, hardwareConfigs(g, seed.gpus)[0]!, model('llama-3.1-8b')).baseline);
+    expect(llama.note).toEqual({ fileGB: 4.92, offGpuGB: expect.closeTo(0.3, 6) as number });
+    expect(llama.ram.weights).toBe(0);
+    // 부분 오프로드: GPU 밖 몫 각주 없음(RAM 몫에 이미 들어 있다)
+    const qwen14 = vramBreakdown(assessCombo(seed, g, hardwareConfigs(g, seed.gpus)[0]!, model('qwen3-14b')).display);
+    expect(qwen14.note.offGpuGB).toBe(0);
+    // cpu-moe(전문가 일부 RAM)도 MTP 는 GPU 몫에서 빠져 있다 → MTP 안내
+    const g12 = gpu('rtx-3060-12gb');
+    const q36 = vramBreakdown(assessCombo(seed, g12, hardwareConfigs(g12, seed.gpus)[0]!, model('qwen3.6-35b-a3b')).baseline);
+    expect(q36.note.mtpGB).toBeCloseTo(0.9, 6);
+    // 맥(통합 메모리)은 파일 전체 — 각주 없음
+    const m4 = gpu('apple-m4');
+    const mac = assessCombo(seed, m4, hardwareConfigs(m4, seed.gpus).at(-1)!, model('qwen3.6-35b-a3b')).baseline;
+    expect(vramBreakdown(mac).note).toEqual({ fileGB: 22.29, offGpuGB: 0 });
   });
 
   it('pp is a rough ±40% range for full-GPU fits (rtx-4060 × llama-3.1-8b)', () => {

@@ -27,10 +27,17 @@ Model { id, family, name, hfId, paramsB, activeParamsB?,   // moe ⇒ activePara
      maxContext, license, moe:boolean, nonExpertGB?,   // MoE attention+shared GB (derive.ts 균등 bpw 유도) — 10-01 부터 행 실측(ModelQuant.nonExpertGB)이 우선, 이 값은 bpw 사다리 폴백
      category:('chat'|'coding'|'reasoning'|'vision')[] (min 1),
      korean?:boolean, popularity:1..5, releasedAt, note?, sources[] }
-ModelQuant { modelId, quant:QuantId, fileGB, expertGB?, nonExpertGB?, ggufRepo, fileName?, sources[] }   // 실제 GGUF 크기 (decimal GB, 분할 합산)
-     // expertGB·nonExpertGB (10-01 D56): GGUF 헤더 실측(scripts/gguf-header.ts), MoE 행 전용, 둘 다 있거나 둘 다 없음, expertGB + nonExpertGB ≤ fileGB + 0.02 (validateAll).
-     //   expertGB = 트렁크 층의 `_exps`·`_chexps` 텐서 합. nonExpertGB = GPU 상주분 — token_embd 제외(llama.cpp 는 입력층을 CPU 에 둔다, 출력층 없는 tied 모델은 포함),
-     //   MTP·NextN 블록 제외(기본 로드 안 함). 엔진 cpu-moe 배치·속도의 입력(docs/02 §3.3). sync-models 가 새 행·바뀐 파일만 다시 잰다(§5.1 ⑤)
+ModelQuant { modelId, quant:QuantId, fileGB, expertGB?, nonExpertGB?, offGpuGB?, mtpGB?, ggufRepo, fileName?, sources[] }   // 실제 GGUF 크기 (decimal GB, 분할 합산)
+     // expertGB·nonExpertGB (10-01 D56): GGUF 헤더 실측(scripts/gguf-header.ts), MoE 행 전용, 둘 다 있거나 둘 다 없음,
+     //   0.75×fileGB ≤ expertGB + nonExpertGB ≤ fileGB + 0.02 (validateAll — 하한 10-03).
+     //   expertGB = 트렁크 층의 `_exps`·`_chexps` 텐서 합. nonExpertGB = GPU 상주분 — 입력층 제외(token_embd·per_layer_token_embd·position_embd·token_types,
+     //   llama.cpp 는 입력층을 CPU 에 둔다, 출력층 없는 tied 모델은 token_embd 1회 포함), MTP·NextN 블록 제외(기본 로드 안 함). token_embd_norm 은 GPU.
+     //   엔진 cpu-moe 배치·속도의 입력(docs/02 §3.3)이자 합이 full-gpu 의 그래픽카드 상주 가중치(docs/02 §2.4-1). sync-models 가 새 행·바뀐 파일만 다시 잰다(§5.1 ⑤)
+     // offGpuGB (10-03 D62): dense 행 전용 GGUF 헤더 실측 — 파일 바이트 − (전문가 + 비전문가) = 입력층·MTP 블록·헤더 메타데이터. dGPU full-gpu 필요량 = fileGB − offGpuGB.
+     //   MoE 행은 fileGB − expertGB − nonExpertGB 로 같은 값을 유도하므로 두지 않는다(진실 원천 하나). 0 ≤ 값 ≤ 0.25×fileGB (validateAll, 카탈로그 최대 MiniCPM5-1B Q8_0 18%).
+     //   절대값(gpuResidentGB) 대신 차분을 저장 — 파일이 다시 올라와 재측정이 실패해도 오차가 차분 크기로 묶인다. 없으면 파일 전체(보수 폴백). 임베딩 공유 모델은 ≈0.01(헤더만).
+     // mtpGB (10-03): MTP/NextN 블록 GB, 0 보다 클 때만 — 측정 행(offGpuGB 또는 분할)에만, GPU 밖 몫 + 0.02 이하(validateAll). 필요량에선 이미 빠져 있고
+     //   분해 바·모델 허브 FAQ 가 "MTP 를 켜면 이만큼 + 그 KV 가 더 든다"고 안내한다(Qwen3.5/3.6·Qwen3.8·EXAONE 4.5 27행). 속도식(docs/02 §3.1)은 아직 안 씀
      // fileName (P1-2 D20, PROGRESS §4 09-29): repo 상대 실파일 경로 /^[^\s/][^\s]*\.gguf$/i — 분할이면 첫 조각 `…-00001-of-0000N.gguf`,
      //   UD 변형은 이름의 `UD-` 유지(플레인 파일이 없는 unsloth repo의 Q4_K_M 행 등). zod는 optional이지만 validateAll이 전 행 존재를
      //   강제(빌드가 호출), 값은 sync-models가 기록(§5.1 ④). 콤보 스니펫 `-hf {repo}:{tag}` 태그·다운로드 안내의 원천
@@ -170,7 +177,7 @@ KV = KiB/tok(f16). 파일 크기 = 실측 GGUF(decimal GB), 출처 repo 명기.
 2. 원본 repo `config.json` fetch → layers/kv_heads/head_dim/ctx → `kvBytesPerTokenF16` 재계산. 하이브리드/SWA/MLA는 `attnOverrides` 수동 필드 우선(자동 추출 불가 케이스).
 3. diff 있으면 PR 자동 생성(리뷰 후 머지·배포 — 리포트 SUSPICIOUS·ERROR 0이면 Claude가 위임 처리, 그 외는 사람 승인. `docs/PROGRESS.md` §3) — 데이터 조작 방지 + 리뷰 기록.
 4. **`fileName` 기록(P1-2 D20)**: quant별로 매칭된 파일의 repo 상대 경로를 `fileName`에 기록(1의 크기 갱신과 같은 매칭 결과). **드래프트 파일은 제외** — basename 접두 `mmproj-`·`mtp-`·`eagle3-`는 매칭·크기 합산 모두에서 뺀다(gemma-4 MTP/EAGLE 드래프트가 fileGB에 합산되던 버그 교정 — repo 이름의 `MTP`는 무관). 단일 파일이거나 일관된 분할 세트(`-0000N-of-0000M`, 첫 조각을 기록)가 아니면 `error`(ambiguous match)로 리포트하고 반영하지 않는다. 레코드 키 순서는 `ggufRepo` 뒤에 `fileName`(한 레코드 한 줄 직렬화 유지).
-5. **MoE 분할 재측정(10-01 D56)**: MoE 모델 행 중 `expertGB`·`nonExpertGB` 가 없거나 이번 동기화에서 fileGB·fileName 이 바뀐 행, 새 양자화 행의 GGUF 헤더를 Range 로 읽어(파일당 4~16MB, 분할은 조각마다) 분할을 다시 잰다 → 리포트 field `split`(auto). 분할 값이 없던 행의 측정 실패는 manual(다음 동기화 재시도), **분할 값이 있던 행의 파일이 바뀌었는데 재측정이 실패·보류되면 suspicious**(옛 분할이 남으므로 위임 머지를 멈춤). config 의 experts/topK 변화는 manual.
+5. **행별 헤더 재측정(10-01 D56 MoE 분할 → 10-03 D62 dense 까지)**: 실측 값이 없거나 이번 동기화에서 fileGB·fileName 이 바뀐 행, 새 양자화 행의 GGUF 헤더를 Range 로 읽어(파일당 4~16MB, 분할은 조각마다) 다시 잰다. MoE 행은 리포트 field `split`(`expertGB`·`nonExpertGB`), dense 행은 field `offgpu`(`offGpuGB`), 둘 다 MTP 블록이 있으면 `mtpGB` 를 함께 기록한다(키는 fileGB 바로 뒤, 새 측정에 MTP 가 없으면 옛 `mtpGB` 삭제). 값이 없던 행의 측정 실패는 manual(다음 동기화 재시도 — 그동안 그 행은 파일 전체로 판정, 보수). **값이 있던 행의 파일이 바뀌었는데 재측정이 실패·보류되면 suspicious**(옛 값이 남으므로 위임 머지를 멈춤). 보류 조건: 측정한 파일 크기(Content-Range)가 fileGB 와 0.02 넘게 다름, MoE 분할 합 > fileGB + 0.02 또는 < 0.75×fileGB, dense offGpuGB > 0.25×fileGB — 다른 파일을 잰 것. config 의 experts/topK 변화는 manual. 첫 채움(10-03)은 일반 sync 와 섞지 않은 대상 한정 백필(트리·config 미조회, 같은 `planSplitChanges`·`applyChanges`)로 130행 auto·suspicious 0 — scratch 실측표와 ±0.01 일치.
 
 ### 5.2 `new-model-alert.ts` (출시 전 주 1회 → P1-5 출시부터 일 1회): HF trending + 지정 org 신규 릴리스 감지(`text-generation`·`image-text-to-text`) → 카탈로그·기보고·리팩·OCR 전용·타 org 파생 제외 → 새 후보가 있으면 요약 GitHub issue 1건 생성("48h 내 페이지" SLA는 출시 후 — `04-seo-content-plan.md` §8).
 ### 5.3 가격 (`prices.json`): 주간 수동/반자동(정찰 소스: 아마존 표시가, 다나와 최저가). `priceAsOf` 없는 가격 표시 금지. TechPowerUp 등 DB **통째 스크래핑 금지**(개별 사실 확인·출처 기재만) — 법적 리스크 정책.

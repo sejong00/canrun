@@ -83,6 +83,13 @@ export type ModelQuant = {
   activeExpertFrac?: number;
   /** MoE: 전문가가 있는 층 수 — `--n-cpu-moe` 층 단위 배치(§2.4-2). 없으면 전문가 전부 RAM 가정 */
   moeLayers?: number;
+  /**
+   * dense: 파일 중 llama.cpp 가 그래픽카드에 올리지 않는 GB (GGUF 헤더 실측, §2.4-1·§3.3, 10-03 D62) —
+   * 입력 임베딩 token_embd(입력층은 항상 CPU: https://github.com/ggml-org/llama.cpp/blob/cb7934c/src/llama-model.cpp#L1605-L1607,
+   * 임베딩 공유 모델은 출력층 사본이 GPU 에 가므로 0)·기본 미적재 MTP/NextN 블록(TENSOR_SKIP)·헤더 메타데이터.
+   * dGPU full-gpu 필요량 = fileGB − 이 값. 없으면 MoE 실측 분할(expertGB + nonExpertGB)로 유도, 그것도 없으면 파일 전체.
+   */
+  offGpuGB?: number;
   maxContext: number;
 };
 

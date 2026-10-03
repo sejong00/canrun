@@ -2,7 +2,7 @@ A longer context needs more memory because, on top of the fixed-size model file,
 
 ## Why a longer context costs memory
 
-The memory a model needs has three parts. The model file is fixed by the weight quant you download, Q4_K_M in the examples here unless noted. The KV cache grows with the context you set. The compute buffer is the working memory the runtime needs during inference; CanRun approximates it from llama.cpp logs, and it grows with context too, but more slowly than the KV cache.
+The memory a model needs has three parts. The weights are fixed by the quant you download, Q4_K_M in the examples here unless noted; on a graphics card they take slightly less than the model file, because llama.cpp keeps the input embedding table in system RAM. The KV cache grows with the context you set. The compute buffer is the working memory the runtime needs during inference; CanRun approximates it from llama.cpp logs, and it grows with context too, but more slowly than the KV cache.
 
 In the KV cache, each attention layer keeps a key and a value per KV head (the heads that store keys and values; several query heads can share one) for every token already in the context, so new tokens can look back at them without recomputing them. The size per token follows from the model's configuration:
 
@@ -46,7 +46,7 @@ For sliding-window and hybrid models, CanRun's figure includes only the full-att
 
 ## Will a longer context fit on your card?
 
-To see whether a context fits, compare the total need (file, KV cache and compute buffer) with the memory your card can actually use, not the VRAM on the box. A card that drives a Windows display keeps some VRAM back (see the note under the table below), so in CanRun's calculation the <HubLink gpu="rtx-5060-ti-16gb" /> has <Num kind="usableGB" gpu="rtx-5060-ti-16gb" /> to work with.
+To see whether a context fits, compare the total need (weights, KV cache and compute buffer) with the memory your card can actually use, not the VRAM on the box. A card that drives a Windows display keeps some VRAM back (see the note under the table below), so in CanRun's calculation the <HubLink gpu="rtx-5060-ti-16gb" /> has <Num kind="usableGB" gpu="rtx-5060-ti-16gb" /> to work with.
 
 At 128k, the smallest file does not mean the smallest need.
 
@@ -104,7 +104,7 @@ Treat KV cache quantization as a memory tool, not as a speed-up: where f16 also 
 
 ## How sure are these numbers?
 
-The file sizes are those of the real GGUF files, and the KV figures are calculated with a formula from each model's published configuration; the formula reproduces the known per-token sizes of the seven full-attention architectures checked in CanRun's engine tests. The compute buffer is an approximation drawn from llama.cpp logs. For sliding-window and hybrid models the KV figure is a simplification: CanRun leaves out the fixed window part and the recurrent state, so these figures run low, most visibly at short contexts; next to the model file the gap is small. llama.cpp's server documents a `--swa-full` switch, off by default, that keeps a full-size cache for the sliding-window layers.
+The file sizes are those of the real GGUF files, the part llama.cpp keeps off the graphics card is read from each file's header, and the KV figures are calculated with a formula from each model's published configuration; the formula reproduces the known per-token sizes of the seven full-attention architectures checked in CanRun's engine tests. The compute buffer is an approximation drawn from llama.cpp logs. For sliding-window and hybrid models the KV figure is a simplification: CanRun leaves out the fixed window part and the recurrent state, so these figures run low, most visibly at short contexts; next to the model file the gap is small. llama.cpp's server documents a `--swa-full` switch, off by default, that keeps a full-size cache for the sliding-window layers.
 
 Ollama makes its own memory estimate and GPU/CPU split, so on your machine `ollama ps` is the ground truth: SIZE for the memory in use, PROCESSOR for the GPU/CPU split, CONTEXT for the context allocated. CanRun's tables assume Windows with the card driving the display, 32GB of DDR5 system RAM, one model loaded and one request slot; the Ollama FAQ notes that the memory needed scales with `OLLAMA_NUM_PARALLEL` times `OLLAMA_CONTEXT_LENGTH`.
 

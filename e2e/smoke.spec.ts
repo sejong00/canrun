@@ -41,6 +41,11 @@ type PageSpec = {
   structured: boolean;
   /** 콤보 페이지 (`/can-i-run/{model}/on/{gpu}`) */
   combo: boolean;
+  /**
+   * 콤보 분해 바 각주(10-03 D62): 'mtp' = 그래픽카드에 다 올렸고 파일 일부(입력 임베딩·MTP 블록)가 GPU 밖 — MTP 안내 포함,
+   * 'none' = 각주 없음(cpu-moe 인데 MTP 블록이 없는 파일)
+   */
+  vramNote?: 'mtp' | 'none';
 };
 
 const PAGES: readonly PageSpec[] = [
@@ -48,12 +53,13 @@ const PAGES: readonly PageSpec[] = [
   { name: 'calculator', path: '/calculator', structured: false, combo: false },
   { name: 'gpu hub', path: '/gpu/rtx-4060', structured: true, combo: false },
   { name: 'model hub', path: '/model/qwen3.5-9b', structured: true, combo: false },
-  { name: 'combo', path: '/can-i-run/qwen3.5-9b/on/rtx-4060', structured: true, combo: true },
+  { name: 'combo', path: '/can-i-run/qwen3.5-9b/on/rtx-4060', structured: true, combo: true, vramNote: 'mtp' },
   {
     name: 'combo moe',
     path: '/can-i-run/qwen3-30b-a3b-2507/on/rtx-3060-12gb',
     structured: true,
     combo: true,
+    vramNote: 'none',
   },
   // P1-4 — 가이드 1편(초안이면 noindex·미링크, URL 로는 열린다) + 목차
   { name: 'guide', path: '/guides/ollama-context-length', structured: false, combo: false },
@@ -181,6 +187,20 @@ for (const locale of LOCALES) {
           const ollama = page.locator('figure[data-snippet="ollama"] pre code');
           if ((await ollama.count()) > 0) {
             await expect(ollama.first()).toContainText('OLLAMA_CONTEXT_LENGTH');
+          }
+        });
+
+        test('memory bar notes what stays off the graphics card and what MTP would add (10-03 D62)', async ({ page }) => {
+          await open(page, path);
+          const notes = page.locator('figure[data-vram-bar] [data-vram-note]');
+          if (spec.vramNote === 'mtp') {
+            await expect(notes).toHaveCount(1);
+            await expect(notes).toBeVisible();
+            await expect(notes).toContainText('llama.cpp');
+            await expect(notes).toContainText('MTP');
+            await expect(notes).toContainText('--spec-type draft-mtp');
+          } else {
+            await expect(notes).toHaveCount(0);
           }
         });
 

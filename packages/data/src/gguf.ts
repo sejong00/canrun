@@ -10,8 +10,11 @@
  * 분할 규칙 (llama.cpp src/llama-model.cpp 기준):
  *  - 라우팅 전문가 = 이름에 `_exps`·`_chexps` (ffn_{gate,up,down,gate_up}_exps 의 weight/bias/scale).
  *    공유 전문가(`_shexp`)·라우터(`ffn_gate_inp`)·어텐션·노름·dense FFN·output 은 GPU 비전문가.
- *  - `token_embd*`(입력층)은 항상 CPU — cpuGB. 단 `output.weight` 가 없으면(임베딩 공유, gemma 등)
+ *  - 입력층 텐서(`token_embd`·`per_layer_token_embd`·`position_embd`·`token_types` — llama-arch.cpp 의 LLM_TENSOR_LAYER_INPUT)는
+ *    항상 CPU — cpuGB. `token_embd_norm` 은 반복층이라 GPU 다(10-03 D62). 단 `output.weight` 가 없으면(임베딩 공유, gemma 등)
  *    llama.cpp 가 token_embd 를 출력층으로 GPU 에 복제하므로 token_embd.weight 를 비전문가에 한 번 더한다.
+ *  - GPU 상주 가중치(gpuGB) = 전문가 + 비전문가. 파일 − gpuGB = offGpuGB(입력층·MTP·헤더 메타데이터) — dGPU 에 전량 올릴 때
+ *    필요량에서 빼는 몫(model-quants.json `offGpuGB`, docs/02 §2.4-1).
  *  - MTP/NextN 블록은 기본 미적재(load_mtp=false → TENSOR_SKIP): `<arch>.nextn_predict_layers` 개의 마지막 블록과
  *    이름에 `nextn`·`mtp.` 접두가 있는 텐서 — 두 합계 모두에서 빼고 mtpGB 로 따로 보고.
  *  - 파라미터 수 = 텐서 원소 수 합 (MTP 제외, token_embd 는 공유여도 1회) — safetensors 메타데이터가 없을 때 paramsB 대용.
@@ -297,9 +300,11 @@ export const tensorElements = (t: GgufTensorInfo): number => t.dims.reduce((a, b
 export type SplitMeasure = {
   /** 라우팅 전문가(트렁크 블록) — decimal GB 2자리 */
   expertGB: number;
-  /** GPU 상주 비전문가 — token_embd 제외(공유 임베딩이면 1회 포함), MTP 제외 */
+  /** GPU 상주 비전문가 — 입력층 제외(공유 임베딩이면 token_embd 1회 포함), MTP 제외 */
   nonExpertGB: number;
-  /** token_embd* (입력층, 항상 CPU) */
+  /** GPU 상주 가중치 = 전문가 + 비전문가 (원시 바이트 합을 한 번만 반올림) — `-ngl all`·MTP 미적재일 때 llama.cpp 가 올리는 양 */
+  gpuGB: number;
+  /** 입력층 텐서 (token_embd·per_layer_token_embd·position_embd·token_types — 항상 CPU) */
   cpuGB: number;
   /** 기본 미적재 MTP/NextN 블록 */
   mtpGB: number;
@@ -334,6 +339,9 @@ function numKv(kv: Record<string, GgufValue>, key: string): number | undefined {
 
 const EXPERT_RE = /_exps|_chexps/;
 const BLOCK_RE = /^blk\.(\d+)\./;
+/** llama.cpp 입력층(LLM_TENSOR_LAYER_INPUT) 텐서 이름 — 항상 CPU. POS_EMBD 의 GGUF 이름은 `position_embd`
+ *  (https://github.com/ggml-org/llama.cpp/blob/cb7934c/src/llama-arch.cpp#L750-L752 · #L957) */
+const INPUT_RE = /^(token_embd|per_layer_token_embd|position_embd|token_types)\./;
 
 /**
  * 헤더(분할이면 조각 순서대로 전부) → 전문가/비전문가/CPU/MTP 바이트 + 파라미터 수.
@@ -370,7 +378,7 @@ export function classifySplit(shards: readonly GgufHeader[]): SplitMeasure {
     }
     const elements = tensorElements(t);
     totalParams += elements;
-    if (t.name.startsWith('token_embd')) {
+    if (INPUT_RE.test(t.name)) {
       bytes.cpu += size;
       if (tied && t.name === 'token_embd.weight') bytes.nonExpert += size; // GPU 출력층 복제
     } else if (EXPERT_RE.test(t.name)) {
@@ -383,6 +391,7 @@ export function classifySplit(shards: readonly GgufHeader[]): SplitMeasure {
   return {
     expertGB: gb(bytes.expert),
     nonExpertGB: gb(bytes.nonExpert),
+    gpuGB: gb(bytes.expert + bytes.nonExpert),
     cpuGB: gb(bytes.cpu),
     mtpGB: gb(bytes.mtp),
     totalGB: gb(bytes.total),
@@ -539,6 +548,11 @@ export async function fetchGgufHeader(
 export type SplitMeasureWithFile = SplitMeasure & {
   /** 조각 파일 크기 합 (Content-Range 기준, 헤더 포함) — 알 수 없으면 생략 */
   fileGB?: number;
+  /**
+   * 파일 중 그래픽카드에 올라가지 않는 GB = 파일 바이트 − (전문가 + 비전문가) — 입력층·MTP 블록·헤더 메타데이터.
+   * 파일 크기를 모르면 헤더 바이트 + 텐서 합으로 셈(정렬 패딩 수십 바이트 차이). model-quants.json dense 행의 `offGpuGB`.
+   */
+  offGpuGB: number;
   shards: number;
 };
 
@@ -573,9 +587,12 @@ export async function measureSplit(
     fileBytes = fileBytes !== undefined && res.fileBytes !== undefined ? fileBytes + res.fileBytes : undefined;
   }
   const measure = classifySplit(headers);
+  const gpuBytes = measure.bytes.expert + measure.bytes.nonExpert;
+  const wholeBytes = fileBytes ?? readBytes + measure.bytes.total;
   return {
     ...measure,
     ...(fileBytes !== undefined ? { fileGB: gb(fileBytes) } : {}),
+    offGpuGB: gb(Math.max(0, wholeBytes - gpuBytes)),
     shards: names.length,
   };
 }

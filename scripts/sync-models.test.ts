@@ -14,6 +14,7 @@ import {
   sumFileGB,
   type Change,
   type MeasureSplitFn,
+  type MeasuredSplit,
   type SyncInput,
   primaryFile,
   withKeyAfter,
@@ -602,7 +603,14 @@ describe('planSplitChanges + applyChanges — MoE split', () => {
   const row = (over: Record<string, unknown> = {}): Record<string, unknown> =>
     quantRow({ modelId: 'moe-30b', fileGB: 18.56, ggufRepo: repo, fileName: 'm-Q4_K_M.gguf', sources: [`https://huggingface.co/${repo}`], ...over });
   const measured = { expertGB: 17.55, nonExpertGB: 0.82 };
-  type Values = Record<string, { expertGB: number; nonExpertGB: number } | Error>;
+  /** 헤더 측정 결과 모양 — MoE 행은 분할만 기록한다(MTP 0 이면 mtpGB 없음) */
+  const header = (v: { expertGB: number; nonExpertGB: number }, extra: Partial<MeasuredSplit> = {}): MeasuredSplit => ({
+    ...v,
+    offGpuGB: 0.19,
+    mtpGB: 0,
+    ...extra,
+  });
+  type Values = Record<string, MeasuredSplit | Error>;
   const fakeMeasure = (values: Values): { fn: MeasureSplitFn; calls: string[] } => {
     const calls: string[] = [];
     const fn: MeasureSplitFn = (r, fileName) => {
@@ -615,10 +623,10 @@ describe('planSplitChanges + applyChanges — MoE split', () => {
   };
 
   it('measures MoE rows without a split, writes expertGB/nonExpertGB right after fileGB', async () => {
-    const input = makeInput({ models: [moeModel, fullModel()], quants: [row(), quantRow({ fileName: 'test-8b-Q4_K_M.gguf' })] });
-    const { fn, calls } = fakeMeasure({ 'm-Q4_K_M.gguf': measured });
+    const input = makeInput({ models: [moeModel], quants: [row()] });
+    const { fn, calls } = fakeMeasure({ 'm-Q4_K_M.gguf': header(measured) });
     const changes = await planSplitChanges(input, buildSyncPlan(input), fn);
-    expect(calls).toEqual([`${repo}:m-Q4_K_M.gguf`]); // dense 행은 재지 않는다
+    expect(calls).toEqual([`${repo}:m-Q4_K_M.gguf`]);
     expect(changes).toEqual([
       expect.objectContaining({ id: 'moe-30b/Q4_K_M', field: 'split', kind: 'auto', next: 'expert 17.55 / non-expert 0.82', split: measured }),
     ]);
@@ -636,7 +644,7 @@ describe('planSplitChanges + applyChanges — MoE split', () => {
     expect(idle.calls).toEqual([]);
 
     const grown = makeInput({ models: [moeModel], quants: [row(measured)], treeByRepo: tree(18.9) });
-    const remeasure = fakeMeasure({ 'm-Q4_K_M.gguf': { expertGB: 17.86, nonExpertGB: 0.84 } });
+    const remeasure = fakeMeasure({ 'm-Q4_K_M.gguf': header({ expertGB: 17.86, nonExpertGB: 0.84 }) });
     expect(await planSplitChanges(grown, buildSyncPlan(grown), remeasure.fn)).toEqual([
       expect.objectContaining({
         kind: 'auto',
@@ -647,7 +655,7 @@ describe('planSplitChanges + applyChanges — MoE split', () => {
     ]);
 
     const same = makeInput({ models: [moeModel], quants: [row(measured)], treeByRepo: tree(18.9) });
-    const unchanged = fakeMeasure({ 'm-Q4_K_M.gguf': measured });
+    const unchanged = fakeMeasure({ 'm-Q4_K_M.gguf': header(measured) });
     expect(await planSplitChanges(same, buildSyncPlan(same), unchanged.fn)).toEqual([]);
     expect(unchanged.calls).toHaveLength(1);
   });
@@ -655,7 +663,7 @@ describe('planSplitChanges + applyChanges — MoE split', () => {
   it('measures new auto quant rows of MoE models and applies the split after the row is inserted', async () => {
     const tree = new Map([[repo, [file('m-Q4_K_M.gguf', 18_560_000_000), file('m-Q8_0.gguf', 32_480_000_000)]]]);
     const input = makeInput({ models: [moeModel], quants: [row(measured)], treeByRepo: tree });
-    const { fn } = fakeMeasure({ 'm-Q8_0.gguf': { expertGB: 30.8, nonExpertGB: 1.34 } });
+    const { fn } = fakeMeasure({ 'm-Q8_0.gguf': header({ expertGB: 30.8, nonExpertGB: 1.34 }) });
     const planned = buildSyncPlan(input);
     const changes = [...planned, ...(await planSplitChanges(input, planned, fn))];
     expect(changes.find((c) => c.field === 'split')).toEqual(
@@ -679,7 +687,7 @@ describe('planSplitChanges + applyChanges — MoE split', () => {
       models: [moeModel],
       quants: [row(), row({ quant: 'Q8_0', fileGB: 32.48, fileName: 'm-Q8_0.gguf' })],
     });
-    const { fn } = fakeMeasure({ 'm-Q4_K_M.gguf': new Error('HTTP 503 for x'), 'm-Q8_0.gguf': { expertGB: 40, nonExpertGB: 2 } });
+    const { fn } = fakeMeasure({ 'm-Q4_K_M.gguf': new Error('HTTP 503 for x'), 'm-Q8_0.gguf': header({ expertGB: 40, nonExpertGB: 2 }) });
     const changes = await planSplitChanges(input, [], fn);
     expect(changes.map((c) => [c.id, c.kind])).toEqual([
       ['moe-30b/Q4_K_M', 'manual'],
@@ -706,6 +714,31 @@ describe('planSplitChanges + applyChanges — MoE split', () => {
     expect(JSON.stringify(input.rawQuants)).toBe(before);
   });
 
+  it('records the MTP block of a MoE row next to its split, and drops a stale mtpGB on re-measure (10-03)', async () => {
+    const input = makeInput({ models: [moeModel], quants: [row()] });
+    const { fn } = fakeMeasure({ 'm-Q4_K_M.gguf': header(measured, { mtpGB: 0.9 }) });
+    const changes = await planSplitChanges(input, [], fn);
+    expect(changes[0]).toEqual(expect.objectContaining({ next: 'expert 17.55 / non-expert 0.82 / MTP 0.9', split: { ...measured, mtpGB: 0.9 } }));
+    applyChanges(changes, input);
+    expect(Object.keys(input.rawQuants[0]!).slice(2, 7)).toEqual(['fileGB', 'expertGB', 'nonExpertGB', 'mtpGB', 'ggufRepo']);
+
+    const sizeChange: Change = { file: 'model-quants.json', id: 'moe-30b/Q4_K_M', field: 'fileGB', old: 18.56, next: 18.4, kind: 'auto' };
+    const again = makeInput({ models: [moeModel], quants: [row({ ...measured, mtpGB: 0.9 })] });
+    const noMtp = fakeMeasure({ 'm-Q4_K_M.gguf': header({ expertGB: 17.4, nonExpertGB: 0.82 }) });
+    const next = await planSplitChanges(again, [sizeChange], noMtp.fn);
+    expect(next[0]).toEqual(expect.objectContaining({ old: 'expert 17.55 / non-expert 0.82 / MTP 0.9', kind: 'auto' }));
+    applyChanges(next, again);
+    expect(again.rawQuants[0]).not.toHaveProperty('mtpGB');
+    expect(again.rawQuants[0]).toMatchObject({ expertGB: 17.4, nonExpertGB: 0.82 });
+  });
+
+  it('holds a MoE split far below the file size (another file) — validateAll lower bound', async () => {
+    const input = makeInput({ models: [moeModel], quants: [row()] });
+    const { fn } = fakeMeasure({ 'm-Q4_K_M.gguf': header({ expertGB: 9, nonExpertGB: 0.8 }) });
+    const changes = await planSplitChanges(input, [], fn);
+    expect(changes.map((c) => [c.kind, c.note?.includes('75% 미만')])).toEqual([['manual', true]]);
+  });
+
   it('honours the --only model filter', async () => {
     const input = makeInput({ models: [moeModel], quants: [row()] });
     const { fn, calls } = fakeMeasure({});
@@ -722,5 +755,97 @@ describe('planSplitChanges + applyChanges — MoE split', () => {
     expect(changes.find((c) => c.field === 'arch.experts')).toEqual(expect.objectContaining({ old: 128, next: 64, kind: 'manual' }));
     expect(changes.find((c) => c.field === 'arch.topK')).toBeUndefined();
     expect(changes.find((c) => c.field === 'nonExpertGB')).toBeUndefined();
+  });
+});
+
+describe('planSplitChanges + applyChanges — dense offGpuGB (10-03 D62)', () => {
+  const dense = fullModel();
+  const repo = 'org/test-8b-GGUF';
+  const drow = (over: Record<string, unknown> = {}): Record<string, unknown> =>
+    quantRow({ fileName: 'test-8b-Q4_K_M.gguf', ...over });
+  const header = (offGpuGB: number, extra: Partial<MeasuredSplit> = {}): MeasuredSplit => ({
+    expertGB: 0,
+    nonExpertGB: 4.92 - offGpuGB,
+    offGpuGB,
+    mtpGB: 0,
+    fileGB: 4.92,
+    ...extra,
+  });
+  const measureWith = (v: MeasuredSplit | Error): { fn: MeasureSplitFn; calls: string[] } => {
+    const calls: string[] = [];
+    const fn: MeasureSplitFn = (r, fileName) => {
+      calls.push(`${r}:${fileName}`);
+      return v instanceof Error ? Promise.reject(v) : Promise.resolve(v);
+    };
+    return { fn, calls };
+  };
+
+  it('measures dense rows without offGpuGB and writes it (then mtpGB) right after fileGB', async () => {
+    const input = makeInput({ models: [dense], quants: [drow()] });
+    const { fn, calls } = measureWith(header(0.75, { mtpGB: 0.17 }));
+    const changes = await planSplitChanges(input, buildSyncPlan(input), fn);
+    expect(calls).toEqual([`${repo}:test-8b-Q4_K_M.gguf`]);
+    expect(changes).toEqual([
+      expect.objectContaining({
+        id: 'test-8b/Q4_K_M',
+        field: 'offgpu',
+        kind: 'auto',
+        next: 'off-GPU 0.75 / MTP 0.17',
+        note: 'GGUF 헤더 실측 — 그래픽카드 밖 몫 없음',
+        split: { offGpuGB: 0.75, mtpGB: 0.17 },
+      }),
+    ]);
+    applyChanges(changes, input);
+    expect(Object.keys(input.rawQuants[0]!).slice(0, 6)).toEqual(['modelId', 'quant', 'fileGB', 'offGpuGB', 'mtpGB', 'ggufRepo']);
+    expect(() => parseModelQuants(input.rawQuants)).not.toThrow();
+  });
+
+  it('skips measured rows until their file changes; a failed re-measure of a changed file is suspicious', async () => {
+    const steady = makeInput({ models: [dense], quants: [drow({ offGpuGB: 0.3 })] });
+    const idle = measureWith(new Error('should not be called'));
+    expect(await planSplitChanges(steady, [], idle.fn)).toEqual([]);
+    expect(idle.calls).toEqual([]);
+
+    const sizeChange: Change = { file: 'model-quants.json', id: 'test-8b/Q4_K_M', field: 'fileGB', old: 4.92, next: 4.95, kind: 'auto' };
+    const failed = await planSplitChanges(steady, [sizeChange], measureWith(new Error('HTTP 503 for x')).fn);
+    expect(failed.map((c) => [c.field, c.kind])).toEqual([['offgpu', 'suspicious']]);
+    expect(failed[0]?.note).toContain('옛 파일의 값이 남음');
+  });
+
+  it('reports a first failure as manual and leaves the row on the whole-file fallback', async () => {
+    const input = makeInput({ models: [dense], quants: [drow()] });
+    const changes = await planSplitChanges(input, [], measureWith(new Error('HTTP 404 for x')).fn);
+    expect(changes.map((c) => [c.field, c.kind])).toEqual([['offgpu', 'manual']]);
+    expect(changes[0]?.note).toContain('offGpuGB 그대로');
+    const before = JSON.stringify(input.rawQuants);
+    applyChanges(changes, input);
+    expect(JSON.stringify(input.rawQuants)).toBe(before);
+  });
+
+  it('holds implausible measurements: another file size, or more than 25% of the file off the GPU', async () => {
+    const input = makeInput({ models: [dense], quants: [drow()] });
+    const otherFile = await planSplitChanges(input, [], measureWith(header(0.3, { fileGB: 5.5 })).fn);
+    expect(otherFile.map((c) => [c.kind, c.note?.includes('측정한 파일 크기 5.5GB')])).toEqual([['manual', true]]);
+    const tooMuch = await planSplitChanges(input, [], measureWith(header(1.5, { fileGB: undefined })).fn);
+    expect(tooMuch.map((c) => [c.kind, c.note?.includes('25% 초과')])).toEqual([['manual', true]]);
+  });
+
+  it('measures new auto quant rows of dense models after the row is inserted', async () => {
+    const tree = new Map([[repo, [file('test-8b-Q4_K_M.gguf', 4_920_000_000), file('test-8b-Q8_0.gguf', 8_540_000_000)]]]);
+    const input = makeInput({ models: [dense], quants: [drow({ offGpuGB: 0.3 })], treeByRepo: tree });
+    const planned = buildSyncPlan(input);
+    const { fn } = measureWith(header(0.57, { fileGB: 8.54 }));
+    const changes = [...planned, ...(await planSplitChanges(input, planned, fn))];
+    expect(changes.find((c) => c.field === 'offgpu')).toEqual(expect.objectContaining({ id: 'test-8b/Q8_0', note: 'GGUF 헤더 실측 — 새 양자화 행' }));
+    applyChanges(changes, input);
+    expect(input.rawQuants[1]).toEqual({
+      modelId: 'test-8b',
+      quant: 'Q8_0',
+      fileGB: 8.54,
+      offGpuGB: 0.57,
+      ggufRepo: repo,
+      fileName: 'test-8b-Q8_0.gguf',
+      sources: [`https://huggingface.co/${repo}`],
+    });
   });
 });

@@ -200,6 +200,26 @@ describe('classifySplit', () => {
     expect(() => classifySplit(headers.slice(0, 1))).toThrow('split.count 2');
   });
 
+  it('input-layer tensors stay on the CPU; token_embd_norm is a repeating-layer tensor on the GPU (10-03 D62)', () => {
+    const dense: Kv[] = [{ key: 'general.architecture', str: 'llama' }, { key: 'llama.block_count', u32: 1 }];
+    const m = classifySplit([
+      parseGgufHeader(
+        gguf(dense, [
+          { name: 'token_embd.weight', dims: [8, 10], type: F16 }, // 160
+          { name: 'token_embd_norm.weight', dims: [8], type: F32 }, // 32 — GPU (반복층)
+          { name: 'per_layer_token_embd.weight', dims: [8, 10], type: F16 }, // 160
+          { name: 'position_embd.weight', dims: [8, 4], type: F16 }, // 64
+          { name: 'token_types.weight', dims: [8, 2], type: F32 }, // 64
+          { name: 'output.weight', dims: [8, 10], type: F32 }, // 320
+          { name: 'blk.0.attn_q.weight', dims: [32, 4], type: Q8_0 }, // 136
+        ]),
+      ),
+    ]);
+    expect(m.bytes.cpu).toBe(160 + 160 + 64 + 64);
+    expect(m.bytes.nonExpert).toBe(32 + 320 + 136);
+    expect(m.bytes.expert).toBe(0);
+  });
+
   it('a model without MTP keeps every block in the trunk; missing arch keys fail', () => {
     const noMtp = gguf(
       META.filter((k) => k.key !== 'qwen35moe.nextn_predict_layers'),
@@ -298,5 +318,41 @@ describe('measureSplit', () => {
     expect(m.shards).toBe(2);
     expect(m.bytes).toEqual(classifySplit([parseGgufHeader(untied)]).bytes);
     expect(m.fileGB).toBe(0); // 수 KB — 2자리 GB 로는 0
+  });
+
+  it('offGpuGB = file bytes − GPU-resident tensors (input layer, MTP block, header), gpuGB rounded once', async () => {
+    // 텐서 데이터는 보내지 않고 크기만 선언한다 — Content-Range 의 전체 길이 = 헤더 + 텐서 합
+    const meta: Kv[] = [
+      { key: 'general.architecture', str: 'qwen35' },
+      { key: 'qwen35.block_count', u32: 2 },
+      { key: 'qwen35.nextn_predict_layers', u32: 1 },
+    ];
+    const tensors: T[] = [
+      { name: 'token_embd.weight', dims: [4096, 151936], type: Q4_K }, // 350,060,544 — CPU
+      { name: 'output.weight', dims: [4096, 151936], type: Q8_0 }, // 661,192,704
+      { name: 'blk.0.attn_q.weight', dims: [4096, 1_000_000], type: Q4_K }, // 2,304,000,000
+      { name: 'blk.1.attn_q.weight', dims: [4096, 200_000], type: Q8_0 }, // 870,400,000 — MTP 블록(미적재)
+    ];
+    const header = gguf(meta, tensors);
+    const tensorBytesTotal = 350_060_544 + 661_192_704 + 2_304_000_000 + 870_400_000;
+    const declared = header.length + tensorBytesTotal;
+    const repo = 'org/dense-GGUF';
+    const fetchImpl: FetchLike = (_input, init) => {
+      const range = new Headers(init?.headers).get('range') ?? 'bytes=0-0';
+      const [, s, e] = /bytes=(\d+)-(\d+)/.exec(range)!;
+      const start = Number(s);
+      const end = Math.min(Number(e), header.length - 1);
+      return Promise.resolve(
+        new Response(header.slice(start, end + 1), { status: 206, headers: { 'content-range': `bytes ${start}-${end}/${declared}` } }),
+      );
+    };
+    const m = await measureSplit(repo, 'dense-Q4_K_M.gguf', { fetchImpl });
+    expect(m.gpuGB).toBe(Math.round((661_192_704 + 2_304_000_000) / 1e7) / 100);
+    expect(m.mtpGB).toBe(0.87);
+    expect(m.cpuGB).toBe(0.35);
+    // 파일 4.19 − GPU 2.97 = 1.22 (입력 임베딩 0.35 + MTP 0.87 + 헤더 수 KB)
+    expect(m.fileGB).toBe(4.19);
+    expect(m.offGpuGB).toBe(Math.round((declared - 661_192_704 - 2_304_000_000) / 1e7) / 100);
+    expect(m.offGpuGB).toBeCloseTo(m.cpuGB + m.mtpGB, 2);
   });
 });

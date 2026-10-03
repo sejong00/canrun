@@ -287,7 +287,8 @@ describe('추천 quant·최후 수단 (결정 D4 — 품질 상향 금지, despe
     expect(c.recommended).toBeUndefined();
     expect(c.lastResort).toBeUndefined();
     expect(c.maxCtx).toBeUndefined();
-    expect(c.baseline.memory.totalNeedGB).toBeCloseTo(45.779, 2);
+    // 10-03 D62: dGPU 필요량은 그래픽카드에 올라가는 가중치 기준 — 42.52 − 입력 임베딩 0.60 = 41.92 (+ KV 2.684 + 버퍼 0.575)
+    expect(c.baseline.memory.totalNeedGB).toBeCloseTo(45.179, 2);
   });
 
   it('F too-slow 와 표시 quant (rtx-3090 × llama-3.3-70b)', () => {
@@ -302,6 +303,7 @@ describe('추천 quant·최후 수단 (결정 D4 — 품질 상향 금지, despe
 
 describe('maxCtx — 같은 모드·같은 판정 유지', () => {
   it('8GB 카드 8B Q4_K_M 은 16k 에서 VRAM 초과 → 8k', () => {
+    // 10-03 D62 뒤에도 16k f16 은 4.62 + 2.1475 + 0.65 = 7.4175 > 사용 가능 7.40 — 저장값 0.01 단위 경계라 고정해 둔다
     expect(combo('rtx-4060', 'llama-3.1-8b').maxCtx).toBe(8192);
   });
 
@@ -312,7 +314,7 @@ describe('maxCtx — 같은 모드·같은 판정 유지', () => {
 });
 
 describe('memoryMatrix (docs/01 F2)', () => {
-  it('llama-3.1-8b Q4_K_M @16k = 4.92 + 2.1475 + 0.65', () => {
+  it('llama-3.1-8b Q4_K_M @16k = (4.92 − 0.30) + 2.1475 + 0.65', () => {
     const m = model('llama-3.1-8b');
     const matrix = memoryMatrix(
       m,
@@ -320,8 +322,19 @@ describe('memoryMatrix (docs/01 F2)', () => {
     );
     const col = matrix.ctxs.indexOf(16384);
     const row = matrix.rows.find((r) => r.quant === 'Q4_K_M')!;
-    expect(row.cellsGB[col]).toBeCloseTo(7.7175, 4);
+    // 10-03 D62: 셀은 dGPU 규칙(그래픽카드에 올라가는 가중치) — 입력 임베딩 0.30GB 는 시스템 RAM (전엔 파일 4.92 로 7.7175)
+    expect(row.gpuWeightsGB).toBeCloseTo(4.62, 6);
+    expect(row.cellsGB[col]).toBeCloseTo(7.4175, 4);
     expect(matrix.ctxs.at(-1)).toBeLessThanOrEqual(m.maxContext);
+  });
+
+  it('MoE rows derive the GPU weights from the measured split; tied-embedding rows stay at the file size', () => {
+    const q36 = model('qwen3.6-35b-a3b');
+    const row36 = memoryMatrix(q36, seed.modelQuants.filter((mq) => mq.modelId === q36.id)).rows.find((r) => r.quant === 'Q4_K_M')!;
+    expect(row36.gpuWeightsGB).toBeCloseTo(19.5 + 1.59, 6);
+    const g3 = model('gemma-3-12b');
+    const rowG = memoryMatrix(g3, seed.modelQuants.filter((mq) => mq.modelId === g3.id)).rows.find((r) => r.quant === 'Q4_K_M')!;
+    expect(rowG.fileGB - rowG.gpuWeightsGB).toBeLessThanOrEqual(0.02);
   });
 });
 
@@ -553,5 +566,39 @@ describe('계산기 평가 옵션 (P1-3 결정 D33) — 기본 인자는 허브�
     expect(strix[0]!.hw.os).toBe('windows');
     const cpu = hardwareConfigs(gpu('cpu-ddr5-5600-2ch'), seed.gpus, { ramGB: 32 });
     expect(cpu[0]!.hw).toMatchObject({ kind: 'cpu', ramGB: 32, os: 'linux' });
+  });
+});
+
+describe('그래픽카드에 올라가는 가중치로 full-gpu 판정 (10-03 D62)', () => {
+  it('rtx-2080-ti × hyperclovax-seed-think-14b: 입력 임베딩을 빼면 전량 탑재 → S (이론 추정 GPU)', () => {
+    const c = combo('rtx-2080-ti', 'hyperclovax-seed-think-14b');
+    expect(c.baseline.result.mode).toBe('full-gpu');
+    expect(c.baseline.result.verdict).toBe('S');
+    expect(c.baseline.result.confidence).toBe('theoretical');
+    expect(c.baseline.result.vram.weights).toBeCloseTo(8.92 - 0.39, 6);
+    // 필요량 문장은 같은 규칙 — 그래픽카드 몫 + KV + 버퍼
+    expect(c.baseline.memory.needGB).toBeCloseTo(c.baseline.result.vram.weights + c.baseline.result.vram.kv + c.baseline.result.vram.buffer, 9);
+    expect(c.baseline.memory.offGpuGB).toBeCloseTo(0.39, 6);
+    expect(c.baseline.memory.ramGB).toBe(0);
+  });
+
+  it('rtx-3090 × qwen3.5-35b-a3b: 컨텍스트를 32k 까지 늘려도 그래픽카드에 다 올라간다 (전엔 8k 까지)', () => {
+    const g = gpu('rtx-3090');
+    const c = combo('rtx-3090', 'qwen3.5-35b-a3b');
+    const m = ctxMatrix(g, hardwareConfigs(g, seed.gpus)[0]!, model('qwen3.5-35b-a3b'), c.baseline);
+    const f16 = (ctx: number) => m.rows[m.ctxs.indexOf(ctx)]![0]!;
+    expect([8192, 16384, 32768].map((ctx) => f16(ctx).mode)).toEqual(['full-gpu', 'full-gpu', 'full-gpu']);
+    expect(f16(65536).mode).not.toBe('full-gpu');
+    // MTP 블록은 기본 미적재라 GPU 몫에서 빠지고, 분해 바가 "켜면 더 든다"고 알린다
+    expect(c.baseline.mtpGB).toBeCloseTo(0.53, 6);
+    expect(c.baseline.memory.offGpuGB).toBeCloseTo(22.63 - 19.53 - 2.01, 6);
+  });
+
+  it('통합 메모리(맥)는 파일 전체로 계산한다 — offGpuGB 를 쓰지 않는다', () => {
+    const c = combo('apple-m4', 'llama-3.1-8b', 0);
+    expect(c.baseline.result.mode).toBe('full-gpu');
+    expect(c.baseline.result.vram.weights).toBeCloseTo(4.92, 6);
+    expect(c.baseline.memory.offGpuGB).toBe(0);
+    expect(c.baseline.memory.totalNeedGB).toBeCloseTo(4.92 + c.baseline.result.vram.kv + c.baseline.result.vram.buffer, 9);
   });
 });

@@ -44,8 +44,11 @@ export const MODEL_CORE_KEYS = [
   'popularity',
 ] as const satisfies readonly (keyof Model)[];
 
-/** expertGB·nonExpertGB — MoE 헤더 실측 분할(10-01), 계산기 아일랜드의 fit·속도 판정이 읽는다 */
-export const MODEL_QUANT_CORE_KEYS = ['modelId', 'quant', 'fileGB', 'expertGB', 'nonExpertGB', 'ggufRepo', 'fileName'] as const satisfies readonly (keyof ModelQuantRecord)[];
+/**
+ * expertGB·nonExpertGB — MoE 헤더 실측 분할(10-01), offGpuGB — dense 헤더 실측 GPU 밖 몫(10-03 D62), mtpGB — MTP 블록 크기(안내문).
+ * 계산기 아일랜드의 fit·속도 판정이 읽는다
+ */
+export const MODEL_QUANT_CORE_KEYS = ['modelId', 'quant', 'fileGB', 'expertGB', 'nonExpertGB', 'offGpuGB', 'mtpGB', 'ggufRepo', 'fileName'] as const satisfies readonly (keyof ModelQuantRecord)[];
 
 export const QUANT_DEF_CORE_KEYS = ['id', 'bpw', 'tier'] as const satisfies readonly (keyof QuantDef)[];
 

@@ -116,6 +116,21 @@ describe('structural refinements', () => {
     expect(ModelQuantSchema.safeParse({ ...row, expertGB: 17.55 }).success).toBe(false);
     expect(ModelQuantSchema.safeParse({ ...row, nonExpertGB: 0.82 }).success).toBe(false);
   });
+
+  it('model-quants offGpuGB ≥ 0 and mtpGB > 0 are optional (10-03 D62 — range checks live in validateAll)', () => {
+    const row = {
+      modelId: 'test-8b',
+      quant: 'Q4_K_M',
+      fileGB: 4.92,
+      ggufRepo: 'org/test-GGUF',
+      fileName: 'test-Q4_K_M.gguf',
+      sources: ['https://huggingface.co/org/test-GGUF'],
+    };
+    expect(ModelQuantSchema.safeParse({ ...row, offGpuGB: 0 }).success).toBe(true);
+    expect(ModelQuantSchema.safeParse({ ...row, offGpuGB: 0.3, mtpGB: 0.17 }).success).toBe(true);
+    expect(ModelQuantSchema.safeParse({ ...row, offGpuGB: -0.1 }).success).toBe(false);
+    expect(ModelQuantSchema.safeParse({ ...row, offGpuGB: 0.3, mtpGB: 0 }).success).toBe(false);
+  });
 });
 
 describe('attnOverrides (docs/03 §5.1 수동 필드 우선)', () => {

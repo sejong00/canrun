@@ -4,13 +4,13 @@
 
 맥에는 그래픽카드처럼 따로 달린 VRAM이 없습니다. CPU와 GPU가 통합 메모리를 나눠 씁니다. CanRun은 그중 약 70%를 GPU가 쓸 수 있다고 보고, 나머지는 macOS와 다른 앱 몫으로 남겨 계산합니다. 애플 Metal 문서에는 GPU가 쓸 수 있는 메모리 한도(`recommendedMaxWorkingSetSize`)가 나옵니다. 문서는 이 값을 ‘GPU가 성능에 영향 없이 할당할 수 있는 메모리의 근삿값’이라고 설명합니다. CanRun의 70%는 이 한도를 비율 하나로 어림한 값입니다. 용량별로 몇 GB인지는 이 절 끝 표의 ‘GPU 사용 가능량’ 열에서 볼 수 있습니다.
 
-예를 들어 16GB M4에 Qwen3 14B를 Q4_K_M으로 올려 보겠습니다. Q4_K_M은 크기와 품질의 균형을 맞춘 GGUF 양자화 등급입니다. 필요한 메모리는 가중치에 KV 캐시와 연산 버퍼를 더한 값입니다. KV 캐시는 지금까지의 대화를 담아 두는 메모리이고, 연산 버퍼는 계산에 쓰는 작업 공간입니다. 8k 컨텍스트에서 KV 캐시를 f16(양자화하지 않은 16비트)으로 두면 모두 <Num kind="needGB" model="qwen3-14b" />가 필요합니다. CanRun이 보는 GPU 몫은 16GB의 약 70%라서 여유가 1GB도 안 됩니다. 아슬아슬하게 들어가니 `ollama ps`로 확인해 보는 것이 좋습니다. 들어가기는 하지만 속도가 느려서, 8k 기준으로는 겨우 돌아갑니다<Expect model="qwen3-14b" gpu="apple-m4" verdict="B" />.
+예를 들어 16GB M4에 Qwen3 14B를 Q4_K_M으로 올려 보겠습니다. Q4_K_M은 크기와 품질의 균형을 맞춘 GGUF 양자화 등급입니다. 필요한 메모리는 가중치에 KV 캐시와 연산 버퍼를 더한 값입니다. KV 캐시는 지금까지의 대화를 담아 두는 메모리이고, 연산 버퍼는 계산에 쓰는 작업 공간입니다. 8k 컨텍스트에서 KV 캐시를 f16(양자화하지 않은 16비트)으로 두면 모두 <Num kind="needGB" model="qwen3-14b" gpu="apple-m4" />가 필요합니다. CanRun이 보는 GPU 몫은 16GB의 약 70%라서 여유가 1GB도 안 됩니다. 아슬아슬하게 들어가니 `ollama ps`로 확인해 보는 것이 좋습니다. 들어가기는 하지만 속도가 느려서, 8k 기준으로는 겨우 돌아갑니다<Expect model="qwen3-14b" gpu="apple-m4" verdict="B" />.
 
 아래 막대는 <ComboLink model="qwen3-14b" gpu="apple-m4" />를 돌릴 때 메모리가 어떻게 나뉘는지 보여 줍니다. 제목에는 칩 이름만 나오지만 16GB 구성을 기준으로 한 값입니다. ‘GPU가 못 쓰는 영역’은 macOS와 다른 앱에 남겨 두는 나머지 약 30%입니다.
 
 <MemoryBreakdown model="qwen3-14b" gpu="apple-m4" />
 
-16GB 맥이라고 14B급 모델이 다 들어가지는 않습니다. <HubLink model="phi-4" />(<Num kind="params" model="phi-4" />)는 Q4_K_M, 8k 컨텍스트에서 <Num kind="needGB" model="phi-4" />가 필요해 16GB M4의 GPU 몫을 넘습니다. CanRun은 맥에서 모델 일부만 GPU에 올리는 경우를 계산하지 않습니다. 그래서 이 조합은 CPU 전용으로 계산되고, 이론 추정으로 겨우 돌아가는 수준입니다<Expect model="phi-4" gpu="apple-m4" verdict="B" />. 실제 Ollama는 모델의 층을 나눠 GPU와 CPU에 올릴 수 있으니, `ollama ps`의 PROCESSOR 열로 확인합니다. 참고로 Phi-4의 모델 페이지와 조합 페이지는 CPU 전용으로 계산한 필요 메모리에서 연산 버퍼를 빼고 표시합니다. 그래서 필요 메모리가 GPU 몫보다 작아 보입니다.
+16GB 맥이라고 14B급 모델이 다 들어가지는 않습니다. <HubLink model="phi-4" />(<Num kind="params" model="phi-4" />)는 Q4_K_M, 8k 컨텍스트에서 <Num kind="needGB" model="phi-4" gpu="apple-m4" />가 필요해 16GB M4의 GPU 몫을 넘습니다. CanRun은 맥에서 모델 일부만 GPU에 올리는 경우를 계산하지 않습니다. 그래서 이 조합은 CPU 전용으로 계산되고, 이론 추정으로 겨우 돌아가는 수준입니다<Expect model="phi-4" gpu="apple-m4" verdict="B" />. 실제 Ollama는 모델의 층을 나눠 GPU와 CPU에 올릴 수 있으니, `ollama ps`의 PROCESSOR 열로 확인합니다. 참고로 Phi-4의 모델 페이지와 조합 페이지는 CPU 전용으로 계산한 필요 메모리에서 연산 버퍼를 빼고 표시합니다. 그래서 필요 메모리가 GPU 몫보다 작아 보입니다.
 
 macOS가 실제로 정해 둔 기본 한도는 메모리 용량에 따라 다릅니다. llama.cpp 토론 #2182에 올라온 코드를 보면, 32GB 이하 맥은 약 3분의 1을 GPU가 쓰지 못하게 남겨 둡니다. 그보다 큰 맥은 약 4분의 1을 남깁니다. 또 애플이 16GB라고 적는 메모리는 이진 단위라서, CanRun이 쓰는 십진 GB로 바꾸면 약 7% 더 큽니다. 이 두 가지를 따지면, 70% 하나로 어림한 CanRun 수치는 32GB 이하 구성에서 실제 기본 한도와 거의 같거나 조금 작습니다. 36GB 이상 구성에서는 실제보다 작게 잡힐 수 있습니다.
 
@@ -26,7 +26,7 @@ macOS가 실제로 정해 둔 기본 한도는 메모리 용량에 따라 다릅
 
 아래 표는 이 글에서 다루는 여섯 모델을 8k 컨텍스트, f16 KV 캐시로 돌릴 때 필요한 메모리입니다. 합계를 앞 표의 ‘GPU 사용 가능량’ 열과 비교해 보면 어느 맥에 들어가는지 알 수 있습니다.
 
-<ModelMemoryTable models="llama-3.1-8b,gemma-3-12b,qwen3-14b,gpt-oss-20b,qwen3-30b-a3b-2507,gpt-oss-120b" ctx="8192" />
+<ModelMemoryTable models="llama-3.1-8b,gemma-3-12b,qwen3-14b,gpt-oss-20b,qwen3-30b-a3b-2507,gpt-oss-120b" ctx="8192" memory="unified" />
 
 아래 판정표에서 맥의 각 칸은 그 칩에서 가장 좋은 판정이 나오는 구성 중 메모리가 가장 작은 것을 기준으로 합니다. 어느 구성에서도 돌릴 수 없는 모델은 가장 큰 구성을 기준으로 합니다. 칸 아래의 ‘…GB 구성’ 줄이 그 용량입니다. 행 머리에는 그 칩으로 고를 수 있는 메모리 구성이 모두 적혀 있고, 판정은 8k 컨텍스트·f16 KV 기준입니다.
 
@@ -34,11 +34,11 @@ macOS가 실제로 정해 둔 기본 한도는 메모리 용량에 따라 다릅
 
 16GB M4에서는 Llama 3.1 8B와 Gemma 3 12B가 모두 원활하게 돌아갑니다<Expect model="llama-3.1-8b" gpu="apple-m4" verdict="A" /><Expect model="gemma-3-12b" gpu="apple-m4" verdict="A" />. Qwen3 14B는 여유가 1GB도 안 되게 아슬아슬하게 들어가고, 속도가 느려 겨우 돌아갑니다<Expect model="qwen3-14b" gpu="apple-m4" verdict="B" />. 한국 모델 <HubLink model="kanana-1.5-8b" />도 16GB M4에서 원활하게 돌아갑니다<Expect model="kanana-1.5-8b" gpu="apple-m4" verdict="A" />. EXAONE 등 다른 한국 모델의 판정은 ‘<GuideLink slug="korean-open-llms" />’에서 볼 수 있습니다.
 
-gpt-oss-20b를 돌리려면 24GB 구성이 필요합니다. 기본 배포 형식인 MXFP4 파일만 해도 <Num kind="fileGB" model="gpt-oss-20b" />라서 16GB 맥의 GPU 몫(16GB의 약 70%)보다 큽니다. KV 캐시와 연산 버퍼까지 더한 8k 기준 합계는 <Num kind="needGB" model="gpt-oss-20b" />입니다. 그래서 CanRun은 <ComboLink model="gpt-oss-20b" gpu="apple-m4" />를 24GB 구성으로 계산합니다. 24GB 구성에서 M4는 원활하게 돌아가고<Expect model="gpt-oss-20b" gpu="apple-m4" verdict="A" />, M4 Pro와 M5 Pro는 쾌적하게 돌아갑니다<Expect model="gpt-oss-20b" gpu="apple-m4-pro" verdict="S" /><Expect model="gpt-oss-20b" gpu="apple-m5-pro" verdict="S" />. 모델 카드에 있는 ‘16GB 메모리 안에서 돈다’는 설명은 모델이 16GB를 전부 쓸 수 있을 때의 이야기입니다.
+gpt-oss-20b를 돌리려면 24GB 구성이 필요합니다. 기본 배포 형식인 MXFP4 파일만 해도 <Num kind="fileGB" model="gpt-oss-20b" />라서 16GB 맥의 GPU 몫(16GB의 약 70%)보다 큽니다. KV 캐시와 연산 버퍼까지 더한 8k 기준 합계는 <Num kind="needGB" model="gpt-oss-20b" gpu="apple-m4" />입니다. 그래서 CanRun은 <ComboLink model="gpt-oss-20b" gpu="apple-m4" />를 24GB 구성으로 계산합니다. 24GB 구성에서 M4는 원활하게 돌아가고<Expect model="gpt-oss-20b" gpu="apple-m4" verdict="A" />, M4 Pro와 M5 Pro는 쾌적하게 돌아갑니다<Expect model="gpt-oss-20b" gpu="apple-m4-pro" verdict="S" /><Expect model="gpt-oss-20b" gpu="apple-m5-pro" verdict="S" />. 모델 카드에 있는 ‘16GB 메모리 안에서 돈다’는 설명은 모델이 16GB를 전부 쓸 수 있을 때의 이야기입니다.
 
-Qwen3 30B-A3B (2507)은 토큰마다 전문가 일부만 쓰는 MoE 모델입니다. 전체 파라미터와 활성 파라미터 수는 위 표에 있습니다. 이 모델은 <Num kind="needGB" model="qwen3-30b-a3b-2507" />가 필요합니다. M4는 32GB 구성에서 원활하게 돌아가고<Expect model="qwen3-30b-a3b-2507" gpu="apple-m4" verdict="A" />, M4 Pro와 M5 Pro는 48GB 구성에서 쾌적하게 돌아갑니다<Expect model="qwen3-30b-a3b-2507" gpu="apple-m4-pro" verdict="S" /><Expect model="qwen3-30b-a3b-2507" gpu="apple-m5-pro" verdict="S" />. 24GB 구성에서는 GPU 몫을 넘습니다. CanRun은 맥에서 부분 오프로드를 계산하지 않으므로 이때는 곧바로 CPU 전용으로 계산합니다. CPU 전용 계산은 이론 추정이라, 판정이 가장 좋아도 겨우 돌아가는 수준에 그칩니다. 판정표가 <ComboLink model="qwen3-30b-a3b-2507" gpu="apple-m4-pro" />을 48GB 구성으로 보여 주는 것도 이 때문입니다. 24GB 구성의 결과는 M4 Pro 칩 페이지에서 볼 수 있습니다.
+Qwen3 30B-A3B (2507)은 토큰마다 전문가 일부만 쓰는 MoE 모델입니다. 전체 파라미터와 활성 파라미터 수는 위 표에 있습니다. 이 모델은 <Num kind="needGB" model="qwen3-30b-a3b-2507" gpu="apple-m4" />가 필요합니다. M4는 32GB 구성에서 원활하게 돌아가고<Expect model="qwen3-30b-a3b-2507" gpu="apple-m4" verdict="A" />, M4 Pro와 M5 Pro는 48GB 구성에서 쾌적하게 돌아갑니다<Expect model="qwen3-30b-a3b-2507" gpu="apple-m4-pro" verdict="S" /><Expect model="qwen3-30b-a3b-2507" gpu="apple-m5-pro" verdict="S" />. 24GB 구성에서는 GPU 몫을 넘습니다. CanRun은 맥에서 부분 오프로드를 계산하지 않으므로 이때는 곧바로 CPU 전용으로 계산합니다. CPU 전용 계산은 이론 추정이라, 판정이 가장 좋아도 겨우 돌아가는 수준에 그칩니다. 판정표가 <ComboLink model="qwen3-30b-a3b-2507" gpu="apple-m4-pro" />을 48GB 구성으로 보여 주는 것도 이 때문입니다. 24GB 구성의 결과는 M4 Pro 칩 페이지에서 볼 수 있습니다.
 
-gpt-oss-120b는 <Num kind="needGB" model="gpt-oss-120b" />가 필요합니다. 64GB 맥에서 GPU가 쓸 수 있는 메모리는 <Num kind="usableGB" gpu="apple-m4-pro" />뿐입니다. 그래서 <ComboLink model="gpt-oss-120b" gpu="apple-m4-pro" />는 64GB 구성으로도 돌릴 수 없습니다<Expect model="gpt-oss-120b" gpu="apple-m4-pro" verdict="F" />. M5 Pro<Expect model="gpt-oss-120b" gpu="apple-m5-pro" verdict="F" />와 64GB M4 Max도 마찬가지입니다. 128GB M4 Max(40코어 GPU)에서는 GPU가 <Num kind="usableGB" gpu="apple-m4-max-40c" />를 쓸 수 있습니다. 모델 전체가 GPU에 올라가 쾌적하게 돌아갑니다<Expect model="gpt-oss-120b" gpu="apple-m4-max-40c" verdict="S" />.
+gpt-oss-120b는 <Num kind="needGB" model="gpt-oss-120b" gpu="apple-m4-pro" />가 필요합니다. 64GB 맥에서 GPU가 쓸 수 있는 메모리는 <Num kind="usableGB" gpu="apple-m4-pro" />뿐입니다. 그래서 <ComboLink model="gpt-oss-120b" gpu="apple-m4-pro" />는 64GB 구성으로도 돌릴 수 없습니다<Expect model="gpt-oss-120b" gpu="apple-m4-pro" verdict="F" />. M5 Pro<Expect model="gpt-oss-120b" gpu="apple-m5-pro" verdict="F" />와 64GB M4 Max도 마찬가지입니다. 128GB M4 Max(40코어 GPU)에서는 GPU가 <Num kind="usableGB" gpu="apple-m4-max-40c" />를 쓸 수 있습니다. 모델 전체가 GPU에 올라가 쾌적하게 돌아갑니다<Expect model="gpt-oss-120b" gpu="apple-m4-max-40c" verdict="S" />.
 
 48GB M4 Max(40코어 GPU)에서는 나머지 다섯 모델이 모두 쾌적하게 돌아갑니다<Expect model="llama-3.1-8b" gpu="apple-m4-max-40c" verdict="S" /><Expect model="gemma-3-12b" gpu="apple-m4-max-40c" verdict="S" /><Expect model="qwen3-14b" gpu="apple-m4-max-40c" verdict="S" /><Expect model="gpt-oss-20b" gpu="apple-m4-max-40c" verdict="S" /><Expect model="qwen3-30b-a3b-2507" gpu="apple-m4-max-40c" verdict="S" />. 24GB M4 Pro와 24GB M5 Pro는 GPU가 쓸 수 있는 메모리가 같아서 들어가는 모델도 같습니다. 용량이 같으면 칩이 바뀌어도 속도와 판정만 달라집니다.
 
@@ -61,7 +61,7 @@ M4 Pro의 대역폭은 M4의 두 배가 넘고, 40코어 GPU M4 Max는 다시 M4
 
 예외는 GPU 코어 수가 두 가지인 Max 칩입니다. <HubLink gpu="apple-m4-max-32c" />는 <Num kind="bandwidth" gpu="apple-m4-max-32c" />, <HubLink gpu="apple-m4-max-40c" />는 <Num kind="bandwidth" gpu="apple-m4-max-40c" />입니다. <HubLink gpu="apple-m5-max-32c" />는 <Num kind="bandwidth" gpu="apple-m5-max-32c" />, <HubLink gpu="apple-m5-max-40c" />는 <Num kind="bandwidth" gpu="apple-m5-max-40c" />입니다. 애플 사양표를 보면 36GB 구성은 32코어판에만 있습니다. 이 글의 표는 40코어판을 기준으로 합니다.
 
-메모리에 들어간다고 다 빠른 것도 아닙니다. 48GB M4 Pro에서 MoE 모델인 Qwen3 30B-A3B (2507)은 쾌적하게 돌아갑니다<Expect model="qwen3-30b-a3b-2507" gpu="apple-m4-pro" verdict="S" />. 반면 필요 메모리가 비슷한 dense 모델 <HubLink model="qwen3-32b" />(<Num kind="needGB" model="qwen3-32b" />)는 GPU에 전부 올라가는데도 겨우 돌아갑니다<Expect model="qwen3-32b" gpu="apple-m4-pro" verdict="B" />. dense 모델은 토큰마다 가중치 전체를 읽지만, MoE는 활성 전문가의 가중치만 읽어서 메모리에서 읽는 양이 훨씬 적습니다. M4 Pro에서 MoE인 gpt-oss-20b는 dense인 Qwen3 14B보다 파일이 큰데도 쾌적하게 돌아갑니다<Expect model="gpt-oss-20b" gpu="apple-m4-pro" verdict="S" />. 같은 칩에서 Qwen3 14B는 원활하게 돌아가는 데 그칩니다<Expect model="qwen3-14b" gpu="apple-m4-pro" verdict="A" />. 두 모델 모두 생각 모드가 있어서 똑같이 엄격한 기준으로 판정합니다. 다만 MoE라도 GPU 몫을 넘으면 CanRun은 CPU 전용으로 계산합니다. 그래서 24GB M4 Pro에서는 Qwen3 30B-A3B (2507)의 판정이 내려갑니다.
+메모리에 들어간다고 다 빠른 것도 아닙니다. 48GB M4 Pro에서 MoE 모델인 Qwen3 30B-A3B (2507)은 쾌적하게 돌아갑니다<Expect model="qwen3-30b-a3b-2507" gpu="apple-m4-pro" verdict="S" />. 반면 필요 메모리가 비슷한 dense 모델 <HubLink model="qwen3-32b" />(<Num kind="needGB" model="qwen3-32b" gpu="apple-m4-pro" />)는 GPU에 전부 올라가는데도 겨우 돌아갑니다<Expect model="qwen3-32b" gpu="apple-m4-pro" verdict="B" />. dense 모델은 토큰마다 가중치 전체를 읽지만, MoE는 활성 전문가의 가중치만 읽어서 메모리에서 읽는 양이 훨씬 적습니다. M4 Pro에서 MoE인 gpt-oss-20b는 dense인 Qwen3 14B보다 파일이 큰데도 쾌적하게 돌아갑니다<Expect model="gpt-oss-20b" gpu="apple-m4-pro" verdict="S" />. 같은 칩에서 Qwen3 14B는 원활하게 돌아가는 데 그칩니다<Expect model="qwen3-14b" gpu="apple-m4-pro" verdict="A" />. 두 모델 모두 생각 모드가 있어서 똑같이 엄격한 기준으로 판정합니다. 다만 MoE라도 GPU 몫을 넘으면 CanRun은 CPU 전용으로 계산합니다. 그래서 24GB M4 Pro에서는 Qwen3 30B-A3B (2507)의 판정이 내려갑니다.
 
 새 세대라고 판정이 늘 오르는 것도, 늘 같은 것도 아닙니다. 판정표의 여섯 모델은 M5 Pro와 M4 Pro에서 판정이 같습니다. 48GB 구성의 Qwen3 32B도 두 칩에서 모두 겨우 돌아갑니다<Expect model="qwen3-32b" gpu="apple-m4-pro" verdict="B" /><Expect model="qwen3-32b" gpu="apple-m5-pro" verdict="B" />. 그런데 <HubLink model="deepseek-r1-distill-8b" />는 M4 Pro에서는 원활하게 돌아가고<Expect model="deepseek-r1-distill-8b" gpu="apple-m4-pro" verdict="A" />, M5 Pro에서는 쾌적하게 돌아갑니다<Expect model="deepseek-r1-distill-8b" gpu="apple-m5-pro" verdict="S" />. M4와 M5의 세대 차이는 모델마다 따로 확인해야 합니다.
 
@@ -71,13 +71,13 @@ M4 Pro의 대역폭은 M4의 두 배가 넘고, 40코어 GPU M4 Max는 다시 M4
 
 컨텍스트가 길어지면 KV 캐시가 커지고, 이 메모리도 가중치와 같은 GPU 몫에서 나갑니다. 맥은 VRAM과 시스템 RAM이 따로 있지 않습니다. 그래서 CanRun 계산에서는 GPU 몫을 넘으면 CPU 전용으로 돌리는 수밖에 없습니다.
 
-아래 표는 <ComboLink model="llama-3.1-8b" gpu="apple-m4" />를 컨텍스트 길이와 KV 캐시 종류별로 계산한 결과입니다. 16GB 구성을 기준으로 했고, 8k·f16일 때 합계는 <Num kind="needGB" model="llama-3.1-8b" />입니다. 표 제목에는 칩 이름만 나옵니다.
+아래 표는 <ComboLink model="llama-3.1-8b" gpu="apple-m4" />를 컨텍스트 길이와 KV 캐시 종류별로 계산한 결과입니다. 16GB 구성을 기준으로 했고, 8k·f16일 때 합계는 <Num kind="needGB" model="llama-3.1-8b" gpu="apple-m4" />입니다. 표 제목에는 칩 이름만 나옵니다.
 
 <CtxTable model="llama-3.1-8b" gpu="apple-m4" />
 
 - 8k와 16k는 f16 KV로도 GPU에 들어갑니다. 8k에서는 원활하게 돌아가고<Expect model="llama-3.1-8b" gpu="apple-m4" verdict="A" />, 16k도 표에서 판정이 같습니다.
-- 32k·f16은 <Num kind="needGB" model="llama-3.1-8b" ctx="32768" />로 GPU 몫 안에 들어갑니다. 하지만 토큰마다 KV 캐시 전체를 읽느라 표에서 판정이 한 단계 내려갑니다. KV 캐시를 q8_0으로 두면 표에서 8k와 같은 판정이 나옵니다.
-- 64k·f16에서는 KV 캐시만 <Num kind="kvGB" model="llama-3.1-8b" ctx="65536" />로 늘어납니다. 가중치와 합치면 GPU 몫은 물론 CPU 전용 한도도 넘어서, 표에 ‘미탑재’로 나옵니다. KV 캐시를 q8_0(합계 <Num kind="needGB" model="llama-3.1-8b" ctx="65536" kv="q8_0" />)이나 q4_0으로 두면 GPU에 들어갑니다.
+- 32k·f16은 <Num kind="needGB" model="llama-3.1-8b" ctx="32768" gpu="apple-m4" />로 GPU 몫 안에 들어갑니다. 하지만 토큰마다 KV 캐시 전체를 읽느라 표에서 판정이 한 단계 내려갑니다. KV 캐시를 q8_0으로 두면 표에서 8k와 같은 판정이 나옵니다.
+- 64k·f16에서는 KV 캐시만 <Num kind="kvGB" model="llama-3.1-8b" ctx="65536" />로 늘어납니다. 가중치와 합치면 GPU 몫은 물론 CPU 전용 한도도 넘어서, 표에 ‘미탑재’로 나옵니다. KV 캐시를 q8_0(합계 <Num kind="needGB" model="llama-3.1-8b" ctx="65536" kv="q8_0" gpu="apple-m4" />)이나 q4_0으로 두면 GPU에 들어갑니다.
 - 128k에서는 KV 캐시를 q4_0으로 둘 때만 CPU 전용으로 돌릴 수 있고, 속도는 이론 추정(±30%)입니다. 조합 페이지에서 128k·q4_0을 고르면 명령도 `-ngl 0`으로 바뀝니다. CPU 전용으로 계산한 필요 메모리는 연산 버퍼를 빼고 표시합니다. 그래서 GPU 몫보다 작아 보여도 버퍼를 더하면 넘습니다.
 
 컨텍스트가 길어질 때 늘어나는 메모리는 모델마다 다릅니다. 32k 컨텍스트, f16 KV에서 Llama 3.1 8B의 KV 캐시는 <Num kind="kvGB" model="llama-3.1-8b" ctx="32768" />입니다. gpt-oss-20b는 일부 층이 최근 토큰 일정 개수만 보는 슬라이딩 윈도 방식입니다. 이런 층은 KV 캐시가 일정 길이 이상 늘지 않아서, 전체 KV 캐시가 <Num kind="kvGB" model="gpt-oss-20b" ctx="32768" />에 그칩니다. 원리는 ‘<GuideLink slug="kv-cache-context" />’에서 설명합니다.
@@ -128,7 +128,7 @@ CanRun 계산에 넣지 않는 것도 있습니다.
 
 ### 통합 메모리 16GB로 로컬 LLM을 돌릴 수 있나요?
 
-CanRun 계산으로는 8B~12B 모델을 Q4_K_M으로 돌릴 수 있습니다. Llama 3.1 8B와 Gemma 3 12B는 16GB M4의 GPU에 모두 올라가 원활하게 돌아갑니다<Expect model="llama-3.1-8b" gpu="apple-m4" verdict="A" /><Expect model="gemma-3-12b" gpu="apple-m4" verdict="A" />. 14B급은 모델에 따라 갈립니다. Qwen3 14B는 8k에서 <Num kind="needGB" model="qwen3-14b" />가 필요해 16GB의 약 70% 안에 아슬아슬하게 들어가지만, M4에서는 겨우 돌아갑니다<Expect model="qwen3-14b" gpu="apple-m4" verdict="B" />. Phi-4는 GPU 몫을 넘습니다. `ollama ps`에서 `100% GPU`로 나오는지 확인해 보는 것이 좋습니다. gpt-oss-20b는 파일만 해도 <Num kind="fileGB" model="gpt-oss-20b" />라서 16GB 맥의 GPU 몫에 들어가지 않습니다. 모델 카드의 ‘16GB 메모리 안에서’라는 말은 모델이 16GB를 전부 쓸 수 있다는 전제입니다. 컨텍스트를 늘리면 여유가 더 줄어드니 위의 컨텍스트 표를 함께 봅니다.
+CanRun 계산으로는 8B~12B 모델을 Q4_K_M으로 돌릴 수 있습니다. Llama 3.1 8B와 Gemma 3 12B는 16GB M4의 GPU에 모두 올라가 원활하게 돌아갑니다<Expect model="llama-3.1-8b" gpu="apple-m4" verdict="A" /><Expect model="gemma-3-12b" gpu="apple-m4" verdict="A" />. 14B급은 모델에 따라 갈립니다. Qwen3 14B는 8k에서 <Num kind="needGB" model="qwen3-14b" gpu="apple-m4" />가 필요해 16GB의 약 70% 안에 아슬아슬하게 들어가지만, M4에서는 겨우 돌아갑니다<Expect model="qwen3-14b" gpu="apple-m4" verdict="B" />. Phi-4는 GPU 몫을 넘습니다. `ollama ps`에서 `100% GPU`로 나오는지 확인해 보는 것이 좋습니다. gpt-oss-20b는 파일만 해도 <Num kind="fileGB" model="gpt-oss-20b" />라서 16GB 맥의 GPU 몫에 들어가지 않습니다. 모델 카드의 ‘16GB 메모리 안에서’라는 말은 모델이 16GB를 전부 쓸 수 있다는 전제입니다. 컨텍스트를 늘리면 여유가 더 줄어드니 위의 컨텍스트 표를 함께 봅니다.
 
 ### GPU가 통합 메모리를 70%보다 더 쓰게 할 수 있나요?
 

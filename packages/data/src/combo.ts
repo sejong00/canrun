@@ -21,6 +21,8 @@ import {
 import {
   estimateAt,
   HUB_POLICY,
+  needWeightsGB,
+  toModelQuant,
   verdictRank,
   type ComboAssessment,
   type GpuHubData,
@@ -85,7 +87,8 @@ export function ctxMatrix(
   gpu: GpuCore,
   config: HwConfig,
   model: ModelCore,
-  q: Pick<QuantAssessment, 'quant' | 'fileGB'> & Partial<Pick<QuantAssessment, 'result'>>,
+  q: Pick<QuantAssessment, 'quant' | 'fileGB'> &
+    Partial<Pick<QuantAssessment, 'result' | 'expertGB' | 'nonExpertGB' | 'offGpuGB'>>,
   opts: {
     ctxs?: readonly number[];
     kvQuants?: readonly KvQuant[];
@@ -95,6 +98,8 @@ export function ctxMatrix(
 ): CtxMatrix {
   const ctxs = (opts.ctxs ?? HUB_POLICY.matrixCtx).filter((ctx) => ctx <= model.maxContext);
   const kvQuants = [...(opts.kvQuants ?? DEFAULT_KV)];
+  // GPU 경로 필요량의 가중치 — memoryNeed 와 같은 규칙(dGPU 는 그래픽카드에 올라가는 몫, 10-03 D62)
+  const gpuWeights = needWeightsGB(gpu.kind, toModelQuant(model, q));
   const rows = ctxs.map((ctx) =>
     kvQuants.map((kvQuant): CtxCell => {
       const { fit, result: estimated } = estimateAt(gpu, config, model, q, { ctx, kvQuant });
@@ -120,8 +125,8 @@ export function ctxMatrix(
         kvQuant,
         kvGB: kv,
         // fit 이 실패한 셀도 필요량은 보여야 한다 — 엔진 breakdown 은 미탑재 시 0 을 돌려준다
-        totalNeedGB: q.fileGB + kv + computeBufferGB(ctx),
-        needGB: cpuPath ? q.fileGB + kv : q.fileGB + kv + computeBufferGB(ctx),
+        totalNeedGB: gpuWeights + kv + computeBufferGB(ctx),
+        needGB: cpuPath ? q.fileGB + kv : gpuWeights + kv + computeBufferGB(ctx),
         fits: fit.fits,
         mode: fit.mode,
         ...(fit.gpuFrac !== undefined ? { gpuFrac: fit.gpuFrac } : {}),
@@ -166,11 +171,24 @@ export type VramBreakdown = {
     usable: number;
   };
   ram: { weights: number; usable: number };
+  /**
+   * 각주 (10-03 D62): dGPU 전량 탑재일 때 파일 중 그래픽카드에 안 올리는 몫(입력 임베딩 = 시스템 RAM, MTP 블록 = 미적재)과
+   * MTP 블록 크기. MTP 는 GPU 몫에서 뺀 모드(full-gpu·cpu-moe, dGPU)에서만 — 켜면 그만큼과 그 KV 가 더 든다.
+   */
+  note: { fileGB: number; offGpuGB: number; mtpGB?: number };
 };
 
 export function vramBreakdown(q: QuantAssessment): VramBreakdown {
   const v = q.result.vram;
+  // cpu-moe 는 dGPU 전용, full-gpu 의 offGpuGB > 0 은 dGPU 에서만 생긴다
+  const dgpuExcludesMtp =
+    q.fits && (q.result.mode === 'cpu-moe' || (q.result.mode === 'full-gpu' && q.memory.offGpuGB > 0));
   return {
+    note: {
+      fileGB: q.fileGB,
+      offGpuGB: q.memory.offGpuGB,
+      ...(q.mtpGB !== undefined && dgpuExcludesMtp ? { mtpGB: q.mtpGB } : {}),
+    },
     gpu: {
       weights: v.weights,
       kv: v.kv,

@@ -141,7 +141,7 @@ describe('MoE — experts/topK from config, per-row split from the GGUF header (
   const row = (quant: ModelQuantRecord['quant'], fileGB: number): ModelQuantRecord => ({
     modelId: 'm', quant, fileGB, ggufRepo: 'org/m-GGUF', fileName: `m-${quant}.gguf`, sources: ['https://huggingface.co/org/m-GGUF'],
   });
-  const ok = { expertGB: 17.55, nonExpertGB: 0.82, trunkLayers: 48, expertCount: 128, expertUsed: 8 };
+  const ok = { expertGB: 17.55, nonExpertGB: 0.82, offGpuGB: 0.19, mtpGB: 0, trunkLayers: 48, expertCount: 128, expertUsed: 8 };
 
   it('writes expertGB/nonExpertGB right after fileGB for each measured row', async () => {
     const calls: string[] = [];
@@ -169,5 +169,37 @@ describe('MoE — experts/topK from config, per-row split from the GGUF header (
     expect(res.rows.map((r) => r.expertGB)).toEqual([undefined, undefined]);
     expect(res.problems).toEqual([]);
     expect(res.warnings).toEqual([expect.stringContaining('HTTP 503'), expect.stringContaining('> fileGB 10')]);
+  });
+
+  it('records the MTP block after the split when the header has one (10-03)', async () => {
+    const res = await measureRows([row('Q4_K_M', 22.29)], { experts: 256, topK: 8 }, 40, () =>
+      Promise.resolve({ ...ok, expertGB: 19.5, nonExpertGB: 1.59, offGpuGB: 1.2, mtpGB: 0.9, trunkLayers: 40, expertCount: 256 }),
+    );
+    expect(Object.keys(res.rows[0]!).slice(2, 7)).toEqual(['fileGB', 'expertGB', 'nonExpertGB', 'mtpGB', 'ggufRepo']);
+    expect(res.rows[0]).not.toHaveProperty('offGpuGB');
+  });
+});
+
+describe('dense — per-row offGpuGB from the GGUF header (10-03 D62)', () => {
+  const row = (quant: ModelQuantRecord['quant'], fileGB: number): ModelQuantRecord => ({
+    modelId: 'd', quant, fileGB, ggufRepo: 'org/d-GGUF', fileName: `d-${quant}.gguf`, sources: ['https://huggingface.co/org/d-GGUF'],
+  });
+  const ok = { expertGB: 0, nonExpertGB: 5.12, offGpuGB: 0.75, mtpGB: 0.17, fileGB: 5.87, trunkLayers: 32 };
+
+  it('writes offGpuGB (then mtpGB) right after fileGB — no expert checks for dense', async () => {
+    const res = await measureRows([row('Q4_K_M', 5.87)], undefined, 32, () => Promise.resolve(ok));
+    expect(res.problems).toEqual([]);
+    expect(res.warnings).toEqual([]);
+    expect(Object.keys(res.rows[0]!)).toEqual(['modelId', 'quant', 'fileGB', 'offGpuGB', 'mtpGB', 'ggufRepo', 'fileName', 'sources']);
+    expect(res.rows[0]).toMatchObject({ offGpuGB: 0.75, mtpGB: 0.17 });
+    expect(res.rows[0]).not.toHaveProperty('expertGB');
+  });
+
+  it('keeps the row on the whole-file fallback when the measurement does not match the file', async () => {
+    const res = await measureRows([row('Q4_K_M', 5.87), row('Q8_0', 2)], undefined, 32, (_repo, fileName) =>
+      Promise.resolve(fileName === 'd-Q4_K_M.gguf' ? { ...ok, fileGB: 6.5 } : { ...ok, fileGB: undefined }),
+    );
+    expect(res.rows.map((r) => r.offGpuGB)).toEqual([undefined, undefined]);
+    expect(res.warnings).toEqual([expect.stringContaining('측정한 파일 크기 6.5GB'), expect.stringContaining('25%')]);
   });
 });

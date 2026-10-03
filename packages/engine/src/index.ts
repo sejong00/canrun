@@ -21,7 +21,7 @@ export * from './speed';
 export * from './verdict';
 
 /** 엔진 스펙 버전 — docs/02-engine-spec.md 개정 시 함께 올린다. */
-export const ENGINE_SPEC_VERSION = '0.5.0'; // 10-01 멀티 GPU(gpuCount, docs/02 §6 베타) — 0.4.0 cpu-moe 부분 배치·GGUF 실측 분할
+export const ENGINE_SPEC_VERSION = '0.6.0'; // 10-03 dGPU full-gpu 필요량 = 그래픽카드 상주 가중치(offGpuGB, D62) — 0.5.0 멀티 GPU(gpuCount, §6 베타)
 
 /** 실측 중앙값 (§4 measured: 실측 중앙값 표시, 추정은 보조). */
 function median(values: readonly number[]): number {

@@ -88,6 +88,12 @@ export const MOE_ARCH: Readonly<Record<string, MoeArch>> = Object.freeze({
   'solar-open-100b': { totalParamsB: 102.65, activeParamsB: 12, experts: 128, topK: 8 },
 });
 
+/**
+ * 헤더 실측의 "그래픽카드에 안 올리는 몫" 상한 — 파일의 25%. 이보다 크면 다른 파일을 잰 것으로 본다(검증 허용치, 엔진 상수 아님).
+ * 카탈로그 최대는 MiniCPM5-1B Q8_0 의 18%(입력 임베딩이 큰 1B 모델), 대부분 1~7%.
+ */
+export const MAX_OFF_GPU_FRACTION = 0.25;
+
 export type SeedFiles = {
   gpus: Gpu[];
   models: Model[];
@@ -118,18 +124,41 @@ export function validateAll(files: SeedFiles): string[] {
     if (mq.fileName === undefined) {
       problems.push(`model-quants/${mq.modelId}/${mq.quant}: fileName missing — run sync-models`);
     }
-    // MoE 헤더 실측 분할(10-01): MoE 모델 행만 · 둘 다 함께 · 전문가+비전문가 ≤ 파일 크기(+반올림 0.02)
+    const id = `model-quants/${mq.modelId}/${mq.quant}`;
+    // MoE 헤더 실측 분할(10-01): MoE 모델 행만 · 둘 다 함께 · 0.75×파일 ≤ 전문가+비전문가 ≤ 파일 크기(+반올림 0.02)
+    const hasSplit = mq.expertGB !== undefined && mq.nonExpertGB !== undefined;
     if (mq.expertGB !== undefined || mq.nonExpertGB !== undefined) {
-      const id = `model-quants/${mq.modelId}/${mq.quant}`;
       if (!moeModelIds.has(mq.modelId)) {
         problems.push(`${id}: expertGB/nonExpertGB only for MoE models (activeParamsB)`);
       }
-      if (mq.expertGB === undefined || mq.nonExpertGB === undefined) {
+      if (!hasSplit) {
         problems.push(`${id}: expertGB and nonExpertGB must be set together`);
-      } else if (mq.expertGB + mq.nonExpertGB > mq.fileGB + 0.02) {
+      } else if (mq.expertGB! + mq.nonExpertGB! > mq.fileGB + 0.02) {
         problems.push(
           `${id}: expertGB ${mq.expertGB} + nonExpertGB ${mq.nonExpertGB} > fileGB ${mq.fileGB}`,
         );
+      } else if (mq.expertGB! + mq.nonExpertGB! < mq.fileGB * (1 - MAX_OFF_GPU_FRACTION)) {
+        problems.push(
+          `${id}: expertGB ${mq.expertGB} + nonExpertGB ${mq.nonExpertGB} < ${1 - MAX_OFF_GPU_FRACTION} × fileGB ${mq.fileGB} — a different file?`,
+        );
+      }
+    }
+    // dense 헤더 실측 offGpuGB(10-03 D62): dense 모델 행만(MoE 는 분할에서 유도) · 0 ≤ 값 ≤ 0.25×파일
+    if (mq.offGpuGB !== undefined) {
+      if (moeModelIds.has(mq.modelId)) {
+        problems.push(`${id}: offGpuGB only for dense models — MoE rows derive it from expertGB + nonExpertGB`);
+      }
+      if (mq.offGpuGB > mq.fileGB * MAX_OFF_GPU_FRACTION) {
+        problems.push(`${id}: offGpuGB ${mq.offGpuGB} > ${MAX_OFF_GPU_FRACTION} × fileGB ${mq.fileGB} — a different file?`);
+      }
+    }
+    // MTP 블록(10-03): 같은 헤더 측정이 있는 행만 · GPU 밖 몫(offGpuGB 또는 파일 − 분할) 안
+    if (mq.mtpGB !== undefined) {
+      const offGpu = mq.offGpuGB ?? (hasSplit ? mq.fileGB - mq.expertGB! - mq.nonExpertGB! : undefined);
+      if (offGpu === undefined) {
+        problems.push(`${id}: mtpGB needs the header measurement it came from (offGpuGB or expertGB/nonExpertGB)`);
+      } else if (mq.mtpGB > offGpu + 0.02) {
+        problems.push(`${id}: mtpGB ${mq.mtpGB} > off-GPU share ${offGpu.toFixed(2)}`);
       }
     }
   }

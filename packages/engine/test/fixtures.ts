@@ -175,6 +175,9 @@ export const RTX_4090: Hardware = dgpu(24, 1008, 'nvidia');
 export const M4_MAX_128: Hardware = unified(128, 546, 'apple');
 
 export const LLAMA31_8B_Q4 = dense(4.92, 128, 8.03);
+// 같은 파일 + GGUF 헤더 실측 offGpuGB(10-03 D62): token_embd(Q4_K, 4096×128256) 0.30GB 는 llama.cpp 가 시스템 RAM 에 둔다
+// source: https://huggingface.co/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf
+export const LLAMA31_8B_Q4_RESIDENT: ModelQuant = { ...LLAMA31_8B_Q4, offGpuGB: 0.3 };
 export const QWEN3_8B_Q4 = QWEN3_8B;
 export const QWEN3_14B_Q4 = dense(9.0, 160, 14.8);
 export const LLAMA33_70B_Q4 = dense(42.52, 320, 70.6);

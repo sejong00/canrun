@@ -1,4 +1,4 @@
-Start with Q4_K_M: llama.cpp's `-hf` option and Hugging Face's Ollama integration pick it when you name no quant, and our verdicts use it as the baseline. For the dense models in this guide, IQ4_XS is about a tenth smaller and in the same quality group as Q4_K_M (Good balance); Q8_0 is roughly three quarters larger, worth it only when it fits with room for your context. One step down can decide the fit: on the RTX 5060 Ti 16GB with an 8k context, Mistral Small 3.2 24B at Q4_K_M needs <Num kind="needGB" model="mistral-small-3.2-24b" />, more than the <Num kind="usableGB" gpu="rtx-5060-ti-16gb" /> the card can use. At IQ4_XS it needs <Num kind="needGB" model="mistral-small-3.2-24b" quant="IQ4_XS" />, which in our calculation stays on the GPU, with little margin — check `ollama ps`.
+Start with Q4_K_M: llama.cpp's `-hf` option and Hugging Face's Ollama integration pick it when you name no quant, and our verdicts use it as the baseline. For the dense models in this guide, IQ4_XS is about a tenth smaller and in the same quality group as Q4_K_M (Good balance); Q8_0 is roughly three quarters larger, worth it only when it fits with room for your context. One step down can decide the fit: on the RTX 5060 Ti 16GB with an 8k context, Mistral Small 3.2 24B at Q4_K_M needs <Num kind="needGB" model="mistral-small-3.2-24b" />, more than the <Num kind="usableGB" gpu="rtx-5060-ti-16gb" /> the card can use. At IQ4_XS it needs <Num kind="needGB" model="mistral-small-3.2-24b" quant="IQ4_XS" />, which in our calculation stays on the GPU with about a gigabyte to spare — check `ollama ps`.
 
 ## What the parts of a GGUF quant name mean
 
@@ -67,7 +67,7 @@ A rule of thumb follows from the file sizes: dropping from Q4_K_M to IQ4_XS brin
 
 ### Mistral Small 3.2 24B on the RTX 5060 Ti 16GB
 
-<HubLink model="mistral-small-3.2-24b" /> on the <HubLink gpu="rtx-5060-ti-16gb" /> is the case where one step is enough. At Q4_K_M and 8k it needs <Num kind="needGB" model="mistral-small-3.2-24b" /> against <Num kind="usableGB" gpu="rtx-5060-ti-16gb" /> usable, so in our calculation a small part is offloaded to system RAM (a partial offload), and at that baseline it Runs well.<Expect model="mistral-small-3.2-24b" gpu="rtx-5060-ti-16gb" verdict="A" /> At IQ4_XS it needs <Num kind="needGB" model="mistral-small-3.2-24b" quant="IQ4_XS" />, which in our calculation fits fully on the GPU, with little margin — check `ollama ps`. Mistral Small 3.2 is also a vision model, and our figures leave out its vision projector (mmproj) file, which `llama-server -hf` fetches and loads when the repo has one (add `--no-mmproj` to skip it); at this margin that can decide the fit. In the ladder, the IQ4_XS row moves up a verdict and the Q8_0 row goes the other way.
+<HubLink model="mistral-small-3.2-24b" /> on the <HubLink gpu="rtx-5060-ti-16gb" /> is the case where one step is enough. At Q4_K_M and 8k it needs <Num kind="needGB" model="mistral-small-3.2-24b" /> against <Num kind="usableGB" gpu="rtx-5060-ti-16gb" /> usable, so in our calculation a small part is offloaded to system RAM (a partial offload), and at that baseline it Runs well.<Expect model="mistral-small-3.2-24b" gpu="rtx-5060-ti-16gb" verdict="A" /> At IQ4_XS it needs <Num kind="needGB" model="mistral-small-3.2-24b" quant="IQ4_XS" />, which in our calculation fits fully on the GPU with about a gigabyte to spare — check `ollama ps`. Mistral Small 3.2 is also a vision model, and our figures leave out its vision projector (mmproj) file, which `llama-server -hf` fetches and loads when the repo has one (add `--no-mmproj` to skip it); at this margin that can decide the fit. In the ladder, the IQ4_XS row moves up a verdict and the Q8_0 row goes the other way.
 
 <QuantLadder model="mistral-small-3.2-24b" gpu="rtx-5060-ti-16gb" />
 
@@ -92,7 +92,7 @@ IQ4_XS needs <Num kind="needGB" model="gemma-3-12b" quant="IQ4_XS" />, still ove
 
 ### When one step down is not enough
 
-For <ComboLink model="qwen3-14b" gpu="rtx-4060" />, the gap is too wide. At the baseline it Runs slowly,<Expect model="qwen3-14b" gpu="rtx-4060" verdict="B" /> and IQ4_XS still needs <Num kind="needGB" model="qwen3-14b" quant="IQ4_XS" />, far over the <Num kind="usableGB" gpu="rtx-4060" /> the card can use, so one step down does not change the verdict. Only the Heavy loss Q2_K comes close, and even it needs <Num kind="needGB" model="qwen3-14b" quant="Q2_K" />, still over.
+For <ComboLink model="qwen3-14b" gpu="rtx-4060" />, the gap is too wide. At the baseline it Runs slowly,<Expect model="qwen3-14b" gpu="rtx-4060" verdict="B" /> and IQ4_XS still needs <Num kind="needGB" model="qwen3-14b" quant="IQ4_XS" />, far over the <Num kind="usableGB" gpu="rtx-4060" /> the card can use, so one step down does not change the verdict. Only the Heavy loss Q2_K comes close: it needs <Num kind="needGB" model="qwen3-14b" quant="Q2_K" />, about all the card can use.
 
 One caveat for MoE models: where a ladder row keeps some of the MoE experts in system RAM, as the Q4_K_M and IQ4_XS rows do for Qwen3 30B-A3B (2507) on the RTX 5060 Ti 16GB, those rows are theoretical (±30%). CanRun keeps as many experts on the GPU as fit and only the rest in RAM, but real speeds on this path still vary with the OS, the backend and the RAM configuration.
 
@@ -122,7 +122,7 @@ Where to go next:
 
 ## How sure are these numbers?
 
-File sizes are the real GGUF sizes from the Hugging Face repos, in decimal GB. The memory needs add the file, the KV cache and a compute buffer (working memory for inference), and they are calculated with a formula, not estimated.
+File sizes are the real GGUF sizes from the Hugging Face repos, in decimal GB. The memory needs add the weights that go on the GPU (the file minus the input embedding table and any MTP block, which llama.cpp keeps off the graphics card), the KV cache and a compute buffer (working memory for inference), and they are calculated with a formula, not estimated.
 
 Speeds are estimates, each with a band and a confidence label, and the verdicts follow from those estimates and from how much of the model stays on the GPU. Calibrated means ±12% for dense models running fully on an NVIDIA or AMD card, and ±20% for partial offload, MoE models and other hardware. Theoretical means ±30%; it marks setups whose real speed varies widely, such as MoE experts kept in system RAM, where we keep as many experts on the GPU as fit and only the rest in RAM. Every ladder row in this guide is calibrated.
 
@@ -142,7 +142,7 @@ Unless a sentence names another quant, verdict names in the text refer to the ba
 
 ### Which GGUF quant should I download?
 
-Start with Q4_K_M, the default for `llama-server -hf` and Hugging Face's Ollama integration, and switch only when memory says so. If its need at your context is over your usable memory, try IQ4_XS, in the same quality group (Good balance). At an 8k context, Mistral Small 3.2 24B needs <Num kind="needGB" model="mistral-small-3.2-24b" /> at Q4_K_M and <Num kind="needGB" model="mistral-small-3.2-24b" quant="IQ4_XS" /> at IQ4_XS, against <Num kind="usableGB" gpu="rtx-5060-ti-16gb" /> usable on an RTX 5060 Ti 16GB, so in our calculation IQ4_XS fits, with little margin — check `ollama ps`. Take Q8_0 or Q6_K only if it fits with room for your context, and choose the file with a quant tag, as in `ollama run hf.co/{user}/{repo}:IQ4_XS`.
+Start with Q4_K_M, the default for `llama-server -hf` and Hugging Face's Ollama integration, and switch only when memory says so. If its need at your context is over your usable memory, try IQ4_XS, in the same quality group (Good balance). At an 8k context, Mistral Small 3.2 24B needs <Num kind="needGB" model="mistral-small-3.2-24b" /> at Q4_K_M and <Num kind="needGB" model="mistral-small-3.2-24b" quant="IQ4_XS" /> at IQ4_XS, against <Num kind="usableGB" gpu="rtx-5060-ti-16gb" /> usable on an RTX 5060 Ti 16GB, so in our calculation IQ4_XS fits with about a gigabyte to spare — check `ollama ps`. Take Q8_0 or Q6_K only if it fits with room for your context, and choose the file with a quant tag, as in `ollama run hf.co/{user}/{repo}:IQ4_XS`.
 
 ### Is IQ4_XS worse than Q4_K_M?
 

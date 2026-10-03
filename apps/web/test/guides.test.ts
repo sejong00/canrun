@@ -9,7 +9,7 @@ import { comboKey, indexableCombos } from '@canrun/data/client';
 import { describe, expect, it } from 'vitest';
 import { loadSeed } from '../../../packages/data/test/seed';
 import { GUIDES, GUIDE_SLUGS, type GuideLocale } from '../content/guides';
-import { GUIDE_COMPONENTS, NUM_KINDS, RUNTIME_FACT_IDS, splitList, type PropKind } from '../lib/guide-components';
+import { GUIDE_COMPONENTS, MEMORY_KINDS, NUM_KINDS, RUNTIME_FACT_IDS, splitList, type PropKind } from '../lib/guide-components';
 
 const root = resolve(__dirname, '..');
 const seed = loadSeed();
@@ -68,6 +68,8 @@ function validProp(kind: PropKind, value: string): boolean {
       return (NUM_KINDS as readonly string[]).includes(value);
     case 'fact':
       return (RUNTIME_FACT_IDS as readonly string[]).includes(value);
+    case 'memoryKind':
+      return (MEMORY_KINDS as readonly string[]).includes(value);
   }
 }
 
@@ -204,6 +206,26 @@ describe('guide MDX bodies (D38·D43)', () => {
       expect(ko.blocks, 'data blocks (hreflang pair = same page)').toEqual(en.blocks);
       expect(ko.sections, 'number of ## sections').toBe(en.sections);
     });
+  }
+});
+
+describe('memory rule per guide (10-03 D62 — graphics card weights vs whole file)', () => {
+  // 맥 가이드는 통합 메모리 — 필요량은 파일 전체. Num needGB 는 기본이 그래픽카드 규칙이라 통합 칩을 gpu 로 지정해야 하고,
+  // ModelMemoryTable 은 memory="unified" 여야 화면 숫자가 판정(엔진 fit)과 같다
+  const UNIFIED_GUIDES = ['mac-local-llm'] as const;
+  const unifiedGpuIds = new Set(seed.gpus.filter((g) => g.kind === 'unified').map((g) => g.id));
+  for (const slug of UNIFIED_GUIDES) {
+    for (const locale of LOCALES) {
+      it(`${locale}/${slug}: every needGB names a unified chip and every ModelMemoryTable is memory="unified"`, () => {
+        const problems = componentUsages(readMdx(locale, slug)).flatMap((u) => {
+          const at = `${locale}/${slug}.mdx:${u.line} <${u.name}>`;
+          if (u.name === 'Num' && u.props.kind === 'needGB' && !unifiedGpuIds.has(u.props.gpu ?? '')) return [`${at} needGB without a unified gpu`];
+          if (u.name === 'ModelMemoryTable' && u.props.memory !== 'unified') return [`${at} missing memory="unified"`];
+          return [];
+        });
+        expect(problems).toEqual([]);
+      });
+    }
   }
 });
 

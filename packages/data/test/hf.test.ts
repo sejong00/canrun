@@ -3,7 +3,8 @@
  * 네트워크 없음 (fetch 는 가짜). 조립 결과는 실제 시드 카탈로그와 함께 assessCombo·commandPlan 에 그대로 넣어 본다.
  */
 import { describe, expect, it } from 'vitest';
-import { assessCombo, commandPlan, deriveNonExpertGB, hardwareConfigs, verdictRank, type CatalogCore } from '../src/index';
+import { gpuResidentGBFor } from '@canrun/engine';
+import { assessCombo, commandPlan, deriveNonExpertGB, hardwareConfigs, toModelQuant, verdictRank, type CatalogCore } from '../src/index';
 import {
   buildHfModel,
   classifyArch,
@@ -231,11 +232,33 @@ describe('buildHfModel — MoE (qwen3_moe 128 experts top-8)', () => {
       fileGB: 18.56,
       expertGB: 17.55,
       nonExpertGB: 0.82,
+      // 10-03 D62: 기준 행만 분할이 있어 상주량 유도를 막는다(파일 전체로 판정 — 다른 행과 같은 기준)
+      offGpuGB: 0,
       ggufRepo: MOE_REPO,
       fileName: 'Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf',
     });
-    for (const row of res.rows.slice(1)) expect(row).not.toHaveProperty('expertGB');
+    for (const row of res.rows.slice(1)) {
+      expect(row).not.toHaveProperty('expertGB');
+      expect(row).not.toHaveProperty('offGpuGB');
+    }
     expect(res.notes).toEqual(['active-from-header']);
+  });
+
+  it('judges every quant row on the whole file, so no ladder inversion from a baseline-only split (10-03 D62)', () => {
+    const res = ok(
+      buildHfModel({
+        hfId: 'acme/Qwen3-MoE-Instruct',
+        ggufRepo: MOE_REPO,
+        config: MOE_CONFIG,
+        tree: MOE_TREE,
+        info: { license: 'apache-2.0', paramsB: 30.532122 },
+        baseSplit: MOE_SPLIT,
+      }),
+    );
+    for (const row of res.rows) {
+      const mq = toModelQuant(res.model, row);
+      expect(gpuResidentGBFor(mq)).toBe(row.fileGB);
+    }
   });
 
   it('name AxB wins for activeParamsB; without a header split nonExpertGB is derived (bpw-uniform)', () => {

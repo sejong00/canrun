@@ -57,13 +57,27 @@ async function translators(locale: Locale) {
 
 const REFERENCE_CTX = 8192;
 
-/** 기준 quant·8k 필요 메모리 분해 (메모리 행렬과 같은 식 — 가중치 + KV + 버퍼) */
+/**
+ * 기준 quant·8k 필요 메모리 분해 (메모리 행렬과 같은 식 — 그래픽카드에 올라가는 가중치 + KV + 버퍼, 10-03 D62).
+ * size = 파일, gpu = 그래픽카드 몫(입력 임베딩·MTP 블록 제외), mtp = MTP 블록이 있는 파일인지
+ */
 function needAt8k(hub: ModelHubData, quant: string) {
-  const row = hub.quants.find((q) => q.row.quant === quant)!.row;
+  const row = hub.matrix.rows.find((r) => r.quant === quant)!;
+  const record = hub.quants.find((q) => q.row.quant === quant)!.row;
   const kv = kvGB(hub.model.arch.kvBytesPerTokenF16, REFERENCE_CTX);
   const buffer = computeBufferGB(REFERENCE_CTX);
-  return { size: row.fileGB, kv, buffer, total: row.fileGB + kv + buffer };
+  return {
+    size: row.fileGB,
+    gpu: row.gpuWeightsGB,
+    mtp: record.mtpGB !== undefined,
+    kv,
+    buffer,
+    total: row.gpuWeightsGB + kv + buffer,
+  };
 }
+
+/** 이보다 작은 차이(임베딩 공유 모델의 헤더 메타데이터 수십 MB)는 FAQ 에서 따로 설명하지 않는다 */
+const OFF_GPU_NOTE_MIN_GB = 0.05;
 
 function rowLabel(t: Awaited<ReturnType<typeof translators>>, row: ModelGpuRow, locale: string) {
   const name = gpuName(t.names, row.gpu);
@@ -102,23 +116,27 @@ function buildFaq(
   const baseValues = {
     quant: hub.baselineQuant,
     size: formatGB(locale, base.size, 2),
+    gpu: formatGB(locale, base.gpu, 2),
     need: formatGB(locale, base.total),
     kv: formatGB(locale, base.kv),
     buffer: formatGB(locale, base.buffer),
   };
+  // 그래픽카드에 안 올리는 몫이 있으면 왜 파일보다 작은지(입력 임베딩·MTP)와 맥은 파일 전체라는 점을 덧붙인다
+  const offGpuNote =
+    base.size - base.gpu >= OFF_GPU_NOTE_MIN_GB ? ` ${t.faq(base.mtp ? 'modelVramOffGpuMtp' : 'modelVramOffGpu')}` : '';
   const items: QA[] = [
     {
       question: t.faq('modelVramQ', { model: model.name }),
       // 기준 파일이 곧 가장 작은 파일이면(gpt-oss MXFP4 단일 배포 등) 중복 문장을 뺀다
       answer:
-        smallest.row.quant === hub.baselineQuant
+        (smallest.row.quant === hub.baselineQuant
           ? t.faq('modelVramOnly', baseValues)
           : t.faq('modelVramA', {
               ...baseValues,
               // desperate(2비트)를 인용할 때는 "품질 손실 큼" (docs/01 §3)
               minQuant: quantText(t.hint, { quant: smallest.row.quant, tier: smallest.tier }),
               minNeed: formatGB(locale, needAt8k(hub, smallest.row.quant).total),
-            }),
+            })) + offGpuNote,
     },
   ];
 

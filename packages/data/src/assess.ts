@@ -13,6 +13,7 @@ import {
   EFF,
   evaluate,
   fit,
+  gpuResidentGBFor,
   kvGB,
   usableGB,
   usableRamGB,
@@ -200,9 +201,12 @@ export function unifiedCpuBandwidth(gpu: Pick<Gpu, 'effClass' | 'memBandwidthGBs
   return gpu.memBandwidthGBs * ratio;
 }
 
-/** 엔진 입력으로 넘기는 quant 행 필드 — MoE 행은 GGUF 헤더 실측 분할(expertGB·nonExpertGB)이 붙을 수 있다 */
+/**
+ * 엔진 입력으로 넘기는 quant 행 필드 — MoE 행은 GGUF 헤더 실측 분할(expertGB·nonExpertGB), dense 행은 헤더 실측
+ * offGpuGB(그래픽카드에 안 올리는 몫, 10-03 D62)가 붙을 수 있다
+ */
 export type QuantRowInput = Pick<ModelQuantCore, 'quant' | 'fileGB'> &
-  Partial<Pick<ModelQuantCore, 'expertGB' | 'nonExpertGB'>>;
+  Partial<Pick<ModelQuantCore, 'expertGB' | 'nonExpertGB' | 'offGpuGB'>>;
 
 /**
  * 카탈로그 모델 (+ 등록 quant 행) → 엔진 ModelQuant. 행이 없으면 bpw 폴백 경로.
@@ -225,7 +229,16 @@ export function toModelQuant(model: ModelCore, row?: QuantRowInput): ModelQuant 
     maxContext: model.maxContext,
     quant: row?.quant ?? 'Q4_K_M',
     fileGB: row?.fileGB,
+    ...(row?.offGpuGB !== undefined ? { offGpuGB: row.offGpuGB } : {}),
   };
+}
+
+/**
+ * 판정이 비교하는 가중치 GB — dGPU 는 그래픽카드에 올라가는 몫(파일 − 입력 임베딩·MTP 블록, 행 실측이 있을 때 — 10-03 D62),
+ * 통합 메모리·CPU 는 파일 전체. 필요량 문장·ctx 표·모델 허브 행렬·가이드 수치가 모두 이 규칙을 쓴다(엔진 fit 의 full-gpu 와 같다).
+ */
+export function needWeightsGB(kind: Hardware['kind'], mq: ModelQuant): number {
+  return kind === 'dgpu' ? gpuResidentGBFor(mq) : weightsGB(mq);
 }
 
 /** 리즈닝 모델 → 판정 임계 ×1.5 (docs/02 §5). 운영 정의는 category (결정 D5). */
@@ -307,7 +320,7 @@ export type VerdictReason =
   | 'cap-cpu-only';
 
 export type MemoryNeed = {
-  /** 가중치 + KV + 버퍼 (GB, OS 예약 제외) */
+  /** 가중치 + KV + 버퍼 (GB, OS 예약 제외) — 가중치는 `needWeightsGB`(dGPU 는 그래픽카드에 올라가는 몫) */
   totalNeedGB: number;
   /**
    * 엔진이 실제로 가용량과 비교하는 필요량 — CPU 경로(CPU 프로필, cpu-only 모드)는 가중치 + KV
@@ -322,6 +335,11 @@ export type MemoryNeed = {
   ramGB: number;
   /** 시스템 RAM 사용 가능량 (RAM − 4GB) */
   ramUsableGB: number;
+  /**
+   * dGPU 에 전량 올렸을 때(full-gpu) 파일 중 그래픽카드에 올리지 않는 GB — 입력 임베딩(시스템 RAM)·MTP 블록(미적재).
+   * 그 밖의 모드·하드웨어는 0. 분해 바의 각주용 (10-03 D62)
+   */
+  offGpuGB: number;
 };
 
 export type MeasuredJoin = {
@@ -335,6 +353,10 @@ export type QuantAssessment = {
   /** MoE 행의 GGUF 헤더 실측 분할 — ctx 계단·행렬(estimateAt)이 같은 값으로 다시 계산하도록 실어 나른다 */
   expertGB?: number;
   nonExpertGB?: number;
+  /** dense 행의 헤더 실측 GPU 밖 몫 (10-03 D62) — 위와 같은 이유로 실어 나른다 */
+  offGpuGB?: number;
+  /** MTP 블록 GB (헤더 실측) — 분해 바의 "MTP 를 켜면" 안내 */
+  mtpGB?: number;
   ggufRepo: string;
   tier: QuantTier;
   /** 표시 결과 — 실측이 조인되면 measured(중앙값), 아니면 estimate 와 동일 */
@@ -380,16 +402,24 @@ function memoryNeed(
   const kv = kvGB(mq.kvBytesPerToken, ctx, kvQuant);
   const hw = config.hw;
   const cpuPath = hw.kind === 'cpu' || (fits && result.mode === 'cpu-only');
+  const gpuNeed = needWeightsGB(hw.kind, mq) + kv + computeBufferGB(ctx);
   const base = {
-    totalNeedGB: weights + kv + computeBufferGB(ctx),
-    needGB: cpuPath ? weights + kv : weights + kv + computeBufferGB(ctx),
+    totalNeedGB: gpuNeed,
+    needGB: cpuPath ? weights + kv : gpuNeed,
     gpuUsableGB: hw.kind === 'cpu' ? 0 : Math.max(0, usableGB(hw)),
     ramUsableGB: Math.max(0, usableRamGB(hw)),
+    offGpuGB: 0,
   };
   if (!fits) return { ...base, gpuGB: 0, ramGB: 0 };
   switch (result.mode) {
     case 'full-gpu':
-      return { ...base, gpuGB: result.vram.total, ramGB: 0 };
+      // 입력 임베딩도 시스템 RAM 에 있지만 수백 MB 라 RAM 몫은 0 으로 두고, 분해 바 각주가 따로 알린다
+      return {
+        ...base,
+        gpuGB: result.vram.total,
+        ramGB: 0,
+        offGpuGB: hw.kind === 'dgpu' ? Math.max(0, weights - result.vram.weights) : 0,
+      };
     case 'cpu-moe':
     case 'partial-offload':
       return { ...base, gpuGB: result.vram.total, ramGB: weights - result.vram.weights };
@@ -467,6 +497,8 @@ export function assessQuant(input: AssessQuantInput): QuantAssessment {
     fileGB: row.fileGB,
     ...(row.expertGB !== undefined ? { expertGB: row.expertGB } : {}),
     ...(row.nonExpertGB !== undefined ? { nonExpertGB: row.nonExpertGB } : {}),
+    ...(row.offGpuGB !== undefined ? { offGpuGB: row.offGpuGB } : {}),
+    ...(row.mtpGB !== undefined ? { mtpGB: row.mtpGB } : {}),
     ggufRepo: row.ggufRepo,
     tier,
     result,
@@ -835,23 +867,29 @@ export function summarizeGpu(catalog: SeedCatalog, gpu: Gpu): GpuHubData {
 
 export type MemoryMatrix = {
   ctxs: number[];
-  rows: Array<{ quant: QuantId; fileGB: number; cellsGB: number[] }>;
+  /** gpuWeightsGB — 그래픽카드에 올라가는 가중치(dGPU 규칙, 10-03 D62). 셀 = 이 값 + KV f16 + 버퍼 */
+  rows: Array<{ quant: QuantId; fileGB: number; gpuWeightsGB: number; cellsGB: number[] }>;
 };
 
-/** quant × ctx 필요 메모리 (가중치 + KV f16 + 버퍼, OS 예약 제외) — 등록 행만 (MXFP4 bpw 환산 금지). */
+/**
+ * quant × ctx 필요 메모리 (그래픽카드에 올라가는 가중치 + KV f16 + 버퍼, OS 예약 제외) — 등록 행만 (MXFP4 bpw 환산 금지).
+ * dGPU 규칙이다: 맥(통합 메모리)은 파일 전체로 계산해 셀보다 입력 임베딩·MTP 블록만큼 더 든다(화면 각주).
+ */
 export function memoryMatrix(model: ModelCore, rows: readonly ModelQuantCore[]): MemoryMatrix {
   const ctxs = HUB_POLICY.matrixCtx.filter((ctx) => ctx <= model.maxContext);
   return {
     ctxs,
     rows: [...rows]
       .sort((a, b) => a.fileGB - b.fileGB)
-      .map((row) => ({
-        quant: row.quant,
-        fileGB: row.fileGB,
-        cellsGB: ctxs.map(
-          (ctx) => row.fileGB + kvGB(model.arch.kvBytesPerTokenF16, ctx) + computeBufferGB(ctx),
-        ),
-      })),
+      .map((row) => {
+        const gpuWeightsGB = needWeightsGB('dgpu', toModelQuant(model, row));
+        return {
+          quant: row.quant,
+          fileGB: row.fileGB,
+          gpuWeightsGB,
+          cellsGB: ctxs.map((ctx) => gpuWeightsGB + kvGB(model.arch.kvBytesPerTokenF16, ctx) + computeBufferGB(ctx)),
+        };
+      }),
   };
 }
 

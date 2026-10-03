@@ -2,10 +2,12 @@
 import { describe, expect, it } from 'vitest';
 import { CPU_MOE_GPU_LAYER_MARGIN } from '../src/constants';
 import { fit } from '../src/fit';
+import { evaluate } from '../src/index';
 import { computeBufferGB, kvGB, osReserveGB, usableGB, usableRamGB } from '../src/memory';
 import type { Hardware, ModelQuant } from '../src/types';
 import {
   LLAMA31_8B_Q4,
+  LLAMA31_8B_Q4_RESIDENT,
   LLAMA33_70B_Q4,
   M4_MAX_128,
   QWEN3_14B_Q4,
@@ -132,6 +134,76 @@ describe('§2.4 mode ordering', () => {
     expect(r.fits).toBe(true);
     expect(r.mode).toBe('full-gpu');
     expect(r.vram.limit).toBe(128);
+  });
+});
+
+describe('§2.4-1 dGPU full-gpu counts only GPU-resident weights (10-03 D62)', () => {
+  // 화면 출력 없는 7.6GB 카드: 16k 에서 파일 기준 필요량(4.92 + KV + 버퍼 ≈ 7.72)은 넘고, 상주량 기준(4.62 + … ≈ 7.42)은 들어간다
+  const card76: Hardware = { ...RTX_4060_8GB, vramGB: 7.6, isDisplayGpu: false };
+  const ctx16k = { ctx: 16384 };
+
+  it('uses fileGB − offGpuGB for the full-gpu need and the resident weights', () => {
+    const r = fit(RTX_4060_8GB, LLAMA31_8B_Q4_RESIDENT);
+    expect(r.mode).toBe('full-gpu');
+    expect(r.vram.weights).toBeCloseTo(4.62, 6);
+    expect(r.vram.total).toBeCloseTo(4.62 + r.vram.kv + r.vram.buffer + r.vram.osReserve, 6);
+  });
+
+  it('flips partial-offload to full-gpu only when the resident need fits', () => {
+    expect(fit(card76, LLAMA31_8B_Q4, ctx16k).mode).toBe('partial-offload');
+    const r = fit(card76, LLAMA31_8B_Q4_RESIDENT, ctx16k);
+    expect(r.mode).toBe('full-gpu');
+    expect(r.vram.weights + r.vram.kv + r.vram.buffer).toBeLessThanOrEqual(usableGB(card76));
+  });
+
+  it('leaves partial-offload unchanged: same GPU share and gpuFrac (denominator = whole file)', () => {
+    // 4060 × Llama 3.1 8B @16k: 상주량 기준 7.417 > 7.40 이라 여전히 부분 오프로드
+    const withField = fit(RTX_4060_8GB, LLAMA31_8B_Q4_RESIDENT, ctx16k);
+    const without = fit(RTX_4060_8GB, LLAMA31_8B_Q4, ctx16k);
+    expect(withField.mode).toBe('partial-offload');
+    expect(withField.gpuFrac).toBeCloseTo(without.gpuFrac!, 12);
+    expect(withField.vram.weights).toBeCloseTo(without.vram.weights, 12);
+  });
+
+  it('ignores offGpuGB on unified memory and CPU (Metal maps the whole mmap range)', () => {
+    expect(fit(M4_MAX_128, LLAMA31_8B_Q4_RESIDENT).vram.weights).toBeCloseTo(4.92, 6);
+    const cpu: Hardware = { kind: 'cpu', os: 'linux', memBandwidthGBs: 89.6, ramGB: 32, ramBandwidthGBs: 89.6, effClass: 'cpu' };
+    expect(fit(cpu, LLAMA31_8B_Q4_RESIDENT).vram.weights).toBeCloseTo(4.92, 6);
+  });
+
+  it('derives the resident weights of a MoE row from its measured split (expertGB + nonExpertGB)', () => {
+    // QWEN36 split 픽스처는 유도 경로를 탄다: 22.27 − (19.5 + 1.59) = 1.18GB(token_embd 0.29 + MTP 0.90)는 GPU 밖.
+    // 24GB 화면 출력 카드(사용 가능 23.4) × 32k: 파일 기준 23.74 는 넘치고 상주량 기준 22.56 은 들어간다
+    const card: Hardware = { ...RTX_4090, os: 'windows', isDisplayGpu: true };
+    const r = fit(card, QWEN36_35B_A3B_Q4_SPLIT, { ctx: 32768 });
+    expect(r.mode).toBe('full-gpu');
+    expect(r.vram.weights).toBeCloseTo(21.09, 6);
+    expect(fit(card, { ...QWEN36_35B_A3B_Q4_SPLIT, expertGB: undefined, nonExpertGB: 1.59 }, { ctx: 32768 }).mode).not.toBe(
+      'full-gpu',
+    );
+  });
+
+  it('pins the known cliff: just outside the new boundary gpuFrac ≤ resident/file < 0.9, so S drops straight to B (§3.4 note)', () => {
+    // Qwen3.5-9B Q8_0 (unsloth MTP-GGUF): 파일 9.79, GPU 밖 1.35(입력 임베딩 1.08 + MTP 0.26 + 헤더) → 상주 8.44, 상주/파일 0.862
+    const q35: ModelQuant = { paramsB: 9.65, fileGB: 9.79, offGpuGB: 1.35, quant: 'Q8_0', kvBytesPerToken: 32768, attnType: 'hybrid', maxContext: 262144 };
+    const card = (vramGB: number): Hardware => ({ ...RTX_4060_8GB, vramGB, isDisplayGpu: false, memBandwidthGBs: 448 });
+    const inside = evaluate(card(9.3), q35);
+    expect(inside).toMatchObject({ mode: 'full-gpu', verdict: 'S' });
+    const outside = fit(card(9.2), q35);
+    expect(outside.mode).toBe('partial-offload');
+    expect(outside.gpuFrac!).toBeLessThan(8.44 / 9.79);
+    expect(evaluate(card(9.2), q35).verdict).toBe('B');
+  });
+
+  it('bestQuant search drops the measured offGpuGB of the requested file', () => {
+    // RAM 4GB(사용 가능 0) — full-gpu 만 가능. 옛 offGpuGB 2GB 가 남으면 Q5_K_M 이 거짓으로 들어간다
+    const tight: Hardware = { kind: 'dgpu', os: 'linux', vramGB: 6, memBandwidthGBs: 272, ramGB: 4, ramBandwidthGBs: 51.2, effClass: 'nvidia' };
+    const q8: ModelQuant = { ...QWEN3_14B_Q4, paramsB: 8.2, fileGB: 8.71, quant: 'Q8_0', kvBytesPerToken: 144 * 1024 };
+    const plain = fit(tight, q8);
+    const stale = fit(tight, { ...q8, offGpuGB: 2 });
+    expect(stale.fits).toBe(false);
+    expect(plain.bestQuant).toBe('Q3_K_M');
+    expect(stale.bestQuant).toBe(plain.bestQuant);
   });
 });
 

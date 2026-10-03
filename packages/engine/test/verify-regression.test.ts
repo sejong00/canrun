@@ -20,6 +20,7 @@ import {
   GPT_OSS_20B,
   KV_CASES,
   LLAMA31_8B_Q4,
+  LLAMA31_8B_Q4_RESIDENT,
   QWEN3_14B_Q4,
   QWEN3_30B_A3B_Q4,
   QWEN3_8B_Q4,
@@ -103,6 +104,12 @@ describe('4) verdict sanity: RTX 4060 8GB (windows display, usable ≈ 7.4GB)', 
     ['gpt-oss-20b MXFP4', GPT_OSS_20B],
   ] as const)('%s: no full offload', (_name, mq) => {
     expect(evaluate(RTX_4060_8GB, mq).mode).not.toBe('full-gpu');
+  });
+
+  it('Qwen3-14B Q4_K_M stays off full offload with the header-measured GPU share (10-03 D62: 9.00 − 0.44 = 8.56GB)', () => {
+    // 입력 임베딩 0.44GB 를 빼도 8.56 + KV 1.31 + 버퍼 0.575 = 10.45 > 7.4 — 판정 새너티는 그대로
+    expect(evaluate(RTX_4060_8GB, { ...QWEN3_14B_Q4, offGpuGB: 0.44 }).mode).not.toBe('full-gpu');
+    expect(evaluate(RTX_4060_8GB, LLAMA31_8B_Q4_RESIDENT)).toMatchObject({ mode: 'full-gpu', verdict: 'S' });
   });
 });
 

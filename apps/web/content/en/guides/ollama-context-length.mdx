@@ -18,7 +18,7 @@ Some older guides still give a flat 2k or 4k default (see the FAQ below). To see
 
 ## What a longer context costs in memory
 
-A model's memory need has three parts: the model file at the quant our tables use as a baseline (Q4_K_M for every model below except gpt-oss-20b, which uses MXFP4), the KV cache, and a small compute buffer, the working memory the runtime needs during inference. The file does not change with context. The KV cache holds keys and values for every token in the window, so for a model with full attention on every layer it grows in step with the context: double the context, double the cache.
+A model's memory need has three parts: the weights at the quant our tables use as a baseline (Q4_K_M for every model below except gpt-oss-20b, which uses MXFP4), the KV cache, and a small compute buffer, the working memory the runtime needs during inference. On a graphics card the weights are slightly smaller than the model file, because llama.cpp keeps the input embedding table in system RAM. The weights do not change with context. The KV cache holds keys and values for every token in the window, so for a model with full attention on every layer it grows in step with the context: double the context, double the cache.
 
 How fast it grows depends on the architecture. With an f16 KV cache, Ollama's default type, 32k takes <Num kind="kvGB" model="llama-3.1-8b" ctx="32768" /> for Llama 3.1 8B but only <Num kind="kvGB" model="gpt-oss-20b" ctx="32768" /> for gpt-oss-20b, whose sliding-window layers keep only a short stretch of recent tokens. EXAONE 4.0 32B mixes sliding-window (local) and global attention layers in a 3:1 ratio, according to its model card, so its 32k total sits closer to Gemma 3 27B's than to Qwen3 32B's. The mechanics are explained in <GuideLink slug="kv-cache-context" />.
 
@@ -32,7 +32,7 @@ Compare each total with what your card can use, not the number on the box: a car
 
 Take <ComboLink model="llama-3.1-8b" gpu="rtx-4060" />, a common first setup. At Ollama's 4k default it needs <Num kind="needGB" model="llama-3.1-8b" ctx="4096" />, and at 8k it needs <Num kind="needGB" model="llama-3.1-8b" ctx="8192" />. Both fit in the <Num kind="usableGB" gpu="rtx-4060" /> the card can use, and at the 8k baseline it Runs great.<Expect model="llama-3.1-8b" gpu="rtx-4060" verdict="S" />
 
-At 16k with an f16 KV cache the need rises to <Num kind="needGB" model="llama-3.1-8b" ctx="16384" />, just over the usable amount, and 32k takes it to <Num kind="needGB" model="llama-3.1-8b" ctx="32768" />. Past that line our model moves part of the weights to system RAM (partial offload). In the 64k f16 cell and the 128k f16 and q8_0 cells, the KV cache alone is larger than the card's usable memory, so our model runs those on the CPU only. The table shows what each does to the verdict and the speed band, and its q8_0 and q4_0 columns show the other way out, a smaller KV cache.
+At 16k with an f16 KV cache the need rises to <Num kind="needGB" model="llama-3.1-8b" ctx="16384" />, about all the card can use, so in our model it no longer fits fully, and 32k takes it to <Num kind="needGB" model="llama-3.1-8b" ctx="32768" />. Past that line our model moves part of the weights to system RAM (partial offload). In the 64k f16 cell and the 128k f16 and q8_0 cells, the KV cache alone is larger than the card's usable memory, so our model runs those on the CPU only. The table shows what each does to the verdict and the speed band, and its q8_0 and q4_0 columns show the other way out, a smaller KV cache.
 
 <CtxTable model="llama-3.1-8b" gpu="rtx-4060" />
 
@@ -113,7 +113,7 @@ Where to go next:
 
 ## How sure are these numbers?
 
-The memory figures (file, KV cache, compute buffer) are deterministic: they are calculated from real GGUF file sizes and each model's published configuration. The speeds in the tables are estimates, each with a band and a confidence label. Calibrated means ±12% for dense models running fully on an NVIDIA or AMD card, and ±20% for partial offload, MoE models and other hardware; theoretical means ±30%. Every cell in this guide's two context tables is calibrated (±12% when fully on the GPU, ±20% for partial-offload or CPU-only cells), except the 8k f16 cell for Llama 3.1 8B on the RTX 4060, which is measured.
+The memory figures (weights, KV cache, compute buffer) are deterministic: they are calculated from real GGUF file sizes and headers and each model's published configuration. The speeds in the tables are estimates, each with a band and a confidence label. Calibrated means ±12% for dense models running fully on an NVIDIA or AMD card, and ±20% for partial offload, MoE models and other hardware; theoretical means ±30%. Every cell in this guide's two context tables is calibrated (±12% when fully on the GPU, ±20% for partial-offload or CPU-only cells), except the 8k f16 cell for Llama 3.1 8B on the RTX 4060, which is measured.
 
 That measurement is one public data point for the <HubLink gpu="rtx-4060" />. It comes from LocalScore at a 4k context, not from an Ollama run, and it is shown next to our 8k estimate band.
 
