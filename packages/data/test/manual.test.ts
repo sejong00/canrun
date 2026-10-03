@@ -64,6 +64,15 @@ describe('buildManualModel — catalog twins', () => {
     expect(model.arch.attnType).toBe('hybrid');
   });
 
+  it('Gemma 4 26B-A4B with the global KV heads and head dimension on 5 full-attention layers out of 30: KV equals the catalog record', () => {
+    // 화면 안내(리뷰 반영): config.json 에 num_global_key_value_heads·global_head_dim 이 있으면 그 값을 넣는다 — 슬라이딩 층 값(8·256)이면 2배 과대
+    const { model } = ok(
+      buildManualModel({ paramsB: 26.54, activeParamsB: 4, experts: 128, topK: 8, layers: 30, kvHeads: 2, headDim: 512, fullAttnLayers: 5 }),
+    );
+    expect(model.arch.kvBytesPerTokenF16).toBe(catalogModel('gemma-4-26b-a4b').arch.kvBytesPerTokenF16);
+    expect(model.arch.kvBytesPerTokenF16).toBe(20480);
+  });
+
   it('no max context → a value above the whole context ladder (no clamping); thinking → default-on', () => {
     const { model } = ok(buildManualModel({ ...LLAMA_8B, maxContext: undefined, thinking: true }));
     expect(model.maxContext).toBe(MANUAL_UNKNOWN_MAX_CONTEXT);
@@ -143,6 +152,28 @@ describe('buildManualModel — incomplete and invalid input', () => {
         const arch = { totalParamsB: p, activeParamsB: below, experts: e, topK: t };
         const fileGB = Math.round(((p * 4.8944) / 8) * 100) / 100;
         expect(Math.round(deriveNonExpertGB(arch, fileGB) * 100) / 100, `${p}/${e}/${t} below`).toBeLessThanOrEqual(0);
+      }
+    }
+  });
+
+  it('top-k so close to the expert count that no active value is below the total → a top-k problem, not an impossible minimum', () => {
+    // 1B·128 전문가·top-k 127: 최소 활성값이 1(= 전체)이 되어 "활성 < 전체" 와 모순이던 경우 (리뷰 반영)
+    for (const [p, e, t] of [[1, 128, 127], [0.5, 64, 63], [1.5, 256, 255]] as const) {
+      const spec: ManualSpec = { paramsB: p, activeParamsB: 0.1, experts: e, topK: t, layers: 32, kvHeads: 8, headDim: 128 };
+      expect(manualIssues(spec), `${p}/${e}/${t}`).toEqual({ topK: { code: 'topk-no-room' } });
+      expect(buildManualModel(spec)).toEqual({ kind: 'invalid', field: 'topK', issue: { code: 'topk-no-room' } });
+      // 활성 값을 넣기 전에도 top-k 칸에 알린다
+      expect(manualIssues({ paramsB: p, experts: e, topK: t }).topK).toEqual({ code: 'topk-no-room' });
+    }
+    // 안내한 최소값은 늘 전체보다 작다 — 작은 모델·높은 top-k 비율을 훑는다
+    for (const p of [0.1, 0.5, 1, 1.5, 3, 8]) {
+      for (const e of [2, 4, 16, 64, 128, 256, 512]) {
+        for (const t of [1, Math.floor(e / 2), e - 2, e - 1].filter((k) => k >= 1 && k < e)) {
+          const issues = manualIssues({ paramsB: p, activeParamsB: 0.1, experts: e, topK: t });
+          const min = issues.activeParamsB?.code === 'active-too-small' ? issues.activeParamsB.min : undefined;
+          if (min === undefined) continue;
+          expect(buildManualModel({ paramsB: p, activeParamsB: min, experts: e, topK: t, layers: 32, kvHeads: 8, headDim: 128 }).kind, `${p}/${e}/${t}`).toBe('ok');
+        }
       }
     }
   });

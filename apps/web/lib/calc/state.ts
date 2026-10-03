@@ -1,7 +1,7 @@
 /**
  * 계산기 상태 (P1-3 D31) — 순수 타입·기본값·정규화. URL 코덱(url.ts)과 아일랜드 리듀서가 공유한다.
  */
-import { HUB_POLICY, type CatalogLite, type GpuCore, type ManualSpec } from '@canrun/data/client';
+import { HUB_POLICY, MANUAL_NUMBER_FIELDS, type CatalogLite, type GpuCore, type ManualSpec } from '@canrun/data/client';
 import type { EffClass, KvQuant, Os, Verdict } from '@canrun/engine';
 
 export type DdrKind = 'ddr4-3200' | 'ddr5-5600' | 'ddr5-6000';
@@ -227,6 +227,14 @@ export function isCpuProfile(catalog: CatalogLite, gpuId: string): boolean {
 /** 값이 있는 칸이 하나라도 있는가 (생각 모드는 체크했을 때만 값) */
 export function hasManualValue(spec: ManualSpec | undefined): boolean {
   return spec !== undefined && Object.values(spec).some((v) => v !== undefined && v !== false);
+}
+
+/**
+ * 숫자 칸에 값이 하나라도 있는가 — 불러온 HF 모델을 직접 입력 모델로 바꾸는 기준. 생각 모드·최대 컨텍스트만으로는 바꾸지 않는다
+ * (불러온 모델에 대한 설정으로 오해하기 쉽고, 그것만으로는 계산할 모델이 생기지 않는다 — 리뷰 반영)
+ */
+export function hasManualNumber(spec: ManualSpec | undefined): boolean {
+  return spec !== undefined && MANUAL_NUMBER_FIELDS.some((f) => spec[f] !== undefined);
 }
 
 /** 빈 칸(undefined)·체크 안 한 생각 모드를 지운다 — 다 비면 undefined. 지울 것이 없으면 같은 객체 */

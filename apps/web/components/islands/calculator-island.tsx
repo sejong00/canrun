@@ -19,7 +19,7 @@ import type { ResolvedHardware } from '@/lib/calc/hardware';
 import type { HfLoadResult } from '@/lib/calc/hf-load';
 import { assembleResults, type ExtraModel } from '@/lib/calc/run';
 import { assembleModelRows, filterGpuRows, myConfigRow } from '@/lib/calc/run-model';
-import { defaultState, hasManualValue, type CalcState } from '@/lib/calc/state';
+import { defaultState, hasManualNumber, hasManualValue, type CalcState } from '@/lib/calc/state';
 import { parseCalcQuery, serializeCalcQuery } from '@/lib/calc/url';
 import { useHydrated } from '@/lib/hydration';
 import type { Dict } from '@/lib/i18n-lite';
@@ -62,6 +62,14 @@ export function CalculatorIsland({
   // "모델 값 직접 입력" 펼침·MoE 체크 (D66) — 패널이 모드마다 다른 자리에 다시 그려지므로 여기서 갖는다. 펼치기·체크만으로는 상태를 바꾸지 않는다
   const [manualOpen, setManualOpen] = useState(false);
   const [manualMoe, setManualMoe] = useState(false);
+  // 카탈로그 모델 고르기·HF 불러오기가 대신 지운 직접 입력 값 — "입력했던 값 다시 넣기" 로 되살린다 (리뷰 반영: HF 는 입력창 글자가 남는데
+  // 직접 입력은 최대 10칸을 다시 쳐야 했다). 방문자가 직접 지우면 버린다
+  const [manualStash, setManualStash] = useState<ManualSpec | undefined>(undefined);
+  // 늦게 끝나는 불러오기(then)도 지금 값을 보관하게 — 렌더 때의 state 는 낡았을 수 있다
+  const manualNow = useRef<ManualSpec | undefined>(undefined);
+  useEffect(() => {
+    manualNow.current = state.manual;
+  }, [state.manual]);
 
   // 마운트: URL → 상태 (islands/** 한정 set-state-in-effect 예외, D36) + popstate 복원.
   // 하이드레이션 전에 입력창에 타이핑한 텍스트(D29)는 URL 에 GPU 가 없을 때 그대로 해석해 시드한다
@@ -125,6 +133,10 @@ export function CalculatorIsland({
   const catalogIdFor = (hfId: string) => catalog.models.find((m) => m.hfId.toLowerCase() === hfId.toLowerCase())?.id;
   // 불러오기 차례 번호 — 늦게 끝난 이전 요청(다른 모델·빼기 뒤)의 결과는 버린다 (10-01 리뷰)
   const hfSeq = useRef(0);
+  // 다른 모델로 바뀌며 지워질 직접 입력 값을 보관한다 (숫자 칸이 비었으면 이전 보관분을 그대로 둔다)
+  const stashManual = () => {
+    if (hasManualNumber(manualNow.current)) setManualStash(manualNow.current);
+  };
   const loadHf = (text: string) => {
     const seq = ++hfSeq.current;
     setHfStatus({ kind: 'loading' });
@@ -133,15 +145,19 @@ export function CalculatorIsland({
       .then((result) => {
         if (seq !== hfSeq.current) return;
         if (result.kind === 'catalog') {
-          // 이미 목록에 있는 모델 — 불러오지 않고 그 카드를 강조한다(URL 의 m=)
+          // 이미 목록에 있는 모델 — 불러오지 않고 그 카드를 강조한다(URL 의 m=). 직접 입력 모델도 내려놓는다: 남아 있으면
+          // 고정 카드·모델 모드 대상이 그대로라 상태 문장과 어긋난다 (리뷰 반영)
           const name = catalog.models.find((m) => m.id === result.modelId)?.name ?? result.modelId;
           setHfLoad(undefined);
           setHfStatus({ kind: 'catalog', name });
+          stashManual();
           dispatch({ type: 'hf', hf: undefined });
+          dispatch({ type: 'manual', patch: null });
           dispatch({ type: 'focus', focus: result.modelId });
         } else if (result.kind === 'ok') {
           setHfLoad({ id: result.hfId, result });
           setHfStatus({ kind: 'loaded', name: result.model.name });
+          stashManual();
           dispatch({ type: 'hf', hf: result.hfId });
         } else {
           setHfStatus({ kind: 'error', code: result.code, ...(result.modelType ? { modelType: result.modelType } : {}) });
@@ -164,17 +180,26 @@ export function CalculatorIsland({
     setHfLoad(undefined);
     setHfStatus({ kind: 'idle' });
   };
-  // "빼기" — 불러온 모델과 직접 입력 값을 함께 뺀다
-  const removeExtra = () => {
+  // HF 폼의 "빼기" — 불러온(불러오는 중인) 모델만. 직접 입력 값은 펼침 영역의 "입력한 값 지우기"로 (리뷰 반영)
+  const removeHf = () => {
     dropHf();
     dispatch({ type: 'hf', hf: undefined });
+  };
+  // 직접 입력 (D66): 숫자 칸에 값이 생기는 순간 불러온 모델에서 넘어온다 — 진행 중인 불러오기 결과도 버린다(차례 번호). 키를 누를 때마다가
+  // 아니라 불러온 모델이 걸려 있거나 불러오는 중일 때만, 또는 이전 불러오기의 안내 문장이 남아 있을 때만
+  const patchManual = (patch: Partial<ManualSpec>) => {
+    if (hasManualNumber({ ...state.manual, ...patch }) && (state.hf !== undefined || hfStatus.kind !== 'idle')) dropHf();
+    dispatch({ type: 'manual', patch });
+  };
+  const clearManual = () => {
+    setManualStash(undefined);
     dispatch({ type: 'manual', patch: null });
   };
-  // 직접 입력 (D66): 값이 생기는 순간 불러온 모델에서 넘어온다 — 진행 중인 불러오기 결과도 버린다(차례 번호). 키를 누를 때마다가 아니라
-  // 불러온 모델이 걸려 있거나 불러오는 중일 때만, 또는 이전 불러오기의 안내 문장이 남아 있을 때만
-  const patchManual = (patch: Partial<ManualSpec>) => {
-    if (hasManualValue({ ...state.manual, ...patch }) && (state.hf !== undefined || hfStatus.kind !== 'idle')) dropHf();
-    dispatch({ type: 'manual', patch });
+  const restoreManual = () => {
+    if (!manualStash) return;
+    setManualMoe(isManualMoe(manualStash));
+    setManualStash(undefined);
+    patchManual(manualStash);
   };
   const setMoe = (moe: boolean) => {
     setManualMoe(moe);
@@ -184,10 +209,14 @@ export function CalculatorIsland({
   const focusResults = () => window.setTimeout(() => document.getElementById('results-heading')?.focus(), 0);
   const pickModel = (modelId: string) => {
     dropHf();
+    stashManual();
     dispatch({ type: 'pickModel', focus: modelId });
   };
   const seeGpus = (modelId?: string) => {
-    if (modelId !== undefined) dropHf();
+    if (modelId !== undefined) {
+      dropHf();
+      stashManual();
+    }
     dispatch(modelId !== undefined ? { type: 'toModel', focus: modelId } : { type: 'toModel' });
     focusResults();
   };
@@ -257,11 +286,11 @@ export function CalculatorIsland({
       status={hfStatus}
       hasHardware={results !== undefined}
       modelMode={modelMode}
-      canRemove={state.hf !== undefined || hfStatus.kind === 'loading' || state.manual !== undefined}
+      canRemove={state.hf !== undefined || hfStatus.kind === 'loading'}
       text={hfText}
       onTextChange={setHfText}
       onLoad={loadHf}
-      onRemove={removeExtra}
+      onRemove={removeHf}
     >
       <ManualModelFields
         locale={locale}
@@ -273,6 +302,9 @@ export function CalculatorIsland({
         moe={manualMoe}
         onMoeChange={setMoe}
         onPatch={patchManual}
+        hfActive={state.hf !== undefined}
+        onClear={clearManual}
+        {...(manualStash && !hasManualValue(state.manual) ? { onRestore: restoreManual } : {})}
         status={
           extra?.origin === 'manual'
             ? modelMode

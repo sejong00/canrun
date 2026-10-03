@@ -1,14 +1,32 @@
 /**
  * 계산기 — 모델 값 직접 입력 (계산기 P2, PROGRESS §4 D66). 모델 카드·config.json 숫자를 넣으면 결과 맨 위 고정 카드(이론 추정,
  * 명령·링크 없음, "약 N GB")가 생기고 URL `mm=` 로 공유·복원된다. Hugging Face 에는 아무 요청도 보내지 않는다.
- * 확인: 입력 → 카드·mm= 동기 → 새로고침 복원, MoE 비율 안내와 최소값, 빼기, HF 불러오기와 서로 대체, 모델 모드 대상, 휴대폰 폭.
+ * 확인: 입력 → 카드·mm= 동기 → 새로고침 복원, config.json 키 안내(늘 보임)·필수 안내(입력을 시작한 뒤), MoE 비율 안내와 최소값, 입력한 값 지우기,
+ * HF 불러오기와 서로 대체(HF 모델이 있는 동안 생각 모드·최대 컨텍스트 비활성), 목록에 있는 HF id·카탈로그 모델 고르기 뒤 입력했던 값 되살리기,
+ * 모델 모드 대상, 휴대폰 폭.
  */
 import { expect, test, type Page } from '@playwright/test';
 import { collectProblems, LOCALES, localePath, mockHf, open } from './helpers';
 
 const TEXT = {
-  en: { name: 'Custom model', heading: 'your custom model', badge: 'Entered by hand', approx: 'about', below: 'below', theoretical: 'theoretical estimate ±30%' },
-  ko: { name: '직접 입력한 모델', heading: '직접 입력한 모델', badge: '직접 입력', approx: '약', below: '아래에서', theoretical: '이론 추정 ±30%' },
+  en: {
+    name: 'Custom model',
+    heading: 'your custom model',
+    badge: 'Entered by hand',
+    approx: 'about',
+    below: 'below',
+    theoretical: 'theoretical estimate ±30%',
+    required: 'Needed to calculate.',
+  },
+  ko: {
+    name: '직접 입력한 모델',
+    heading: '직접 입력한 모델',
+    badge: '직접 입력',
+    approx: '약',
+    below: '아래에서',
+    theoretical: '이론 추정 ±30%',
+    required: '계산에 필요한 값입니다.',
+  },
 } as const;
 
 /** 펼침 영역 열기 — 요약 줄 클릭 */
@@ -39,8 +57,16 @@ for (const locale of LOCALES) {
       await open(page, `${calc}?gpu=rtx-4060`);
       await expect(page.locator('[data-results] [data-result-card]').first()).toBeVisible();
       const details = await openManual(page);
+      // config.json 키 안내는 빈 칸에서도 보이고, "계산에 필요한 값" 은 입력을 시작한 뒤 빈 필수 칸에만 붙는다 (리뷰 반영)
+      const layersHint = details.locator('div:has(> input[name="mm-layers"]) > p');
+      await expect(layersHint).toContainText('num_hidden_layers');
+      await expect(layersHint).not.toContainText(text.required);
+      await expect(details.locator('div:has(> select[name="mm-ctx"]) > p')).toContainText('max_position_embeddings');
       await details.locator('input[name="mm-paramsB"]').fill('8.03');
+      await expect(layersHint).toContainText(text.required);
+      await expect(layersHint).toContainText('num_hidden_layers');
       await details.locator('input[name="mm-layers"]').fill('32');
+      await expect(layersHint).not.toContainText(text.required);
       await details.locator('input[name="mm-kvHeads"]').fill('8');
       await details.locator('input[name="mm-headDim"]').fill('128');
 
@@ -71,7 +97,7 @@ for (const locale of LOCALES) {
       expect(problems).toEqual([]);
     });
 
-    test('MoE: a too-small active count names the minimum, the minimum works, Remove clears the card and mm=', async ({ page }) => {
+    test('MoE: a too-small active count names the minimum, the minimum works, Clear values clears the card and mm=', async ({ page }) => {
       const problems = collectProblems(page);
       await open(page, `${calc}?gpu=rtx-4060`);
       await expect(page.locator('[data-results] [data-result-card]').first()).toBeVisible();
@@ -104,10 +130,14 @@ for (const locale of LOCALES) {
       await expect(page.locator('[data-hf-result]')).toHaveCount(0);
       await layers.fill('48');
 
-      await page.locator('[data-hf-remove]').click();
+      // 지우기는 펼침 영역 안에 — HF 폼의 "빼기"는 불러온 모델에만 (리뷰 반영)
+      await expect(page.locator('[data-hf-remove]')).toHaveCount(0);
+      await details.locator('[data-manual-clear]').click();
       await expect(page.locator('[data-hf-result]')).toHaveCount(0);
       await expect.poll(() => new URL(page.url()).searchParams.get('mm')).toBeNull();
       await expect(details.locator('input[name="mm-paramsB"]')).toHaveValue('');
+      // 방문자가 직접 지운 값은 되살리기를 권하지 않는다
+      await expect(details.locator('[data-manual-restore]')).toHaveCount(0);
       expect(problems).toEqual([]);
     });
 
@@ -125,7 +155,11 @@ for (const locale of LOCALES) {
 
       const details = await openManual(page);
       await expect(details.locator('input[name="mm-paramsB"]')).toHaveValue('');
+      // 생각 모드·최대 컨텍스트만으로는 불러온 모델을 바꾸지 않는다 — HF 모델이 있는 동안 비활성 (리뷰 반영)
+      await expect(details.locator('input[name="mm-thinking"]')).toBeDisabled();
+      await expect(details.locator('select[name="mm-ctx"]')).toBeDisabled();
       await details.locator('input[name="mm-paramsB"]').fill('7');
+      await expect(details.locator('input[name="mm-thinking"]')).toBeEnabled();
       await expect(page.locator('[data-hf-result]')).toHaveCount(0);
       await expect.poll(() => new URL(page.url()).searchParams.get('hf')).toBeNull();
       await expect.poll(() => new URL(page.url()).searchParams.get('mm')).toBe('p7');
@@ -134,6 +168,46 @@ for (const locale of LOCALES) {
       await panel.locator('input[name="hf"]').fill('acme/not-a-real-model');
       await panel.locator('[data-hf-submit]').click();
       await expect(panel.locator('[data-hf-status]')).toContainText(text.below);
+    });
+
+    test('a Hugging Face id already in the list drops the typed model; the typed values come back with one click', async ({ page }) => {
+      const problems = collectProblems(page);
+      await open(page, `${calc}?gpu=rtx-4060&mm=p8.03-l32-k8-d128`);
+      const pinned = page.locator('[data-hf-result][data-pinned-kind="manual"] [data-result-card]');
+      await expect(pinned).toHaveCount(1);
+      const panel = page.locator('[data-hf-panel]');
+      // 목록에 있는 모델(Qwen/Qwen3-8B = qwen3-8b) — 그 카드를 강조하고, 직접 입력 카드는 내려놓는다 (리뷰 반영)
+      await panel.locator('input[name="hf"]').fill('Qwen/Qwen3-8B');
+      await panel.locator('[data-hf-submit]').click();
+      await expect(panel.locator('[data-hf-status]')).toContainText('Qwen3 8B');
+      await expect(page.locator('[data-hf-result]')).toHaveCount(0);
+      await expect(page.locator('[data-result-card][data-model-id="qwen3-8b"]')).toHaveAttribute('aria-current', 'true');
+      await expect.poll(() => new URL(page.url()).searchParams.get('mm')).toBeNull();
+      const details = page.locator('details[data-manual-model]');
+      await expect(details.locator('input[name="mm-paramsB"]')).toHaveValue('');
+      await details.locator('[data-manual-restore]').click();
+      await expect(pinned).toHaveCount(1);
+      await expect(details.locator('input[name="mm-paramsB"]')).toHaveValue('8.03');
+      await expect.poll(() => new URL(page.url()).searchParams.get('mm')).toBe('p8.03-l32-k8-d128');
+      await expect(details.locator('[data-manual-restore]')).toHaveCount(0);
+      expect(problems).toEqual([]);
+    });
+
+    test('model mode: picking a catalog model replaces the typed model, and the typed values come back as the target', async ({ page }) => {
+      const problems = collectProblems(page);
+      await open(page, `${calc}?mode=model&mm=p30.5-a3.3-e128-t8-l48-k4-d128`);
+      const heading = page.locator('[data-gpu-results] #results-heading');
+      await expect(heading).toContainText(text.heading);
+      await page.locator('[data-model-form] select[name="m"]').selectOption('qwen3-14b');
+      await expect(heading).toContainText('Qwen3 14B');
+      await expect.poll(() => new URL(page.url()).searchParams.get('mm')).toBeNull();
+      const details = page.locator('details[data-manual-model]');
+      await details.locator('[data-manual-restore]').click();
+      await expect(heading).toContainText(text.heading);
+      // MoE 칸도 함께 되살아난다
+      await expect(details.locator('input[name="mm-activeParamsB"]')).toHaveValue('3.3');
+      await expect.poll(() => new URL(page.url()).searchParams.get('mm')).toBe('p30.5-a3.3-e128-t8-l48-k4-d128');
+      expect(problems).toEqual([]);
     });
 
     test('model mode: the typed model is the target — its name, approximate sizes and the note', async ({ page }) => {

@@ -65,6 +65,23 @@ describe('calculator reducer — manual model values (D66)', () => {
     expect(typed.hf).toBeUndefined();
   });
 
+  it('ticking the thinking mode or picking a maximum context alone keeps a loaded HF model (only number fields replace it)', () => {
+    const loaded = at('rtx-4060', { hf: 'Qwen/Qwen3-4B' });
+    expect(reduce(loaded, { type: 'manual', patch: { thinking: true } })).toMatchObject({ hf: 'Qwen/Qwen3-4B', manual: undefined });
+    expect(reduce(loaded, { type: 'manual', patch: { maxContext: 32768 } })).toMatchObject({ hf: 'Qwen/Qwen3-4B', manual: undefined });
+    // 생각 모드를 체크한 뒤 숫자를 넣으면 그때 바뀐다 (HF 모델이 없을 때의 생각 모드는 그대로 남는다)
+    const plain = reduce(at('rtx-4060'), { type: 'manual', patch: { thinking: true } });
+    expect(plain.manual).toEqual({ thinking: true });
+  });
+
+  it('a Hugging Face id that is already in the catalog drops a typed-in model too (the island sends hf, manual null, focus)', () => {
+    const typed = at('rtx-4060', { mode: 'model', focus: 'qwen3-14b', manual: { paramsB: 8.03, layers: 32, kvHeads: 8, headDim: 128 } });
+    let s = reduce(typed, { type: 'hf', hf: undefined });
+    s = reduce(s, { type: 'manual', patch: null });
+    s = reduce(s, { type: 'focus', focus: 'qwen3-8b' });
+    expect(s).toMatchObject({ focus: 'qwen3-8b', manual: undefined, hf: undefined });
+  });
+
   it('patches merge; mid-typing out-of-range values stay; clearing the last field drops the spec', () => {
     let s = reduce(at('rtx-4060'), { type: 'manual', patch: { paramsB: 8.03 } });
     s = reduce(s, { type: 'manual', patch: { headDim: 1 } });

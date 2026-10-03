@@ -49,7 +49,7 @@ export function HfModelPanel({
   hasHardware: boolean;
   /** 모델 모드(D65) — 불러온 모델이 GPU 목록의 대상이 된다 (상태 문장만 다르다) */
   modelMode?: boolean;
-  /** 불러온·직접 입력한 모델이 걸려 있거나 불러오는 중 — 다음 불러오기가 실패해도 뺄 수 있게 상태가 아니라 이것으로 정한다 */
+  /** 불러온 모델이 걸려 있거나 불러오는 중 — 다음 불러오기가 실패해도 뺄 수 있게 상태가 아니라 이것으로 정한다 (직접 입력 값은 펼침 영역 안에서 지운다) */
   canRemove: boolean;
   /**
    * 입력창 글자 — 아일랜드가 갖는다. 모드를 바꾸면 이 패널이 다른 자리에 다시 그려지므로(D65) 패널 안 상태로 두면 친 주소가 사라진다 (리뷰 반영)
@@ -57,7 +57,7 @@ export function HfModelPanel({
   text: string;
   onTextChange: (text: string) => void;
   onLoad: (text: string) => void;
-  /** 불러온 모델과 직접 입력 값을 함께 뺀다 */
+  /** 불러온(불러오는 중인) 모델을 뺀다 */
   onRemove: () => void;
   children?: ReactNode;
 }) {

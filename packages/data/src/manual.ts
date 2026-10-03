@@ -75,7 +75,9 @@ export type ManualIssue =
   | { code: 'range'; min: number; max: number; integer: boolean }
   | { code: 'active-too-large' }
   | { code: 'active-too-small'; min: number }
-  | { code: 'topk-too-large' };
+  | { code: 'topk-too-large' }
+  /** top-k 가 전문가 수에 너무 가까워 활성 파라미터를 어떤 값으로 넣어도 비전문가 크기가 0 이 되는 경우(작은 모델) — 불가능한 최소값을 안내하지 않는다 */
+  | { code: 'topk-no-room' };
 
 export type ManualBuild =
   | { kind: 'ok'; model: ModelCore; rows: ModelQuantCore[] }
@@ -130,6 +132,10 @@ export function manualIssues(spec: ManualSpec): Partial<Record<ManualNumberField
     out.fullAttnLayers = { code: 'range', min: MANUAL_LIMITS.fullAttnLayers.min, max: spec.layers!, integer: true };
   }
   if (ok('topK') && ok('experts') && spec.topK! >= spec.experts!) out.topK = { code: 'topk-too-large' };
+  // 최소 활성값이 전체 파라미터(반올림)에 닿으면 "활성 < 전체" 와 모순 — 활성 칸 대신 top-k 칸에 알린다 (리뷰 반영: 1B·128 전문가·top-k 127)
+  if (ok('topK') && ok('experts') && ok('paramsB') && minActiveParamsB(spec.paramsB!, spec.experts!, spec.topK!) >= round2(spec.paramsB!)) {
+    out.topK = { code: 'topk-no-room' };
+  }
   if (ok('activeParamsB') && ok('paramsB')) {
     const total = spec.paramsB!;
     const active = spec.activeParamsB!;

@@ -4,7 +4,7 @@
 import type { CatalogLite, ManualSpec } from '@canrun/data/client';
 import type { EffClass } from '@canrun/engine';
 import { makeT, type Dict, type TranslateWithHas } from '@/lib/i18n-lite';
-import { hasManualValue, normalize, type CalcState, type CustomHardware, type HardwareChoice } from '@/lib/calc/state';
+import { hasManualNumber, normalize, type CalcState, type CustomHardware, type HardwareChoice } from '@/lib/calc/state';
 
 export type CalcTranslators = {
   calc: TranslateWithHas;
@@ -91,7 +91,7 @@ export type CalcAction =
   | { type: 'sort'; sort: CalcState['sort'] }
   | { type: 'focus'; focus: string | undefined }
   | { type: 'hf'; hf: string | undefined }
-  /** 직접 입력 모델 값 병합(D66) — 값이 하나라도 생기면 불러온 HF 모델을 뺀다. null = 직접 입력 지우기 */
+  /** 직접 입력 모델 값 병합(D66) — 숫자 칸에 값이 생기면 불러온 HF 모델을 뺀다. null = 직접 입력 지우기 */
   | { type: 'manual'; patch: Partial<ManualSpec> | null }
   | { type: 'gpus'; gpus: number | undefined }
   | { type: 'clearFilters' }
@@ -163,8 +163,9 @@ export function makeReducer(catalog: CatalogLite) {
       case 'manual': {
         if (action.patch === null) return normalize({ ...state, manual: undefined }, catalog);
         const manual: ManualSpec = { ...state.manual, ...action.patch };
-        // 펼치기·빈 칸 지우기만으로는 불러온 모델을 빼지 않는다 — 값이 하나라도 있을 때만 (적대적 검토 반영)
-        return normalize({ ...state, manual, ...(hasManualValue(manual) ? { hf: undefined } : {}) }, catalog);
+        // 펼치기·빈 칸 지우기만으로는 불러온 모델을 빼지 않는다 — 숫자 칸에 값이 있을 때만 (적대적 검토 반영).
+        // 생각 모드·최대 컨텍스트만으로도 빼지 않는다(그 둘은 HF 모델이 있는 동안 비활성 — 리뷰 반영)
+        return normalize({ ...state, manual, ...(hasManualNumber(manual) ? { hf: undefined } : {}) }, catalog);
       }
       case 'gpus':
         return normalize({ ...state, gpus: action.gpus }, catalog);
