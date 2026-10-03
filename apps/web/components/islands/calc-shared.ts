@@ -72,31 +72,39 @@ export function classKey(effClass: EffClass): string {
   }
 }
 
-/**
- * 구성의 GPU 이름 (D58·D67) — 같은 카드 묶음은 "2× RTX 3090"/"RTX 3090 2장", 서로 다른 카드는 "A + B". 넣은 순서, 같은 id 는 한 묶음
- */
-export function gpuSetLabel(t: CalcTranslators, hw: Pick<ResolvedHardware, 'gpu' | 'gpuCount' | 'extras'>): string {
+/** 같은 카드 묶음 — 1번 카드(장수)가 먼저, 그다음 함께 꽂은 카드를 넣은 순서대로 같은 id 끼리 */
+function gpuGroups(hw: Pick<ResolvedHardware, 'gpu' | 'gpuCount' | 'extras'>): { gpu: GpuCore; n: number }[] {
   const groups: { gpu: GpuCore; n: number }[] = [{ gpu: hw.gpu, n: hw.gpuCount - hw.extras.length }];
   for (const extra of hw.extras) {
     const group = groups.find((g) => g.gpu.id === extra.id);
     if (group) group.n += 1;
     else groups.push({ gpu: extra, n: 1 });
   }
-  return groups
+  return groups;
+}
+
+/**
+ * 구성의 GPU 이름 (D58·D67) — 같은 카드 묶음은 "2× RTX 3090"/"RTX 3090 2장", 서로 다른 카드는 "A + B". 넣은 순서, 같은 id 는 한 묶음
+ */
+export function gpuSetLabel(t: CalcTranslators, hw: Pick<ResolvedHardware, 'gpu' | 'gpuCount' | 'extras'>): string {
+  return gpuGroups(hw)
     .map(({ gpu, n }) => (n > 1 ? t.calc('gpuTimes', { gpu: gpuName(t.names, gpu), n }) : gpuName(t.names, gpu)))
     .reduce((a, b) => t.calc('gpuPlus', { a, b }));
 }
 
-/** 같은 묶음 순서의 카드별 VRAM — 가정 문장 "(24 + 12 GB)" 용 */
-export function gpuSetVram(hw: Pick<ResolvedHardware, 'gpu' | 'extras'>): number[] {
-  const ids = [hw.gpu.id];
-  const vram = [hw.gpu.vramGB ?? 0];
-  for (const extra of hw.extras) {
-    if (ids.includes(extra.id)) continue;
-    ids.push(extra.id);
-    vram.push(extra.vramGB ?? 0);
-  }
-  return vram;
+/**
+ * 가정 문장의 VRAM 숫자 — 같은 카드뿐이면 카드 한 장 값("2× RTX 3090 (24 GB)", D58 그대로), 서로 다른 카드가 섞이면 이름과 같은 묶음
+ * 순서로 카드마다 늘어놓는다("2× RTX 3090 + RTX 3060 12GB (24 + 24 + 12 GB)" — 더하면 계산에 쓴 합계, 리뷰 반영). 잇기는 `gpuPlus`
+ */
+export function gpuSetVram(
+  t: CalcTranslators,
+  format: (gb: number) => string,
+  hw: Pick<ResolvedHardware, 'gpu' | 'gpuCount' | 'extras'>,
+): string {
+  if (hw.extras.length === 0) return format(hw.gpu.vramGB ?? 0);
+  return gpuGroups(hw)
+    .flatMap(({ gpu, n }) => Array.from({ length: n }, () => format(gpu.vramGB ?? 0)))
+    .reduce((a, b) => t.calc('gpuPlus', { a, b }));
 }
 
 /** `lib/links.ts localeHref` 와 같은 규칙 (클라이언트 사본 — routing 모듈을 끌어오지 않는다) */

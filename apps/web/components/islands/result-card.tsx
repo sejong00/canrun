@@ -153,12 +153,12 @@ export function ResultCard({
           ))}
         </ul>
       )}
-      {/* 서로 다른 카드(D67): 판정은 llama.cpp 기본(모든 카드에 나눠 올리기) 그대로 — 한 장에 다 들어가면 그 카드만 쓸 때의 추정을 참고로 */}
+      {/* 서로 다른 카드(D67): 판정은 llama.cpp 기본(모든 카드에 나눠 올리기) 그대로 — 한 장에 다 들어가면 그 카드만 쓸 때의 결과(단독과 같은 값·라벨)를 참고로 */}
       {card.singleGpu && (
         <p data-single-gpu className="text-xs text-muted-foreground">
           {t.calc('singleGpuHint', {
             gpu: gpuName(t.names, card.singleGpu.gpu),
-            speed: speedPhrase(t.common, t.confidence, locale, { result: card.singleGpu.result, estimate: card.singleGpu.result }),
+            speed: speedPhrase(t.common, t.confidence, locale, card.singleGpu.q),
           })}
         </p>
       )}

@@ -48,6 +48,9 @@ for (const locale of LOCALES) {
     await expect(rows.first().locator('option[value="rtx-3090"]')).toHaveCount(0);
     await rows.first().selectOption('rtx-3060-12gb');
     await expect.poll(() => new URL(page.url()).searchParams.get('plus')).toBe('rtx-3060-12gb');
+    // 추가 카드 줄은 'GPU 수' 바로 아래 한 묶음 (리뷰 반영 — 컨텍스트 길이 아래로 떨어져 있었다)
+    await expect(page.locator('[data-gpu-set] select[name="gpus"]')).toHaveCount(1);
+    await expect(page.locator('[data-gpu-set] [data-extra-gpus]')).toHaveCount(1);
 
     await expect(page.getByText(locale === 'ko' ? '서로 다른 GPU 섞어 쓰기는 베타 기능입니다' : 'Mixing different GPUs is a beta')).toBeVisible();
     await expect(page.locator('[data-assumptions]')).toContainText('24 + 12');
@@ -59,7 +62,9 @@ for (const locale of LOCALES) {
     // 3090 한 장에 들어가는 8B 는 "그 카드만 쓰면" 참고 줄 + 이 구성의 실행 명령
     const card8b = page.locator('[data-result-card][data-model-id="qwen3-8b"]');
     await expect(card8b.locator('[data-single-gpu]')).toContainText('RTX 3090');
-    await expect(card8b.locator('[data-single-gpu]')).toContainText('--list-devices');
+    // 카드 한 장만 쓰는 방법(--device·--list-devices)은 카드마다 되풀이하지 않고 안내 문단에 한 번 (리뷰 반영)
+    await expect(card8b.locator('[data-single-gpu]')).not.toContainText('--list-devices');
+    await expect(page.getByText(locale === 'ko' ? '서로 다른 GPU 섞어 쓰기는 베타 기능입니다' : 'Mixing different GPUs is a beta')).toContainText('--list-devices');
     await expect(card8b.locator('[data-run-command]')).toContainText('-ngl all');
 
     await page.reload();
@@ -74,10 +79,32 @@ for (const locale of LOCALES) {
     await expect.poll(() => new URL(page.url()).searchParams.get('plus')).toBe('rtx-3060-12gb,rtx-4060');
     await expect(page.locator('[data-add-gpu]')).toBeDisabled();
     await expect(page.locator('select[name="gpus"] option')).toHaveCount(2);
+    // 가정 문장의 VRAM 은 카드마다 — 더하면 계산에 쓴 합계 68GB. 화면 출력은 1번 GPU
+    await expect(page.locator('[data-assumptions]')).toContainText('24 + 24 + 12 + 8');
+    await expect(page.locator('[data-assumptions]')).toContainText(locale === 'ko' ? '첫 번째 GPU가 화면 출력 담당' : 'first GPU driving the display');
+    // '빼기' 버튼 이름에 어느 GPU 인지 (3번째 = 3060)
+    await expect(page.locator('[data-remove-gpu]').first()).toHaveAccessibleName(locale === 'ko' ? '3번째 GPU 빼기' : 'Remove GPU 3');
 
     // 빼기 → 남은 카드만 URL 에
     await page.locator('[data-remove-gpu]').first().click();
     await expect.poll(() => new URL(page.url()).searchParams.get('plus')).toBe('rtx-4060');
+    await expect(page.locator('[data-add-gpu]')).toBeEnabled();
+
+    // 고르기 전 줄이 열린 채 위 카드를 키보드로 빼면 포커스는 그 빈 줄로 — 다음 카드의 '빼기'에 남아 한 번 더 누르면 그 카드까지 지워지던 문제(리뷰 반영)
+    await page.locator('[data-add-gpu]').click();
+    await expect(rows).toHaveCount(2);
+    await page.locator('[data-remove-gpu]').first().focus();
+    await page.keyboard.press('Enter');
+    await expect.poll(() => new URL(page.url()).searchParams.get('plus')).toBeNull();
+    await expect(rows).toHaveCount(1);
+    await expect(rows.first()).toBeFocused();
+    await expect(rows.first()).toHaveValue('');
+
+    // 합계 4장이 되면 빈 줄을 버린다 — 장수를 다시 줄여도 되살아나지 않는다(리뷰 반영)
+    await page.locator('select[name="gpus"]').selectOption('4');
+    await expect(rows).toHaveCount(0);
+    await page.locator('select[name="gpus"]').selectOption('2');
+    await expect(rows).toHaveCount(0);
     await expect(page.locator('[data-add-gpu]')).toBeEnabled();
 
     // 맥이면 섞기 컨트롤이 없고 URL 에서도 빠진다

@@ -304,8 +304,31 @@ describe('assembleResults — mixed GPUs (10-03 D67, beta)', () => {
     expect(pairCard.combo.display.result.mode).toBe('full-gpu');
     expect(pairCard.combo.display.result.tgTokS.est).toBeLessThan(aloneCard.combo.display.result.tgTokS.est);
     expect(pairCard.singleGpu?.gpu.id).toBe('rtx-3090');
-    expect(pairCard.singleGpu?.result.tgTokS.est).toBeCloseTo(aloneCard.combo.display.result.tgTokS.est, 9);
-    expect(pairCard.singleGpu?.result.confidence).toBe('theoretical');
+    // 참고 줄 = 계산기에 3090 한 장만 넣었을 때와 같은 값·라벨(리뷰 반영 — 이론 추정으로 고정하지 않는다)
+    expect(pairCard.singleGpu?.q.quant).toBe(aloneCard.combo.display.quant);
+    expect(pairCard.singleGpu?.q.result).toEqual(aloneCard.combo.display.result);
+    expect(pairCard.singleGpu?.q.result.confidence).toBe('calibrated');
+    // 실측이 있는 조합은 실측 중앙값 그대로 (기준 조건 8k·f16)
+    const measured = card(pair, 'gpt-oss-20b');
+    const measuredAlone = card(alone, 'gpt-oss-20b');
+    expect(measuredAlone.combo.display.result.confidence).toBe('measured');
+    expect(measured.singleGpu?.q.result).toEqual(measuredAlone.combo.display.result);
+    expect(measured.singleGpu?.q.measured?.values).toEqual(measuredAlone.combo.display.measured?.values);
+    // 다른 조건(16k)은 단독 결과처럼 실측을 붙이지 않는다
+    const longCtx = assembleResults(catalog, withGpu('rtx-3090', { ramGB: 64, ctx: 16384, plus: ['rtx-3060-12gb'] }))!;
+    const longAlone = assembleResults(catalog, withGpu('rtx-3090', { ramGB: 64, ctx: 16384 }))!;
+    expect(card(longCtx, 'gpt-oss-20b').singleGpu?.q.result).toEqual(card(longAlone, 'gpt-oss-20b').combo.display.result);
+    expect(card(longCtx, 'gpt-oss-20b').singleGpu?.q.measured).toBeUndefined();
+    // 카탈로그 밖 모델은 단독 결과처럼 늘 이론 추정
+    const build = buildManualModel({ paramsB: 8.03, layers: 32, kvHeads: 8, headDim: 128, maxContext: 131072 });
+    if (build.kind !== 'ok') throw new Error(JSON.stringify(build));
+    const pinned = assembleResults(catalog, withGpu('rtx-3090', { ramGB: 64, plus: ['rtx-3060-12gb'] }), {
+      model: { ...build.model, name: 'Custom model' },
+      rows: build.rows,
+      origin: 'manual',
+    })!.pinned;
+    expect(pinned?.singleGpu?.gpu.id).toBe('rtx-3090');
+    expect(pinned?.singleGpu?.q.result.confidence).toBe('theoretical');
     // 한 장에 안 들어가는 모델·같은 카드 여러 장·1장엔 힌트가 없다
     expect(card(pair, 'llama-3.3-70b').singleGpu).toBeUndefined();
     const two = assembleResults(catalog, withGpu('rtx-3090', { ramGB: 64, gpus: 2 }))!;

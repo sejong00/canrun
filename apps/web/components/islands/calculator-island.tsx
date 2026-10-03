@@ -433,7 +433,7 @@ function assumptionText(t: ReturnType<typeof bindTranslators>, locale: string, s
       ? t.calc('assumeCustomDgpu', {
           ...customCommon,
           ddr: t.calc(state.ddr),
-          display: config.hw.isDisplayGpu ? t.calc('assumeDisplay') : '',
+          display: config.hw.isDisplayGpu ? t.calc(hw.gpuCount > 1 ? 'assumeDisplayMulti' : 'assumeDisplay') : '',
         })
       : t.calc('assumeCustomUnified', customCommon);
   }
@@ -442,12 +442,11 @@ function assumptionText(t: ReturnType<typeof bindTranslators>, locale: string, s
     return t.calc('assumeDgpu', {
       ...common,
       gpu: gpuSetLabel(t, hw),
-      // 서로 다른 카드면 묶음마다 "24 + 12" (D67)
-      vram: gpuSetVram(hw)
-        .map((gb) => formatInt(locale, gb))
-        .join(' + '),
+      // 서로 다른 카드면 카드마다 "24 + 24 + 12" (D67 리뷰 반영 — 더하면 합계)
+      vram: gpuSetVram(t, (gb) => formatInt(locale, gb), hw),
       ddr: t.calc(state.ddr),
-      display: config.hw.isDisplayGpu ? t.calc('assumeDisplay') : '',
+      // 여러 장이면 화면 출력 예약을 지는 카드(1번)를 밝힌다 — 폼의 '첫 번째 GPU로 모니터 출력 중'과 같은 뜻
+      display: config.hw.isDisplayGpu ? t.calc(hw.gpuCount > 1 ? 'assumeDisplayMulti' : 'assumeDisplay') : '',
     });
   }
   if (gpu.kind === 'unified') {

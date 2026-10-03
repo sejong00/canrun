@@ -29,12 +29,16 @@ export function ExtraGpus({
   hydrated: boolean;
 }) {
   const id = useId();
-  // 고르기 전의 새 줄 — 그때의 1번 GPU 에 묶는다(1번이 바뀌면 사라진다)
+  // 고르기 전의 새 줄 — 그때의 1번 GPU 에 묶는다
   const [pendingFor, setPendingFor] = useState<string | undefined>(undefined);
   const plus = state.plus ?? [];
   const base = state.gpus ?? 1;
   const total = base + plus.length;
-  const pending = pendingFor === primary.id && total < MAX_GPUS;
+  // 1번 GPU 가 바뀌거나 합계가 4장이 되면 빈 줄을 버린다 — 숨겨 두기만 하면 장수가 줄거나 1번이 돌아올 때 누르지 않은 줄이 되살아난다
+  // (렌더 중 상태 정리 — React 문서의 '이전 렌더 정보 저장' 패턴, 리뷰 반영)
+  const stalePending = pendingFor !== undefined && (pendingFor !== primary.id || total >= MAX_GPUS);
+  if (stalePending) setPendingFor(undefined);
+  const pending = pendingFor !== undefined && !stalePending;
   const options = catalog.gpus.filter((g) => g.id !== primary.id && canMixWith(primary, g));
   const rowId = (i: number) => `${id}-plus-${i}`;
   const focusLater = (target: string) => window.setTimeout(() => document.getElementById(target)?.focus(), 0);
@@ -42,7 +46,9 @@ export function ExtraGpus({
   const setAt = (i: number, gpuId: string) => dispatch({ type: 'plus', plus: plus.map((v, j) => (j === i ? gpuId : v)) });
   const removeAt = (i: number) => {
     dispatch({ type: 'plus', plus: plus.filter((_, j) => j !== i) });
-    focusLater(`${id}-add`);
+    // 고르기 전 줄이 열려 있으면 추가 버튼이 꺼져 있어 포커스를 받지 못한다 — 그 줄(한 칸 당겨진 번호)로 보낸다. 줄 key 가 번호라
+    // 포커스가 남으면 다음 카드의 '빼기'를 가리키게 된다(리뷰 반영)
+    focusLater(pending ? rowId(plus.length - 1) : `${id}-add`);
   };
   const commitPending = (gpuId: string) => {
     if (!gpuId) return;
@@ -70,7 +76,8 @@ export function ExtraGpus({
           ))}
         </select>
       </div>
-      <button type="button" data-remove-gpu className={BUTTON} disabled={!hydrated} onClick={onRemove}>
+      {/* 줄이 여럿이면 '빼기'가 여러 번 읽힌다 — 어느 GPU 인지 이름에 넣는다(보이는 글자를 포함, WCAG 2.5.3) */}
+      <button type="button" data-remove-gpu className={BUTTON} disabled={!hydrated} aria-label={t.calc('removeGpuNamed', { n: base + i + 1 })} onClick={onRemove}>
         {t.calc('removeGpu')}
       </button>
     </div>
@@ -98,7 +105,7 @@ export function ExtraGpus({
         >
           {t.calc('addGpu')}
         </button>
-        <p className="text-xs text-muted-foreground">{t.calc('extraGpuHint')}</p>
+        <p className="text-xs text-muted-foreground">{t.calc('extraGpuHint', { max: MAX_GPUS })}</p>
       </div>
     </div>
   );

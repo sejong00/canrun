@@ -420,6 +420,36 @@ export function HardwareForm({ locale, catalog, names, t, state, dispatch, hydra
           {sibling && <p className="text-xs text-muted-foreground">{t.calc('laptopSibling', { laptop: gpuName(t.names, sibling) })}</p>}
         </div>
 
+        {/* GPU 수와 '다른 GPU 함께 쓰기'는 1번 GPU 바로 아래 한 묶음 (D58·D67 — 리뷰 반영: 예전엔 GPU 수가 RAM 옆, 추가 카드 줄은 컨텍스트 길이
+            아래에 떨어져 있었다). 추가 카드 줄과 너비를 맞춘다 */}
+        {isDgpu && (
+          <div data-gpu-set className="flex flex-col gap-3 sm:max-w-xl">
+            <div className="flex flex-col gap-1">
+              <label htmlFor={`${id}-gpus`} className="text-sm font-medium">
+                {t.calc(plusCount > 0 ? 'gpuCountLabelSame' : 'gpuCountLabel')}
+              </label>
+              <select
+                id={`${id}-gpus`}
+                name="gpus"
+                className={SELECT}
+                value={state.gpus ?? 1}
+                disabled={!hydrated}
+                onChange={(e) => {
+                  const n = Number(e.currentTarget.value);
+                  dispatch({ type: 'gpus', gpus: n > 1 ? n : undefined });
+                }}
+              >
+                {GPU_COUNT_OPTIONS.filter((n) => n <= MAX_GPUS - plusCount).map((n) => (
+                  <option key={n} value={n}>
+                    {t.calc('gpuCountOption', { n })}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {mixable && <ExtraGpus catalog={catalog} t={t} primary={selected} state={state} dispatch={dispatch} hydrated={hydrated} />}
+          </div>
+        )}
+
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {!isUnifiedCatalog && customKind !== 'unified' ? (
             <div className="flex flex-col gap-1">
@@ -443,32 +473,6 @@ export function HardwareForm({ locale, catalog, names, t, state, dispatch, hydra
                 {(ramList.length > 0 ? ramList : [ramValue]).map((gb) => (
                   <option key={gb} value={gb}>
                     {t.gpuHub('ramOption', { ram: formatInt(locale, gb) })}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {/* 같은 dGPU 여러 장 (D58, 베타) — VRAM 합산·층 나눠 올리기 */}
-          {isDgpu && (
-            <div className="flex flex-col gap-1">
-              <label htmlFor={`${id}-gpus`} className="text-sm font-medium">
-                {t.calc(plusCount > 0 ? 'gpuCountLabelSame' : 'gpuCountLabel')}
-              </label>
-              <select
-                id={`${id}-gpus`}
-                name="gpus"
-                className={SELECT}
-                value={state.gpus ?? 1}
-                disabled={!hydrated}
-                onChange={(e) => {
-                  const n = Number(e.currentTarget.value);
-                  dispatch({ type: 'gpus', gpus: n > 1 ? n : undefined });
-                }}
-              >
-                {GPU_COUNT_OPTIONS.filter((n) => n <= MAX_GPUS - plusCount).map((n) => (
-                  <option key={n} value={n}>
-                    {t.calc('gpuCountOption', { n })}
                   </option>
                 ))}
               </select>
@@ -522,8 +526,6 @@ export function HardwareForm({ locale, catalog, names, t, state, dispatch, hydra
             <p className="text-xs text-muted-foreground">{t.calc('ctxHint')}</p>
           </div>
         </div>
-
-        {mixable && <ExtraGpus catalog={catalog} t={t} primary={selected} state={state} dispatch={dispatch} hydrated={hydrated} />}
 
         <div className="flex flex-wrap items-start gap-6">
           <fieldset data-kv-toggle className="flex flex-wrap items-center gap-3 text-sm">

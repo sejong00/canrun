@@ -14,8 +14,9 @@ export function llamaNotes(t: Translate, locale: string, plan: CommandPlan, kvQ8
   if (!llama) return [];
   const notes: SnippetNote[] = [];
   if (llama.ngl === 'all') notes.push({ key: 'ngl', text: t('nglAll') });
-  // GPU 여러 장의 cpu-moe(10-03 D67) — 두 옵션 없이 --fit 자동 배치. 콤보 페이지는 1장이라 계산기만 해당
-  else if (llama.ngl === 'auto') notes.push({ key: 'cpuMoeFit', text: t('cpuMoeFit') });
+  // GPU 여러 장의 cpu-moe(10-03 D67) — 명령에서 두 옵션을 이미 뺐다(--fit 자동 배치). cpuMoeFit("빼고 실행해도")는 두 옵션이 있는
+  // 명령의 대안 안내라 뜻이 맞지 않는다(리뷰 반영). 지금 이 함수를 부르는 곳(콤보 페이지)은 1장이라 닿지 않고, 계산기는 fitAutoNote 를 쓴다
+  else if (llama.ngl === 'auto') notes.push({ key: 'ngl', text: t('nglFitAuto') });
   else if (llama.ngl === 0) notes.push({ key: 'ngl', text: t('nglZero') });
   else notes.push({ key: 'ngl', text: t('nglN', { n: llama.ngl, layers: plan.layers }) });
   if (llama.nCpuMoe !== undefined) {
