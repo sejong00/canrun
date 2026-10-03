@@ -67,6 +67,13 @@ export function GpuPicker({ locale, gpus, dict, inputId, label, placeholder }: P
     setActive(-1);
   };
 
+  // 목록에서 누르면 바로 계산기로 (10-02 사용자 지적 — 고른 뒤 "확인" 을 또 눌러야 했다). 숨은 gpu=<id> 가 렌더된 뒤 제출
+  const chooseAndGo = (gpu: GpuCore) => {
+    const form = inputRef.current?.form;
+    flushSync(() => choose(gpu));
+    form?.requestSubmit();
+  };
+
   const onInput = (value: string) => {
     setText(value);
     setChosen(undefined);
@@ -156,7 +163,7 @@ export function GpuPicker({ locale, gpus, dict, inputId, label, placeholder }: P
             options={options}
             browsing={browsing}
             active={active}
-            onChoose={choose}
+            onChoose={chooseAndGo}
             onActive={setActive}
           />
         ) : null

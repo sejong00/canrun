@@ -35,6 +35,7 @@
     "hardwareLegend": "Your hardware",
     "gpuLabel": "GPU or chip",
     "gpuPlaceholder": "e.g. RTX 4060",
+    "apply": "Check",
     "gpuHint": "Search by name or nickname — e.g. 4060 laptop, M4 Pro, 7900 xtx. No GPU? Pick “CPU only”.",
     "gpuNoMatch": "Nothing matches “{query}”. Pick from the list, or enter the specs yourself.",
     "gpuEnterSpecs": "Enter specs",

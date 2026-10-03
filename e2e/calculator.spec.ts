@@ -117,7 +117,7 @@ for (const locale of LOCALES) {
       expect(problems).toEqual([]);
     });
 
-    test('home GPU picker: grouped list like the calculator, a picked option submits its id (09-30)', async ({ page }) => {
+    test('home GPU picker: grouped list like the calculator, a picked option goes straight to the calculator (09-30, 10-02)', async ({ page }) => {
       const problems = collectProblems(page);
       await open(page, localePath(locale, '/'));
       const form = page.locator('form[data-home-form]');
@@ -127,8 +127,6 @@ for (const locale of LOCALES) {
       await expect(form.locator('[data-gpu-group="amd"]')).toBeVisible();
       await input.fill('4070');
       await form.locator('[role="option"][data-gpu-id="rtx-4070"]').click();
-      await expect(input).toHaveValue(/RTX 4070/);
-      await form.locator('button[type="submit"]').click();
       await page.waitForURL((u) => u.pathname === path && u.searchParams.get('gpu') === 'rtx-4070');
       await expect(page.locator('[data-result-card]').first()).toBeVisible();
       expect(problems).toEqual([]);
@@ -309,6 +307,38 @@ for (const locale of LOCALES) {
       await expect(input).toHaveAttribute('aria-activedescendant', /rtx-4070$/);
       await input.press('Enter');
       await expect.poll(() => new URL(page.url()).searchParams.get('gpu')).toBe('rtx-4070');
+      await expect(page.locator('[data-result-card]').first()).toBeVisible();
+    });
+
+    test('typing a GPU that settles on one card updates the results after a short pause, no Enter needed (10-02)', async ({ page }) => {
+      await open(page, `${path}?gpu=rtx-4060`);
+      const input = page.locator('form[data-calc-form] input[name="gpu"]');
+      await expect(input).toHaveAttribute('role', 'combobox');
+      await input.fill('rtx 4090');
+      await expect.poll(() => new URL(page.url()).searchParams.get('gpu')).toBe('rtx-4090');
+      await expect(page.locator('[data-assumptions]')).toContainText('4090');
+      // 치는 중인 글자는 그대로 (표시명으로 바뀌는 건 포커스가 떠날 때)
+      await expect(input).toHaveValue('rtx 4090');
+      // 모호한 입력은 자동으로 고르지 않는다 — 결과는 직전 GPU 그대로
+      await input.fill('4060 ti');
+      await page.waitForTimeout(900);
+      expect(new URL(page.url()).searchParams.get('gpu')).toBe('rtx-4090');
+    });
+
+    test('the confirm button is visible after hydration and applies the typed text (10-02)', async ({ page }) => {
+      await open(page, path);
+      const input = page.locator('form[data-calc-form] input[name="gpu"]');
+      await expect(input).toHaveAttribute('role', 'combobox');
+      const button = page.locator('form[data-calc-form] button[data-calc-submit]');
+      await expect(button).toBeVisible();
+      await input.fill('4060 ti');
+      await button.click();
+      // 모호한 입력: 고를 후보를 보여 주고 추측하지 않는다
+      await expect.poll(() => new URL(page.url()).searchParams.get('gpu')).toBe('4060 ti');
+      await expect(page.locator('[data-result-card]')).toHaveCount(0);
+      await input.fill('m4 pro');
+      await button.click();
+      await expect.poll(() => new URL(page.url()).searchParams.get('gpu')).toBe('apple-m4-pro');
       await expect(page.locator('[data-result-card]').first()).toBeVisible();
     });
 

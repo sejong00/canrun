@@ -26,6 +26,11 @@ import type { CalcAction, CalcTranslators } from '@/components/islands/calc-shar
 
 const INPUT = 'h-11 w-full rounded-md border border-border bg-background px-3 text-base sm:h-10 sm:text-sm';
 const SELECT = 'h-11 rounded-md border border-border bg-background px-2 text-base sm:h-10 sm:text-sm';
+/**
+ * 입력이 GPU 하나로 확정되면 이만큼 멈춘 뒤 결과에 반영한다 (10-02 사용자 지적 — 치기만 하면 결과가 그대로라 고장 난 것처럼 보였다).
+ * 치는 중간("4070" → "4070 ti")에 결과가 매 글자 바뀌지 않게 짧게 기다린다. 모호한 입력은 지금처럼 목록에서 고른다(D29)
+ */
+const AUTO_COMMIT_MS = 500;
 
 type Props = {
   locale: string;
@@ -88,13 +93,16 @@ export function HardwareForm({ locale, catalog, names, t, state, dispatch, hydra
   const quietFocus = useRef(false);
   // 지연 blur 확정: 타이머 + 최신 렌더의 commitText (ref 는 effect 에서만 갱신 — react-hooks 7 refs 규칙)
   const blurTimer = useRef<number | undefined>(undefined);
-  const commitRef = useRef<(source: 'blur' | 'enter' | 'submit') => void>(() => {});
+  const commitRef = useRef<(source: 'blur' | 'enter' | 'submit' | 'auto') => void>(() => {});
+  // 확정 입력 자동 반영 타이머 (AUTO_COMMIT_MS)
+  const autoTimer = useRef<number | undefined>(undefined);
   const cancelBlurCommit = () => {
     window.clearTimeout(blurTimer.current);
     blurTimer.current = undefined;
   };
 
   const choose = (gpu: GpuCore) => {
+    window.clearTimeout(autoTimer.current);
     dispatch({ type: 'hardware', hardware: { kind: 'catalog', gpuId: gpu.id } });
     setDraft(undefined);
     setCandidates(undefined);
@@ -110,14 +118,36 @@ export function HardwareForm({ locale, catalog, names, t, state, dispatch, hydra
     // 메모리 형제(4060 ti)는 Enter 로 고르지 않는다. 명시 선택은 ArrowDown·탭 (재검증)
     const m = matchGpu(value, catalog.gpus, { names });
     const first = m.kind === 'exact' ? rankGpus(value, catalog.gpus, names)[0] : undefined;
-    setActive(m.kind === 'exact' && first?.id === m.id ? 0 : -1);
+    const settled = m.kind === 'exact' && first?.id === m.id;
+    setActive(settled ? 0 : -1);
+    // 한 GPU 로 확정되는 입력은 잠깐 멈추면 결과에 반영한다 — 입력창 글자는 그대로 두고(치는 중 글자가 바뀌지 않게) 상태만
+    window.clearTimeout(autoTimer.current);
+    autoTimer.current = settled
+      ? window.setTimeout(() => {
+          autoTimer.current = undefined;
+          commitRef.current('auto');
+        }, AUTO_COMMIT_MS)
+      : undefined;
   };
 
   /**
    * 입력 텍스트 해석 — 정확히 1개면 선택, 아니면 unresolved (URL 에 남아 폼에 유지).
    * blur 는 감지가 제시한 후보(확인 대기)를 추측으로 확정하지 않는다 — 옵션 선택·Enter·제출만 확정 (D30, 재검증)
    */
-  const commitText = (source: 'blur' | 'enter' | 'submit') => {
+  const commitText = (source: 'blur' | 'enter' | 'submit' | 'auto') => {
+    if (source === 'auto') {
+      // 그 사이 다른 선택·복원으로 하드웨어가 바뀌었거나 글자가 달라졌으면 하지 않는다
+      if (!draft || draft.hardware !== state.hardware || inputRef.current?.value !== draft.text) return;
+      const m = matchGpu(draft.text, catalog.gpus, { names });
+      if (m.kind !== 'exact' || rankGpus(draft.text, catalog.gpus, names)[0]?.id !== m.id) return;
+      if (state.hardware.kind === 'catalog' && state.hardware.gpuId === m.id) return;
+      const hardware: HardwareChoice = { kind: 'catalog', gpuId: m.id };
+      dispatch({ type: 'hardware', hardware });
+      // 초안을 새 하드웨어에 다시 묶는다 — 입력창은 친 글자 그대로, 포커스가 떠나면(blur) 표시명으로 정리된다
+      setDraft({ text: draft.text, hardware });
+      return;
+    }
+    window.clearTimeout(autoTimer.current);
     if (source === 'blur' && detected) {
       setOpen(false);
       return;
@@ -144,7 +174,13 @@ export function HardwareForm({ locale, catalog, names, t, state, dispatch, hydra
     commitRef.current = commitText;
   });
   // 언마운트 시 대기 중인 blur 확정 취소
-  useEffect(() => () => window.clearTimeout(blurTimer.current), []);
+  useEffect(
+    () => () => {
+      window.clearTimeout(blurTimer.current);
+      window.clearTimeout(autoTimer.current);
+    },
+    [],
+  );
 
   const onKey = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'ArrowDown') {
@@ -319,6 +355,14 @@ export function HardwareForm({ locale, catalog, names, t, state, dispatch, hydra
                 </datalist>
               )}
             </div>
+            {/* 확인 = 입력 글자 확정 + 결과로 이동. JS 없을 때는 GET 제출 (10-02 — 하이드레이션 뒤에도 보인다: 언제 반영되는지 드러나게) */}
+            <button
+              type="submit"
+              data-calc-submit
+              className="h-11 shrink-0 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground sm:h-10"
+            >
+              {t.calc('apply')}
+            </button>
             <DetectButton catalog={catalog} names={names} t={t} hydrated={hydrated} onResult={onDetect} />
           </div>
           <p id={hintId} className="text-xs text-muted-foreground">
@@ -504,11 +548,6 @@ export function HardwareForm({ locale, catalog, names, t, state, dispatch, hydra
         )}
       </details>
 
-      {!hydrated && (
-        <button type="submit" className="h-11 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground sm:h-10">
-          {t.calc('resultsHeading')}
-        </button>
-      )}
     </form>
   );
 }

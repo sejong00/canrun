@@ -35,6 +35,7 @@
     "hardwareLegend": "내 하드웨어",
     "gpuLabel": "GPU 또는 칩",
     "gpuPlaceholder": "예: RTX 4060",
+    "apply": "확인",
     "gpuHint": "이름이나 별칭으로 검색하세요(예: 4060 laptop, M4 Pro, 7900 xtx). GPU가 없으면 ‘CPU’로 검색해 CPU 전용 항목을 고르세요.",
     "gpuNoMatch": "‘{query}’에 맞는 항목이 없어요. 목록에서 고르거나 사양을 직접 입력하세요.",
     "gpuEnterSpecs": "직접 입력하기",
