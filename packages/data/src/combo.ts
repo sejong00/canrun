@@ -242,7 +242,7 @@ export function twinGpus<G extends GpuCore>(gpu: G, gpus: readonly G[]): G[] {
 export type Alternative =
   | { kind: 'larger-model' | 'smaller-model' | 'faster-model'; model: Model; combo: ComboAssessment }
   | { kind: 'lower-quant' | 'higher-quant'; q: QuantAssessment; desperate: boolean }
-  /** nCpuMoe = 표시 결과의 `--n-cpu-moe` (엔진 배치), layers = 전문가 층 수 — 같으면 전문가 전부 RAM */
+  /** nCpuMoe = 표시 결과의 `--n-cpu-moe` (엔진 배치를 블록 수로 바꾼 값), layers = 전체 블록 수(`arch.layers`) — 같으면 전문가 전부 RAM */
   | { kind: 'cpu-moe'; nCpuMoe: number; layers: number }
   | { kind: 'ram-upgrade'; ramGB: number; quant: QuantId; verdict: Verdict; result: Result }
   | { kind: 'ram-config'; ramGB: number; combo: ComboAssessment }

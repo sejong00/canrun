@@ -63,6 +63,31 @@ export function cpuMoeFlagLayers(model: Pick<ModelCore, 'arch'>, cpuMoeLayers: n
   return expertLayers[Math.min(cpuMoeLayers, expertLayers.length) - 1]! + 1;
 }
 
+/** `--n-cpu-moe N` 이 GPU 에 남기는 전문가 층의 블록 번호 — 지도(arch.expertLayers)가 없으면 모든 블록에 전문가가 있다고 본다 */
+function gpuExpertBlocks(model: Pick<ModelCore, 'arch'>, nCpuMoe: number): number[] {
+  const { layers, expertLayers } = model.arch;
+  const blocks = expertLayers ?? Array.from({ length: layers }, (_, i) => i);
+  return blocks.filter((l) => l >= nCpuMoe);
+}
+
+/**
+ * `--n-cpu-moe N` 일 때 GPU 에 남는 전문가 층 수 — 판정 문장(전문가 층 수 − 엔진 cpuMoeLayers)과 같은 단위·같은 값.
+ * 블록 수(layers − N)로 세면 MoE 블록이 섞인 모델(Nemotron)에서 두 문장이 다른 숫자를 말한다.
+ */
+export function gpuExpertLayerCount(model: Pick<ModelCore, 'arch'>, nCpuMoe: number): number {
+  return gpuExpertBlocks(model, nCpuMoe).length;
+}
+
+/**
+ * VRAM 이 모자랄 때 올릴 `--n-cpu-moe` 다음 값(최대 2개) — 각 값은 전문가 층을 하나씩 더 시스템 RAM 으로 보낸다.
+ * 전문가 블록이 띄엄띄엄 있으면(Nemotron 은 2~3 블록 간격) N+1·N+2 가 전문가 없는 블록만 덮어 VRAM 이 줄지 않는다.
+ */
+export function nextCpuMoeFlags(model: Pick<ModelCore, 'arch'>, nCpuMoe: number): number[] {
+  return gpuExpertBlocks(model, nCpuMoe)
+    .slice(0, 2)
+    .map((l) => l + 1);
+}
+
 export type CommandFile = {
   repo: string;
   name?: string;
@@ -80,6 +105,10 @@ export type LlamaCppPlan = {
    * 전체 층과 같으면 전문가 전부 RAM.
    */
   nCpuMoe?: number;
+  /** cpu-moe: GPU 에 남는 전문가 층 수(`gpuExpertLayerCount` — 판정 문장과 같은 값). 0 이면 전문가 전부 RAM */
+  gpuExpertLayers?: number;
+  /** cpu-moe: 메모리 부족 오류 때 올릴 `--n-cpu-moe` 다음 값 0~2개(`nextCpuMoeFlags`) */
+  nCpuMoeNext?: number[];
 };
 
 export type OllamaPlan = {
@@ -186,7 +215,13 @@ export function commandPlan(
   const llamaCpp: LlamaCppPlan = {
     command: `llama-server ${flags.join(' ')}`,
     ngl,
-    ...(nCpuMoe !== undefined ? { nCpuMoe } : {}),
+    ...(nCpuMoe !== undefined
+      ? {
+          nCpuMoe,
+          gpuExpertLayers: gpuExpertLayerCount(model, nCpuMoe),
+          nCpuMoeNext: nextCpuMoeFlags(model, nCpuMoe),
+        }
+      : {}),
   };
 
   let ollamaOmitted: OllamaOmitted | undefined;

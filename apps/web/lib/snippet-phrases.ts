@@ -17,11 +17,17 @@ export function llamaNotes(t: Translate, locale: string, plan: CommandPlan, kvQ8
   else if (llama.ngl === 0) notes.push({ key: 'ngl', text: t('nglZero') });
   else notes.push({ key: 'ngl', text: t('nglN', { n: llama.ngl, layers: plan.layers }) });
   if (llama.nCpuMoe !== undefined) {
-    const gpuLayers = plan.layers - llama.nCpuMoe;
-    if (gpuLayers > 0) {
+    // GPU 쪽은 블록 수가 아니라 전문가 층 수로 센다 — 판정 문장과 같은 값(10-03 D63, MoE 블록이 섞인 Nemotron)
+    const gpuLayers = llama.gpuExpertLayers ?? 0;
+    const [next1, next2] = llama.nCpuMoeNext ?? [];
+    if (gpuLayers > 0 && next1 !== undefined) {
       notes.push({ key: 'cpuMoe', text: t('cpuMoePartial', { n: llama.nCpuMoe, gpu: gpuLayers }) });
-      // 엔진 배치는 VRAM 을 거의 다 쓴다 — 드라이버·백그라운드 사용량으로 모자랄 때의 대처
-      notes.push({ key: 'cpuMoeOom', text: t('cpuMoeOom') });
+      // 엔진 배치는 VRAM 을 거의 다 쓴다 — 드라이버·백그라운드 사용량으로 모자랄 때의 대처.
+      // 올릴 값은 전문가 층을 하나씩 더 RAM 으로 보내는 값(전문가 없는 블록만 덮는 N+1 은 VRAM 을 줄이지 못한다)
+      notes.push({
+        key: 'cpuMoeOom',
+        text: next2 !== undefined ? t('cpuMoeOom', { next1, next2 }) : t('cpuMoeOomOne', { next: next1 }),
+      });
     } else {
       notes.push({ key: 'cpuMoe', text: t('cpuMoe', { n: llama.nCpuMoe }) });
     }

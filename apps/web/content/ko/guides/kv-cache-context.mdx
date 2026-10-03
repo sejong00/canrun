@@ -42,7 +42,7 @@ MoE(전문가 혼합) 구조라고 KV 캐시가 줄지는 않습니다. KV 크�
 
 CanRun은 이 모델들의 KV 캐시를 계산할 때 전체 어텐션을 쓰는 글로벌 층만 셉니다. 슬라이딩 층의 윈도 부분과 선형 어텐션 층의 상태는 컨텍스트와 상관없이 크기가 일정하다고 보고 계산에서 뺍니다. 그래서 이 수치는 실제보다 낮게 나옵니다. 특히 EXAONE 4.0 32B처럼 윈도가 넓은 모델은 짧은 컨텍스트에서 차이가 큽니다. config를 보면 이 모델의 윈도는 4k 토큰으로, gpt-oss보다 훨씬 넓습니다. 그래도 글로벌 층의 KV 캐시는 컨텍스트에 비례해 커지므로, 전체 KV가 일정한 크기에서 멈추지는 않습니다. 예를 들어 Gemma 3 12B의 f16 KV 캐시는 128k에서 <Num kind="kvGB" model="gemma-3-12b" ctx="131072" />입니다.
 
-새로 나온 하이브리드 모델도 같은 방식으로 셉니다. <HubLink model="nemotron-3.5-lightning-30b-a3b" />는 Mamba-2 층 사이에 어텐션 층을 몇 개 둡니다. <HubLink model="lfm2.5-2.6b" />는 짧은 합성곱 층 사이에, <HubLink model="ling-3.0-tiny" />는 Kimi Delta Attention 층 사이에 어텐션 층을 둡니다. Mamba-2·합성곱·Kimi Delta 층은 크기가 일정한 상태만 저장하므로, CanRun은 어텐션 층만 셉니다. Ling-3.0의 어텐션 층은 MLA(다중 헤드 잠재 어텐션)를 씁니다. llama.cpp는 MLA 층에 토큰마다 압축한 벡터 하나만 저장하고, 키와 값은 거기서 다시 만듭니다. 값을 담는 캐시가 따로 없는 셈입니다. CanRun도 이 압축된 크기로 셉니다. 32k에서 Ling-3.0 Tiny의 f16 KV 캐시는 <Num kind="kvGB" model="ling-3.0-tiny" ctx="32768" />입니다.
+새로 나온 하이브리드 모델도 같은 방식으로 셉니다. <HubLink model="nemotron-3.5-lightning-30b-a3b" />는 Mamba-2 층 사이에 어텐션 층을 몇 개 둡니다. <HubLink model="lfm2.5-2.6b" />는 합성곱 층 사이에, <HubLink model="ling-3.0-tiny" />는 Kimi Delta Attention 층 사이에 어텐션 층을 둡니다. Mamba-2·합성곱·Kimi Delta 층은 크기가 일정한 상태만 저장하므로, CanRun은 어텐션 층만 셉니다. Ling-3.0의 어텐션 층은 MLA(다중 헤드 잠재 어텐션)를 씁니다. llama.cpp는 MLA 층에 토큰마다 압축한 벡터 하나만 저장하고, 키와 값은 거기서 다시 만듭니다. 값을 담는 캐시가 따로 없는 셈입니다. CanRun도 이 압축된 크기로 셉니다. 32k에서 Ling-3.0 Tiny의 f16 KV 캐시는 <Num kind="kvGB" model="ling-3.0-tiny" ctx="32768" />입니다.
 
 ## 내 그래픽카드에서 컨텍스트를 얼마나 늘릴 수 있나
 

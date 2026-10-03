@@ -80,9 +80,17 @@ export const HUB_POLICY = Object.freeze({
   referenceLargeModelId: 'llama-3.3-70b',
   /** 모델 허브 FAQ 의 VRAM 대표 카드 (8 / 16 / 24 GB) */
   referenceGpuIds: ['rtx-4060', 'rtx-5060-ti-16gb', 'rtx-3090'] as readonly string[],
+  /**
+   * 손실이 더 큰 양자화 파일이 더 나은 양자화 파일 크기의 이 비율 이상이면 모델 허브가 더 나은 쪽을 받으라고 안내한다
+   * (`sameSizeQuant` — 10-03 D63 후속: Nemotron 3.5 Lightning Q2_K 18.91GB = IQ4_XS 18.92GB. 행을 지우면 sync 가 다시 넣는다)
+   */
+  sameSizeQuantRatio: 0.95,
 });
 
 export type QuantTier = QuantDefCore['tier'];
+
+/** 양자화 품질 등급 서열: desperate < degraded < ok < safe */
+const TIER_RANK: Readonly<Record<QuantTier, number>> = Object.freeze({ desperate: 0, degraded: 1, ok: 2, safe: 3 });
 
 /** 판정 서열: F < B < A < S */
 const VERDICT_RANK: Readonly<Record<Verdict, number>> = Object.freeze({ F: 0, B: 1, A: 2, S: 3 });
@@ -941,7 +949,30 @@ export type ModelHubData = {
   cheapest: { great?: PricedOption; well?: PricedOption };
   benchmarks: BenchPoint[];
   referenceRows: ModelGpuRow[];
+  /** 손실이 더 큰데 크기는 거의 같은 양자화 쌍(`sameSizeQuant`) — 있으면 허브가 high 를 받으라고 안내 */
+  sameSizeQuant?: { low: QuantId; high: QuantId };
 };
+
+/**
+ * 손실이 더 큰데 크기는 거의 같은 양자화 파일(HUB_POLICY.sameSizeQuantRatio) — 가장 작은 파일부터 보고 첫 쌍만.
+ * high 는 그 크기 범위 안에서 품질 등급이 더 높은 파일 가운데 가장 큰 파일(같은 크기면 더 많은 비트).
+ */
+export function sameSizeQuant(
+  quants: ReadonlyArray<{ row: Pick<ModelQuantRecord, 'quant' | 'fileGB'>; tier: QuantTier }>,
+): { low: QuantId; high: QuantId } | undefined {
+  const sorted = [...quants].sort((a, b) => a.row.fileGB - b.row.fileGB);
+  for (const low of sorted) {
+    const high = sorted
+      .filter(
+        (q) =>
+          TIER_RANK[q.tier] > TIER_RANK[low.tier] &&
+          low.row.fileGB >= q.row.fileGB * HUB_POLICY.sameSizeQuantRatio,
+      )
+      .at(-1);
+    if (high) return { low: low.row.quant, high: high.row.quant };
+  }
+  return undefined;
+}
 
 /** 통합·CPU: 최고 기준 판정의 최소 RAM 구성, 전부 F 면 최대 RAM (결정 D4). */
 export function pickConfigCombo(combos: readonly ComboAssessment[]): ComboAssessment {
@@ -982,16 +1013,19 @@ export function summarizeModel(catalog: SeedCatalog, model: Model): ModelHubData
     wellCandidate && (!great || wellCandidate.priceUSD < great.priceUSD) ? wellCandidate : undefined;
   const cheapest = { ...(great ? { great } : {}), ...(well ? { well } : {}) };
 
+  const quants: ModelHubData['quants'] = [...rows]
+    .sort((a, b) => a.fileGB - b.fileGB)
+    .map((row) => ({
+      row,
+      tier: tiers.get(row.quant) ?? 'ok',
+      publisher: ggufPublisher(model, row),
+    }));
+  const sameSize = sameSizeQuant(quants);
+
   return {
     model,
     baselineQuant: baseRow.quant,
-    quants: [...rows]
-      .sort((a, b) => a.fileGB - b.fileGB)
-      .map((row) => ({
-        row,
-        tier: tiers.get(row.quant) ?? 'ok',
-        publisher: ggufPublisher(model, row),
-      })),
+    quants,
     matrix: memoryMatrix(model, rows),
     gpuRows,
     cheapest,
@@ -999,5 +1033,6 @@ export function summarizeModel(catalog: SeedCatalog, model: Model): ModelHubData
     referenceRows: HUB_POLICY.referenceGpuIds
       .map((id) => gpuRows.find((r) => r.gpu.id === id))
       .filter((r): r is ModelGpuRow => r !== undefined),
+    ...(sameSize ? { sameSizeQuant: sameSize } : {}),
   };
 }

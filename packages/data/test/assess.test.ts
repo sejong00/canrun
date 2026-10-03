@@ -13,6 +13,7 @@ import {
   HUB_POLICY,
   isFp16Crippled,
   memoryMatrix,
+  sameSizeQuant,
   summarizeGpu,
   summarizeModel,
   unifiedCpuBandwidth,
@@ -451,6 +452,35 @@ describe('summaries', () => {
       (c) => ['F', 'B', 'A', 'S'].indexOf(c.baseline.result.verdict) === bestRank,
     )!;
     expect(m4max.combo.ramGB).toBe(firstBest.ramGB);
+  });
+
+  it('손실이 더 큰 파일이 더 나은 파일과 크기가 거의 같으면 더 나은 쪽을 안내 (10-03 D63 후속)', () => {
+    // Nemotron 3.5 Lightning: K-quant 폴백으로 Q2_K 18.91GB ≈ IQ4_XS 18.92GB
+    expect(summarizeModel(seed, model('nemotron-3.5-lightning-30b-a3b')).sameSizeQuant).toEqual({
+      low: 'Q2_K',
+      high: 'IQ4_XS',
+    });
+    // 지금 카탈로그에서 해당하는 모델은 하나뿐 — 보통 모델엔 안내가 없다
+    const tierOf = new Map(seed.quantDefs.map((d) => [d.id, d.tier]));
+    const flagged = seed.models
+      .filter((m) =>
+        sameSizeQuant(
+          seed.modelQuants
+            .filter((r) => r.modelId === m.id)
+            .map((row) => ({ row, tier: tierOf.get(row.quant) ?? 'ok' })),
+        ),
+      )
+      .map((m) => m.id);
+    expect(flagged).toEqual(['nemotron-3.5-lightning-30b-a3b']);
+    // 비율 경계: 95% 미만이면 안내하지 않고, 범위 안 더 나은 파일이 여럿이면 가장 큰 파일
+    const q = (quant: string, fileGB: number, tier: 'desperate' | 'degraded' | 'ok' | 'safe') => ({
+      row: { quant: quant as never, fileGB },
+      tier,
+    });
+    expect(sameSizeQuant([q('Q2_K', 9.4, 'desperate'), q('IQ4_XS', 10, 'ok')])).toBeUndefined();
+    expect(
+      sameSizeQuant([q('Q2_K', 9.6, 'desperate'), q('IQ3_XS', 9.7, 'degraded'), q('IQ4_XS', 10, 'ok')]),
+    ).toEqual({ low: 'Q2_K', high: 'IQ4_XS' });
   });
 });
 

@@ -340,6 +340,9 @@ export default async function ModelHubPage({ params }: Props) {
             <p className="text-xs text-muted-foreground">{t.hub('visionNote')}</p>
           )}
           {hasUnsloth && <p className="text-xs text-muted-foreground">{t.hub('udNote')}</p>}
+          {hub.sameSizeQuant && (
+            <p className="text-xs text-muted-foreground">{t.hub('sameSizeNote', hub.sameSizeQuant)}</p>
+          )}
         </section>
 
         <section aria-labelledby="matrix-heading" className="flex flex-col gap-3">

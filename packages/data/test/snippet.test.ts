@@ -10,9 +10,11 @@ import {
   cpuMoeFlagLayers,
   dgpuHardware,
   ggufTag,
+  gpuExpertLayerCount,
   hardwareConfigs,
   isUdFile,
   assessQuant,
+  nextCpuMoeFlags,
   shardCount,
   type HwConfig,
 } from '../src/index';
@@ -185,6 +187,62 @@ describe('--n-cpu-moe counts blocks, the engine counts expert layers (10-03 D63)
     expect(experts.filter((l) => l < n)).toHaveLength(onCpu);
     expect(experts).toContain(n - 1);
     expect(n).toBeGreaterThan(onCpu); // 블록 번호는 MoE 블록 수보다 크다 — 엔진 값을 그대로 쓰면 GPU 에 전문가가 더 남는다
+  });
+
+  it('GPU-side count and OOM next values are in expert layers, not blocks', () => {
+    const m = arch(8, [1, 3, 6]);
+    // N=2: 블록 0·1 → 전문가 층 1 만 CPU, GPU 에는 3·6 두 개 (블록으로 세면 6)
+    expect(gpuExpertLayerCount(m, 2)).toBe(2);
+    expect(nextCpuMoeFlags(m, 2)).toEqual([4, 7]);
+    expect(gpuExpertLayerCount(m, 4)).toBe(1);
+    expect(nextCpuMoeFlags(m, 4)).toEqual([7]);
+    expect(gpuExpertLayerCount(m, 8)).toBe(0);
+    expect(nextCpuMoeFlags(m, 8)).toEqual([]);
+    // 모든 층에 전문가가 있으면 블록 수와 같다 — N+1·N+2
+    expect(gpuExpertLayerCount(arch(48), 30)).toBe(18);
+    expect(nextCpuMoeFlags(arch(48), 30)).toEqual([31, 32]);
+    expect(nextCpuMoeFlags(arch(48), 47)).toEqual([48]);
+  });
+
+  it('every partial cpu-moe command matches the verdict sentence and each OOM step frees one expert layer', () => {
+    let checked = 0;
+    let mapped = 0;
+    for (const g of seed.gpus.filter((x) => x.kind === 'dgpu')) {
+      for (const m of seed.models.filter((x) => x.moe)) {
+        for (const config of hardwareConfigs(g, seed.gpus)) {
+          const combo = assessCombo(seed, g, config, m);
+          const d = combo.display;
+          if (!d.fits || d.result.mode !== 'cpu-moe') continue;
+          const llama = commandPlan(g, config, m, row(m.id, d.quant), d).llamaCpp!;
+          // 판정 문장(apps/web/lib/combo-phrases.ts verdictSentence)이 세는 값과 같아야 한다
+          const moeLayers = m.arch.expertLayers?.length ?? m.arch.layers;
+          const sentence = moeLayers - (d.result.cpuMoeLayers ?? moeLayers);
+          expect(llama.gpuExpertLayers, `${g.id} ${m.id}`).toBe(Math.max(0, sentence));
+          if (sentence <= 0) continue;
+          checked += 1;
+          if (m.arch.expertLayers) mapped += 1;
+          // 올리라고 안내하는 값마다 GPU 에 남는 전문가 층이 정확히 하나씩 줄어든다
+          const next = llama.nCpuMoeNext!;
+          expect(next.length).toBe(Math.min(2, sentence));
+          next.forEach((v, i) =>
+            expect(gpuExpertLayerCount(m, v), `${g.id} ${m.id} → ${v}`).toBe(sentence - i - 1),
+          );
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(50);
+    expect(mapped).toBeGreaterThan(10);
+  });
+
+  it('Nemotron on a 16GB card: footnote count = verdict count, OOM steps skip expert-free blocks', () => {
+    const m = model('nemotron-3.5-lightning-30b-a3b');
+    const g = gpu('rtx-5060-ti-16gb');
+    const config = hardwareConfigs(g, seed.gpus)[0]!;
+    const d = assessCombo(seed, g, config, m).display;
+    const llama = commandPlan(g, config, m, row(m.id, d.quant), d).llamaCpp!;
+    expect(llama.nCpuMoe).toBe(25);
+    expect(llama.gpuExpertLayers).toBe(12); // 블록 수로 세면 27
+    expect(llama.nCpuMoeNext).toEqual([28, 30]); // 26·27 은 전문가 없는 블록 25·26 만 덮는다
   });
 });
 
