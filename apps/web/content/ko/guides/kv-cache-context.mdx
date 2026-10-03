@@ -42,6 +42,8 @@ MoE(전문가 혼합) 구조라고 KV 캐시가 줄지는 않습니다. KV 크�
 
 CanRun은 이 모델들의 KV 캐시를 계산할 때 전체 어텐션을 쓰는 글로벌 층만 셉니다. 슬라이딩 층의 윈도 부분과 선형 어텐션 층의 상태는 컨텍스트와 상관없이 크기가 일정하다고 보고 계산에서 뺍니다. 그래서 이 수치는 실제보다 낮게 나옵니다. 특히 EXAONE 4.0 32B처럼 윈도가 넓은 모델은 짧은 컨텍스트에서 차이가 큽니다. config를 보면 이 모델의 윈도는 4k 토큰으로, gpt-oss보다 훨씬 넓습니다. 그래도 글로벌 층의 KV 캐시는 컨텍스트에 비례해 커지므로, 전체 KV가 일정한 크기에서 멈추지는 않습니다. 예를 들어 Gemma 3 12B의 f16 KV 캐시는 128k에서 <Num kind="kvGB" model="gemma-3-12b" ctx="131072" />입니다.
 
+새로 나온 하이브리드 모델도 같은 방식으로 셉니다. <HubLink model="nemotron-3.5-lightning-30b-a3b" />는 Mamba-2 층 사이에 어텐션 층을 몇 개 둡니다. <HubLink model="lfm2.5-2.6b" />는 짧은 합성곱 층 사이에, <HubLink model="ling-3.0-tiny" />는 Kimi Delta Attention 층 사이에 어텐션 층을 둡니다. Mamba-2·합성곱·Kimi Delta 층은 크기가 일정한 상태만 저장하므로, CanRun은 어텐션 층만 셉니다. Ling-3.0의 어텐션 층은 MLA(다중 헤드 잠재 어텐션)를 씁니다. llama.cpp는 MLA 층에 토큰마다 압축한 벡터 하나만 저장하고, 키와 값은 거기서 다시 만듭니다. 값을 담는 캐시가 따로 없는 셈입니다. CanRun도 이 압축된 크기로 셉니다. 32k에서 Ling-3.0 Tiny의 f16 KV 캐시는 <Num kind="kvGB" model="ling-3.0-tiny" ctx="32768" />입니다.
+
 ## 내 그래픽카드에서 컨텍스트를 얼마나 늘릴 수 있나
 
 모델이 들어가는지는 가중치, KV 캐시, 연산 버퍼를 더한 합계로 판단합니다. 이 합계를 카드에 적힌 VRAM이 아니라 사용 가능 메모리와 비교합니다. Windows에서 화면 출력을 맡은 그래픽카드는 OS가 VRAM 일부를 쓰기 때문입니다. 자세한 설명은 메모리 표 아래에 있습니다.
@@ -144,3 +146,7 @@ Ollama FAQ에 따르면 q8_0은 정밀도 손실이 아주 작습니다. q4_0은
 - [gpt-oss-20b config.json](https://huggingface.co/openai/gpt-oss-20b/blob/main/config.json): 윈도가 128토큰인 슬라이딩 층과 전체 어텐션 층이 번갈아 놓인 배치, KV 헤드 수와 헤드 크기, 최대 128k
 - [EXAONE 4.0 32B 모델 카드](https://huggingface.co/LGAI-EXAONE/EXAONE-4.0-32B): 32B 모델에 적용된 로컬(슬라이딩 윈도) 층과 글로벌 층의 3:1 혼합, 층 수, GQA, 최대 128k
 - [EXAONE 4.0 32B config.json](https://huggingface.co/LGAI-EXAONE/EXAONE-4.0-32B/blob/main/config.json): 슬라이딩 윈도 크기(4k 토큰), 로컬·글로벌 층 배치 패턴
+- [NVIDIA Nemotron 3.5 Lightning 30B-A3B 모델 카드](https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16): Mamba-2 층과 MoE 층이 번갈아 놓이고 그 사이에 어텐션 층 몇 개가 들어간 구성
+- [LFM2.5-2.6B config.json](https://huggingface.co/LiquidAI/LFM2.5-2.6B/blob/main/config.json): 합성곱 층과 전체 어텐션 층의 배치 순서, KV 헤드 수
+- [Ling-3.0-tiny 모델 카드](https://huggingface.co/inclusionAI/Ling-3.0-tiny): 네 층 묶음마다 Kimi Delta Attention 층 3개 뒤에 MLA 층 1개가 오는 구성
+- [llama.cpp 소스: KV 캐시](https://github.com/ggml-org/llama.cpp/blob/master/src/llama-kv-cache.cpp): MLA 층에는 키 캐시만 두고 값 캐시는 두지 않는 코드

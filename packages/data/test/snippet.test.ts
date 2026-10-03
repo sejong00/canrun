@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import {
   assessCombo,
   commandPlan,
+  cpuMoeFlagLayers,
   dgpuHardware,
   ggufTag,
   hardwareConfigs,
@@ -157,6 +158,36 @@ describe('commandPlan — llama.cpp', () => {
   });
 });
 
+describe('--n-cpu-moe counts blocks, the engine counts expert layers (10-03 D63)', () => {
+  const arch = (layers: number, expertLayers?: number[]) => ({ arch: { layers, kvHeads: 2, headDim: 128, attnType: 'hybrid' as const, kvBytesPerTokenF16: 1, ...(expertLayers ? { expertLayers } : {}) } });
+
+  it('passes the engine value through when every layer has experts; no value = every layer', () => {
+    expect(cpuMoeFlagLayers(arch(48), 30)).toBe(30);
+    expect(cpuMoeFlagLayers(arch(48), undefined)).toBe(48);
+  });
+
+  it('with an expert-layer map: the block count that covers the first N expert layers', () => {
+    const m = arch(8, [1, 3, 6]);
+    expect([0, 1, 2, 3, 5].map((n) => cpuMoeFlagLayers(m, n))).toEqual([0, 2, 4, 7, 7]);
+    expect(cpuMoeFlagLayers(m, undefined)).toBe(8);
+  });
+
+  it('Nemotron 3.5 Lightning on a 16GB card: the command keeps exactly the engine’s expert blocks on the GPU', () => {
+    const m = model('nemotron-3.5-lightning-30b-a3b');
+    const g = gpu('rtx-5060-ti-16gb');
+    const config = hardwareConfigs(g, seed.gpus)[0]!;
+    const combo = assessCombo(seed, g, config, m);
+    expect(combo.display.result.mode).toBe('cpu-moe');
+    expect(combo.display.result.confidence).toBe('theoretical');
+    const onCpu = combo.display.result.cpuMoeLayers!;
+    const n = commandPlan(g, config, m, row(m.id, combo.display.quant), combo.display).llamaCpp!.nCpuMoe!;
+    const experts = m.arch.expertLayers!;
+    expect(experts.filter((l) => l < n)).toHaveLength(onCpu);
+    expect(experts).toContain(n - 1);
+    expect(n).toBeGreaterThan(onCpu); // 블록 번호는 MoE 블록 수보다 크다 — 엔진 값을 그대로 쓰면 GPU 에 전문가가 더 남는다
+  });
+});
+
 describe('--n-cpu-moe N keeps the GPU side within usable VRAM for every cpu-moe combo (10-01 D56)', () => {
   it('holds over dGPU × MoE × rows × RAM options, measured from each row’s GGUF split', () => {
     let checked = 0;
@@ -181,10 +212,14 @@ describe('--n-cpu-moe N keeps the GPU side within usable VRAM for every cpu-moe 
             expect(n).toBeGreaterThanOrEqual(1);
             expect(n).toBeLessThanOrEqual(m.arch.layers);
             if (n < m.arch.layers) partial += 1;
-            const perLayer = r.expertGB! / m.arch.layers;
+            // llama.cpp 의 실제 배치로 잰다: `--n-cpu-moe N` = 앞 N 블록의 전문가를 CPU 에. 전문가가 일부 블록에만 있는 모델
+            // (arch.expertLayers — Mamba 사이에 섞인 MoE 블록·앞쪽 dense 층, 10-03 D63)은 N 이상 번호의 전문가 층만 GPU 에 남는다
+            // (전엔 균등 분포 근사로 재서 Nemotron 의 실제 GPU 쪽 초과 최대 1GB 를 못 잡았다 — 근사가 엔진과 같았기 때문)
+            const expertLayers = m.arch.expertLayers ?? Array.from({ length: m.arch.layers }, (_, i) => i);
+            const perLayer = r.expertGB! / expertLayers.length;
             const gpuSide =
               r.nonExpertGB! +
-              perLayer * (m.arch.layers - n) +
+              perLayer * expertLayers.filter((l) => l >= n).length +
               kvGB(m.arch.kvBytesPerTokenF16, 8192) +
               computeBufferGB(8192);
             expect(gpuSide, `${g.id} ${m.id} ${r.quant} @${ramGB}`).toBeLessThanOrEqual(usableGB(config.hw) + 1e-9);

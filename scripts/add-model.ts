@@ -7,8 +7,9 @@
  *
  * 하는 일:
  *  1) HF 모델 정보(파라미터 수·라이선스·생성일·다운로드)와 config.json 을 받는다. 게이트 모델은 unsloth 미러 config 로 대체하고 출처에 남긴다.
- *  2) 구조를 분류한다 — **선례가 있는 구조만 자동**(PROGRESS §4 D53): 전체 어텐션 · 슬라이딩 윈도(layer_types) · 하이브리드 선형(layer_types).
- *     처음 보는 model_type, MLA·압축 어텐션·Mamba·conv 등은 "보류"로 멈춘다 — 엔진이 그 메모리를 모델링하지 않아 판정이 틀린다.
+ *  2) 구조를 분류한다 — **선례가 있는 구조만 자동**(PROGRESS §4 D53·D63): 전체 어텐션 · 슬라이딩 윈도(layer_types) · 하이브리드 선형(layer_types)
+ *     · 상수 상태 층 하이브리드(nemotron_h Mamba2 · lfm2 short-conv · bailing_hybrid KDA+MLA — 층 지도가 있을 때만).
+ *     처음 보는 model_type, 반복 층·디스크 n-gram 임베딩·압축 어텐션 등은 "보류"로 멈춘다 — 엔진이 그 메모리를 모델링하지 않아 판정이 틀린다.
  *  3) GGUF 저장소를 고른다(공식 → ggml-org → bartowski → unsloth → lmstudio-community, Q4_K_M 이 있는 첫 곳) — 파일명·크기는 트리에서.
  *  4) 레코드를 쓰고, MoE 면 MOE_ARCH 에 한 줄 넣어 nonExpertGB 를 유도, data/meta.json 기준일을 오늘로.
  *     양자화 행마다 GGUF 헤더를 Range 로 읽는다(scripts/gguf-header.ts): MoE 는 expertGB·nonExpertGB(10-01),
@@ -212,7 +213,7 @@ async function main(): Promise<void> {
 
   const info = (await (await fetch(`https://huggingface.co/api/models/${hfId}`, { headers })).json()) as {
     id?: string; gated?: unknown; createdAt?: string; downloads?: number; pipeline_tag?: string;
-    cardData?: { license?: string }; safetensors?: { total?: number };
+    cardData?: { license?: string; license_name?: string }; safetensors?: { total?: number };
   };
   if (!info.id) throw new Error(`HF 모델을 찾지 못함: ${hfId}`);
 
@@ -249,7 +250,7 @@ async function main(): Promise<void> {
   const name = args.name ?? displayName(hfId);
   const paramsB = info.safetensors?.total ? round2(info.safetensors.total / 1e9) : undefined;
   if (!paramsB) throw new Error('파라미터 수(safetensors.total)를 받지 못함');
-  const license = mapLicense(info.cardData?.license);
+  const license = mapLicense(info.cardData?.license, info.cardData?.license_name);
   const category = args.category ?? ['chat', ...(/coder/i.test(hfId) ? ['coding'] : []), ...(arch.vision || info.pipeline_tag === 'image-text-to-text' ? ['vision'] : [])];
   const today = new Date().toISOString().slice(0, 10);
   const src = mirror ? configUrl(mirror) : configUrl(hfId);
@@ -277,8 +278,12 @@ async function main(): Promise<void> {
     arch: {
       layers: arch.arch.layers, kvHeads: arch.arch.kvHeads, headDim: arch.arch.headDim, attnType: arch.attnType, kvBytesPerTokenF16: arch.arch.kvBytesPerTokenF16,
       ...(arch.moe ? { experts: arch.moe.experts, topK: arch.moe.topK } : {}),
+      ...(arch.expertLayers ? { expertLayers: arch.expertLayers } : {}),
     },
-    ...(arch.override ? { attnOverrides: { ...arch.override, sources: [src] } } : {}),
+    // 산식 근거(llama.cpp 가 KV 를 두는 층 — D63)가 있으면 config 출처 뒤에 덧붙인다
+    ...(arch.override
+      ? { attnOverrides: { kvBytesPerTokenF16: arch.override.kvBytesPerTokenF16, reason: arch.override.reason, sources: [src, ...(arch.override.refs ?? [])] } }
+      : {}),
     maxContext: args.maxContext ?? arch.maxContext, license, moe: arch.moe !== undefined,
     ...(moeFields['nonExpertGB'] !== undefined ? { nonExpertGB: moeFields['nonExpertGB'] } : {}),
     category, ...(args.thinking ? { thinking: args.thinking } : {}), ...(args.korean ? { korean: true } : {}),
@@ -298,7 +303,9 @@ async function main(): Promise<void> {
     : undefined;
 
   console.log(`\n${hfId} → ${id} (${name}) · ${arch.modelType} · ${arch.attnType}${arch.moe ? ` · MoE ${arch.moe.experts}E top-${arch.moe.topK}` : ''}`);
-  console.log(`  KV ${arch.arch.kvBytesPerTokenF16} B/token · maxContext ${arch.maxContext} · params ${paramsB}B · license ${license} · popularity ${String(record['popularity'])} · category ${category.join(',')}`);
+  console.log(`  KV ${arch.override?.kvBytesPerTokenF16 ?? arch.arch.kvBytesPerTokenF16} B/token · maxContext ${arch.maxContext} · params ${paramsB}B · license ${license} · popularity ${String(record['popularity'])} · category ${category.join(',')}`);
+  if (arch.override) console.log(`  ${arch.override.reason}`);
+  if (arch.expertLayers) console.log(`  expert layers ${arch.expertLayers.length}/${arch.arch.layers}: ${arch.expertLayers.join(',')}`);
   for (const r of rows) {
     const split = r.expertGB !== undefined ? `  (expert ${r.expertGB} · non-expert ${String(r.nonExpertGB)} GB)` : '';
     console.log(`  ${r.quant.padEnd(10)} ${String(r.fileGB).padStart(7)} GB  ${r.ggufRepo}/${r.fileName ?? ''}${split}`);

@@ -86,6 +86,10 @@ export const MOE_ARCH: Readonly<Record<string, MoeArch>> = Object.freeze({
   'qwen3.6-35b-a3b': { totalParamsB: 35.95, activeParamsB: 3, experts: 256, topK: 8 },
   'kanana-1.5-15.7b-a3b': { totalParamsB: 15.7, activeParamsB: 3, experts: 64, topK: 8 },
   'solar-open-100b': { totalParamsB: 102.65, activeParamsB: 12, experts: 128, topK: 8 },
+  'laguna-s-2.1': { totalParamsB: 117.56, activeParamsB: 8, experts: 256, topK: 10 }, // add-model 2026-10-03 — poolside/Laguna-S-2.1 config
+  'nemotron-3.5-lightning-30b-a3b': { totalParamsB: 31.58, activeParamsB: 3, experts: 128, topK: 6 }, // add-model 2026-10-03 — nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16 config
+  'ling-3.0-tiny': { totalParamsB: 7.89, activeParamsB: 1.3, experts: 128, topK: 8 }, // add-model 2026-10-03 — inclusionAI/Ling-3.0-tiny config
+  'ling-3.0-flash': { totalParamsB: 127.49, activeParamsB: 5.1, experts: 512, topK: 8 }, // add-model 2026-10-03 — inclusionAI/Ling-3.0-flash config
 });
 
 /**

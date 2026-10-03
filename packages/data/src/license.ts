@@ -12,6 +12,10 @@ export type LicenseClass = 'permissive' | 'custom' | 'nonCommercial' | 'unknown'
 const LICENSE_CLASS: Readonly<Record<string, Exclude<LicenseClass, 'unknown'>>> = Object.freeze({
   'Apache-2.0': 'permissive',
   MIT: 'permissive',
+  // Linux Foundation OpenMDW — 모델·데이터·가중치용 허용 라이선스 (Laguna S 2.1·Nemotron 3.5 Lightning, 10-03)
+  'OpenMDW-1.1': 'permissive',
+  // LiquidAI 자체 약관 — 매출 기준 상업 이용 조건 (LFM2.5, 10-03)
+  'LFM Open License 1.0': 'custom',
   'Llama 3.1': 'custom',
   'Llama 3.2': 'custom',
   'Llama 3.3': 'custom',

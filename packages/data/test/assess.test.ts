@@ -240,6 +240,17 @@ describe('theoretical 규칙 (docs/02 §4, 결정 D4)', () => {
     expect(combo('gtx-1080-ti', 'llama-3.1-8b').baseline.result.confidence).toBe('theoretical');
   });
 
+  it('상수 상태 층 하이브리드(Mamba2·short-conv·KDA+MLA)는 전량 탑재여도 이론 추정 — 속도 모델 미검증 (10-03 D63)', () => {
+    for (const id of ['lfm2.5-2.6b', 'ling-3.0-tiny']) {
+      const r = combo('rtx-4090', id).baseline.result;
+      expect(r.mode, id).toBe('full-gpu');
+      expect(r.confidence, id).toBe('theoretical');
+    }
+    expect(combo('rtx-5090', 'nemotron-3.5-lightning-30b-a3b').baseline.result).toMatchObject({ mode: 'full-gpu', confidence: 'theoretical' });
+    // 선례 구조(SWA)인 Spark-X2.5 는 기존 경로 — NVIDIA dense 전량 탑재 보정 추정
+    expect(combo('rtx-4090', 'spark-x2.5-4b').baseline.result).toMatchObject({ mode: 'full-gpu', confidence: 'calibrated' });
+  });
+
   it('NVIDIA dGPU dense full-gpu 는 calibrated ±12%', () => {
     const r = combo('rtx-4090', 'qwen3-8b').baseline.result;
     expect(r.confidence).toBe('calibrated');

@@ -74,7 +74,7 @@ The table below counts every model in CanRun's catalog by verdict for each of th
 
 <GpuTierSummary gpus="rtx-4060,rtx-3060-12gb,rtx-4070,rtx-5070,rtx-5060-ti-16gb,rtx-3090,rtx-4090,rtx-5090" />
 
-At 8k, the set of models that fit fully on the GPU grows at each step from 8GB to 24GB; the 32GB RTX 5090 adds none at the baseline. Its extra memory goes to longer context and to running Llama 3.3 70B at Q4_K_M partly from system RAM, as the 32GB section explains. Between cards of the same size, only speed moves models from one verdict to another. The counts change as models join the catalog.
+At 8k, the set of models that fit fully on the GPU grows at each step from 8GB to 24GB, and the 32GB RTX 5090 adds one at the baseline. <HubLink model="nemotron-3.5-lightning-30b-a3b" /> needs <Num kind="needGB" model="nemotron-3.5-lightning-30b-a3b" />, more than the <Num kind="usableGB" gpu="rtx-4090" /> a 24GB card can use. On the RTX 4090 some of its expert weights go to system RAM and the cell reads Runs well as a theoretical estimate;<Expect model="nemotron-3.5-lightning-30b-a3b" gpu="rtx-4090" verdict="A" /> on the RTX 5090 it fits fully on the GPU and Runs great, also a theoretical estimate.<Expect model="nemotron-3.5-lightning-30b-a3b" gpu="rtx-5090" verdict="S" /> Otherwise the extra memory goes to longer context and to running Llama 3.3 70B at Q4_K_M partly from system RAM, as the 32GB section explains. Between cards of the same size, only speed moves models from one verdict to another. The counts change as models join the catalog.
 
 ### Other cards with the same memory
 

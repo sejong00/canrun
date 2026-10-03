@@ -49,7 +49,7 @@ const PUBLISHED = { status: 'published', reviewedAt: '2026-09-30', datePublished
 export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
   'vram-requirements': {
     ...PUBLISHED,
-    // 10-03 D62: 필요량 정의(그래픽카드에 올라가는 가중치)·여유 문장 갱신
+    // 10-03 D62: 필요량 정의(그래픽카드에 올라가는 가중치)·여유 문장 갱신. 10-03 D63: en "5090 이 더하는 모델 없음" → Nemotron 3.5 Lightning
     dateModified: '2026-10-03',
     grids: {
       tiers: {
@@ -167,7 +167,7 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
   },
   'kv-cache-context': {
     ...PUBLISHED,
-    // 10-03 D62: 필요량 정의(그래픽카드에 올라가는 가중치)·여유 문장 갱신
+    // 10-03 D62: 필요량 정의(그래픽카드에 올라가는 가중치)·여유 문장 갱신. 10-03 D63: Mamba-2·conv·KDA+MLA 하이브리드 KV 세는 법
     dateModified: '2026-10-03',
     grids: {},
     related: ['ollama-context-length', 'vram-requirements', 'gguf-quantization'],

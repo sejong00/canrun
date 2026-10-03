@@ -369,7 +369,7 @@
     "full": "Full attention",
     "swa": "Sliding-window attention",
     "mla": "Multi-head latent attention",
-    "hybrid": "Hybrid linear attention"
+    "hybrid": "Hybrid attention (only some layers use full attention)"
   },
   "Category": {
     "chat": "Chat",

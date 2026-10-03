@@ -215,6 +215,8 @@ export function extractMoe(config: unknown): { experts: number; topK: number } |
 /**
  * 선례가 있는 텍스트 model_type (09-30 카탈로그 config 에서 수집). 여기 없는 구조는 자동 추가하지 않는다.
  * gpt_oss(MXFP4 네이티브 — 기준 양자화가 다름)·solar_open2(하이브리드 특수)는 의도적으로 제외.
+ * 10-03 D63: spark2_5·laguna(SWA 선례) · nemotron_h(Mamba2 하이브리드) · lfm2(short-conv 하이브리드) ·
+ * bailing_hybrid(KDA + MLA — BailingMoeV3 만) — 셋은 아래 전용 분기가 층 지도를 얻을 때만 통과한다.
  */
 export const KNOWN_MODEL_TYPES: ReadonlySet<string> = new Set([
   'llama',
@@ -234,11 +236,42 @@ export const KNOWN_MODEL_TYPES: ReadonlySet<string> = new Set([
   'exaone4_5_text',
   'hyperclovax',
   'solar_open',
+  'spark2_5',
+  'laguna',
+  'nemotron_h',
+  'lfm2',
+  'bailing_hybrid',
 ]);
 
-/** 이 키가 config 에 있으면 엔진이 모델링하지 않는 구조 (MLA·압축 어텐션·SSM·conv) */
-const UNSUPPORTED_KEYS = ['kv_lora_rank', 'compress_ratios', 'ssm_state_size', 'mamba_num_heads', 'conv_L_cache', 'hybrid_override_pattern'];
+/**
+ * 상수 상태 층 하이브리드의 전용 분기 (D63). config 의 구조 키는 자기 분기 안에서만 허용한다 — 다른 model_type 에
+ * 같은 키가 있으면 여전히 unsupported(층 지도가 없으면 KV 를 셀 수 없다).
+ */
+type StateBranch = 'mamba' | 'conv' | 'mla';
+/** 이 키가 config 에 있으면 해당 분기에서만 계산한다 — 그 밖에서는 엔진이 모델링하지 않는 구조 */
+const BRANCH_KEYS: Readonly<Record<string, StateBranch>> = {
+  ssm_state_size: 'mamba',
+  mamba_num_heads: 'mamba',
+  hybrid_override_pattern: 'mamba',
+  conv_L_cache: 'conv',
+  kv_lora_rank: 'mla',
+};
+/** 늘 거부 — 압축 어텐션(DeepSeek V4 의 층별 압축 비율) */
+const ALWAYS_UNSUPPORTED_KEYS = ['compress_ratios'];
 const KNOWN_LAYER_TYPES: ReadonlySet<string> = new Set(['full_attention', 'sliding_attention', 'linear_attention']);
+/** 상수 상태 층(선형 어텐션·short-conv) — KV 가 없고 상태 크기가 컨텍스트와 무관하다 */
+const STATE_LAYER_TYPES: ReadonlySet<string> = new Set(['linear_attention', 'conv']);
+
+/** KV 계상 근거 — attnOverrides.sources 에 config 와 함께 남긴다 (llama.cpp 가 실제로 KV 를 두는 층) */
+const LLAMA_CPP_SRC = 'https://github.com/ggml-org/llama.cpp/blob/master';
+const KV_REFS: Readonly<Record<StateBranch, readonly string[]>> = {
+  // NEMOTRON_H(_MOE) 전용 필터 `!is_recr(il) && n_ff(il) == 0` — Mamba·MoE 전용 블록 제외, 어텐션 블록만
+  mamba: [`${LLAMA_CPP_SRC}/src/llama-model.cpp`],
+  // 기본 하이브리드 필터 `!is_recr(il)` — conv 층은 순환(상태) 층
+  conv: [`${LLAMA_CPP_SRC}/src/llama-memory-hybrid.cpp`],
+  // MLA 층 = 변환기 is_full_attention(nextn 층 포함), V 캐시 없음(`has_v = !is_mla`), BAILINGMOE3 는 nextn 층 필터 없음
+  mla: [`${LLAMA_CPP_SRC}/conversion/bailingmoe3.py`, `${LLAMA_CPP_SRC}/src/llama-kv-cache.cpp`, `${LLAMA_CPP_SRC}/src/llama-model.cpp`],
+};
 
 export type ArchResult =
   | {
@@ -246,26 +279,87 @@ export type ArchResult =
       modelType: string;
       attnType: 'full' | 'swa' | 'hybrid';
       arch: { layers: number; kvHeads: number; headDim: number; kvBytesPerTokenF16: number };
-      /** swa·hybrid — 전체 어텐션 층만 KV (선례와 같은 산식) */
-      override?: { kvBytesPerTokenF16: number; reason: string };
+      /** swa·hybrid — 전체 어텐션 층만 KV (선례와 같은 산식). refs = 산식 근거(llama.cpp 소스) — attnOverrides.sources 에 덧붙인다 */
+      override?: { kvBytesPerTokenF16: number; reason: string; refs?: readonly string[] };
       maxContext: number;
       moe?: { experts: number; topK: number };
+      /**
+       * MoE 인데 라우팅 전문가가 일부 층에만 있을 때 그 층 번호(0부터, 트렁크만) — Mamba·어텐션 블록 사이에 섞인 MoE 블록(nemotron_h),
+       * 앞쪽 dense 층(bailing_hybrid first_k_dense_replace). `--n-cpu-moe N` 이 "앞 N 층"이라 엔진 근사(전문가 균등 분포)와 어긋나는 것을 막는다
+       */
+      expertLayers?: number[];
       vision: boolean;
     }
   | { kind: 'unsupported'; reason: string };
 
+/** Mamba 하이브리드 층 지도 → 블록 종류(attention·mamba·moe·mlp). 구형 hybrid_override_pattern 문자열('*' 어텐션·'M' Mamba2·'E' MoE·'-' MLP) 도 받는다 */
+function mambaBlocks(cfg: Record<string, unknown>): string[] | undefined {
+  const list = cfg['layers_block_type'];
+  if (Array.isArray(list)) {
+    const names: Record<string, string> = { attention: 'attention', full_attention: 'attention', mamba: 'mamba', moe: 'moe', mlp: 'mlp' };
+    const out = list.map((v) => names[String(v)]);
+    return out.every((v): v is string => v !== undefined) ? out : undefined;
+  }
+  const pattern = cfg['hybrid_override_pattern'];
+  if (typeof pattern === 'string' && pattern.length > 0) {
+    const chars: Record<string, string> = { '*': 'attention', M: 'mamba', E: 'moe', '-': 'mlp' };
+    const out = [...pattern].map((c) => chars[c]);
+    return out.every((v): v is string => v !== undefined) ? out : undefined;
+  }
+  return undefined;
+}
+
 /**
- * config.json → 엔진이 모델링하는 구조인지 분류 — **선례가 있는 구조만**(PROGRESS §4 D53): 전체 어텐션 ·
- * 슬라이딩 윈도(layer_types) · 하이브리드 선형(layer_types). 처음 보는 model_type, MLA·압축 어텐션·Mamba·conv 등은 unsupported.
+ * BailingMoeV3(Ling-3.0) MLA 층 번호 — llama.cpp 변환기 `is_full_attention` 과 같은 규칙(GGUF `head_count_kv` 가 1 인 층):
+ * (bid + 1) % g == 0 · 마지막 묶음의 나머지 층(bid ≥ ⌊L/g⌋·g) · nextn(MTP) 층(bid ≥ L). 나머지는 KDA 층.
+ * 출처: https://github.com/ggml-org/llama.cpp/blob/master/conversion/bailingmoe3.py
+ */
+export function bailingMlaLayers(layers: number, groupSize: number, nextn: number): number[] {
+  const lastGroup = Math.floor(layers / groupSize) * groupSize;
+  return Array.from({ length: layers + nextn }, (_, bid) => bid).filter(
+    (bid) => bid >= layers || (bid + 1) % groupSize === 0 || bid >= lastGroup,
+  );
+}
+
+/**
+ * config.json → 엔진이 모델링하는 구조인지 분류 — **선례가 있는 구조만**(PROGRESS §4 D53, D63 개정): 전체 어텐션 ·
+ * 슬라이딩 윈도(layer_types) · 하이브리드 선형(layer_types) · 상수 상태 층 하이브리드(Mamba2·short-conv·KDA+MLA — 전용 분기, D63).
+ * 처음 보는 model_type, 반복 층·디스크 임베딩·압축 어텐션, 층 지도가 없는 MLA·Mamba·conv 는 unsupported.
  */
 export function classifyArch(config: unknown): ArchResult {
   if (typeof config !== 'object' || config === null) return { kind: 'unsupported', reason: 'config 없음' };
   const top = config as Record<string, unknown>;
   const cfg = textConfig(config);
+  const has = (key: string): boolean => key in cfg || key in top;
+  // 화이트리스트와 무관하게 먼저 막는다(D63): 반복 층은 토큰마다 같은 층을 N번 지나 가중치 읽기·KV 가 N배(Nanbeige num_loops·Ouro total_ut_steps),
+  // n-gram·PLE 임베딩 표는 llama.cpp 가 디스크에서 행만 읽어(TENSOR_READ_LAZY) 파일 크기로 메모리를 셀 수 없다(Qwen3.8-Flash-Next)
+  const loops = Math.max(posInt(cfg['num_loops']) ?? 1, posInt(cfg['total_ut_steps']) ?? 1);
+  if (loops > 1) return { kind: 'unsupported', reason: `반복 층 — 토큰마다 같은 층을 ${loops}번 지남(가중치 읽기·KV 가 ${loops}배)` };
+  if (has('ngram_vocab_size_base') || has('ple_layer_ids')) return { kind: 'unsupported', reason: '디스크에서 읽는 n-gram 임베딩 표 — 파일 크기로 메모리를 셀 수 없음' };
   const modelType = String(cfg['model_type'] ?? top['model_type'] ?? '');
   if (!KNOWN_MODEL_TYPES.has(modelType)) return { kind: 'unsupported', reason: `처음 보는 구조 model_type=${modelType || '(없음)'} — 선례 없음, 수동 검토` };
-  for (const key of UNSUPPORTED_KEYS) {
-    if (key in cfg || key in top) return { kind: 'unsupported', reason: `엔진이 모델링하지 않는 구조 (${key})` };
+  for (const key of ALWAYS_UNSUPPORTED_KEYS) {
+    if (has(key)) return { kind: 'unsupported', reason: `엔진이 모델링하지 않는 구조 (${key})` };
+  }
+  const archs = [cfg['architectures'], top['architectures']].flatMap((a) => (Array.isArray(a) ? a.map(String) : []));
+  let branch: StateBranch | undefined;
+  if (modelType === 'nemotron_h') branch = 'mamba';
+  else if (modelType === 'lfm2') {
+    // 같은 model_type 의 임베딩·인코더 변형(Lfm2Model·Lfm2Bidirectional…)은 채팅 모델이 아니다 — llama.cpp 변환기가 CausalLM 으로 받는 것만
+    if (!archs.some((a) => a === 'Lfm2ForCausalLM' || a === 'LFM2ForCausalLM')) return { kind: 'unsupported', reason: `lfm2 변형(${archs.join(',') || 'architectures 없음'}) — 채팅(CausalLM) 모델만` };
+    branch = 'conv';
+  } else if (modelType === 'bailing_hybrid') {
+    // llama.cpp bailingmoe3 변환기는 BailingMoeV3 만 받고 KDA LoRA·비안전 게이트·헤드 단위가 아닌 게이트는 거부한다(Ling/Ring-2.5 = V2_5 미지원)
+    const v3 =
+      archs.includes('BailingMoeV3ForCausalLM') &&
+      cfg['no_kda_lora'] === true &&
+      cfg['kda_safe_gate'] === true &&
+      cfg['gated_attention_proj_granularity_type'] === 'head_wise';
+    if (!v3) return { kind: 'unsupported', reason: `llama.cpp 가 변환하지 않는 bailing_hybrid 변형(${archs.join(',') || 'architectures 없음'})` };
+    branch = 'mla';
+  }
+  for (const [key, need] of Object.entries(BRANCH_KEYS)) {
+    if (has(key) && need !== branch) return { kind: 'unsupported', reason: `엔진이 모델링하지 않는 구조 (${key})` };
   }
   const layers = posInt(cfg['num_hidden_layers']);
   const heads = posInt(cfg['num_attention_heads']);
@@ -278,14 +372,59 @@ export function classifyArch(config: unknown): ArchResult {
   const moe = extractMoe(config);
   const vision = 'vision_config' in top;
   const full = layers * kvHeads * headDim * 4;
+  const base = { kind: 'ok' as const, modelType, vision, maxContext, ...(moe ? { moe } : {}) };
 
-  const layerTypes = Array.isArray(cfg['layer_types']) ? (cfg['layer_types'] as unknown[]).map(String) : undefined;
-  if (layerTypes && layerTypes.some((t) => !KNOWN_LAYER_TYPES.has(t))) {
-    return { kind: 'unsupported', reason: `처음 보는 층 종류 ${[...new Set(layerTypes)].filter((t) => !KNOWN_LAYER_TYPES.has(t)).join(',')}` };
+  if (branch === 'mamba') {
+    // Nemotron-H: KV 는 어텐션 블록만, Mamba2 상태는 컨텍스트와 무관한 고정 크기(Qwen3.5 선형 상태처럼 미계상 — docs/02 §2.2)
+    const blocks = mambaBlocks(cfg);
+    if (!blocks || blocks.length !== layers) return { kind: 'unsupported', reason: `Mamba 하이브리드 층 지도(layers_block_type) 없음·길이 불일치 — KV 를 셀 수 없음` };
+    const nAttn = blocks.filter((b) => b === 'attention').length;
+    if (nAttn === 0) return { kind: 'unsupported', reason: '어텐션 블록 없음(순수 Mamba) — 선례 없음' };
+    const expertIdx = blocks.flatMap((b, i) => (b === 'moe' ? [i] : []));
+    if ((moe !== undefined) !== (expertIdx.length > 0)) return { kind: 'unsupported', reason: 'MoE 설정과 층 지도의 MoE 블록이 서로 맞지 않음' };
+    const kv = nAttn * kvHeads * headDim * 4;
+    return {
+      ...base, attnType: 'hybrid',
+      arch: { layers, kvHeads, headDim, kvBytesPerTokenF16: kv },
+      override: { kvBytesPerTokenF16: kv, reason: `hybrid mamba — attention ${nAttn}/${layers} blocks, KV 는 어텐션 블록만(Mamba2 상태는 고정 크기라 미계상) (add-model)`, refs: KV_REFS.mamba },
+      ...(expertIdx.length > 0 && expertIdx.length < layers ? { expertLayers: expertIdx } : {}),
+    };
   }
+  if (branch === 'mla') {
+    // Ling-3.0(BailingMoeV3): KDA 층 + MLA 층. MLA 층 = 변환기 is_full_attention — (bid+1) % g == 0, 마지막 묶음의 나머지 층,
+    // nextn(MTP) 층(bid ≥ L). llama.cpp 는 MLA 잠재 K(kv_lora_rank + rope)만 캐시하고 V 는 두지 않는다 → 층당 (rank + rope) × 2B(f16)
+    const g = posInt(cfg['layer_group_size']);
+    const rank = posInt(cfg['kv_lora_rank']);
+    const rope = posInt(cfg['qk_rope_head_dim']);
+    const nextnRaw = cfg['num_nextn_predict_layers'];
+    const nextn = nextnRaw === undefined || nextnRaw === null ? 0 : typeof nextnRaw === 'number' && Number.isInteger(nextnRaw) && nextnRaw >= 0 ? nextnRaw : undefined;
+    if (!g || !rank || !rope || nextn === undefined) return { kind: 'unsupported', reason: 'MLA 층 지도 필드 누락(layer_group_size·kv_lora_rank·qk_rope_head_dim)' };
+    const blockCount = layers + nextn;
+    const mla = bailingMlaLayers(layers, g, nextn);
+    const kv = mla.length * (rank + rope) * 2;
+    const dense = posInt(cfg['first_k_dense_replace']);
+    const mtp = nextn > 0 ? `, MTP 층 포함(llama.cpp bailingmoe3 는 nextn 층에도 KV)` : '';
+    return {
+      ...base, attnType: 'hybrid',
+      arch: { layers, kvHeads, headDim, kvBytesPerTokenF16: kv },
+      override: {
+        kvBytesPerTokenF16: kv,
+        reason: `hybrid KDA+MLA — MLA ${mla.length}/${blockCount} layers${mtp} × (kv_lora_rank ${rank} + rope ${rope}) × 2B, V 캐시 없음(KDA 상태는 고정 크기라 미계상) (add-model)`,
+        refs: KV_REFS.mla,
+      },
+      ...(moe && dense !== undefined && dense < layers ? { expertLayers: Array.from({ length: layers - dense }, (_, i) => dense + i) } : {}),
+    };
+  }
+
+  const known = (t: string): boolean => KNOWN_LAYER_TYPES.has(t) || (branch === 'conv' && t === 'conv');
+  const layerTypes = Array.isArray(cfg['layer_types']) ? (cfg['layer_types'] as unknown[]).map(String) : undefined;
+  if (layerTypes && layerTypes.some((t) => !known(t))) {
+    return { kind: 'unsupported', reason: `처음 보는 층 종류 ${[...new Set(layerTypes)].filter((t) => !known(t)).join(',')}` };
+  }
+  if (branch === 'conv' && !layerTypes) return { kind: 'unsupported', reason: 'conv 하이브리드 층 지도(layer_types) 없음 — KV 를 셀 수 없음' };
   const nFull = layerTypes?.filter((t) => t === 'full_attention').length;
   const hasSliding = layerTypes?.includes('sliding_attention') ?? false;
-  const hasLinear = layerTypes?.includes('linear_attention') ?? false;
+  const hasLinear = layerTypes?.some((t) => STATE_LAYER_TYPES.has(t)) ?? false;
 
   if (hasSliding && hasLinear) return { kind: 'unsupported', reason: '슬라이딩 + 선형 혼합 — 선례 없음' };
   if (hasSliding && nFull !== undefined) {
@@ -300,13 +439,21 @@ export function classifyArch(config: unknown): ArchResult {
     };
   }
   if (hasLinear && nFull !== undefined) {
+    if (nFull === 0) return { kind: 'unsupported', reason: '전체 어텐션 층 없음 — 선례 없음' };
     const kv = nFull * kvHeads * headDim * 4;
+    // short-conv(LFM2) 상태 = n_embd × (L_cache − 1) 고정 크기 — 선형 어텐션 상태처럼 미계상 (D63)
+    const reason =
+      branch === 'conv'
+        ? `hybrid conv — full attn ${nFull}/${layers} layers, KV 는 full 레이어만(short-conv 상태는 고정 크기라 미계상) (add-model)`
+        : `hybrid linear — full attn ${nFull}/${layers} layers, KV 는 full 레이어만 계상 (add-model)`;
     return {
       kind: 'ok', modelType, attnType: 'hybrid', vision, maxContext, ...(moe ? { moe } : {}),
       arch: { layers, kvHeads, headDim, kvBytesPerTokenF16: kv },
-      override: { kvBytesPerTokenF16: kv, reason: `hybrid linear — full attn ${nFull}/${layers} layers, KV 는 full 레이어만 계상 (add-model)` },
+      override: { kvBytesPerTokenF16: kv, reason, ...(branch === 'conv' ? { refs: KV_REFS.conv } : {}) },
     };
   }
+  // conv 분기인데 conv 층이 없다(전부 full 등) — lfm2 로는 선례 없음
+  if (branch === 'conv') return { kind: 'unsupported', reason: 'conv 층 없는 lfm2 — 선례 없음' };
   // layer_types 가 없고 sliding_window_pattern(N 층마다 1층 전역 — Gemma 3 구형 config)만 있으면 전역 층 = floor(layers / N).
   // 카탈로그 gemma-3-12b(48층 → 8 × 8 × 256 × 4 = 65,536)·27b(62층 → 10 × 16 × 128 × 4 = 81,920) 기록과 같은 산식 (10-01)
   const sw = posInt(cfg['sliding_window']);
@@ -349,18 +496,30 @@ export function displayName(hfId: string): string {
 
 export const familyOf = (name: string): string => (name.split(' ')[0] ?? name).toLowerCase().replace(/[^a-z]/g, '') || 'other';
 
-/** HF 라이선스 id → 카탈로그 문자열(license.ts 배지 맵과 같은 표기). 모르면 원문 그대로 — 배지 테스트가 잡아 사람이 맵에 추가 */
-export function mapLicense(hf: string | undefined): string {
-  const map: Record<string, string> = {
-    'apache-2.0': 'Apache-2.0',
-    mit: 'MIT',
-    llama3: 'Llama 3',
-    'llama3.1': 'Llama 3.1',
-    'llama3.2': 'Llama 3.2',
-    'llama3.3': 'Llama 3.3',
-    gemma: 'Gemma',
-  };
-  return hf ? (map[hf.toLowerCase()] ?? hf) : 'unknown';
+/**
+ * HF 라이선스 id(카드 `license`, 또는 `license: other` 일 때의 `license_name`) → 카탈로그 문자열(license.ts 배지 맵과 같은 표기).
+ * openmdw-1.1 은 두 자리 모두에 나온다(Laguna = license, Nemotron = other + license_name), lfm1.0 은 license_name 으로만(LFM2.5)
+ */
+const LICENSE_MAP: Readonly<Record<string, string>> = {
+  'apache-2.0': 'Apache-2.0',
+  mit: 'MIT',
+  llama3: 'Llama 3',
+  'llama3.1': 'Llama 3.1',
+  'llama3.2': 'Llama 3.2',
+  'llama3.3': 'Llama 3.3',
+  gemma: 'Gemma',
+  'openmdw-1.1': 'OpenMDW-1.1',
+  'lfm1.0': 'LFM Open License 1.0',
+};
+
+/**
+ * HF 카드 라이선스 → 카탈로그 문자열. `license: other` 면 `license_name`(10-03)을 본다.
+ * 모르면 원문 그대로(`other` 는 license_name 원문) — 배지 테스트가 잡아 사람이 맵에 추가
+ */
+export function mapLicense(hf: string | undefined, licenseName?: string): string {
+  if (!hf) return 'unknown';
+  const id = hf.toLowerCase() === 'other' && licenseName ? licenseName : hf;
+  return LICENSE_MAP[id.toLowerCase()] ?? id;
 }
 
 /** 30일 다운로드 → 인기도 1~5 (09-30 카탈로그 분포에 맞춘 기준) */
@@ -436,6 +595,8 @@ export type HfModelInput = {
   info?: {
     /** HF cardData.license */
     license?: string;
+    /** HF cardData.license_name — license 가 `other` 일 때 (10-03) */
+    licenseName?: string;
     /** safetensors.total / 1e9 */
     paramsB?: number;
   };
@@ -508,6 +669,7 @@ export function buildHfModel(input: HfModelInput): HfModelResult {
     attnType: arch.attnType,
     kvBytesPerTokenF16: arch.override?.kvBytesPerTokenF16 ?? arch.arch.kvBytesPerTokenF16,
     ...(arch.moe ? { experts: arch.moe.experts, topK: arch.moe.topK } : {}),
+    ...(arch.expertLayers ? { expertLayers: arch.expertLayers } : {}),
   };
   // 기준 행만 헤더 실측 분할을 갖는다. 엔진은 분할이 있으면 그래픽카드 상주량(전문가 + 비전문가)으로 full-gpu 를 판정하는데
   // (10-03 D62), 다른 행은 파일 전체라 큰 양자화만 전량 탑재되는 사다리 역전이 생길 수 있다 — offGpuGB 0(파일 전체를 셈)으로 막는다
@@ -528,7 +690,7 @@ export function buildHfModel(input: HfModelInput): HfModelResult {
     ...(moe ? { activeParamsB: round2(moe.activeParamsB) } : {}),
     arch: modelArch,
     maxContext: arch.maxContext,
-    license: mapLicense(input.info?.license),
+    license: mapLicense(input.info?.license, input.info?.licenseName),
     moe: moe !== undefined,
     ...(moe ? { nonExpertGB: moe.nonExpertGB } : {}),
     category: arch.vision ? ['chat', 'vision'] : ['chat'],

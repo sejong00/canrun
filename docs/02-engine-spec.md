@@ -67,6 +67,9 @@ type Result = {
   - SWA(Gemma 3/4, gpt-oss): 슬라이딩 레이어는 window(512~1024, gpt-oss 128)에서 상한 → 긴 ctx에서 KV 거의 평탄. full-attn 레이어만 ctx 비례.
   - MLA(DeepSeek V3/R1, Kimi K2): `(kv_lora 512 + rope 64) × layers × 2B` ≈ 69 KiB/tok 수준.
   - 하이브리드 리니어(Qwen3.5/3.6, Kimi K3): full-attn 레이어(전체의 ~1/4)만 KV + 상수 recurrent state.
+  - **상수 상태 층 하이브리드(10-03 D63, D53 대체)**: Mamba2(Nemotron-H)·short-conv(LFM2)·KDA(Ling-3.0) 층도 하이브리드 리니어와 같이 컨텍스트와 무관한 고정 상태 — **KV 는 어텐션 층만** 계상하고 상태(모델당 ≤ ~75MB)는 미계상(연산 버퍼 근사 0.5GB+ 여유 안). llama.cpp 가 KV 를 두는 층: 기본 하이브리드 필터 `!is_recr(il)`(https://github.com/ggml-org/llama.cpp/blob/master/src/llama-memory-hybrid.cpp), Nemotron-H 는 전용 필터 `!is_recr(il) && n_ff(il) == 0` 으로 Mamba·MoE 전용 블록 제외(https://github.com/ggml-org/llama.cpp/blob/master/src/llama-model.cpp).
+  - **KDA+MLA 혼합(Ling-3.0)**: MLA 층에만 `(kv_lora_rank + qk_rope_head_dim) × 2B` — **V 캐시 없음**(`has_v = !is_mla`, https://github.com/ggml-org/llama.cpp/blob/master/src/llama-kv-cache.cpp). MLA 층 = 변환기 `is_full_attention`(https://github.com/ggml-org/llama.cpp/blob/master/conversion/bailingmoe3.py) — nextn(MTP) 층 포함(BAILINGMOE3 는 nextn 층 필터가 없어 KV 를 둔다 — 보수 쪽). 예: Ling-3.0-flash 8 × 1152 = 9,216 B/tok.
+  - 엔진 입력은 그대로 `kvBytesPerTokenF16` 하나 — 위 산식은 데이터 계층(`packages/data/src/hf.ts` classifyArch → `attnOverrides`)이 계산한다. **계속 보류**: 반복 층(Nanbeige num_loops·Ouro — 가중치 읽기·KV ×N), 디스크에서 읽는 n-gram·PLE 임베딩(Qwen3.8-Flash-Next — TENSOR_READ_LAZY), 압축 어텐션(DeepSeek V4 compress_ratios), 3진 가중치.
 - 검증값: Llama-3.1-8B 128 KiB/tok(@16k f16 = 2.15GB), Qwen3-14B 160, Qwen3-32B 256, 70B 320, Qwen3-30B-A3B 96. **7종 전수 일치** (§7).
 
 ### 2.3 오버헤드·사용 가능 메모리
@@ -153,7 +156,7 @@ tg = min(1 / t, full-gpu 값)
 - **입력 정의(GGUF 헤더 실측, 데이터 레이어 `model-quants.json` 행 필드)**: `expertGB` = 이름에 `_exps` 가 든 라우팅 전문가 텐서 합(트렁크 층만). `nonExpertGB` = GPU 에 상주하는 나머지(어텐션·공유 전문가·라우터·출력층·dense FFN·`token_embd_norm`). llama.cpp 는 입력층(`token_embd`·`per_layer_token_embd`·`position_embd`·`token_types` — LLM_TENSOR_LAYER_INPUT)을 항상 CPU 에 두므로 제외한다. 다만 출력층이 없는 tied 모델은 GPU 에 출력층으로 복제되므로 포함한다. MTP·NextN 블록은 기본 로드가 아니라(`load_mtp=false` → TENSOR_SKIP) 둘 다에서 뺀다. 파싱 합계 = 파일 크기 ±0.02GB 로 33행 검증. `expertGB + nonExpertGB` 가 곧 full-gpu 의 그래픽카드 상주 가중치다(§2.4-1). dense 행은 같은 헤더 읽기로 `offGpuGB`(= 파일 − GPU 상주, 97행)를 둔다(10-03 D62).
 - **실측이 없는 입력(bpw 사다리·엔진 단독 호출)**: `nonExpertGB` 는 기준 양자화에서 균등 bpw 로 유도한 값이다. 더 큰 양자화는 bpw 비율로 키우고 줄이지는 않는다(`nonExpertGBFor`). `expertGB` = 파일 − 비전문가. `activeExpertFrac` 도 없으면 09-30 식(`활성 슬라이스 − 비전문가` 를 전부 RAM 에서)으로 계산한다.
 - **보정**: `CPU_MOE_RAM_EFF` = 0.5. 공개 실측에 N 을 적힌 그대로 넣고 맞췄다(η 0.45·0.55 보다 편향이 작다). 회귀 42점 기준으로 전체 평균 오차는 11.1%, 편향 −2.4%, ±20% 안 35점, 최대 39.7%다. NVIDIA(CUDA) 35점은 평균 10.3%, ±20% 안 89%, AMD ROCm 7점은 평균 14.9%, 최대 27.7%다. Vulkan(−31~+84%)·8채널 서버 RAM(CPU 연산 한계로 +30% 일관)·32k 이상 깊은 컨텍스트 서버 측정은 제외했다. 목록은 `packages/engine/test/fixtures.ts` `CPU_MOE_CASES`.
-- **명령(데이터 레이어 `snippet.ts`)**: `-ngl all --n-cpu-moe N` 으로 추정과 같은 배치를 명시한다(명시하면 llama.cpp fit 의 가중치 배치는 꺼진다). 각주는 두 가지다. 메모리 부족 시 1~2 올리라는 안내, 그리고 b7410+ 는 두 옵션 없이도 자동 배치된다는 안내다. Ollama 0.30+ 는 자동 배치라 명령을 보여 주되 버전을 안내한다.
+- **명령(데이터 레이어 `snippet.ts`)**: `-ngl all --n-cpu-moe N` 으로 추정과 같은 배치를 명시한다(명시하면 llama.cpp fit 의 가중치 배치는 꺼진다). **전문가 층 단위 ≠ 블록 단위(10-03 D63)**: 라우팅 전문가가 일부 블록에만 있는 모델(데이터 `arch.expertLayers` — Nemotron-H 의 Mamba·어텐션 블록 사이 MoE 블록, Ling-3.0 의 앞쪽 dense 층)은 엔진 입력 `moeLayers` = 전문가 층 수(`expertLayers` 길이)이고, 명령 값은 엔진 N 번째 전문가 층까지 덮는 블록 수(`expertLayers[N−1] + 1`, `cpuMoeFlagLayers`)로 바꾼다 — `--n-cpu-moe` 가 "앞 N 블록"이라 그대로 쓰면 GPU 에 전문가가 더 남는다(Nemotron 실배치 기준 균등 근사 대비 최대 +1.03GB, 여유 1층 0.44GB 초과). 각주는 두 가지다. 메모리 부족 시 1~2 올리라는 안내, 그리고 b7410+ 는 두 옵션 없이도 자동 배치된다는 안내다. Ollama 0.30+ 는 자동 배치라 명령을 보여 주되 버전을 안내한다.
 - **이력**: 09-30(D55)은 RAM 몫을 라우팅 전문가만으로 고쳤다(이전 ~2.5× 과소). 10-01(D56)은 전문가 일부 GPU 배치를 넣고, 실측 분할로 gpt-oss(유도 0.65/0.81 vs 실측 1.30/1.69GB)·UD 파일의 비전문가 과소를 해소했다. 이로써 D23 의 +1층 여유를 `CPU_MOE_GPU_LAYER_MARGIN` 으로 일반화했다.
 
 ### 3.4 partial-offload (dense) — 절벽 경고
@@ -227,4 +230,4 @@ expect(['A','B']).toContain(fit(m4max_128, llama33_70b_q4).verdict)    // meas 9
   - **partial-offload gpuFrac 분모는 파일 전체**(§3.4 주의) — 경계 바로 바깥이 B 로 떨어지는 절벽.
   - **속도는 여전히 파일 바이트**(§3.1 `bytesPerToken = fileGB`) — MTP 블록이 있는 dense 모델(Qwen3.5-9B/27B, Qwen3.8-27B, EXAONE 4.5)은 토큰마다 읽지 않는 MTP 바이트만큼 과소 추정(보수). `mtpGB` 를 쓰는 후속 과제.
   - 실측(llama-server 로그의 `CPU_Mapped model buffer` 에 token_embd, MTP `unused tensor … ignoring` 경고)으로는 아직 대조하지 못했다(하드웨어 없음 — PROGRESS §5).
-- cpu-moe 의 `--n-cpu-moe` 는 층 평균 전문가 크기로 정한다 — Q4_K_M 류 혼합 레시피는 층마다 ffn_down 정밀도가 달라 층 크기가 최대 ~1.15× 차이(GPU 에 남는 뒤쪽 층이 무겁다) → 여유 1층(`CPU_MOE_GPU_LAYER_MARGIN`).
+- cpu-moe 의 `--n-cpu-moe` 는 층 평균 전문가 크기로 정한다 — Q4_K_M 류 혼합 레시피는 층마다 ffn_down 정밀도가 달라 층 크기가 최대 ~1.15× 차이(GPU 에 남는 뒤쪽 층이 무겁다) → 여유 1층(`CPU_MOE_GPU_LAYER_MARGIN`). 앞쪽 dense 층이 있는 기존 MoE(`arch.expertLayers` 미기록)는 전문가 층 수를 전체 층으로 근사한다 — 10-03 이후 추가 모델은 config 가 층 지도를 주면 기록한다(D63).

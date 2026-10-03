@@ -50,6 +50,19 @@ export function ggufTag(fileName: string | undefined, quant: string): string {
   return m?.[1] ?? quant;
 }
 
+/**
+ * 엔진 cpu-moe 배치(`result.cpuMoeLayers` — 전문가 층 단위) → llama.cpp `--n-cpu-moe` 값("앞 N 블록의 MoE 가중치를 CPU 에").
+ * 전문가가 일부 블록에만 있으면(arch.expertLayers — Mamba 블록 사이에 섞인 MoE 블록·앞쪽 dense 층, 10-03 D63) N 번째 전문가 층까지
+ * 덮는 블록 수로 바꾼다 — 그래야 GPU 에 남는 전문가가 추정 배치와 정확히 같다(균등 분포 근사는 Nemotron 에서 GPU 쪽이 최대 1GB 더 많았다).
+ * 값이 없으면(전문가 전부 RAM) 전체 층 수.
+ */
+export function cpuMoeFlagLayers(model: Pick<ModelCore, 'arch'>, cpuMoeLayers: number | undefined): number {
+  const { layers, expertLayers } = model.arch;
+  if (cpuMoeLayers === undefined) return layers;
+  if (!expertLayers || cpuMoeLayers <= 0) return cpuMoeLayers;
+  return expertLayers[Math.min(cpuMoeLayers, expertLayers.length) - 1]! + 1;
+}
+
 export type CommandFile = {
   repo: string;
   name?: string;
@@ -149,7 +162,7 @@ export function commandPlan(
       break;
     case 'cpu-moe':
       ngl = 'all';
-      nCpuMoe = q.result.cpuMoeLayers ?? layers;
+      nCpuMoe = cpuMoeFlagLayers(model, q.result.cpuMoeLayers);
       break;
     case 'partial-offload': {
       // llama.cpp 는 출력층부터 올리고 입력층은 항상 CPU — floor 가 엔진 예산 안에 든다 (P1-2 검증)

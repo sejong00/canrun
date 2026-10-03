@@ -53,6 +53,8 @@ const PAGES: readonly PageSpec[] = [
   { name: 'calculator', path: '/calculator', structured: false, combo: false },
   { name: 'gpu hub', path: '/gpu/rtx-4060', structured: true, combo: false },
   { name: 'model hub', path: '/model/qwen3.5-9b', structured: true, combo: false },
+  // 10-03 D63 — 상수 상태 층 하이브리드(KDA + MLA) 신모델 허브
+  { name: 'model hub hybrid', path: '/model/ling-3.0-tiny', structured: true, combo: false },
   { name: 'combo', path: '/can-i-run/qwen3.5-9b/on/rtx-4060', structured: true, combo: true, vramNote: 'mtp' },
   {
     name: 'combo moe',
@@ -156,6 +158,18 @@ for (const locale of LOCALES) {
           await page.waitForLoadState('networkidle');
           await expect(page.locator('[data-result-card]').first()).toBeVisible();
           expect(problems, 'console errors / failed requests').toEqual([]);
+        });
+      }
+
+      if (spec.name === 'model hub hybrid') {
+        test('names the hybrid attention layout and labels every estimate theoretical (10-03 D63)', async ({ page }) => {
+          await open(page, path);
+          await expect(
+            page.getByText(locale === 'ko' ? '하이브리드 어텐션(일부 층만 풀 어텐션)' : 'Hybrid attention (only some layers use full attention)', { exact: true }),
+          ).toBeVisible();
+          // 속도 모델이 검증되지 않은 구조 — 보정·실측 라벨이 나오면 안 된다
+          await expect(page.locator('[data-confidence]').first()).toBeAttached();
+          await expect(page.locator('[data-confidence]:not([data-confidence="theoretical"])')).toHaveCount(0);
         });
       }
 

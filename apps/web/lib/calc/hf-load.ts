@@ -62,7 +62,7 @@ type HfModelInfo = {
   id?: string;
   gated?: boolean | string;
   siblings?: { rfilename: string }[];
-  cardData?: { license?: string; base_model?: string | string[] };
+  cardData?: { license?: string; license_name?: string; base_model?: string | string[] };
   safetensors?: { total?: number };
 };
 
@@ -222,7 +222,11 @@ export async function loadHfModel(
       ggufRepo,
       config: cfg.config,
       tree,
-      info: { ...(baseInfo.cardData?.license ? { license: baseInfo.cardData.license } : {}), ...(paramsB !== undefined ? { paramsB } : {}) },
+      info: {
+        ...(baseInfo.cardData?.license ? { license: baseInfo.cardData.license } : {}),
+        ...(typeof baseInfo.cardData?.license_name === 'string' ? { licenseName: baseInfo.cardData.license_name } : {}),
+        ...(paramsB !== undefined ? { paramsB } : {}),
+      },
       ...(baseSplit ? { baseSplit } : {}),
     });
     if (built.kind !== 'ok') {

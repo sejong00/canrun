@@ -115,6 +115,12 @@ export const ModelSchema = z
        */
       experts: z.number().int().positive().optional(),
       topK: z.number().int().positive().optional(),
+      /**
+       * MoE 전용(10-03 D63): 라우팅 전문가가 있는 층 번호(0부터, 트렁크만, 오름차순) — 일부 층에만 있을 때만 적는다.
+       * 출처 = config.json(nemotron_h `layers_block_type` 의 moe 블록 · bailing_hybrid `first_k_dense_replace`).
+       * 엔진의 전문가 층 수(moeLayers)가 이 길이가 되고, `--n-cpu-moe` 값은 N 번째 전문가 층까지 덮는 블록 수로 바꾼다(snippet.ts).
+       */
+      expertLayers: z.array(z.number().int().nonnegative()).min(1).optional(),
     }),
     /**
      * 비-full attention(swa/mla/hybrid) KV 수동 고정 — docs/03 §5.1 "수동 필드 우선".
@@ -172,6 +178,18 @@ export const ModelSchema = z
       ctx.addIssue({
         code: 'custom',
         message: `${model.id}: arch.topK ${model.arch.topK} must be < arch.experts ${model.arch.experts}`,
+      });
+    }
+    const expertLayers = model.arch.expertLayers;
+    if (
+      expertLayers !== undefined &&
+      (model.arch.experts === undefined ||
+        expertLayers.length >= model.arch.layers ||
+        expertLayers.some((l, i) => l >= model.arch.layers || (i > 0 && l <= expertLayers[i - 1]!)))
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `${model.id}: arch.expertLayers must be ascending layer indices < arch.layers, fewer than arch.layers, MoE only`,
       });
     }
     if (

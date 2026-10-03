@@ -63,8 +63,17 @@ export const HUB_POLICY = Object.freeze({
   baselineOrder: ['Q4_K_M', 'MXFP4'] as readonly QuantId[],
   /** GGUF 출처 "llama.cpp 팀" 으로 분류하는 HF org (결정 D3) */
   llamaCppOrgs: ['ggml-org'] as readonly string[],
-  /** llama.cpp 구동이 검증되지 않은 커스텀 아키텍처 — 추정은 theoretical (PROGRESS §5) */
-  unverifiedArchModelIds: ['hyperclovax-seed-think-14b'] as readonly string[],
+  /**
+   * 추정을 theoretical 로 고정하는 모델 — llama.cpp 구동이 검증되지 않은 커스텀 아키텍처(PROGRESS §5), 또는 구동은 되지만
+   * 속도 모델(대역폭 계수)이 검증되지 않은 상수 상태 층 하이브리드(Mamba2·short-conv·KDA+MLA — 10-03 D63, 실측이 생기면 뺀다)
+   */
+  unverifiedArchModelIds: [
+    'hyperclovax-seed-think-14b',
+    'nemotron-3.5-lightning-30b-a3b',
+    'lfm2.5-2.6b',
+    'ling-3.0-tiny',
+    'ling-3.0-flash',
+  ] as readonly string[],
   /** FP16 크리플 GPU(GTX 10 등, docs/01 §9) — 클래스 계수 검증 범위 밖이라 theoretical */
   fp16CrippledBelowTflops: 1,
   /** GPU 허브 FAQ 의 "70B급" 대표 모델 */
@@ -211,7 +220,8 @@ export type QuantRowInput = Pick<ModelQuantCore, 'quant' | 'fileGB'> &
 /**
  * 카탈로그 모델 (+ 등록 quant 행) → 엔진 ModelQuant. 행이 없으면 bpw 폴백 경로.
  * MoE: 행 실측 분할이 있으면 그 값(모델 수준 유도값보다 우선), 토큰당 전문가 비율 = topK/experts,
- * 전문가 층 수 = arch.layers — 엔진이 VRAM 여유만큼 전문가 층을 GPU 에 둔다 (10-01 D56).
+ * 전문가 층 수 = arch.expertLayers 길이(전문가가 일부 층에만 있을 때 — 10-03 D63) 또는 arch.layers — 엔진이 VRAM 여유만큼
+ * 전문가 층을 GPU 에 둔다 (10-01 D56). 엔진의 cpuMoeLayers 는 이 단위라 명령 값은 `cpuMoeFlagLayers`(snippet.ts)로 바꾼다.
  */
 export function toModelQuant(model: ModelCore, row?: QuantRowInput): ModelQuant {
   const measured = row?.expertGB !== undefined && row.nonExpertGB !== undefined;
@@ -225,7 +235,7 @@ export function toModelQuant(model: ModelCore, row?: QuantRowInput): ModelQuant 
     nonExpertGB: measured ? row.nonExpertGB : model.nonExpertGB,
     ...(measured ? { expertGB: row.expertGB } : {}),
     ...(moe && experts !== undefined && topK !== undefined ? { activeExpertFrac: topK / experts } : {}),
-    ...(moe ? { moeLayers: model.arch.layers } : {}),
+    ...(moe ? { moeLayers: model.arch.expertLayers?.length ?? model.arch.layers } : {}),
     maxContext: model.maxContext,
     quant: row?.quant ?? 'Q4_K_M',
     fileGB: row?.fileGB,
@@ -278,7 +288,7 @@ export function isTheoretical(gpu: GpuCore, model: ModelCore, mode: Mode): boole
   if (mode === 'cpu-moe') return true;
   // 비전문가 크기(행 실측·모델 유도 둘 다)가 없는 MoE 는 엔진이 dense 부분 오프로드 경로로 계산한다
   if (model.moe && mode === 'partial-offload') return true;
-  // llama.cpp 구동 미검증 커스텀 아키텍처
+  // llama.cpp 구동 미검증 커스텀 아키텍처 · 속도 모델 미검증 상수 상태 층 하이브리드(10-03 D63)
   if (HUB_POLICY.unverifiedArchModelIds.includes(model.id)) return true;
   // FP16 크리플 구형 GPU — 계수 도출 표본(RTX 30~50·RDNA3/4) 밖
   if (isFp16Crippled(gpu)) return true;

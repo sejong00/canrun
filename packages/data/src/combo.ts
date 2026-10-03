@@ -35,7 +35,7 @@ import {
 import type { GpuCore, ModelCore, ModelQuantCore } from './core';
 import { comboKey, comboPublishState, indexableCombos } from './publish';
 import type { Gpu, Model, PublishPlan } from './schema';
-import { commandPlan, type CommandPlan } from './snippet';
+import { commandPlan, cpuMoeFlagLayers, type CommandPlan } from './snippet';
 
 // ---------------------------------------------------------------------------
 // pp — docs/02 §3.5
@@ -321,7 +321,7 @@ export function alternatives(input: AlternativesInput): Alternative[] {
   if (display.fits && display.result.mode === 'cpu-moe') {
     out.push({
       kind: 'cpu-moe',
-      nCpuMoe: display.result.cpuMoeLayers ?? model.arch.layers,
+      nCpuMoe: cpuMoeFlagLayers(model, display.result.cpuMoeLayers),
       layers: model.arch.layers,
     });
   } else if (

@@ -4,13 +4,24 @@
  */
 import { describe, expect, it } from 'vitest';
 import { gpuResidentGBFor } from '@canrun/engine';
-import { assessCombo, commandPlan, deriveNonExpertGB, hardwareConfigs, toModelQuant, verdictRank, type CatalogCore } from '../src/index';
 import {
+  assessCombo,
+  classifyLicense,
+  commandPlan,
+  deriveNonExpertGB,
+  hardwareConfigs,
+  toModelQuant,
+  verdictRank,
+  type CatalogCore,
+} from '../src/index';
+import {
+  bailingMlaLayers,
   buildHfModel,
   classifyArch,
   classifySplit,
   fetchRange,
   measureSplit,
+  mapLicense,
   parseHfInput,
   type FetchLike,
   type GgufHeader,
@@ -364,6 +375,40 @@ describe('buildHfModel results run through the assembly functions unchanged', ()
     expect(combo.baseline.result.mode).not.toBe('full-gpu');
     expect(['S', 'A', 'B', 'F']).toContain(combo.baseline.result.verdict);
   });
+
+  it('Nemotron-H loaded from HF (10-03 D63): license_name, MoE block map, and a --n-cpu-moe that ends right after an expert block', () => {
+    const repo = 'bartowski/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-GGUF';
+    const built = ok(
+      buildHfModel({
+        hfId: 'nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16',
+        ggufRepo: repo,
+        config: NEMOTRON_CONFIG,
+        tree: [file('NVIDIA-Nemotron-3.5-Lightning-30B-A3B-Q4_K_M.gguf', 25.48), file('NVIDIA-Nemotron-3.5-Lightning-30B-A3B-Q8_0.gguf', 35)],
+        info: { license: 'other', licenseName: 'openmdw-1.1', paramsB: 31.577937344 },
+        baseSplit: { expertGB: 22.83, nonExpertGB: 1.65 },
+      }),
+    );
+    expect(built.model.license).toBe('OpenMDW-1.1');
+    expect(built.model.arch).toMatchObject({ attnType: 'hybrid', kvBytesPerTokenF16: 6144, experts: 128, topK: 6 });
+    expect(built.model.arch.expertLayers).toHaveLength(23);
+    expect(built.notes).toContain('kv-full-layers-only');
+    // 엔진의 전문가 층 수 = MoE 블록 23 (52 블록 전체가 아니다)
+    expect(toModelQuant(built.model, built.rows[0]).moeLayers).toBe(23);
+
+    const g = gpu('rtx-5060-ti-16gb');
+    const config = hardwareConfigs(g, seed.gpus)[0]!;
+    const combo = assessCombo(withRows(built), g, config, built.model, { theoretical: true });
+    expect(combo.display.result.mode).toBe('cpu-moe');
+    const onCpu = combo.display.result.cpuMoeLayers!;
+    expect(onCpu).toBeGreaterThan(0);
+    expect(onCpu).toBeLessThan(23);
+    const row = built.rows.find((r) => r.quant === combo.display.quant)!;
+    const n = commandPlan(g, config, built.model, row, combo.display).llamaCpp!.nCpuMoe!;
+    // 앞 n 블록에 MoE 블록이 정확히 엔진 배치만큼 들어 있고, n-1 번 블록이 그 마지막 MoE 블록이다
+    const experts = built.model.arch.expertLayers!;
+    expect(experts.filter((l) => l < n)).toHaveLength(onCpu);
+    expect(experts).toContain(n - 1);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -447,6 +492,172 @@ describe('fetchRange — injectable fetch and headers (browser: none, scripts: a
     await fetchRange(url, 0, 3, { fetch: f, headers: { Authorization: 'Bearer test', Range: 'bytes=9-9' } });
     expect(calls[0]!.headers.get('authorization')).toBe('Bearer test');
     expect(calls[0]!.headers.get('range')).toBe('bytes=0-3');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// classifyArch — 상수 상태 층 하이브리드·새 model_type (10-03 D63). 픽스처는 10-03 실제 HF config 를 축약
+// ---------------------------------------------------------------------------
+
+const repeat = (n: number, ...pattern: string[]): string[] => Array.from({ length: n }, () => pattern).flat();
+/** nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16 layers_block_type (52 블록 = mamba 23 · moe 23 · attention 6) */
+const NEMOTRON_BLOCKS = [
+  'mamba', 'moe', 'mamba', 'moe', 'mamba', 'attention', 'moe', 'mamba', 'moe', 'mamba', 'moe', 'mamba', 'attention',
+  'moe', 'mamba', 'moe', 'mamba', 'moe', 'mamba', 'attention', 'moe', 'mamba', 'moe', 'mamba', 'moe', 'mamba', 'attention',
+  'moe', 'mamba', 'moe', 'mamba', 'moe', 'mamba', 'attention', 'moe', 'mamba', 'moe', 'mamba', 'moe', 'mamba', 'moe',
+  'mamba', 'attention', 'moe', 'mamba', 'moe', 'mamba', 'moe', 'mamba', 'moe', 'mamba', 'moe',
+];
+const NEMOTRON_CONFIG = {
+  architectures: ['NemotronHForCausalLM'],
+  model_type: 'nemotron_h',
+  num_hidden_layers: 52,
+  num_attention_heads: 32,
+  num_key_value_heads: 2,
+  head_dim: 128,
+  hidden_size: 2688,
+  max_position_embeddings: 262144,
+  n_routed_experts: 128,
+  num_experts_per_tok: 6,
+  ssm_state_size: 128,
+  mamba_num_heads: 64,
+  sliding_window: null,
+  num_nextn_predict_layers: 1,
+  layers_block_type: NEMOTRON_BLOCKS,
+};
+/** LiquidAI/LFM2.5-2.6B — short-conv 22 + full attention 8 */
+const LFM2_CONFIG = {
+  architectures: ['Lfm2ForCausalLM'],
+  model_type: 'lfm2',
+  num_hidden_layers: 30,
+  num_attention_heads: 32,
+  num_key_value_heads: 8,
+  hidden_size: 2048,
+  max_position_embeddings: 131072,
+  conv_L_cache: 3,
+  layer_types: [
+    'conv', 'conv', 'full_attention', 'conv', 'conv', 'full_attention', 'conv', 'conv', 'conv', 'full_attention',
+    'conv', 'conv', 'conv', 'full_attention', 'conv', 'conv', 'conv', 'full_attention', 'conv', 'conv',
+    'conv', 'full_attention', 'conv', 'conv', 'full_attention', 'conv', 'conv', 'full_attention', 'conv', 'conv',
+  ],
+};
+/** inclusionAI/Ling-3.0-tiny·flash (BailingMoeV3 — KDA + MLA) */
+const ling = (over: Record<string, unknown>) => ({
+  architectures: ['BailingMoeV3ForCausalLM'],
+  model_type: 'bailing_hybrid',
+  head_dim: 128,
+  kv_lora_rank: 512,
+  qk_rope_head_dim: 64,
+  no_kda_lora: true,
+  kda_safe_gate: true,
+  gated_attention_proj_granularity_type: 'head_wise',
+  num_experts_per_tok: 8,
+  ...over,
+});
+const LING_TINY = ling({ num_hidden_layers: 24, num_attention_heads: 16, num_key_value_heads: 16, max_position_embeddings: 131072, num_experts: 128, layer_group_size: 4, num_nextn_predict_layers: 0, first_k_dense_replace: 1 });
+const LING_FLASH = ling({ num_hidden_layers: 42, num_attention_heads: 32, num_key_value_heads: 32, max_position_embeddings: 262144, num_experts: 512, layer_group_size: 6, num_nextn_predict_layers: 1, first_k_dense_replace: 2 });
+
+function okArch(config: unknown): Extract<ReturnType<typeof classifyArch>, { kind: 'ok' }> {
+  const r = classifyArch(config);
+  if (r.kind !== 'ok') throw new Error(`expected ok, got unsupported: ${r.reason}`);
+  return r;
+}
+
+describe('classifyArch — new model types and constant-state hybrids (10-03 D63)', () => {
+  it('Spark-X2.5 (spark2_5) and Laguna (laguna MoE) take the existing sliding-window path', () => {
+    const spark = okArch({
+      model_type: 'spark2_5', num_hidden_layers: 36, num_attention_heads: 16, num_key_value_heads: 4, head_dim: 256,
+      max_position_embeddings: 1048576, sliding_window: 512, layer_types: repeat(9, 'sliding_attention', 'sliding_attention', 'sliding_attention', 'full_attention'),
+    });
+    expect(spark).toMatchObject({ attnType: 'swa', arch: { kvBytesPerTokenF16: 9 * 4 * 256 * 4 } });
+    expect(spark.arch.kvBytesPerTokenF16).toBe(36_864);
+    const laguna = okArch({
+      model_type: 'laguna', num_hidden_layers: 48, num_attention_heads: 48, num_key_value_heads: 8, head_dim: 128,
+      max_position_embeddings: 1048576, sliding_window: 512, num_experts: 256, num_experts_per_tok: 10, mlp_only_layers: [0],
+      layer_types: repeat(12, 'full_attention', 'sliding_attention', 'sliding_attention', 'sliding_attention'),
+    });
+    expect(laguna).toMatchObject({ attnType: 'swa', moe: { experts: 256, topK: 10 }, arch: { kvBytesPerTokenF16: 49_152 } });
+    // 앞쪽 dense 1층은 균등 근사의 여유(1층) 안 — 전문가 층 지도는 적지 않는다
+    expect(laguna.expertLayers).toBeUndefined();
+  });
+
+  it('Nemotron-H (Mamba2 + MoE + attention blocks): KV on the 6 attention blocks only, MoE block indices for --n-cpu-moe', () => {
+    const r = okArch(NEMOTRON_CONFIG);
+    expect(r).toMatchObject({ attnType: 'hybrid', moe: { experts: 128, topK: 6 }, arch: { layers: 52, kvHeads: 2, headDim: 128, kvBytesPerTokenF16: 6 * 2 * 128 * 4 } });
+    expect(r.override?.kvBytesPerTokenF16).toBe(6_144);
+    expect(r.override?.reason).toContain('attention 6/52');
+    expect(r.override?.refs).toEqual(['https://github.com/ggml-org/llama.cpp/blob/master/src/llama-model.cpp']);
+    expect(r.expertLayers).toHaveLength(23);
+    expect(r.expertLayers?.slice(0, 6)).toEqual([1, 3, 6, 8, 10, 13]);
+    expect(r.expertLayers?.at(-1)).toBe(51);
+  });
+
+  it('older Nemotron-H configs: hybrid_override_pattern string (* = attention), dense MLP blocks carry no experts', () => {
+    const r = okArch({ ...NEMOTRON_CONFIG, n_routed_experts: undefined, num_experts_per_tok: undefined, layers_block_type: undefined, num_hidden_layers: 10, hybrid_override_pattern: 'M-M*-M-M*-' });
+    expect(r).toMatchObject({ attnType: 'hybrid', arch: { kvBytesPerTokenF16: 2 * 2 * 128 * 4 } });
+    expect(r.moe).toBeUndefined();
+    expect(r.expertLayers).toBeUndefined();
+  });
+
+  it('LFM2 (short-conv + full attention): KV on the 8 full-attention layers', () => {
+    const r = okArch(LFM2_CONFIG);
+    expect(r).toMatchObject({ attnType: 'hybrid', arch: { headDim: 64, kvBytesPerTokenF16: 8 * 8 * 64 * 4 } });
+    expect(r.override?.kvBytesPerTokenF16).toBe(16_384);
+    expect(r.override?.reason).toContain('hybrid conv');
+  });
+
+  it('Ling-3.0 (KDA + MLA): MLA latent K only, MLA layers match the GGUF head_count_kv arrays (MTP layer included)', () => {
+    // inclusionAI 공식 Q4_K_M 헤더 head_count_kv 가 1 인 층 (10-03 실측)
+    expect(bailingMlaLayers(24, 4, 0)).toEqual([3, 7, 11, 15, 19, 23]);
+    expect(bailingMlaLayers(42, 6, 1)).toEqual([5, 11, 17, 23, 29, 35, 41, 42]);
+    const tiny = okArch(LING_TINY);
+    expect(tiny).toMatchObject({ attnType: 'hybrid', moe: { experts: 128, topK: 8 }, arch: { kvHeads: 16, headDim: 128, kvBytesPerTokenF16: 6 * (512 + 64) * 2 } });
+    expect(tiny.override?.kvBytesPerTokenF16).toBe(6_912);
+    expect(tiny.expertLayers).toEqual(Array.from({ length: 23 }, (_, i) => i + 1));
+    const flash = okArch(LING_FLASH);
+    expect(flash.override?.kvBytesPerTokenF16).toBe(8 * 1152);
+    expect(flash.override?.reason).toContain('MTP');
+    expect(flash.expertLayers?.[0]).toBe(2);
+    expect(flash.expertLayers).toHaveLength(40);
+  });
+
+  it.each([
+    ['looped layers (Nanbeige num_loops)', { model_type: 'nanbeige', num_loops: 2, num_hidden_layers: 22 }, '반복 층'],
+    ['looped layers even on a known type', { model_type: 'llama', num_loops: 2, num_hidden_layers: 22, num_attention_heads: 8, head_dim: 128, max_position_embeddings: 4096 }, '반복 층'],
+    ['looped layers (Ouro total_ut_steps)', { model_type: 'ouro', total_ut_steps: 4, num_hidden_layers: 24 }, '반복 층'],
+    ['disk-read n-gram embedding (Qwen3.8-Flash-Next)', { model_type: 'qwen4_exp', text_config: { model_type: 'qwen3_5_moe_text', ngram_vocab_size_base: 20000000, ple_layer_ids: [2] } }, 'n-gram'],
+    ['compressed attention on a known type', { model_type: 'llama', compress_ratios: [0, 4, 128], num_hidden_layers: 3 }, 'compress_ratios'],
+    ['DSA layer type (GLM-5.3) on a known type', { model_type: 'qwen3_5_text', num_hidden_layers: 2, num_attention_heads: 4, num_key_value_heads: 1, head_dim: 64, max_position_embeddings: 4096, layer_types: ['deepseek_sparse_attention', 'linear_attention'] }, 'deepseek_sparse_attention'],
+    ['Ling/Ring-2.5 (BailingMoeV2_5 — not converted by llama.cpp)', { ...LING_TINY, architectures: ['BailingMoeV2_5ForCausalLM'], no_kda_lora: undefined, kda_safe_gate: undefined }, 'bailing_hybrid'],
+    ['BailingMoeV3 with a non-safe KDA gate', { ...LING_TINY, kda_safe_gate: false }, 'bailing_hybrid'],
+    ['MLA keys without the Ling layer map', { ...LING_TINY, layer_group_size: undefined }, 'MLA'],
+    ['Nemotron-H without a block map', { ...NEMOTRON_CONFIG, layers_block_type: undefined }, '층 지도'],
+    ['Nemotron-H block map length mismatch', { ...NEMOTRON_CONFIG, layers_block_type: NEMOTRON_BLOCKS.slice(1) }, '층 지도'],
+    ['pure Mamba (no attention block)', { ...NEMOTRON_CONFIG, n_routed_experts: undefined, num_experts_per_tok: undefined, num_hidden_layers: 4, layers_block_type: ['mamba', 'mlp', 'mamba', 'mlp'] }, '어텐션 블록 없음'],
+    ['Nemotron-H MoE config without MoE blocks', { ...NEMOTRON_CONFIG, num_hidden_layers: 4, layers_block_type: ['mamba', 'attention', 'mamba', 'mlp'] }, 'MoE'],
+    ['LFM2 embedding/encoder variant', { ...LFM2_CONFIG, architectures: ['Lfm2Model'] }, 'lfm2 변형'],
+    ['LFM2 without a layer map', { ...LFM2_CONFIG, layer_types: undefined }, 'layer_types'],
+    ['conv state keys outside LFM2', { model_type: 'llama', conv_L_cache: 3, num_hidden_layers: 2 }, 'conv_L_cache'],
+    ['Mamba keys outside Nemotron-H', { model_type: 'qwen3_5_text', ssm_state_size: 128, num_hidden_layers: 2 }, 'ssm_state_size'],
+  ] as const)('refuses %s', (_name, config, reason) => {
+    const r = classifyArch(config);
+    expect(r.kind).toBe('unsupported');
+    if (r.kind === 'unsupported') expect(r.reason).toContain(reason);
+  });
+});
+
+describe('mapLicense — license_name when the card says "other" (10-03)', () => {
+  it('maps OpenMDW and the LFM Open License to classified badge strings', () => {
+    expect(mapLicense('openmdw-1.1')).toBe('OpenMDW-1.1'); // Laguna: license 자체가 openmdw-1.1
+    expect(mapLicense('other', 'openmdw-1.1')).toBe('OpenMDW-1.1'); // Nemotron: other + license_name
+    expect(mapLicense('other', 'lfm1.0')).toBe('LFM Open License 1.0');
+    expect(classifyLicense('OpenMDW-1.1')).toBe('permissive');
+    expect(classifyLicense('LFM Open License 1.0')).toBe('custom');
+  });
+
+  it('passes unknown names through (the badge test then asks a human to classify them)', () => {
+    expect(mapLicense('other', 'acme-2.0')).toBe('acme-2.0');
+    expect(mapLicense('other')).toBe('other');
+    expect(mapLicense('apache-2.0', 'ignored')).toBe('Apache-2.0');
   });
 });
 

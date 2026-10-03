@@ -100,6 +100,14 @@ describe('structural refinements', () => {
     expect(ModelSchema.safeParse(arch({ topK: undefined })).success).toBe(false);
     expect(ModelSchema.safeParse(arch({ topK: 128 })).success).toBe(false);
     expect(ModelSchema.safeParse(arch({ experts: 12.5 })).success).toBe(false);
+    // arch.expertLayers (10-03 D63): 오름차순 층 번호 < layers, 전체 층보다 적게, MoE 만
+    expect(ModelSchema.safeParse(arch({ expertLayers: [1, 3, 47] })).success).toBe(true);
+    expect(ModelSchema.safeParse(arch({ expertLayers: [3, 1] })).success).toBe(false);
+    expect(ModelSchema.safeParse(arch({ expertLayers: [1, 1] })).success).toBe(false);
+    expect(ModelSchema.safeParse(arch({ expertLayers: [48] })).success).toBe(false);
+    expect(ModelSchema.safeParse(arch({ expertLayers: Array.from({ length: 48 }, (_, i) => i) })).success).toBe(false);
+    expect(ModelSchema.safeParse(arch({ expertLayers: [] })).success).toBe(false);
+    expect(ModelSchema.safeParse(arch({ experts: undefined, topK: undefined, expertLayers: [1] })).success).toBe(false);
   });
 
   it('model-quants expertGB/nonExpertGB are optional but must come together (10-01)', () => {

@@ -44,6 +44,8 @@ A mixture-of-experts (MoE) design does not shrink the KV cache by itself: the ca
 
 For sliding-window and hybrid models, CanRun's figure includes only the full-attention layers. It leaves out the part whose size does not grow with the context: the sliding windows and the linear layers' recurrent state. These figures therefore run low, most visibly at short contexts and for models with wider windows (EXAONE 4.0 32B's window is far wider than gpt-oss's); next to the model file the gap is small. The counted part still grows linearly with the context, so the cache is not flat: <HubLink model="gemma-3-12b" /> at 128k with f16 still needs <Num kind="kvGB" model="gemma-3-12b" ctx="131072" /> of KV cache.
 
+Newer hybrids follow the same rule. <HubLink model="nemotron-3.5-lightning-30b-a3b" /> places a few attention layers among Mamba-2 layers, <HubLink model="lfm2.5-2.6b" /> places full-attention layers among short convolution layers, and <HubLink model="ling-3.0-tiny" /> places attention layers among Kimi Delta Attention layers. The Mamba-2, convolution and Kimi Delta layers keep a fixed-size state, so CanRun counts only the attention layers. Ling-3.0 uses multi-head latent attention (MLA) for those layers: llama.cpp caches one compressed vector per token and layer and rebuilds the keys and values from it, so there is no separate value cache. CanRun counts that compressed size, and Ling-3.0 Tiny needs <Num kind="kvGB" model="ling-3.0-tiny" ctx="32768" /> of f16 KV cache at 32k.
+
 ## Will a longer context fit on your card?
 
 To see whether a context fits, compare the total need (weights, KV cache and compute buffer) with the memory your card can actually use, not the VRAM on the box. A card that drives a Windows display keeps some VRAM back (see the note under the table below), so in CanRun's calculation the <HubLink gpu="rtx-5060-ti-16gb" /> has <Num kind="usableGB" gpu="rtx-5060-ti-16gb" /> to work with.
@@ -158,3 +160,7 @@ According to the Ollama FAQ, q8_0 has a very small loss in precision, and q4_0 a
 - [gpt-oss-20b configuration](https://huggingface.co/openai/gpt-oss-20b/blob/main/config.json): sliding-attention layers with a 128-token window alternating with full-attention layers, KV heads, head size, maximum context.
 - [EXAONE 4.0 32B model card](https://huggingface.co/LGAI-EXAONE/EXAONE-4.0-32B): hybrid attention for the 32B model, with local (sliding-window) and global layers in a 3:1 ratio, layers, GQA, maximum context.
 - [EXAONE 4.5 33B configuration](https://huggingface.co/LGAI-EXAONE/EXAONE-4.5-33B/blob/main/config.json): local and global layers in a 3:1 pattern, 4096-token window.
+- [NVIDIA Nemotron 3.5 Lightning 30B-A3B model card](https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16): interleaved Mamba-2 and MoE layers with select attention layers.
+- [LFM2.5-2.6B configuration](https://huggingface.co/LiquidAI/LFM2.5-2.6B/blob/main/config.json): the order of convolution and full-attention layers, KV heads.
+- [Ling-3.0-tiny model card](https://huggingface.co/inclusionAI/Ling-3.0-tiny): three Kimi Delta Attention layers followed by one MLA layer in each four-layer block.
+- [llama.cpp source: KV cache](https://github.com/ggml-org/llama.cpp/blob/master/src/llama-kv-cache.cpp): MLA layers get a key cache and no value cache.

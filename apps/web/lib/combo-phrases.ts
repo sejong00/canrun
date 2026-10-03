@@ -149,8 +149,10 @@ export function verdictSentence(t: ComboTranslators, page: ComboPage, locale: Lo
         });
         break;
       case 'cpu-moe': {
-        // 전문가 층 일부를 GPU 에 둔 배치(10-01 D56)면 그 층 수까지, 전부 RAM 이면 기존 문장
-        const gpuLayers = page.model.arch.layers - (display.result.cpuMoeLayers ?? page.model.arch.layers);
+        // 전문가 층 일부를 GPU 에 둔 배치(10-01 D56)면 그 층 수까지, 전부 RAM 이면 기존 문장.
+        // 세는 단위는 전문가가 있는 층(엔진 단위) — 전문가가 일부 층에만 있는 모델은 arch.expertLayers 길이(10-03 D63)
+        const moeLayers = page.model.arch.expertLayers?.length ?? page.model.arch.layers;
+        const gpuLayers = moeLayers - (display.result.cpuMoeLayers ?? moeLayers);
         sentence =
           gpuLayers > 0
             ? t.combo('verdictCpuMoePartial', {
