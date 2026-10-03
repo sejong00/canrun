@@ -30,6 +30,31 @@ export function sizeBucket(paramsB: number): SizeBucket {
 export type SortKey = 'verdict' | 'speed' | 'size';
 export const SORT_KEYS: readonly SortKey[] = ['verdict', 'speed', 'size'];
 
+/** 계산기 방향 (10-03 D65): 하드웨어 → 모델(기본) / 모델 → GPU */
+export type CalcMode = 'hardware' | 'model';
+export const CALC_MODES: readonly CalcMode[] = ['hardware', 'model'];
+
+/** 모델 모드 GPU 종류 필터 — 데스크톱 그래픽카드 / 노트북 GPU / 맥·통합 메모리 / CPU 전용 (순서 = URL 정규형) */
+export type HwType = 'desktop' | 'laptop' | 'unified' | 'cpu';
+export const HW_TYPES: readonly HwType[] = ['desktop', 'laptop', 'unified', 'cpu'];
+/** 카탈로그 GPU → 종류 */
+export function hwTypeOf(gpu: Pick<GpuCore, 'kind' | 'form'>): HwType {
+  if (gpu.kind === 'unified') return 'unified';
+  if (gpu.kind === 'cpu') return 'cpu';
+  return gpu.form === 'laptop' ? 'laptop' : 'desktop';
+}
+
+/**
+ * 모델 모드 예산 상한 (USD, dGPU 실거래가 기준 — MSRP·가격 없는 행은 예산을 걸면 빠진다). 실거래가 14종($250~$4,200)을
+ * 고르게 나누는 계단. UI 정책 상수(엔진 상수 아님)
+ */
+// source: docs/01 F4 (policy)
+export const BUDGET_OPTIONS_USD: readonly number[] = [300, 400, 500, 700, 1000, 1500, 2000, 3000];
+
+/** 모델 모드 GPU 목록 정렬 — 판정·속도 순(허브 표 순서) / 빠른 순 / 실거래가 낮은 순 */
+export type GpuSortKey = 'verdict' | 'speed' | 'price';
+export const GPU_SORT_KEYS: readonly GpuSortKey[] = ['verdict', 'speed', 'price'];
+
 export type MinVerdict = Exclude<Verdict, 'F'>;
 
 export const CUSTOM_CLASSES: readonly EffClass[] = ['nvidia', 'amd', 'intel-arc', 'apple', 'apple-ultra', 'strix', 'dgx-spark'];
@@ -54,6 +79,8 @@ export type HardwareChoice =
   | { kind: 'custom'; custom: CustomHardware };
 
 export type CalcState = {
+  /** 계산기 방향 (D65) — 하드웨어 키는 모델 모드에서도 상태·URL 에 남는다(모드를 오가도 잃지 않게) */
+  mode: CalcMode;
   hardware: HardwareChoice;
   /** 시스템 RAM(dGPU) / 통합·CPU 메모리 (GB) — undefined 면 기본값 */
   ramGB?: number;
@@ -69,10 +96,16 @@ export type CalcState = {
   min?: MinVerdict;
   size: SizeBucket[];
   sort: SortKey;
-  /** 카드 포커스 모델 id */
+  /** 카탈로그 모델 id — 하드웨어 모드는 강조할 카드, 모델 모드는 GPU 를 찾을 대상 모델(D65) */
   focus?: string;
-  /** 카탈로그 밖 모델 — Hugging Face 저장소 id(`org/repo`). 브라우저가 HF 에서 불러와 이론 추정으로 계산 (계산기 P2, PROGRESS §4 D57) */
+  /** 카탈로그 밖 모델 — Hugging Face 저장소 id(`org/repo`). 브라우저가 HF 에서 불러와 이론 추정으로 계산 (계산기 P2, PROGRESS §4 D57). 모델 모드에선 불러온 모델이 대상 */
   hf?: string;
+  /** 모델 모드 GPU 종류 필터 (빈 배열 = 전부) */
+  type: HwType[];
+  /** 모델 모드 예산 상한 (USD, BUDGET_OPTIONS_USD 중 하나) */
+  budget?: number;
+  /** 모델 모드 GPU 목록 정렬 */
+  gsort: GpuSortKey;
 };
 
 /** HF 저장소 id 형식 (`org/repo`) — URL 에서 온 값 검증용. 입력 해석(주소·Ollama 표기)은 `@canrun/data/hf` parseHfInput */
@@ -87,6 +120,7 @@ export const DGPU_RAM_OPTIONS: readonly number[] = [8, 16, 24, 32, 48, 64, 96, 1
 
 export function defaultState(): CalcState {
   return {
+    mode: 'hardware',
     hardware: { kind: 'none' },
     ddr: DEFAULT_DDR,
     display: true,
@@ -95,6 +129,8 @@ export function defaultState(): CalcState {
     cat: [],
     size: [],
     sort: 'verdict',
+    type: [],
+    gsort: 'verdict',
   };
 }
 
@@ -220,5 +256,10 @@ export function normalize(state: CalcState, catalog: CatalogLite): CalcState {
     (next.hardware.kind === 'catalog' && findGpu(catalog, next.hardware.gpuId)?.kind === 'dgpu') ||
     (next.hardware.kind === 'custom' && next.hardware.custom.kind === 'dgpu');
   if (next.gpus !== undefined && (!dgpuChoice || next.gpus === 1 || !GPU_COUNT_OPTIONS.includes(next.gpus))) next.gpus = undefined;
+  // 모델 모드 (D65): 허용 목록 밖이면 기본값, 종류는 정규 순서·중복 제거
+  if (!CALC_MODES.includes(next.mode)) next.mode = 'hardware';
+  next.type = HW_TYPES.filter((t) => state.type.includes(t));
+  if (next.budget !== undefined && !BUDGET_OPTIONS_USD.includes(next.budget)) next.budget = undefined;
+  if (!GPU_SORT_KEYS.includes(next.gsort)) next.gsort = 'verdict';
   return next;
 }

@@ -3,7 +3,7 @@ import { HUB_POLICY, toCatalogLite } from '@canrun/data/client';
 import { describe, expect, it } from 'vitest';
 import { loadSeed } from '../../../packages/data/test/seed';
 import { parseCalcQuery, serializeCalcQuery } from '../lib/calc/url';
-import { defaultState, normalize, type CalcState } from '../lib/calc/state';
+import { BUDGET_OPTIONS_USD, HW_TYPES, defaultState, normalize, type CalcState, type HwType } from '../lib/calc/state';
 
 const catalog = toCatalogLite(loadSeed());
 
@@ -156,5 +156,66 @@ describe('gpus= (멀티 GPU, D58)', () => {
     expect(parseCalcQuery('?gpu=rtx-3090&gpus=7', catalog).gpus).toBeUndefined();
     expect(parseCalcQuery('?gpu=apple-m4&gpus=2', catalog).gpus).toBeUndefined();
     expect(parseCalcQuery('?gpu=custom&kind=dgpu&vram=24&bw=936&gpus=3', catalog).gpus).toBe(3);
+  });
+});
+
+describe('model mode keys (10-03 D65): mode m hf type budget gsort', () => {
+  it('the hardware-mode default is omitted; model mode keeps the hardware keys and appends its own in a fixed order', () => {
+    expect(serializeCalcQuery({ ...defaultState(), mode: 'model', focus: 'qwen3-14b' }, catalog)).toBe('?mode=model&m=qwen3-14b');
+    const s: CalcState = {
+      ...defaultState(),
+      mode: 'model',
+      hardware: { kind: 'catalog', gpuId: 'rtx-4060' },
+      ramGB: 16,
+      ctx: 32768,
+      kv: 'q8_0',
+      min: 'A',
+      focus: 'gpt-oss-20b',
+      type: ['unified', 'desktop', 'desktop'],
+      budget: 700,
+      gsort: 'price',
+    };
+    const qs = serializeCalcQuery(s, catalog);
+    expect(qs).toBe('?gpu=rtx-4060&ram=16&ctx=32768&kv=q8_0&min=A&mode=model&m=gpt-oss-20b&type=desktop%2Cunified&budget=700&gsort=price');
+    expect(roundTrip(s)).toEqual(normalize(s, catalog));
+    expect(serializeCalcQuery(parseCalcQuery(qs, catalog), catalog)).toBe(qs);
+    // 불러온 모델이 대상인 링크
+    expect(serializeCalcQuery({ ...defaultState(), mode: 'model', hf: 'Qwen/Qwen3-4B' }, catalog)).toBe('?mode=model&hf=Qwen%2FQwen3-4B');
+  });
+
+  it('round-trips every model × gsort × budget step × a few type sets (canonical form is a fixed point)', () => {
+    let n = 0;
+    for (const model of catalog.models) {
+      for (const gsort of ['verdict', 'speed', 'price'] as const) {
+        for (const budget of [undefined, ...BUDGET_OPTIONS_USD]) {
+          for (const type of [[], ['laptop'], ['cpu', 'desktop'], [...HW_TYPES]] as HwType[][]) {
+            const state = normalize({ ...defaultState(), mode: 'model', focus: model.id, gsort, budget, type }, catalog);
+            const qs = serializeCalcQuery(state, catalog);
+            expect(roundTrip(state), qs).toEqual(state);
+            expect(serializeCalcQuery(parseCalcQuery(qs, catalog), catalog)).toBe(qs);
+            n += 1;
+          }
+        }
+      }
+    }
+    expect(n).toBe(catalog.models.length * 3 * (BUDGET_OPTIONS_USD.length + 1) * 4);
+  });
+
+  it('drops invalid mode / type / budget / gsort values and keeps the rest', () => {
+    const s = parseCalcQuery('?mode=gpu&m=qwen3-14b&type=desktop,phone,cpu,desktop&budget=650&gsort=cheap', catalog);
+    expect(s.mode).toBe('hardware');
+    expect(s.focus).toBe('qwen3-14b');
+    expect(s.type).toEqual(['desktop', 'cpu']);
+    expect(s.budget).toBeUndefined();
+    expect(s.gsort).toBe('verdict');
+    expect(parseCalcQuery('?mode=model&budget=-1', catalog).budget).toBeUndefined();
+    expect(parseCalcQuery('?mode=model&budget=3000', catalog)).toMatchObject({ mode: 'model', budget: 3000 });
+  });
+
+  it('the model hub link (`?mode=model&m=<id>`) is already canonical for every model — no replaceState rewrite on load', () => {
+    for (const model of catalog.models) {
+      const qs = `?mode=model&m=${model.id}`;
+      expect(serializeCalcQuery(parseCalcQuery(qs, catalog), catalog), model.id).toBe(qs);
+    }
   });
 });

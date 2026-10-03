@@ -31,6 +31,7 @@ export function HfModelPanel({
   hydrated,
   status,
   hasHardware,
+  modelMode = false,
   canRemove,
   onLoad,
   onRemove,
@@ -39,6 +40,8 @@ export function HfModelPanel({
   hydrated: boolean;
   status: HfPanelStatus;
   hasHardware: boolean;
+  /** 모델 모드(D65) — 불러온 모델이 GPU 목록의 대상이 된다 (상태 문장만 다르다) */
+  modelMode?: boolean;
   /** 불러온 모델이 걸려 있거나 불러오는 중 — 다음 불러오기가 실패해도 뺄 수 있게 상태가 아니라 이것으로 정한다 */
   canRemove: boolean;
   onLoad: (text: string) => void;
@@ -54,9 +57,13 @@ export function HfModelPanel({
     status.kind === 'loading'
       ? t.calc('hfLoading')
       : status.kind === 'loaded'
-        ? `${t.calc('hfLoaded', { model: status.name })}${hasHardware ? '' : ` ${t.calc('hfNeedGpu')}`}`
+        ? modelMode
+          ? t.calc('hfLoadedModelMode', { model: status.name })
+          : `${t.calc('hfLoaded', { model: status.name })}${hasHardware ? '' : ` ${t.calc('hfNeedGpu')}`}`
         : status.kind === 'catalog'
-          ? `${t.calc('hfInCatalog', { model: status.name })}${hasHardware ? '' : ` ${t.calc('hfNeedGpu')}`}`
+          ? modelMode
+            ? t.calc('hfInCatalogModelMode', { model: status.name })
+            : `${t.calc('hfInCatalog', { model: status.name })}${hasHardware ? '' : ` ${t.calc('hfNeedGpu')}`}`
         : status.kind === 'error'
           ? status.code === 'unsupported' && status.modelType
             ? t.calc('hfErrorUnsupportedType', { type: status.modelType })

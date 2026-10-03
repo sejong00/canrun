@@ -27,6 +27,7 @@ export function ResultList({
   prefix,
   issueUrl,
   hfMeta,
+  onSeeGpus,
 }: {
   locale: string;
   catalog: CatalogLite;
@@ -39,6 +40,8 @@ export function ResultList({
   issueUrl: string;
   /** 불러온 모델의 HF 저장소 (결과 맨 위 카드의 링크) — D57 */
   hfMeta?: { baseId: string; ggufRepo: string };
+  /** 카드 → 그 모델의 GPU 목록(모델 모드, D65). 불러온 모델 카드는 인자 없이 */
+  onSeeGpus: (modelId?: string) => void;
 }) {
   const id = useId();
   const total = catalog.models.length;
@@ -121,6 +124,7 @@ export function ResultList({
                   prefix={prefix}
                   focused={false}
                   external={hfMeta}
+                  onSeeGpus={() => onSeeGpus()}
                 />
               </ul>
               <p className="text-xs text-muted-foreground">{t.calc('hfNote')}</p>
@@ -155,6 +159,7 @@ export function ResultList({
                   hardware={results.hardware}
                   prefix={prefix}
                   focused={state.focus === card.model.id}
+                  onSeeGpus={() => onSeeGpus(card.model.id)}
                 />
               ))}
             </ul>

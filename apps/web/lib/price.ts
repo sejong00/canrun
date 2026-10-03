@@ -4,28 +4,26 @@
  * 국내 판매가가 아니므로 원화가 보이는 곳에는 `Common.krwNote` 를 함께 단다.
  *
  * 서버 전용: fx.json 을 정적 import 한다(클라이언트 번들 금지 — lib/catalog.ts 와 같은 규칙).
+ * 계산은 `lib/krw.ts`(순수 — 계산기 아일랜드도 쓴다, 10-03 D65)에 환율을 넣어 위임한다.
  */
 import { parseFx } from '@canrun/data';
 import fxJson from '../../../data/fx.json';
-import { formatInt, formatUSD } from './format';
+import { formatPriceFx, krwMan as krwManAt, krwNoteFx } from './krw';
 import type { Translate } from './phrases';
 
 export const FX = parseFx(fxJson);
 
 /** 달러 → 만 원 단위 반올림 (1만 원 미만은 1) */
 export function krwMan(usd: number, usdKrw: number = FX.usdKrw): number {
-  return Math.max(1, Math.round((usd * usdKrw) / 10_000));
+  return krwManAt(usd, usdKrw);
 }
 
 /** 가격 문자열 — ko 만 원화 참고값을 붙인다 */
 export function formatPrice(common: Translate, locale: string, usd: number): string {
-  const price = formatUSD(locale, usd);
-  if (locale !== 'ko') return price;
-  return common('priceKrw', { usd: price, krw: formatInt(locale, krwMan(usd)) });
+  return formatPriceFx(common, locale, usd, FX);
 }
 
 /** 원화 환산 안내 (ko 전용 — en 은 undefined) */
 export function krwNote(common: Translate, locale: string): string | undefined {
-  if (locale !== 'ko') return undefined;
-  return common('krwNote', { date: FX.asOf, rate: formatInt(locale, FX.usdKrw) });
+  return krwNoteFx(common, locale, FX);
 }

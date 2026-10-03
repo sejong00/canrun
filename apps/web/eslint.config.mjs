@@ -19,6 +19,8 @@ const CLIENT_FILES = [
   'lib/hydration.ts',
   'lib/phrases.ts',
   'lib/format.ts',
+  // 원화 참고 가격 코어 — 계산기 모델 모드 GPU 행 (10-03 D65). 서버용 lib/price.ts(fx.json)는 여기에 넣지 않는다
+  'lib/krw.ts',
 ];
 
 const config = [

@@ -940,9 +940,10 @@ export function ggufPublisher(
   return { kind, owner, repo: row.ggufRepo };
 }
 
-export type ModelGpuRow = { gpu: Gpu; combo: ComboAssessment };
+/** 모델 → GPU 한 행 — 허브 표(전체 레코드 `Gpu`)와 계산기 모델 모드(`GpuCore`, 10-03 D65)가 같이 쓴다 */
+export type ModelGpuRow<G extends GpuCore = Gpu> = { gpu: G; combo: ComboAssessment };
 
-export type PricedOption = ModelGpuRow & { priceUSD: number; priceAsOf: string };
+export type PricedOption<G extends GpuCore = Gpu> = ModelGpuRow<G> & { priceUSD: number; priceAsOf: string };
 
 export type ModelHubData = {
   model: Model;
@@ -990,37 +991,70 @@ export function pickConfigCombo(combos: readonly ComboAssessment[]): ComboAssess
   return combos.find((c) => verdictRank(c.baseline.result.verdict) === best)!;
 }
 
+/**
+ * 가격 순위·예산에 쓰는 가격 — dGPU 실거래가(`priceAsOf` 동반)만 (docs/01 §3: MSRP·통합 메모리 기기는 순위 밖, 규칙 2).
+ * 모델 허브 정렬·최저가와 계산기 모델 모드(10-03 D65)가 같은 조건을 쓴다
+ */
+export function rankableStreet(
+  gpu: Pick<GpuCore, 'kind' | 'streetUSD' | 'priceAsOf'>,
+): { usd: number; asOf: string } | undefined {
+  return gpu.kind === 'dgpu' && gpu.streetUSD !== undefined && gpu.priceAsOf
+    ? { usd: gpu.streetUSD, asOf: gpu.priceAsOf }
+    : undefined;
+}
+
+/**
+ * 모델 하나를 카탈로그 GPU 전부로 평가한다 (모델 허브 GPU 표 = 옵션 없이 8k·f16, 계산기 모델 모드 = 사용자의 ctx·KV·
+ * theoretical — 10-03 D65). dGPU 는 허브 가정(D2), 통합·CPU 는 RAM 옵션마다 평가해 `pickConfigCombo`.
+ * 정렬: 판정 → tok/s → 모델 id(같은 모델이라 동률) → GPU id.
+ */
+export function modelGpuRows<G extends GpuCore>(
+  catalog: CatalogCore & { gpus: readonly G[] },
+  model: ModelCore,
+  opts: AssessComboOptions = {},
+): ModelGpuRow<G>[] {
+  const gpus: readonly G[] = catalog.gpus;
+  const rows: ModelGpuRow<G>[] = gpus.map((gpu) => {
+    const combos = hardwareConfigs(gpu, catalog.gpus).map((config) =>
+      assessCombo(catalog, gpu, config, model, opts),
+    );
+    return { gpu, combo: pickConfigCombo(combos) };
+  });
+  return rows.sort((a, b) => compareCombos(a.combo, b.combo) || a.gpu.id.localeCompare(b.gpu.id));
+}
+
+/**
+ * 최저가 (docs/01 §3) — great = 쾌적(S) 최저가, well = 그보다 싼 원활(A) 최저가(S 가 없으면 A 최저가).
+ * 가격은 `rankableStreet` 만.
+ */
+export function cheapestOptions<G extends GpuCore>(
+  rows: readonly ModelGpuRow<G>[],
+): { great?: PricedOption<G>; well?: PricedOption<G> } {
+  const cheapestAt = (target: Verdict): PricedOption<G> | undefined => {
+    const first = rows
+      .map((r) => ({ r, price: rankableStreet(r.gpu) }))
+      .filter(
+        (x): x is { r: ModelGpuRow<G>; price: { usd: number; asOf: string } } =>
+          x.price !== undefined && x.r.combo.baseline.result.verdict === target,
+      )
+      .sort((a, b) => a.price.usd - b.price.usd || a.r.gpu.id.localeCompare(b.r.gpu.id))[0];
+    return first && { ...first.r, priceUSD: first.price.usd, priceAsOf: first.price.asOf };
+  };
+  const great = cheapestAt('S');
+  const wellCandidate = cheapestAt('A');
+  const well =
+    wellCandidate && (!great || wellCandidate.priceUSD < great.priceUSD) ? wellCandidate : undefined;
+  return { ...(great ? { great } : {}), ...(well ? { well } : {}) };
+}
+
 export function summarizeModel(catalog: SeedCatalog, model: Model): ModelHubData {
   const rows = catalog.modelQuants.filter((mq) => mq.modelId === model.id);
   const tiers = tierMap(catalog.quantDefs);
   const baseRow = baselineRow(rows, bpwMap(catalog.quantDefs));
   if (!baseRow) throw new Error(`model '${model.id}' has no model-quants rows`);
 
-  const gpuRows: ModelGpuRow[] = catalog.gpus.map((gpu) => {
-    const combos = hardwareConfigs(gpu, catalog.gpus).map((config) =>
-      assessCombo(catalog, gpu, config, model),
-    );
-    return { gpu, combo: pickConfigCombo(combos) };
-  });
-  gpuRows.sort((a, b) => compareCombos(a.combo, b.combo) || a.gpu.id.localeCompare(b.gpu.id));
-
-  const cheapestAt = (target: Verdict): PricedOption | undefined => {
-    const first = gpuRows
-      .filter(
-        (r) =>
-          r.gpu.kind === 'dgpu' &&
-          r.gpu.streetUSD !== undefined &&
-          r.gpu.priceAsOf !== undefined &&
-          r.combo.baseline.result.verdict === target,
-      )
-      .sort((a, b) => a.gpu.streetUSD! - b.gpu.streetUSD! || a.gpu.id.localeCompare(b.gpu.id))[0];
-    return first && { ...first, priceUSD: first.gpu.streetUSD!, priceAsOf: first.gpu.priceAsOf! };
-  };
-  const great = cheapestAt('S');
-  const wellCandidate = cheapestAt('A');
-  const well =
-    wellCandidate && (!great || wellCandidate.priceUSD < great.priceUSD) ? wellCandidate : undefined;
-  const cheapest = { ...(great ? { great } : {}), ...(well ? { well } : {}) };
+  const gpuRows = modelGpuRows(catalog, model);
+  const cheapest = cheapestOptions(gpuRows);
 
   const quants: ModelHubData['quants'] = [...rows]
     .sort((a, b) => a.fileGB - b.fileGB)

@@ -30,6 +30,7 @@ export function ResultCard({
   prefix,
   focused,
   external,
+  onSeeGpus,
 }: {
   locale: string;
   t: CalcTranslators;
@@ -40,6 +41,8 @@ export function ResultCard({
   focused: boolean;
   /** 카탈로그 밖 모델(HF 에서 불러옴, D57) — 허브·콤보 페이지 대신 HF 링크와 실행 명령 */
   external?: { baseId: string; ggufRepo: string };
+  /** 이 모델이 돌아가는 GPU 목록으로 (모델 모드, 10-03 D65) */
+  onSeeGpus?: () => void;
 }) {
   const { model, combo } = card;
   const q = combo.display;
@@ -197,6 +200,11 @@ export function ResultCard({
           </>
         ) : (
           <a href={`${prefix}/model/${model.id}`}>{t.calc('cardModelHub')}</a>
+        )}
+        {onSeeGpus && (
+          <button type="button" data-see-gpus onClick={onSeeGpus} className="text-left underline underline-offset-4">
+            {t.calc('seeGpusForModel')}
+          </button>
         )}
       </p>
     </li>

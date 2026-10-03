@@ -54,3 +54,54 @@ describe('formatMemGB keeps an entered fraction without padding whole numbers', 
     expect(formatMemGB('en', 1024)).toBe('1,024');
   });
 });
+
+describe('calculator reducer — model mode (10-03 D65)', () => {
+  it('switching modes keeps hardware, RAM, filters and the shared min verdict', () => {
+    const start = at('rtx-4060', { ramGB: 16, min: 'A', cat: ['coding'], focus: 'qwen3-14b' });
+    const model = reduce(start, { type: 'mode', mode: 'model' });
+    expect(model).toEqual({ ...start, mode: 'model' });
+    expect(reduce(model, { type: 'mode', mode: 'hardware' })).toEqual(start);
+  });
+
+  it('picking a catalog model drops a loaded HF model', () => {
+    const next = reduce({ ...defaultState(), mode: 'model', hf: 'Qwen/Qwen3-4B', focus: 'llama-3.1-8b' }, { type: 'pickModel', focus: 'qwen3-14b' });
+    expect(next.focus).toBe('qwen3-14b');
+    expect(next.hf).toBeUndefined();
+  });
+
+  it('toModel: a catalog card targets its model (and drops hf); the HF card keeps hf and the focus', () => {
+    const fromCard = reduce(at('rtx-4060', { hf: 'Qwen/Qwen3-4B' }), { type: 'toModel', focus: 'gpt-oss-20b' });
+    expect(fromCard).toMatchObject({ mode: 'model', focus: 'gpt-oss-20b', hardware: { kind: 'catalog', gpuId: 'rtx-4060' } });
+    expect(fromCard.hf).toBeUndefined();
+    const fromHf = reduce(at('rtx-4060', { hf: 'Qwen/Qwen3-4B', focus: 'llama-3.1-8b' }), { type: 'toModel' });
+    expect(fromHf).toMatchObject({ mode: 'model', hf: 'Qwen/Qwen3-4B', focus: 'llama-3.1-8b' });
+  });
+
+  it('useGpu: dGPU → dGPU keeps the user RAM; a Mac or CPU row brings the RAM that row used; the target model stays focused', () => {
+    const base: CalcState = { ...at('rtx-4060', { ramGB: 64, os: 'linux' }), mode: 'model', focus: 'qwen3-14b' };
+    const dgpu = reduce(base, { type: 'useGpu', gpuId: 'rtx-3090' });
+    expect(dgpu).toMatchObject({ mode: 'hardware', hardware: { kind: 'catalog', gpuId: 'rtx-3090' }, ramGB: 64, os: 'linux', focus: 'qwen3-14b' });
+    const mac = reduce(base, { type: 'useGpu', gpuId: 'apple-m4-max-40c', ramGB: 48 });
+    expect(mac).toMatchObject({ mode: 'hardware', hardware: { kind: 'catalog', gpuId: 'apple-m4-max-40c' }, ramGB: 48 });
+    expect(mac.os).toBeUndefined();
+    const cpu = reduce(base, { type: 'useGpu', gpuId: 'cpu-ddr4-3200-2ch', ramGB: 32 });
+    expect(cpu).toMatchObject({ hardware: { kind: 'catalog', gpuId: 'cpu-ddr4-3200-2ch' }, ddr: 'ddr4-3200', ramGB: 32 });
+    // dGPU 행에 RAM 이 와도 사용자 RAM 을 유지한다 (행 RAM 은 허브 가정 32GB)
+    expect(reduce(base, { type: 'useGpu', gpuId: 'rtx-3090', ramGB: 32 }).ramGB).toBe(64);
+  });
+
+  it('type / budget / gsort are normalised; clearGpuFilters clears type, budget and min only', () => {
+    let s: CalcState = { ...defaultState(), mode: 'model', focus: 'qwen3-14b', cat: ['chat'] };
+    s = reduce(s, { type: 'type', hwType: ['cpu', 'desktop', 'cpu'] });
+    expect(s.type).toEqual(['desktop', 'cpu']);
+    s = reduce(s, { type: 'budget', budget: 650 });
+    expect(s.budget).toBeUndefined();
+    s = reduce(s, { type: 'budget', budget: 700 });
+    expect(s.budget).toBe(700);
+    s = reduce(s, { type: 'gsort', gsort: 'price' });
+    s = reduce(s, { type: 'min', min: 'S' });
+    const cleared = reduce(s, { type: 'clearGpuFilters' });
+    expect(cleared).toMatchObject({ type: [], min: undefined, gsort: 'price', cat: ['chat'] });
+    expect(cleared.budget).toBeUndefined();
+  });
+});

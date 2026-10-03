@@ -838,6 +838,20 @@ describe('memory-size verdict lists and the system RAM toggle (10-03 D64)', () =
   });
 });
 
+describe('model hub → calculator model mode (10-03 D65)', () => {
+  it('every model hub links to the locale-correct calculator in model mode for that model; no other page kind does', () => {
+    const models = pages.filter((p) => p.kind === 'model');
+    expect(models.length).toBeGreaterThan(0);
+    for (const page of models) {
+      const modelId = page.urlPath.split('/').pop()!;
+      expect(page.markers.calcModelLink, `${page.file} a[data-calc-model-link]`).toBe(`${localePath(page.locale, '/calculator')}?mode=model&m=${modelId}`);
+    }
+    for (const page of pages.filter((p) => p.kind !== 'model')) {
+      expect(page.markers.calcModelLink, `${page.file} a[data-calc-model-link]`).toBeUndefined();
+    }
+  });
+});
+
 describe('islands SSR (P1-3 D28 · price sort)', () => {
   it('every combo page renders the ctx/KV controls and keeps the static ctx table; every model hub renders the sort control', () => {
     for (const page of requireCombos()) {

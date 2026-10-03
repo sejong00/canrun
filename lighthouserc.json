@@ -12,6 +12,7 @@
         "http://127.0.0.1:4173/ko/can-i-run/qwen3-30b-a3b-2507/on/rtx-3060-12gb",
         "http://127.0.0.1:4173/calculator",
         "http://127.0.0.1:4173/ko/calculator",
+        "http://127.0.0.1:4173/calculator?mode=model&m=qwen3-14b",
         "http://127.0.0.1:4173/guides/vram-requirements",
         "http://127.0.0.1:4173/ko/guides/vram-requirements"
       ],
@@ -28,7 +29,7 @@
           }
         },
         {
-          "matchingUrlPattern": "^(?!.*/calculator$).*$",
+          "matchingUrlPattern": "^(?!.*/calculator([?].*)?$).*$",
           "assertions": {
             "resource-summary:script:size": ["error", { "maxNumericValue": 153600, "aggregationMethod": "median-run" }]
           }
@@ -55,7 +56,7 @@
           }
         },
         {
-          "matchingUrlPattern": "/calculator$",
+          "matchingUrlPattern": "/calculator([?].*)?$",
           "assertions": {
             "resource-summary:script:size": ["error", { "maxNumericValue": 180224, "aggregationMethod": "median-run" }],
             "is-crawlable": ["error", { "minScore": 1 }],

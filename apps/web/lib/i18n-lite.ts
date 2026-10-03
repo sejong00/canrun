@@ -149,7 +149,26 @@ export const CALC_MESSAGE_SPEC: MessageSpec = {
     'Category',
     'GpuName',
   ],
-  keys: ['GpuHub.badgeLaptop', 'GpuHub.badgeUnified', 'GpuHub.badgeFp16', 'GpuHub.badgeCpu', 'GpuHub.ramOption', 'Table.quant', 'Table.size'],
+  keys: [
+    'GpuHub.badgeLaptop',
+    'GpuHub.badgeUnified',
+    'GpuHub.badgeFp16',
+    'GpuHub.badgeCpu',
+    'GpuHub.ramOption',
+    'Table.quant',
+    'Table.size',
+    // 모델 모드 GPU 목록 (10-03 D65) — 모델 허브 표와 같은 문구를 쓴다
+    'GpuHub.priceStreet',
+    'GpuHub.priceMsrp',
+    'ModelHub.gpuTitle',
+    'ModelHub.configRam',
+    'ModelHub.cheapestTitle',
+    'ModelHub.cheapest',
+    'Table.details',
+    'Table.detailsFor',
+    'Table.price',
+    'Sort.price',
+  ],
 };
 
 /** 홈·가이드 GPU 선택기 (`components/islands/gpu-picker.tsx`) — GPU 이름 + 목록 머리글·메모리 라벨만 (페이지마다 실리므로 최소한) */

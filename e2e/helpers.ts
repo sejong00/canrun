@@ -155,3 +155,48 @@ export function trackChunkRequests(page: Page): () => number {
   });
   return () => count;
 }
+
+const QWEN3_4B_CONFIG = {
+  model_type: 'qwen3',
+  num_hidden_layers: 36,
+  num_attention_heads: 32,
+  num_key_value_heads: 8,
+  head_dim: 128,
+  hidden_size: 2560,
+  max_position_embeddings: 40960,
+};
+
+/**
+ * huggingface.co 요청 가짜 응답 — 모르는 주소는 404 (실제 망으로 새지 않게). CI 는 외부망을 쓰지 않는다.
+ * 계산기 "목록에 없는 모델"(hf-model.spec, D57)과 모델 모드(calculator-model.spec, D65)가 같이 쓴다
+ */
+export async function mockHf(page: Page) {
+  await page.route('https://huggingface.co/**', async (route) => {
+    const url = new URL(route.request().url());
+    const json = (body: unknown, status = 200) =>
+      route.fulfill({ status, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(body) });
+    const p = url.pathname;
+    if (p === '/api/models/Qwen/Qwen3-4B') {
+      return json({ id: 'Qwen/Qwen3-4B', siblings: [{ rfilename: 'config.json' }], cardData: { license: 'apache-2.0' }, safetensors: { total: 4_022_468_096 } });
+    }
+    if (p === '/api/models' && url.searchParams.get('filter') === 'gguf') {
+      return json([{ id: 'unsloth/Qwen3-4B-GGUF' }, { id: 'Qwen/Qwen3-4B-GGUF' }]);
+    }
+    if (p === '/api/models/Qwen/Qwen3-4B-GGUF/tree/main') {
+      return json([
+        { type: 'file', path: 'Qwen3-4B-Q4_K_M.gguf', size: 2_497_280_256 },
+        { type: 'file', path: 'Qwen3-4B-Q8_0.gguf', size: 4_280_404_736 },
+        { type: 'file', path: 'README.md', size: 1200 },
+      ]);
+    }
+    if (p === '/Qwen/Qwen3-4B/resolve/main/config.json') return json(QWEN3_4B_CONFIG);
+    if (p === '/api/models/state-spaces/mamba2-2.7b') {
+      return json({ id: 'state-spaces/mamba2-2.7b', siblings: [{ rfilename: 'config.json' }], safetensors: { total: 2_700_000_000 } });
+    }
+    if (p === '/api/models/state-spaces/mamba2-2.7b/tree/main' || p === '/api/models/state-spaces/mamba2-2.7b-GGUF/tree/main') {
+      return json([{ type: 'file', path: 'mamba2-2.7b-Q4_K_M.gguf', size: 1_600_000_000 }]);
+    }
+    if (p === '/state-spaces/mamba2-2.7b/resolve/main/config.json') return json({ model_type: 'mamba2', num_hidden_layers: 64 });
+    return json({ error: 'not found' }, 404);
+  });
+}

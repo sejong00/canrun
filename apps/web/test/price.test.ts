@@ -4,6 +4,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { formatPriceFx, krwMan as krwManAt, krwNoteFx } from '../lib/krw';
 import { FX, formatPrice, krwMan, krwNote } from '../lib/price';
 import type { Translate } from '../lib/phrases';
 
@@ -37,5 +38,20 @@ describe('krwNote', () => {
     const note = krwNote(common('ko'), 'ko')!;
     expect(note).toContain(FX.asOf);
     expect(note).toContain(`1달러 ${new Intl.NumberFormat('ko', { maximumFractionDigits: 0 }).format(FX.usdKrw)}원`);
+  });
+});
+
+describe('lib/krw (계산기 아일랜드용 순수 코어, 10-03 D65)', () => {
+  it('matches the server helpers when given the same rate', () => {
+    for (const usd of [2, 299, 569, 1599, 4200]) expect(krwManAt(usd, FX.usdKrw)).toBe(krwMan(usd));
+    expect(formatPriceFx(common('ko'), 'ko', 299, FX)).toBe(formatPrice(common('ko'), 'ko', 299));
+    expect(krwNoteFx(common('ko'), 'ko', FX)).toBe(krwNote(common('ko'), 'ko'));
+  });
+
+  it('shows no KRW without a rate or on en', () => {
+    expect(formatPriceFx(common('ko'), 'ko', 299, undefined)).toBe('US$299');
+    expect(formatPriceFx(common('en'), 'en', 299, FX)).toBe('$299');
+    expect(krwNoteFx(common('ko'), 'ko', undefined)).toBeUndefined();
+    expect(krwNoteFx(common('en'), 'en', FX)).toBeUndefined();
   });
 });

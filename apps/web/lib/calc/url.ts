@@ -1,17 +1,23 @@
 /**
  * 계산기 공유 URL 코덱 (P1-3 D31) — 기본값 생략·키 순서 고정·미지 키 삭제. 순수 함수.
- *   gpu=<id|이름|별칭|custom> [kind class vram mem bw fp16] gpus ram ddr os display ctx kv cat min size sort m hf
+ *   gpu=<id|이름|별칭|custom> [kind class vram mem bw fp16] gpus ram ddr os display ctx kv cat min size sort mode m hf type budget gsort
+ * 모델 모드(10-03 D65): `mode=model` + 대상 `m`(카탈로그) 또는 `hf`(불러온 모델), GPU 필터 `type`·`budget`·`gsort`. `ctx`·`kv`·`min` 은
+ * 두 모드가 같은 뜻으로 쓴다. 기본 모드(hardware)는 생략하므로 기존 하드웨어 모드 URL 은 그대로다.
  * 홈 GET 폼은 `gpu=<자유 텍스트>` 만 보내고 여기서 별칭·fuzzy 로 해석한다 (해석 실패 = unresolved, 폼에 텍스트 유지).
  */
 import type { CatalogLite } from '@canrun/data/client';
 import type { EffClass, KvQuant, Os } from '@canrun/engine';
 import { matchGpu, type GpuNames } from './gpu-match';
 import {
+  BUDGET_OPTIONS_USD,
+  CALC_MODES,
   CATEGORIES,
   CTX_OPTIONS,
   CUSTOM_CLASSES,
   DDR_KINDS,
   DEFAULT_DDR,
+  GPU_SORT_KEYS,
+  HW_TYPES,
   KV_OPTIONS,
   SIZE_BUCKETS,
   SORT_KEYS,
@@ -20,6 +26,7 @@ import {
   type CalcState,
   type Category,
   type DdrKind,
+  type HwType,
   type MinVerdict,
   type SizeBucket,
   type SortKey,
@@ -75,8 +82,13 @@ export function parseCalcQuery(search: string, catalog: CatalogLite, names: GpuN
   state.min = oneOf(q.get('min'), ['S', 'A', 'B'] as const);
   state.size = list<SizeBucket>(q.get('size'), SIZE_BUCKETS);
   state.sort = oneOf(q.get('sort'), SORT_KEYS) ?? 'verdict';
+  state.mode = oneOf(q.get('mode'), CALC_MODES) ?? 'hardware';
   state.focus = q.get('m') ?? undefined;
   state.hf = q.get('hf')?.trim() || undefined;
+  state.type = list<HwType>(q.get('type'), HW_TYPES);
+  const budget = num(q.get('budget'), 1, 100_000);
+  state.budget = budget !== undefined && BUDGET_OPTIONS_USD.includes(budget) ? budget : undefined;
+  state.gsort = oneOf(q.get('gsort'), GPU_SORT_KEYS) ?? 'verdict';
   return normalize(state, catalog);
 }
 
@@ -107,8 +119,12 @@ export function serializeCalcQuery(state: CalcState, catalog: CatalogLite): stri
   if (s.min !== undefined) q.set('min', s.min);
   if (s.size.length > 0) q.set('size', s.size.join(','));
   if (s.sort !== 'verdict') q.set('sort', s.sort);
+  if (s.mode !== 'hardware') q.set('mode', s.mode);
   if (s.focus !== undefined) q.set('m', s.focus);
   if (s.hf !== undefined) q.set('hf', s.hf);
+  if (s.type.length > 0) q.set('type', s.type.join(','));
+  if (s.budget !== undefined) q.set('budget', String(s.budget));
+  if (s.gsort !== 'verdict') q.set('gsort', s.gsort);
   const out = q.toString();
   return out ? `?${out}` : '';
 }

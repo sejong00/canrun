@@ -1,6 +1,7 @@
 import {
   isReasoning,
   MTP_LOADABLE_MODELS,
+  rankableStreet,
   type ModelGpuRow,
   type ModelHubData,
   type PricedOption,
@@ -28,7 +29,7 @@ import { formatCtx, formatGB, formatInt, formatParams } from '@/lib/format';
 import { formatPrice, krwNote } from '@/lib/price';
 import { getModelHub } from '@/lib/hubs';
 import type { QA } from '@/lib/jsonld';
-import { comboHref, gpuHref, hfUrl, localeHref, modelHref } from '@/lib/links';
+import { calculatorHref, comboHref, gpuHref, hfUrl, localeHref, modelHref } from '@/lib/links';
 import { isComboIndexable } from '@/lib/publish';
 import { gpuName, quantText, speedPhrase, type Translate } from '@/lib/phrases';
 import { buildPageMetadata } from '@/lib/seo';
@@ -214,9 +215,8 @@ export default async function ModelHubPage({ params }: Props) {
   const tCategory = await getTranslations({ locale, namespace: 'Category' });
   const tGpuHub = await getTranslations({ locale, namespace: 'GpuHub' });
   const tSort = await getTranslations({ locale, namespace: 'Sort' });
-  /** 가격 순위 대상 = dGPU 실거래가(priceAsOf 동반)만 — MSRP·통합 메모리 기기는 순위 밖 (docs/01 §3, 규칙 2) */
-  const rankablePrice = (gpu: (typeof hub.gpuRows)[number]['gpu']): number | undefined =>
-    gpu.kind === 'dgpu' && gpu.streetUSD !== undefined && gpu.priceAsOf ? gpu.streetUSD : undefined;
+  /** 가격 순위 대상 = dGPU 실거래가(priceAsOf 동반)만 — MSRP·통합 메모리 기기는 순위 밖 (docs/01 §3, 규칙 2). 계산기 모델 모드와 같은 조건(D65) */
+  const rankablePrice = (gpu: (typeof hub.gpuRows)[number]['gpu']): number | undefined => rankableStreet(gpu)?.usd;
   const unpricedRows = hub.gpuRows.filter((r) => rankablePrice(r.gpu) === undefined).length;
 
   const { model } = hub;
@@ -406,6 +406,12 @@ export default async function ModelHubPage({ params }: Props) {
               announceBandwidth: tSort('announceBandwidth'),
             }}
           />
+          {/* 계산기 모델 모드(10-03 D65) — 예산·종류·컨텍스트로 거르기. 정적 링크라 스크립트 0 (홈 `?gpu=` 링크와 같은 선례) */}
+          <p className="text-sm">
+            <a data-calc-model-link href={localeHref(locale, calculatorHref(`?mode=model&m=${model.id}`))}>
+              {t.hub('calcLink')}
+            </a>
+          </p>
           <p className="text-xs text-muted-foreground sm:hidden">{tTable('scrollHint')}</p>
           <ScrollTable label={t.hub('gpuTitle', { model: model.name })}>
             <table id="gpu-table" data-gpu-table className={TABLE_CLASS}>

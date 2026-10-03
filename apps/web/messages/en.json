@@ -30,7 +30,7 @@
     "metaDescription": "Pick your GPU or Mac chip, RAM and OS to see which of {total} open LLMs run, at which GGUF quant, with an estimated tokens-per-second band and a confidence label. Detects your GPU in the browser; results share as a link.",
     "crumb": "Calculator",
     "h1": "Which local LLMs can your PC run?",
-    "lede": "Pick your hardware; every model gets a verdict, a recommended quant and an estimated speed band.",
+    "lede": "Pick your hardware to see every model’s verdict, recommended quant and estimated speed band — or start from a model to see which GPUs run it.",
     "appName": "CanRun LLM Calculator",
     "hardwareLegend": "Your hardware",
     "gpuLabel": "GPU or chip",
@@ -172,7 +172,38 @@
     "gpuCountLabel": "Number of GPUs",
     "gpuCountOption": "{n, plural, one {# GPU} other {# GPUs}}",
     "gpuTimes": "{n}× {gpu}",
-    "multiGpuNotice": "Multiple GPUs are a beta: we add up the VRAM of {n} identical cards and split the layers across them, as llama.cpp does by default. Memory bandwidth does not add up, so speed stays close to one card. Estimates are theoretical (±30%). Recent llama.cpp builds (April 2026 and later) can be faster with -sm tensor."
+    "multiGpuNotice": "Multiple GPUs are a beta: we add up the VRAM of {n} identical cards and split the layers across them, as llama.cpp does by default. Memory bandwidth does not add up, so speed stays close to one card. Estimates are theoretical (±30%). Recent llama.cpp builds (April 2026 and later) can be faster with -sm tensor.",
+    "modeLegend": "Start from",
+    "modeHardware": "Find models for my GPU",
+    "modeModel": "Find GPUs for a model",
+    "modelLegend": "The model",
+    "modelLabel": "Model to run",
+    "modelPlaceholder": "Pick a model",
+    "modelHfOption": "{model} (loaded from Hugging Face)",
+    "modelHint": "Not in the list? Load it from Hugging Face below.",
+    "modelEmpty": "Pick a model above to see which GPUs, Macs and CPUs run it.",
+    "modelCtxClamped": "This model handles up to {ctx} of context, so that is what we used.",
+    "assumeModelMode": "Everything in the list uses {ctx} context and KV {kv}. Graphics cards assume one card, 32 GB of DDR5-5600 system RAM, Windows and the card driving the display. Macs, unified-memory PCs and CPU-only setups use the smallest memory size that gets the best verdict.",
+    "mineLabel": "Your setup",
+    "mineNote": "The list below uses the shared assumptions, so the same GPU can come out differently there.",
+    "mineAllModels": "All models with my setup",
+    "mineBadge": "Your GPU",
+    "gpuResultsCount": "{shown} of {total} GPUs, Macs and CPUs",
+    "emptyFilteredGpu": "No GPU matches these filters.",
+    "filterType": "Type",
+    "typeDesktop": "Desktop graphics cards",
+    "typeLaptop": "Laptop GPUs",
+    "typeUnified": "Macs & unified memory",
+    "typeCpu": "CPU only",
+    "filterBudget": "Budget (street price)",
+    "budgetAny": "Any",
+    "budgetMax": "Up to {price}",
+    "budgetHidden": "{count, plural, =0 {} one {# GPU without a street price is left out — the budget only counts graphics cards with a known street price.} other {# GPUs without a street price are left out — the budget only counts graphics cards with a known street price.}}",
+    "cheapestNoneModel": "No GPU with a known street price runs it great or well under these settings.",
+    "seeGpusForModel": "GPUs that run this model",
+    "useThisGpu": "All models on this GPU",
+    "hfLoadedModelMode": "Loaded: {model}. The GPU list below is for this model.",
+    "hfInCatalogModelMode": "{model} is already in the list — it is now the selected model."
   },
   "Guides": {
     "indexMetaTitle": "Local LLM guides: VRAM, quantization, context length and Macs",
@@ -257,7 +288,8 @@
     "copyFailed": "Couldn’t copy — copy it from the address bar.",
     "urlLabel": "Share link",
     "text": "Which local LLMs run on {gpu}? — CanRun",
-    "textCustom": "Which local LLMs run on custom hardware ({class} · {mem} GB)? — CanRun"
+    "textCustom": "Which local LLMs run on custom hardware ({class} · {mem} GB)? — CanRun",
+    "textModel": "Which GPUs can run {model}? — CanRun"
   },
   "LicenseShort": {
     "permissive": "Open",
@@ -480,7 +512,8 @@
     "cheapest": "{price} street (as of {date}), {speed}.",
     "cheapestNone": "No GPU with a current street price reaches Runs great or Runs well at {quant}. The table above lists Macs, unified-memory PCs and CPU setups.",
     "benchTitle": "Measured results for {model}",
-    "benchEmpty": "No public measurements for this model yet."
+    "benchEmpty": "No public measurements for this model yet.",
+    "calcLink": "Filter this list by budget, type and context in the calculator"
   },
   "Faq": {
     "title": "Frequently asked questions",

@@ -23,6 +23,8 @@ export type CalcTranslators = {
   names: TranslateWithHas;
   gpuHub: TranslateWithHas;
   table: TranslateWithHas;
+  modelHub: TranslateWithHas;
+  sort: TranslateWithHas;
 };
 
 export function bindTranslators(dict: Dict, locale: string): CalcTranslators {
@@ -43,6 +45,8 @@ export function bindTranslators(dict: Dict, locale: string): CalcTranslators {
     names: makeT(dict, locale, 'GpuName'),
     gpuHub: makeT(dict, locale, 'GpuHub'),
     table: makeT(dict, locale, 'Table'),
+    modelHub: makeT(dict, locale, 'ModelHub'),
+    sort: makeT(dict, locale, 'Sort'),
   };
 }
 
@@ -88,7 +92,19 @@ export type CalcAction =
   | { type: 'focus'; focus: string | undefined }
   | { type: 'hf'; hf: string | undefined }
   | { type: 'gpus'; gpus: number | undefined }
-  | { type: 'clearFilters' };
+  | { type: 'clearFilters' }
+  // 모델 모드 (10-03 D65)
+  | { type: 'mode'; mode: CalcState['mode'] }
+  /** 카탈로그 모델로 대상 바꾸기 — 불러온 모델은 뺀다(아일랜드가 HF 불러오기 차례 번호도 올린다) */
+  | { type: 'pickModel'; focus: string }
+  /** 하드웨어 모드 카드 → 그 모델의 GPU 목록 (`focus` 가 없으면 불러온 모델 카드 — 대상 유지) */
+  | { type: 'toModel'; focus?: string }
+  /** GPU 행 → 그 GPU 로 하드웨어 모드. 통합·CPU 행은 그 행이 쓴 메모리 용량을 넣는다 */
+  | { type: 'useGpu'; gpuId: string; ramGB?: number }
+  | { type: 'type'; hwType: CalcState['type'] }
+  | { type: 'budget'; budget: number | undefined }
+  | { type: 'gsort'; gsort: CalcState['gsort'] }
+  | { type: 'clearGpuFilters' };
 
 /** dGPU 부류(시스템 RAM 목록·OS 선택지를 공유) — none/unresolved 는 dGPU 기본값을 쓴다 */
 function isDgpuChoice(hardware: HardwareChoice, catalog: CatalogLite): boolean {
@@ -102,11 +118,8 @@ export function makeReducer(catalog: CatalogLite) {
     switch (action.type) {
       case 'restore':
         return normalize(action.state, catalog);
-      case 'hardware': {
-        // dGPU ↔ dGPU 처럼 같은 부류 안의 교체는 사용자의 RAM·OS 를 유지하고, 부류가 바뀌면(옵션 목록이 다르다) 기본값으로
-        const keep = isDgpuChoice(state.hardware, catalog) === isDgpuChoice(action.hardware, catalog);
-        return normalize({ ...state, hardware: action.hardware, ...(keep ? {} : { ramGB: undefined, os: undefined }) }, catalog);
-      }
+      case 'hardware':
+        return withHardware(state, action.hardware, catalog);
       case 'custom': {
         const base: CustomHardware =
           state.hardware.kind === 'custom' ? state.hardware.custom : { kind: 'dgpu', effClass: 'nvidia' };
@@ -148,6 +161,32 @@ export function makeReducer(catalog: CatalogLite) {
         return normalize({ ...state, gpus: action.gpus }, catalog);
       case 'clearFilters':
         return { ...state, cat: [], size: [], min: undefined };
+      case 'mode':
+        return normalize({ ...state, mode: action.mode }, catalog);
+      case 'pickModel':
+        return normalize({ ...state, focus: action.focus, hf: undefined }, catalog);
+      case 'toModel':
+        return normalize({ ...state, mode: 'model', ...(action.focus !== undefined ? { focus: action.focus, hf: undefined } : {}) }, catalog);
+      case 'useGpu': {
+        // 'hardware' 와 같은 RAM·OS 유지 규칙으로 바꾼 뒤, 통합·CPU 행이면 그 행의 메모리 용량으로 (`m` = 대상 모델은 그대로 강조)
+        const next = withHardware({ ...state, mode: 'hardware' }, { kind: 'catalog', gpuId: action.gpuId }, catalog);
+        const kind = catalog.gpus.find((g) => g.id === action.gpuId)?.kind;
+        return kind !== 'dgpu' && action.ramGB !== undefined ? normalize({ ...next, ramGB: action.ramGB }, catalog) : next;
+      }
+      case 'type':
+        return normalize({ ...state, type: action.hwType }, catalog);
+      case 'budget':
+        return normalize({ ...state, budget: action.budget }, catalog);
+      case 'gsort':
+        return normalize({ ...state, gsort: action.gsort }, catalog);
+      case 'clearGpuFilters':
+        return { ...state, type: [], budget: undefined, min: undefined };
     }
   };
+}
+
+/** 하드웨어 교체 — dGPU ↔ dGPU 처럼 같은 부류 안의 교체는 사용자의 RAM·OS 를 유지하고, 부류가 바뀌면(옵션 목록이 다르다) 기본값으로 */
+function withHardware(state: CalcState, hardware: HardwareChoice, catalog: CatalogLite): CalcState {
+  const keep = isDgpuChoice(state.hardware, catalog) === isDgpuChoice(hardware, catalog);
+  return normalize({ ...state, hardware, ...(keep ? {} : { ramGB: undefined, os: undefined }) }, catalog);
 }

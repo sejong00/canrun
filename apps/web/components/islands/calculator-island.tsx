@@ -2,15 +2,21 @@
 import { usableGB } from '@canrun/engine';
 import type { CatalogLite } from '@canrun/data/client';
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { GpuResultList } from '@/components/islands/gpu-result-list';
 import { HardwareForm } from '@/components/islands/hardware-form';
 import { HfModelPanel, type HfPanelStatus } from '@/components/islands/hf-model-panel';
+import { ModeSwitch } from '@/components/islands/mode-switch';
+import { ModelForm } from '@/components/islands/model-form';
 import { ResultList } from '@/components/islands/result-list';
 import { ShareButton } from '@/components/islands/share-button';
 import { bindTranslators, classKey, localePrefix, makeReducer } from '@/components/islands/calc-shared';
 import { formatCtx, formatGB, formatInt, formatMemGB } from '@/lib/format';
+import type { KrwRate } from '@/lib/krw';
 import { matchGpu } from '@/lib/calc/gpu-match';
+import type { ResolvedHardware } from '@/lib/calc/hardware';
 import type { HfLoadResult } from '@/lib/calc/hf-load';
 import { assembleResults, type ExtraModel } from '@/lib/calc/run';
+import { assembleModelRows, filterGpuRows, myConfigRow } from '@/lib/calc/run-model';
 import { defaultState, type CalcState } from '@/lib/calc/state';
 import { parseCalcQuery, serializeCalcQuery } from '@/lib/calc/url';
 import { useHydrated } from '@/lib/hydration';
@@ -20,17 +26,21 @@ import { gpuName } from '@/lib/phrases';
 /**
  * 계산기 아일랜드 (docs/01 F1·F4, P1-3). SSR 은 폼만(기본 상태) — 결과·콤보박스 승격·감지 버튼 활성은
  * 하이드레이션 뒤 렌더 분기 (D36). 상태 → URL 은 300ms 디바운스 `replaceState(history.state, …)` (D31).
+ * 모델 모드(10-03 D65): 같은 아일랜드에서 하드웨어 폼 자리에 모델 폼, 결과 자리에 GPU 목록. SSR·첫 렌더는 하드웨어 모드.
  */
 export function CalculatorIsland({
   locale,
   catalog,
   dict,
   issueUrl,
+  fx,
 }: {
   locale: string;
   catalog: CatalogLite;
   dict: Dict;
   issueUrl: string;
+  /** ko 페이지만 — 모델 모드 가격의 원화 참고값(D61) */
+  fx?: KrwRate;
 }) {
   const hydrated = useHydrated();
   const t = useMemo(() => bindTranslators(dict, locale), [dict, locale]);
@@ -42,6 +52,8 @@ export function CalculatorIsland({
   const reducer = useMemo(() => makeReducer(catalog), [catalog]);
   const [state, dispatch] = useReducer(reducer, undefined, defaultState);
   const [restored, setRestored] = useState(false);
+  // 모델 폼이 차지할 최소 높이 — SSR 하드웨어 폼이 화면에 보이던 높이(`?mode=model` 딥링크의 레이아웃 이동 방지, D65)
+  const [formSlot, setFormSlot] = useState<number | undefined>(undefined);
 
   // 마운트: URL → 상태 (islands/** 한정 set-state-in-effect 예외, D36) + popstate 복원.
   // 하이드레이션 전에 입력창에 타이핑한 텍스트(D29)는 URL 에 GPU 가 없을 때 그대로 해석해 시드한다
@@ -59,6 +71,9 @@ export function CalculatorIsland({
       if (parsed.hardware.kind === 'none') parsed.hardware = { kind: 'custom', custom: { kind: 'dgpu', effClass: 'nvidia' } };
       else if (parsed.hardware.kind !== 'custom') details.open = false;
     }
+    const form = document.querySelector<HTMLElement>('form[data-calc-form]')?.getBoundingClientRect();
+    const visible = form ? Math.min(form.height, window.innerHeight - form.top) : 0;
+    if (visible > 0) setFormSlot(Math.round(visible));
     dispatch({ type: 'restore', state: parsed });
     setRestored(true);
     const onPop = () => dispatch({ type: 'restore', state: parseCalcQuery(window.location.search, catalog, names) });
@@ -122,11 +137,34 @@ export function CalculatorIsland({
     // loadHf 는 렌더마다 새 함수지만 같은 일을 한다 — state.hf 가 바뀔 때만 다시 부른다
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restored, state.hf]);
-  const removeHf = () => {
+  // 불러온 모델 내려놓기 — 차례 번호를 올려 진행 중인 불러오기 결과가 나중에 대상을 되돌리지 못하게 한다 (D65 경합)
+  const dropHf = () => {
     hfSeq.current += 1;
     setHfLoad(undefined);
     setHfStatus({ kind: 'idle' });
+  };
+  const removeHf = () => {
+    dropHf();
     dispatch({ type: 'hf', hf: undefined });
+  };
+  // 모드를 넘기는 버튼 뒤에는 결과 제목으로 포커스(화면이 통째로 바뀐다) — 갱신이 그려진 뒤
+  const focusResults = () => window.setTimeout(() => document.getElementById('results-heading')?.focus(), 0);
+  const pickModel = (modelId: string) => {
+    dropHf();
+    dispatch({ type: 'pickModel', focus: modelId });
+  };
+  const seeGpus = (modelId?: string) => {
+    if (modelId !== undefined) dropHf();
+    dispatch(modelId !== undefined ? { type: 'toModel', focus: modelId } : { type: 'toModel' });
+    focusResults();
+  };
+  const switchToGpu = (gpuId: string, ramGB?: number) => {
+    dispatch(ramGB !== undefined ? { type: 'useGpu', gpuId, ramGB } : { type: 'useGpu', gpuId });
+    focusResults();
+  };
+  const mineAll = () => {
+    dispatch({ type: 'mode', mode: 'hardware' });
+    focusResults();
   };
   // 메모 — 매 렌더 새 객체면 아래 결과 조립(전 모델 평가)이 매번 다시 돈다
   const extra = useMemo<ExtraModel | undefined>(
@@ -135,9 +173,23 @@ export function CalculatorIsland({
   );
   const hfMeta = extra && hfLoad?.result.kind === 'ok' ? { baseId: hfLoad.result.baseId, ggufRepo: hfLoad.result.ggufRepo } : undefined;
 
+  const modelMode = state.mode === 'model';
   const results = useMemo(
-    () => (hydrated && restored ? assembleResults(catalog, state, extra) : undefined),
-    [catalog, state, hydrated, restored, extra],
+    () => (hydrated && restored && !modelMode ? assembleResults(catalog, state, extra) : undefined),
+    [catalog, state, hydrated, restored, extra, modelMode],
+  );
+  // 모델 모드: 무거운 평가(GPU 54종 — 대상·ctx·KV 가 바뀔 때만)와 필터·정렬을 따로 메모한다
+  const modelRun = useMemo(
+    () => (hydrated && restored && modelMode ? assembleModelRows(catalog, { focus: state.focus, ctx: state.ctx, kv: state.kv }, extra) : undefined),
+    [catalog, state.focus, state.ctx, state.kv, extra, hydrated, restored, modelMode],
+  );
+  const gpuView = useMemo(
+    () => (modelRun ? filterGpuRows(modelRun, { type: state.type, budget: state.budget, min: state.min, gsort: state.gsort }) : undefined),
+    [modelRun, state.type, state.budget, state.min, state.gsort],
+  );
+  const mine = useMemo(
+    () => (hydrated && restored && modelMode ? myConfigRow(catalog, state, extra) : undefined),
+    [catalog, state, extra, hydrated, restored, modelMode],
   );
   const prefix = localePrefix(locale);
   const shareUrl = useMemo(() => {
@@ -146,19 +198,57 @@ export function CalculatorIsland({
   }, [hydrated, state, catalog]);
 
   const assumption = results ? assumptionText(t, locale, state, results.hardware) : undefined;
+  const shareText = modelRun
+    ? t.share('textModel', { model: modelRun.model.name })
+    : results
+      ? shareTextFor(t, locale, state, results.hardware)
+      : undefined;
+
+  const hfPanel = (
+    <HfModelPanel
+      t={t}
+      hydrated={hydrated}
+      status={hfStatus}
+      hasHardware={results !== undefined}
+      modelMode={modelMode}
+      canRemove={state.hf !== undefined || hfStatus.kind === 'loading'}
+      onLoad={loadHf}
+      onRemove={removeHf}
+    />
+  );
 
   return (
     <div data-calculator className="flex flex-col gap-8">
-      <HardwareForm
-        locale={locale}
-        catalog={catalog}
-        names={names}
-        t={t}
-        state={state}
-        dispatch={dispatch}
-        hydrated={hydrated}
-        action={`${prefix}/calculator`}
-      />
+      <div className="flex flex-col gap-3">
+        <ModeSwitch t={t} mode={state.mode} hydrated={hydrated} onChange={(mode) => dispatch({ type: 'mode', mode })} />
+        {modelMode ? (
+          // 모델 모드: 모델 고르기와 "목록에 없는 모델"을 하드웨어 폼 자리에 함께 둔다 — 그 자리는 SSR 하드웨어 폼이 화면에 보이던
+          // 높이만큼 잡아 두어 `?mode=model` 딥링크에서 아래 내용이 움직이지 않게 한다(D65)
+          <div className="flex flex-col gap-8" style={formSlot ? { minHeight: formSlot } : undefined}>
+            <ModelForm
+              catalog={catalog}
+              t={t}
+              state={state}
+              dispatch={dispatch}
+              hydrated={hydrated}
+              {...(extra ? { hfName: extra.model.name } : {})}
+              onPick={pickModel}
+            />
+            {hfPanel}
+          </div>
+        ) : (
+          <HardwareForm
+            locale={locale}
+            catalog={catalog}
+            names={names}
+            t={t}
+            state={state}
+            dispatch={dispatch}
+            hydrated={hydrated}
+            action={`${prefix}/calculator`}
+          />
+        )}
+      </div>
       {assumption && (
         <p data-assumptions className="text-sm text-muted-foreground">
           {assumption}
@@ -170,41 +260,46 @@ export function CalculatorIsland({
           {state.hardware.kind === 'custom' && results.hardware.gpuCount > 1 ? ` ${t.calc('multiGpuNotice', { n: results.hardware.gpuCount })}` : ''}
         </p>
       )}
-      {hydrated && results && (
-        <ShareButton t={t} url={shareUrl} shareText={shareTextFor(t, locale, state, results.hardware)} />
+      {hydrated && shareText !== undefined && <ShareButton t={t} url={shareUrl} shareText={shareText} />}
+      {!modelMode && hfPanel}
+      {modelMode ? (
+        <GpuResultList
+          locale={locale}
+          t={t}
+          state={state}
+          dispatch={dispatch}
+          run={modelRun}
+          view={gpuView}
+          mine={mine}
+          {...(mine ? { mineMeta: assumptionText(t, locale, state, mine.hardware) } : {})}
+          total={catalog.gpus.length}
+          hydrated={hydrated}
+          prefix={prefix}
+          {...(fx ? { fx } : {})}
+          onUseGpu={switchToGpu}
+          onMineAll={mineAll}
+        />
+      ) : (
+        <ResultList
+          locale={locale}
+          catalog={catalog}
+          t={t}
+          state={state}
+          dispatch={dispatch}
+          results={results}
+          hydrated={hydrated}
+          prefix={prefix}
+          issueUrl={issueUrl}
+          {...(hfMeta ? { hfMeta } : {})}
+          onSeeGpus={seeGpus}
+        />
       )}
-      <HfModelPanel
-        t={t}
-        hydrated={hydrated}
-        status={hfStatus}
-        hasHardware={results !== undefined}
-        canRemove={state.hf !== undefined || hfStatus.kind === 'loading'}
-        onLoad={loadHf}
-        onRemove={removeHf}
-      />
-      <ResultList
-        locale={locale}
-        catalog={catalog}
-        t={t}
-        state={state}
-        dispatch={dispatch}
-        results={results}
-        hydrated={hydrated}
-        prefix={prefix}
-        issueUrl={issueUrl}
-        {...(hfMeta ? { hfMeta } : {})}
-      />
     </div>
   );
 }
 
 /** 공유 문구 — 커스텀 하드웨어는 합성 GPU 이름 대신 제조사 계열·메모리로 (리뷰 반영) */
-function shareTextFor(
-  t: ReturnType<typeof bindTranslators>,
-  locale: string,
-  state: CalcState,
-  hw: NonNullable<ReturnType<typeof assembleResults>>['hardware'],
-): string {
+function shareTextFor(t: ReturnType<typeof bindTranslators>, locale: string, state: CalcState, hw: ResolvedHardware): string {
   if (state.hardware.kind === 'custom') {
     const c = state.hardware.custom;
     return t.share('textCustom', {
@@ -216,12 +311,7 @@ function shareTextFor(
   return t.share('text', { gpu: hw.gpuCount > 1 ? t.calc('gpuTimes', { gpu: name, n: hw.gpuCount }) : name });
 }
 
-function assumptionText(
-  t: ReturnType<typeof bindTranslators>,
-  locale: string,
-  state: CalcState,
-  hw: NonNullable<ReturnType<typeof assembleResults>>['hardware'],
-): string {
+function assumptionText(t: ReturnType<typeof bindTranslators>, locale: string, state: CalcState, hw: ResolvedHardware): string {
   const { gpu, config } = hw;
   const osLabel = t.calc(config.hw.os === 'windows' ? 'osWindows' : config.hw.os === 'linux' ? 'osLinux' : 'osMacos');
   const common = { os: osLabel, ctx: formatCtx(state.ctx), kv: state.kv, ram: formatInt(locale, hw.ramGB) };

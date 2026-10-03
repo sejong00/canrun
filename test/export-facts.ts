@@ -112,6 +112,8 @@ export type PageFacts = {
     guidesEmpty: boolean;
     /** `fieldset[data-ram-toggle]` — 콤보 아일랜드의 시스템 RAM 토글 (10-03 D64) */
     ramToggle: boolean;
+    /** 모델 허브 `a[data-calc-model-link]` href — 엔티티(`&amp;`) 디코딩 (계산기 모델 모드, 10-03 D65) */
+    calcModelLink?: string;
     /** 가이드 본문 안 `<p>` 속 블록 요소 수 (하이드레이션 불일치 원인 — 0 이어야 한다) */
     blockInParagraph: number;
   };
@@ -506,6 +508,7 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
   let navCalculator: string | undefined;
   let openCalculator: string | undefined;
   let navGuides: string | undefined;
+  let calcModelLink: string | undefined;
   const relatedGuideHrefs: string[] = [];
   for (const m of html.matchAll(/<a\b[^>]*>/g)) {
     const tag = m[0];
@@ -517,6 +520,7 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
     if (hasAttr(tag, 'data-nav-calculator')) navCalculator = href;
     if (hasAttr(tag, 'data-open-calculator')) openCalculator = href;
     if (hasAttr(tag, 'data-nav-guides')) navGuides = href;
+    if (hasAttr(tag, 'data-calc-model-link')) calcModelLink = decodeEntities(href);
     if (hasAttr(tag, 'data-related-guide')) relatedGuideHrefs.push(href);
   }
   const formActions = [...html.matchAll(/<form\b[^>]*\baction="([^"]*)"/g)].map((m) => decodeEntities(m[1]!));
@@ -538,6 +542,7 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
     guideDraft: elementsWithAttr(noScript, 'data-guide-draft').length > 0,
     guidesEmpty: elementsWithAttr(noScript, 'data-guides-empty').length > 0,
     ramToggle: elementsWithAttr(noScript, 'data-ram-toggle').length > 0,
+    ...(calcModelLink === undefined ? {} : { calcModelLink }),
     blockInParagraph: blockInParagraphCount(guideBody),
   };
   // 가이드 본문의 문장 단위 — 규칙 3 검사 대상(임계값 범례 `[data-threshold]` 는 밴드 없는 정책 문장이라 제외)

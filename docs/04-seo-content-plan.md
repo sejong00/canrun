@@ -26,7 +26,7 @@
 ```
 - 내부링크 규칙(스팸 방어 필수): 콤보 페이지는 항상 ①GPU 허브 ②모델 허브 ③관련 가이드 1개 ④인접 콤보 4개(같은 GPU 다른 모델 2, 같은 모델 다른 GPU 2)에서 링크 받도록 템플릿화 — 고아 페이지 0. ③의 구현(P1-4 D44): 가이드의 `<ComboGrid>`(레지스트리 그리드가 커버리지 단일 출처)가 공개 콤보로만 링크하고, 콤보는 자기를 커버하는 published 가이드로 `a[data-related-guide]` 역링크. export 테스트가 "indexable 콤보마다 published 가이드 인바운드 ≥1"을 강제(currentBatch 0 에선 공회전 단언).
 - 정규화: 대체 GPU 표기(4060 Ti 16GB 등) alias → canonical 슬러그 301/캐노니컬. **콤보 URL엔 alias 301을 만들지 않는다**(`_redirects` 정적 룰 2,000줄 한도 — `05` §3; 1,566쌍 × 2언어 × 별칭이 한도를 넘는다) — 콤보는 캐노니컬 태그만(P1-2, PROGRESS §4 09-29).
-- **계산기는 index**(P1-3 D24): 캐노니컬 `/calculator`·`/ko/calculator`(쿼리 무시 — 공유 URL `?gpu=…`는 상태만 실어 나르고 캐노니컬은 청결). 인바운드 = 전 페이지 헤더 nav + 홈 GET 폼·인기 GPU 링크(고아 0, export 테스트 강제). 정적 HTML은 폼·FAQ·범례만이라 결과 문장은 색인 콘텐츠가 아니다.
+- **계산기는 index**(P1-3 D24): 캐노니컬 `/calculator`·`/ko/calculator`(쿼리 무시 — 공유 URL `?gpu=…`는 상태만 실어 나르고 캐노니컬은 청결). 인바운드 = 전 페이지 헤더 nav + 홈 GET 폼·인기 GPU 링크 + 모델 허브 GPU 표 위 `a[data-calc-model-link]`(`?mode=model&m={id}` — 계산기 모델 모드, 10-03 D65)(고아 0, export 테스트 강제 — 모델 허브 링크 href 도 고정). 정적 HTML은 폼·FAQ·범례만이라 결과 문장은 색인 콘텐츠가 아니다.
 
 ## 3. 인덱싱 단계 계획 (게이트 통과 전 다음 배치 금지)
 | 배치 | 페이지 | 시점 | 게이트 |

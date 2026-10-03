@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import {
   assessCombo,
   baselineRow,
+  cheapestOptions,
   classifyLicense,
   ctxMatrix,
   ggufPublisher,
@@ -13,6 +14,8 @@ import {
   HUB_POLICY,
   isFp16Crippled,
   memoryMatrix,
+  modelGpuRows,
+  rankableStreet,
   sameSizeQuant,
   summarizeGpu,
   summarizeModel,
@@ -542,6 +545,48 @@ describe('전 카탈로그 불변식', () => {
       }
     }
     expect(combos).toBeGreaterThan(2000);
+  });
+});
+
+describe('모델 → GPU 행 (10-03 D65 — 모델 허브 표와 계산기 모델 모드 공용)', () => {
+  it('summarizeModel 은 modelGpuRows·cheapestOptions 를 그대로 쓴다 (옵션 없음 = 8k·f16 = 허브)', () => {
+    const m = model('qwen3-14b');
+    const hub = summarizeModel(seed, m);
+    const rows = modelGpuRows(seed, m);
+    expect(rows).toEqual(hub.gpuRows);
+    expect(cheapestOptions(rows)).toEqual(hub.cheapest);
+    // 8k·f16 을 명시해도 같다 (계산기가 기본 조건에서 허브 표와 같은 값을 내는 근거)
+    expect(modelGpuRows(seed, m, { ctx: HUB_POLICY.referenceCtx, kvQuant: 'f16' })).toEqual(rows);
+  });
+
+  it('옵션(ctx·KV·theoretical)은 모든 구성 평가에 전달된다 — 실측 조인은 8k·f16 에서만 (D33)', () => {
+    const m = model('llama-3.1-8b');
+    const ref = modelGpuRows(seed, m);
+    expect(ref.some((r) => r.combo.baseline.result.confidence === 'measured')).toBe(true);
+    const at32k = modelGpuRows(seed, m, { ctx: 32768, kvQuant: 'q8_0' });
+    expect(at32k).toHaveLength(seed.gpus.length);
+    expect(at32k.some((r) => r.combo.baseline.result.confidence === 'measured')).toBe(false);
+    const theoretical = modelGpuRows(seed, m, { theoretical: true });
+    expect(theoretical.every((r) => r.combo.display.estimate.confidence === 'theoretical')).toBe(true);
+  });
+
+  it('rankableStreet: dGPU 실거래가 + 기준일만 (MSRP·통합 메모리·기준일 없는 값은 순위 밖, docs/01 §3)', () => {
+    expect(rankableStreet(gpu('rtx-4060-ti-16gb'))).toBeUndefined(); // 출시가만 있는 카드
+    expect(rankableStreet(gpu('rtx-3090'))).toEqual({ usd: 1050, asOf: '2026-08-09' });
+    expect(rankableStreet({ kind: 'dgpu', streetUSD: 300 })).toBeUndefined();
+    expect(rankableStreet({ kind: 'unified', streetUSD: 1999, priceAsOf: '2026-08-09' })).toBeUndefined();
+    expect(rankableStreet({ kind: 'dgpu', streetUSD: 300, priceAsOf: '2026-08-09' })).toEqual({ usd: 300, asOf: '2026-08-09' });
+  });
+
+  it('cheapestOptions: 원활 최저가는 쾌적 최저가보다 쌀 때만', () => {
+    const rows = modelGpuRows(seed, model('deepseek-r1-distill-32b'));
+    const { great, well } = cheapestOptions(rows);
+    expect(great?.gpu.id).toBe('rtx-4090');
+    expect(well?.gpu.id).toBe('rtx-3090');
+    // 원활 행만 남기면 well 만, 쾌적 행만 남기면 great 만
+    expect(cheapestOptions(rows.filter((r) => r.combo.baseline.result.verdict === 'A'))).toEqual({ well });
+    expect(cheapestOptions(rows.filter((r) => r.combo.baseline.result.verdict === 'S'))).toEqual({ great });
+    expect(cheapestOptions([])).toEqual({});
   });
 });
 

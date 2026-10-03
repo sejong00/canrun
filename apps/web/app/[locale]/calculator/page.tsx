@@ -14,6 +14,7 @@ import { clientDict } from '@/lib/client-messages';
 import { CALC_MESSAGE_SPEC } from '@/lib/i18n-lite';
 import { softwareApplicationJsonLd } from '@/lib/jsonld';
 import { calculatorHref, gpuHref, localeHref, mailtoHref } from '@/lib/links';
+import { FX } from '@/lib/price';
 import { gpuName, type Translate } from '@/lib/phrases';
 import { buildPageMetadata } from '@/lib/seo';
 import { CONTACT_EMAIL, absoluteUrl } from '@/lib/site';
@@ -69,7 +70,14 @@ export default async function CalculatorPage({ params }: Props) {
           <p className="text-lg text-muted-foreground">{t('lede')}</p>
         </header>
 
-        <CalculatorIsland locale={locale} catalog={getCatalogLite()} dict={dict} issueUrl={mailtoHref(CONTACT_EMAIL, t('requestModelSubject'))} />
+        {/* 원화 참고값(D61)은 ko 만 — 모델 모드 GPU 행의 가격 (10-03 D65). en 페이지 props 에는 환율이 없다 */}
+        <CalculatorIsland
+          locale={locale}
+          catalog={getCatalogLite()}
+          dict={dict}
+          issueUrl={mailtoHref(CONTACT_EMAIL, t('requestModelSubject'))}
+          {...(locale === 'ko' ? { fx: { usdKrw: FX.usdKrw, asOf: FX.asOf } } : {})}
+        />
 
         <noscript>
           <p className="rounded-lg border border-border p-4 text-sm">
