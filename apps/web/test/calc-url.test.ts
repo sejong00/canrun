@@ -215,6 +215,65 @@ describe('gpus= (멀티 GPU, D58)', () => {
   });
 });
 
+describe('plus= (서로 다른 GPU, 10-03 D67)', () => {
+  const parse = (qs: string) => parseCalcQuery(qs, catalog);
+  const mixable = catalog.gpus.filter(
+    (g) => g.kind === 'dgpu' && g.form === 'desktop' && (g.effClass === 'nvidia' || g.effClass === 'amd') && (g.fp16Tflops ?? 99) >= 1,
+  );
+
+  it('sits right after gpus; keeps the order the cards were added; one card needs no comma', () => {
+    expect(serializeCalcQuery(parse('?ram=64&plus=rtx-3060-12gb&gpu=rtx-3090'), catalog)).toBe('?gpu=rtx-3090&plus=rtx-3060-12gb&ram=64');
+    const s = parse('?gpu=rtx-4090&gpus=2&plus=rtx-3060-12gb,rtx-3090');
+    expect(s.plus).toEqual(['rtx-3060-12gb', 'rtx-3090']);
+    expect(s.gpus).toBe(2);
+    expect(serializeCalcQuery(s, catalog)).toBe('?gpu=rtx-4090&gpus=2&plus=rtx-3060-12gb%2Crtx-3090');
+  });
+
+  it('round-trips every pair of mixable cards (NVIDIA desktop 24×24 + AMD 6×6); the same card folds into gpus', () => {
+    expect(mixable).toHaveLength(30);
+    let n = 0;
+    for (const a of mixable) {
+      for (const b of mixable.filter((g) => g.effClass === a.effClass)) {
+        const state = normalize({ ...defaultState(), hardware: { kind: 'catalog', gpuId: a.id }, plus: [b.id] }, catalog);
+        if (a.id === b.id) expect(state).toMatchObject({ gpus: 2, plus: undefined });
+        else expect(state.plus).toEqual([b.id]);
+        const qs = serializeCalcQuery(state, catalog);
+        expect(roundTrip(state), qs).toEqual(state);
+        expect(serializeCalcQuery(parseCalcQuery(qs, catalog), catalog)).toBe(qs);
+        n += 1;
+      }
+    }
+    expect(n).toBe(24 * 24 + 6 * 6);
+  });
+
+  it('folds, filters and caps: same card → gpus, other maker / laptop / GTX 10 / unknown dropped, 4 cards at most (trimmed from the end)', () => {
+    expect(parse('?gpu=rtx-3090&plus=rtx-3090')).toMatchObject({ gpus: 2, plus: undefined });
+    expect(parse('?gpu=rtx-3090&gpus=3&plus=rtx-3090,rtx-3090')).toMatchObject({ gpus: 4, plus: undefined });
+    expect(parse('?gpu=rtx-3090&plus=rx-7900-xtx,rtx-4090-laptop,nope,gtx-1080-ti,arc-b580,apple-m4,rtx-3060-12gb').plus).toEqual(['rtx-3060-12gb']);
+    expect(parse('?gpu=rtx-4090&gpus=3&plus=rtx-3090,rtx-3060-12gb').plus).toEqual(['rtx-3090']);
+    expect(parse('?gpu=rtx-4090&plus=rtx-3090,rtx-3060-12gb,rtx-4060,rtx-5090').plus).toEqual(['rtx-3090', 'rtx-3060-12gb', 'rtx-4060']);
+    expect(parse('?gpu=rx-7900-xtx&plus=rx-7800-xt,rtx-3090').plus).toEqual(['rx-7800-xt']);
+  });
+
+  it('a first GPU that cannot mix (custom, Apple, CPU, laptop, Arc, GTX 10) drops them; while the first GPU is being typed they stay', () => {
+    for (const qs of [
+      '?gpu=custom&kind=dgpu&vram=24&bw=936&plus=rtx-3060-12gb',
+      '?gpu=apple-m4&plus=rtx-3060-12gb',
+      '?gpu=cpu-ddr5-5600-2ch&plus=rtx-3060-12gb',
+      '?gpu=rtx-4090-laptop&plus=rtx-4090-laptop',
+      '?gpu=arc-b580&plus=arc-b580',
+      '?gpu=gtx-1080-ti&plus=rtx-3060-12gb',
+    ]) {
+      expect(parse(qs).plus, qs).toBeUndefined();
+    }
+    expect(parse('?gpu=rtx-4090-laptop&gpus=2&plus=rtx-3060-12gb')).toMatchObject({ gpus: 2, plus: undefined });
+    const typing = parse('?gpu=some%20gpu&plus=rtx-3060-12gb,apple-m4');
+    expect(typing.hardware.kind).toBe('unresolved');
+    expect(typing.plus).toEqual(['rtx-3060-12gb']);
+    expect(normalize({ ...defaultState(), plus: ['rtx-3060-12gb'] }, catalog).plus).toEqual(['rtx-3060-12gb']);
+  });
+});
+
 describe('model mode keys (10-03 D65): mode m hf type budget gsort', () => {
   it('the hardware-mode default is omitted; model mode keeps the hardware keys and appends its own in a fixed order', () => {
     expect(serializeCalcQuery({ ...defaultState(), mode: 'model', focus: 'qwen3-14b' }, catalog)).toBe('?mode=model&m=qwen3-14b');

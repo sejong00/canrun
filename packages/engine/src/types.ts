@@ -35,6 +35,18 @@ export type Os = 'windows' | 'linux' | 'macos';
 /** KV 캐시 양자화 토글 — §2.2. */
 export type KvQuant = 'f16' | 'q8_0' | 'q4_0';
 
+/**
+ * dGPU 카드 1장 — 서로 다른 카드 섞기(§6 베타, 10-03 D67)의 `Hardware.gpus` 원소. 효율은 `effOverride ?? EFF[effClass]`.
+ */
+export type GpuUnit = {
+  vramGB: number;
+  memBandwidthGBs: number;
+  effClass: EffClass;
+  effOverride?: number;
+  /** 이 카드가 화면 출력을 담당 (OS 예약 VRAM, §2.3) — 보통 1번 카드만 */
+  isDisplayGpu?: boolean;
+};
+
 export type Hardware = {
   kind: 'dgpu' | 'unified' | 'cpu';
   /** osReserve 산출·실행 커맨드 스니펫 분기 (PRD 입력 항목) */
@@ -58,6 +70,12 @@ export type Hardware = {
    * 속도는 층 나눠 올리기(llama.cpp 기본 -sm layer) — 토큰마다 GPU 를 차례로 지나므로 대역폭은 합산되지 않는다
    */
   gpuCount?: number;
+  /**
+   * dgpu 전용: 카드 목록(1~4장, 서로 달라도 된다 — §6 베타, 10-03 D67). 있으면 장수·VRAM·대역폭·효율·화면 출력은 이 목록을 따르고
+   * `gpuCount`·위의 vramGB·memBandwidthGBs·effOverride·isDisplayGpu 는 무시한다(위 필드는 1번 카드 값 — 밴드 클래스·pp·호출부 호환).
+   * 층은 카드마다 남은 메모리(VRAM − 화면 출력 예약)에 비례해 나뉘고, 토큰마다 카드를 차례로 지난다
+   */
+  gpus?: readonly GpuUnit[];
 };
 
 export type ModelQuant = {

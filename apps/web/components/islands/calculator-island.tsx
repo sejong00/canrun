@@ -11,7 +11,7 @@ import { ModelForm } from '@/components/islands/model-form';
 import type { PinnedMeta } from '@/components/islands/result-card';
 import { ResultList } from '@/components/islands/result-list';
 import { ShareButton } from '@/components/islands/share-button';
-import { bindTranslators, classKey, localePrefix, makeReducer } from '@/components/islands/calc-shared';
+import { bindTranslators, classKey, gpuSetLabel, gpuSetVram, localePrefix, makeReducer } from '@/components/islands/calc-shared';
 import { formatCtx, formatGB, formatInt, formatMemGB, formatParams } from '@/lib/format';
 import type { KrwRate } from '@/lib/krw';
 import { matchGpu } from '@/lib/calc/gpu-match';
@@ -358,7 +358,11 @@ export function CalculatorIsland({
       )}
       {results && results.hardware.theoretical && (
         <p className="rounded-lg border border-verdict-b-fg/40 bg-verdict-b-bg p-3 text-sm text-verdict-b-fg">
-          {state.hardware.kind === 'custom' ? t.calc('customNotice') : t.calc('multiGpuNotice', { n: results.hardware.gpuCount })}
+          {state.hardware.kind === 'custom'
+            ? t.calc('customNotice')
+            : results.hardware.extras.length > 0
+              ? t.calc('heteroNotice')
+              : t.calc('multiGpuNotice', { n: results.hardware.gpuCount })}
           {state.hardware.kind === 'custom' && results.hardware.gpuCount > 1 ? ` ${t.calc('multiGpuNotice', { n: results.hardware.gpuCount })}` : ''}
         </p>
       )}
@@ -409,8 +413,7 @@ function shareTextFor(t: ReturnType<typeof bindTranslators>, locale: string, sta
       mem: formatMemGB(locale, c.kind === 'dgpu' ? (c.vramGB ?? 0) : (c.memGB ?? 0)),
     });
   }
-  const name = gpuName(t.names, hw.gpu);
-  return t.share('text', { gpu: hw.gpuCount > 1 ? t.calc('gpuTimes', { gpu: name, n: hw.gpuCount }) : name });
+  return t.share('text', { gpu: gpuSetLabel(t, hw) });
 }
 
 function assumptionText(t: ReturnType<typeof bindTranslators>, locale: string, state: CalcState, hw: ResolvedHardware): string {
@@ -438,8 +441,11 @@ function assumptionText(t: ReturnType<typeof bindTranslators>, locale: string, s
   if (gpu.kind === 'dgpu') {
     return t.calc('assumeDgpu', {
       ...common,
-      gpu: hw.gpuCount > 1 ? t.calc('gpuTimes', { gpu: name, n: hw.gpuCount }) : name,
-      vram: formatInt(locale, gpu.vramGB ?? 0),
+      gpu: gpuSetLabel(t, hw),
+      // 서로 다른 카드면 묶음마다 "24 + 12" (D67)
+      vram: gpuSetVram(hw)
+        .map((gb) => formatInt(locale, gb))
+        .join(' + '),
       ddr: t.calc(state.ddr),
       display: config.hw.isDisplayGpu ? t.calc('assumeDisplay') : '',
     });

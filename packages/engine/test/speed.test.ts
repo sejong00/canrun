@@ -1,7 +1,9 @@
 /** 속도 모델 유닛 — docs/02 §3. */
 import { describe, expect, it } from 'vitest';
 import { MOE_TG_CAP_TOKS } from '../src/constants';
-import { bytesPerTokenGB, ppEstimate, resolveEff, tgEstimate } from '../src/speed';
+import { fit } from '../src/fit';
+import { gpuSharesOf, gpuUnitsOf } from '../src/memory';
+import { bytesPerTokenGB, gpuThroughputGBs, ppEstimate, resolveEff, tgEstimate } from '../src/speed';
 import type { Hardware } from '../src/types';
 import { CPU_MOE_RAM_EFF, MULTI_GPU_TG_FACTOR } from '../src/constants';
 import { GPT_OSS_20B, QWEN3_8B_Q4, QWEN35_35B_A3B_Q4, QWEN36_35B_A3B_Q4_SPLIT, RTX_3060_12GB, RTX_4090 } from './fixtures';
@@ -142,5 +144,53 @@ describe('§6 multi-GPU speed (beta)', () => {
     const a = tgEstimate(one, QWEN3_8B_Q4, { mode: 'full-gpu' }, { ctx: 8192 });
     const b = tgEstimate(two, QWEN3_8B_Q4, { mode: 'full-gpu' }, { ctx: 8192 });
     expect(b).toBeCloseTo(a * MULTI_GPU_TG_FACTOR, 6);
+  });
+});
+
+describe('§6 mixed GPUs speed (beta, 10-03 D67)', () => {
+  const mixed: Hardware = {
+    ...RTX_4090,
+    os: 'windows',
+    vramGB: 24,
+    memBandwidthGBs: 936,
+    isDisplayGpu: true,
+    gpus: [
+      { vramGB: 24, memBandwidthGBs: 936, effClass: 'nvidia', isDisplayGpu: true },
+      { vramGB: 12, memBandwidthGBs: 360, effClass: 'nvidia' },
+    ],
+  };
+  const one3090: Hardware = { ...mixed, gpus: undefined };
+
+  it('identical cards: the throughput is eff × bandwidth exactly, list or gpuCount', () => {
+    const two: Hardware = { ...RTX_4090, gpuCount: 2 };
+    expect(gpuThroughputGBs({ ...two, gpus: gpuUnitsOf(two) }, false)).toBe(0.7 * MULTI_GPU_TG_FACTOR * 1008);
+    expect(gpuThroughputGBs(two, true)).toBe(0.45 * MULTI_GPU_TG_FACTOR * 1008);
+    expect(gpuThroughputGBs(RTX_4090, false)).toBe(0.7 * 1008);
+  });
+
+  it('mixed cards: 1 GB takes Σ share_i ÷ (eff_i × BW_i) — the slower card drags the whole token', () => {
+    const [a, b] = gpuSharesOf(mixed);
+    const expected = MULTI_GPU_TG_FACTOR / (a! / (0.7 * 936) + b! / (0.7 * 360));
+    expect(gpuThroughputGBs(mixed, false)).toBeCloseTo(expected, 9);
+    expect(gpuThroughputGBs(mixed, false)).toBeLessThan(0.7 * 936);
+    expect(gpuThroughputGBs(mixed, false)).toBeGreaterThan(0.7 * 360);
+    // Qwen3 8B: 3090 한 장이면 약 105, 기본 분할로 두 카드에 나누면 약 68 tok/s
+    const tgPair = tgEstimate(mixed, QWEN3_8B_Q4, fit(mixed, QWEN3_8B_Q4), { ctx: 8192 });
+    const tgOne = tgEstimate(one3090, QWEN3_8B_Q4, fit(one3090, QWEN3_8B_Q4), { ctx: 8192 });
+    expect(tgOne).toBeCloseTo(105, 0);
+    expect(tgPair).toBeCloseTo(68, 0);
+  });
+
+  it('cpu-moe and partial offload read their GPU share at the mixed throughput; the MoE cap stays', () => {
+    const r = { mode: 'cpu-moe' as const, cpuMoeLayers: 10 };
+    const moe = { ...QWEN36_35B_A3B_Q4_SPLIT };
+    const slowerPair = tgEstimate(mixed, moe, r, { ctx: 8192 });
+    const fast = tgEstimate({ ...mixed, gpus: [mixed.gpus![0]!, { ...mixed.gpus![0]!, isDisplayGpu: false }] }, moe, r, { ctx: 8192 });
+    expect(slowerPair).toBeLessThan(fast);
+    const partial = { mode: 'partial-offload' as const, gpuFrac: 0.7 };
+    expect(tgEstimate(mixed, QWEN3_8B_Q4, partial, { ctx: 8192 })).toBeLessThan(tgEstimate(one3090, QWEN3_8B_Q4, partial, { ctx: 8192 }));
+    const tiny = { ...QWEN35_35B_A3B_Q4, fileGB: 0.5 };
+    const hugeBw: Hardware = { ...mixed, gpus: mixed.gpus!.map((u) => ({ ...u, memBandwidthGBs: 100_000 })) };
+    expect(tgEstimate({ ...hugeBw, gpus: [hugeBw.gpus![0]!, { ...hugeBw.gpus![1]!, vramGB: 48 }] }, tiny, { mode: 'full-gpu' }, { ctx: 512 })).toBe(MOE_TG_CAP_TOKS);
   });
 });

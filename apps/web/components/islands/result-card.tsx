@@ -8,7 +8,7 @@ import { formatCtx, formatGB, formatInt, formatParams } from '@/lib/format';
 import { comboDetailQuery, differsFromHubAssumption, type ResolvedHardware } from '@/lib/calc/hardware';
 import type { ResultCard as Card } from '@/lib/calc/run';
 import type { CalcState } from '@/lib/calc/state';
-import { memoryText, modeKey, noteLines, quantText, speedPhrase } from '@/lib/phrases';
+import { gpuName, memoryText, modeKey, noteLines, quantText, speedPhrase } from '@/lib/phrases';
 
 /**
  * 카탈로그 밖 모델 카드의 출처 — 불러온 HF 모델(D57: HF 링크·배지·실행 명령), 직접 입력한 모델(D66: 링크·라이선스·명령 없음,
@@ -153,6 +153,15 @@ export function ResultCard({
           ))}
         </ul>
       )}
+      {/* 서로 다른 카드(D67): 판정은 llama.cpp 기본(모든 카드에 나눠 올리기) 그대로 — 한 장에 다 들어가면 그 카드만 쓸 때의 추정을 참고로 */}
+      {card.singleGpu && (
+        <p data-single-gpu className="text-xs text-muted-foreground">
+          {t.calc('singleGpuHint', {
+            gpu: gpuName(t.names, card.singleGpu.gpu),
+            speed: speedPhrase(t.common, t.confidence, locale, { result: card.singleGpu.result, estimate: card.singleGpu.result }),
+          })}
+        </p>
+      )}
       {combo.perQuant.length > 1 && (
         <details>
           <summary className="cursor-pointer text-xs text-muted-foreground">{t.calc('cardAllQuants', { count: combo.perQuant.length })}</summary>
@@ -193,9 +202,14 @@ export function ResultCard({
       {card.command && (
         <div className="flex flex-col gap-1">
           <p className="text-xs text-muted-foreground">{t.calc('hfCommand')}</p>
-          <code data-hf-command className="block overflow-x-auto whitespace-pre rounded-md bg-muted p-2 text-xs">
+          {/* 불러온 모델(D57)과 GPU 여러 장 구성(D67 — 콤보 페이지 명령은 1장 기준)의 명령 */}
+          <code
+            {...(external ? { 'data-hf-command': '' } : { 'data-run-command': '' })}
+            className="block overflow-x-auto whitespace-pre rounded-md bg-muted p-2 text-xs"
+          >
             {card.command}
           </code>
+          {card.commandFitAuto && <p className="text-xs text-muted-foreground">{t.calc('fitAutoNote')}</p>}
         </div>
       )}
       <p className="flex flex-wrap gap-3 text-sm">
@@ -208,7 +222,7 @@ export function ResultCard({
             <a href={comboHref} data-combo-link>
               {detailsLabel}
             </a>
-            <a href={`${comboHref}#snippet`}>{t.calc('cardHowToRun')}</a>
+            <a href={`${comboHref}#snippet`}>{t.calc(hardware.gpuCount > 1 ? 'cardHowToRunOneGpu' : 'cardHowToRun')}</a>
           </>
         ) : (
           <a href={`${prefix}/model/${model.id}`}>{t.calc('cardModelHub')}</a>

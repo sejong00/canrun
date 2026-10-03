@@ -2,12 +2,18 @@
 import { describe, expect, it } from 'vitest';
 import {
   computeBufferGB,
+  gpuCountOf,
+  gpuOsReserveGB,
   gpuResidentGBFor,
+  gpuSharesOf,
+  gpuUnitsOf,
+  isUniformGpus,
   kvBytesPerToken,
   kvGB,
   osReserveGB,
   usableGB,
   usableRamGB,
+  vramTotalGB,
   weightsGB,
   weightsGBFromBpw,
 } from '../src/memory';
@@ -123,5 +129,58 @@ describe('usableGB / usableRamGB (§2.3)', () => {
     const hw: Hardware = { ...base, kind: 'cpu', os: 'linux', effClass: 'cpu' };
     expect(usableGB(hw)).toBeCloseTo(28, 6);
     expect(usableRamGB({ ramGB: 32 })).toBeCloseTo(28, 6);
+  });
+});
+
+describe('GPU card list (§6, 10-03 D67)', () => {
+  const base = { memBandwidthGBs: 936, ramGB: 64, ramBandwidthGBs: 89.6 } as const;
+  const two3090: Hardware = { ...base, kind: 'dgpu', os: 'windows', vramGB: 24, effClass: 'nvidia', isDisplayGpu: true, gpuCount: 2 };
+  const mixed: Hardware = {
+    ...two3090,
+    gpuCount: undefined,
+    gpus: [
+      { vramGB: 24, memBandwidthGBs: 936, effClass: 'nvidia', isDisplayGpu: true },
+      { vramGB: 12, memBandwidthGBs: 360, effClass: 'nvidia' },
+    ],
+  };
+
+  it('gpuUnitsOf: copies gpuCount cards with the display reserve on the first only; a card list wins; non-dGPU has none', () => {
+    expect(gpuUnitsOf(two3090)).toEqual([
+      { vramGB: 24, memBandwidthGBs: 936, effClass: 'nvidia', isDisplayGpu: true },
+      { vramGB: 24, memBandwidthGBs: 936, effClass: 'nvidia' },
+    ]);
+    expect(gpuUnitsOf({ ...mixed, gpuCount: 4 })).toEqual(mixed.gpus);
+    expect(gpuUnitsOf({ ...base, kind: 'unified', os: 'macos', effClass: 'apple', gpus: mixed.gpus })).toEqual([]);
+  });
+
+  it('gpuCountOf: the card list length, and still 1 for unified / CPU (compute buffer, measured join)', () => {
+    expect(gpuCountOf(mixed)).toBe(2);
+    expect(gpuCountOf({ kind: 'dgpu', gpus: [] })).toBe(1);
+    expect(gpuCountOf({ kind: 'unified', gpus: mixed.gpus })).toBe(1);
+    expect(gpuCountOf({ kind: 'cpu' })).toBe(1);
+  });
+
+  it('mixed cards: usable = Σ VRAM − display reserve, limit = Σ VRAM, shares follow free memory', () => {
+    expect(vramTotalGB(mixed)).toBe(36);
+    expect(gpuOsReserveGB(mixed)).toBeCloseTo(0.6, 9);
+    expect(usableGB(mixed)).toBeCloseTo(35.4, 9);
+    const [a, b] = gpuSharesOf(mixed);
+    expect(a).toBeCloseTo(23.4 / 35.4, 9);
+    expect(b).toBeCloseTo(12 / 35.4, 9);
+  });
+
+  it('a list of identical cards gives the same numbers as gpuCount, bit for bit', () => {
+    const asList: Hardware = { ...two3090, gpus: gpuUnitsOf(two3090) };
+    expect(isUniformGpus(asList.gpus!)).toBe(true);
+    expect(usableGB(asList)).toBe(usableGB(two3090));
+    expect(vramTotalGB(asList)).toBe(vramTotalGB(two3090));
+    expect(gpuOsReserveGB(asList)).toBe(osReserveGB(two3090));
+    expect(isUniformGpus(mixed.gpus!)).toBe(false);
+  });
+
+  it('free memory of 0 everywhere splits evenly (no division by zero)', () => {
+    const empty: Hardware = { ...mixed, gpus: [{ vramGB: 0, memBandwidthGBs: 1, effClass: 'nvidia' }, { vramGB: 0, memBandwidthGBs: 1, effClass: 'nvidia' }] };
+    expect(gpuSharesOf(empty)).toEqual([0.5, 0.5]);
+    expect(gpuSharesOf({ ...base, kind: 'cpu', os: 'linux', effClass: 'cpu' })).toEqual([]);
   });
 });

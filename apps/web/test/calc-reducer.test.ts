@@ -160,3 +160,28 @@ describe('calculator reducer — model mode (10-03 D65)', () => {
     expect(cleared.budget).toBeUndefined();
   });
 });
+
+describe('calculator reducer — mixed GPUs (10-03 D67)', () => {
+  it('plus adds and removes cards; switching to another maker, a Mac or a GPU row clears them; typing keeps them', () => {
+    let s = reduce(at('rtx-3090', { ramGB: 64 }), { type: 'plus', plus: ['rtx-3060-12gb'] });
+    expect(s.plus).toEqual(['rtx-3060-12gb']);
+    s = reduce(s, { type: 'plus', plus: ['rtx-3060-12gb', 'rtx-4060'] });
+    expect(s.plus).toEqual(['rtx-3060-12gb', 'rtx-4060']);
+    s = reduce(s, { type: 'plus', plus: ['rtx-4060'] });
+    expect(s.plus).toEqual(['rtx-4060']);
+    // 같은 계열의 다른 1번 GPU 로 바꾸면 그대로, 1번을 고치는 중(unresolved)에도 그대로
+    expect(reduce(s, { type: 'hardware', hardware: { kind: 'catalog', gpuId: 'rtx-4090' } }).plus).toEqual(['rtx-4060']);
+    expect(reduce(s, { type: 'hardware', hardware: { kind: 'unresolved', text: 'rtx 40' } }).plus).toEqual(['rtx-4060']);
+    expect(reduce(s, { type: 'hardware', hardware: { kind: 'catalog', gpuId: 'rx-7900-xtx' } }).plus).toBeUndefined();
+    expect(reduce(s, { type: 'hardware', hardware: { kind: 'catalog', gpuId: 'apple-m4-pro' } }).plus).toBeUndefined();
+    expect(reduce(s, { type: 'useGpu', gpuId: 'rtx-4090' }).plus).toBeUndefined();
+  });
+
+  it('the GPU count and the added cards share the cap of 4 — choosing the first card again folds it into the count', () => {
+    let s = reduce(at('rtx-3090'), { type: 'gpus', gpus: 3 });
+    s = reduce(s, { type: 'plus', plus: ['rtx-3060-12gb', 'rtx-4060'] });
+    expect(s).toMatchObject({ gpus: 3, plus: ['rtx-3060-12gb'] });
+    s = reduce(at('rtx-3090'), { type: 'plus', plus: ['rtx-3090', 'rtx-3060-12gb'] });
+    expect(s).toMatchObject({ gpus: 2, plus: ['rtx-3060-12gb'] });
+  });
+});

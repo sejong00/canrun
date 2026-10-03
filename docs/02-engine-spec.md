@@ -15,7 +15,10 @@ type Hardware = {
   effClass: EffClass;         // 'nvidia'|'amd'|'intel-arc'|'apple'|'apple-ultra'|'strix'|'dgx-spark'|'cpu'
   effOverride?: number;       // 실측 누적 시 기기별 학습 계수 (Phase 2)
   isDisplayGpu?: boolean;     // OS 예약 차감 여부
+  gpuCount?: number;          // dgpu: 같은 GPU 장수 (§6, D58)
+  gpus?: GpuUnit[];           // dgpu: 카드 목록 1~4장, 서로 달라도 된다 (§6, 10-03 D67) — 있으면 장수·VRAM·대역폭·효율·화면 출력은 이것을 따른다
 };
+type GpuUnit = { vramGB: number; memBandwidthGBs: number; effClass: EffClass; effOverride?: number; isDisplayGpu?: boolean };
 type ModelQuant = {
   paramsB: number; activeParamsB?: number;         // MoE면 active 존재
   fileGB?: number;                                  // 실제 GGUF 크기(있으면 최우선)
@@ -77,7 +80,7 @@ type Result = {
 ```
 computeBuffer = 0.5GB + 0.3GB × (ctx/32k)      // llama.cpp 그래프·스크래치 근사
 osReserve(kind, os, isDisplayGpu) = dgpu·display만 windows 0.6GB | linux 0.3GB — 그 외(headless·unified·cpu·macos) 0 (macOS는 unified ×0.70에 흡수)
-usable(dgpu)   = vram − osReserve
+usable(dgpu)   = vram − osReserve               // 여러 장(§6): Σ vram_i − 화면 출력 카드의 osReserve
 usable(unified)= ram × 0.70                     // macOS wired limit 기본. sysctl 상향 툴팁
 usable(cpu)    = usableRam = ram − 4GB (OS)     // usableRam = 모든 kind의 시스템 RAM측 한도 (cpu-moe expert·partial CPU측·cpu-only)
 ```
@@ -87,6 +90,8 @@ usable(cpu)    = usableRam = ram − 4GB (OS)     // usableRam = 모든 kind의 
 ```
 0. kind=cpu: 1~3 없이 곧바로 4 → 실패 시 5
 1. full-gpu:  need ≤ usable(hw)  — dgpu vram−osReserve / unified ram×0.70 (통합 풀 전량 탑재도 full-gpu) → 최고 속도
+   여러 장(§6): buffer = computeBuffer × 장수, usable = Σ vram_i − 화면 출력 예약, 물리 한도 limit = Σ vram_i.
+   서로 다른 카드(10-03 D67)도 모든 카드에 나눠 올린다(llama.cpp 기본) — 빠른 카드 한 장에 들어가는 모델도 카드를 고르지 않는다
    resident(dgpu) = gpuResidentGBFor(mq) = weights − offGpuGB  (dense 헤더 실측)
                   | expertGB + nonExpertGB                       (MoE 헤더 실측 분할)
                   | weights                                      (실측 없음 — 보수)   … [0, weights] 로 묶음
@@ -130,6 +135,9 @@ bytesPerToken = weightsReadGB + kvReadGB(ctx)
   MoE:   weightsReadGB = fileGB × (activeParamsB / paramsB)   // 근사(공유 텐서 과소 → 계수에 흡수됨)
   kvReadGB(ctx) = kvBytesPerToken × ctx / 1e9                 // FA에서 전체 KV 읽음
 tg = eff × memBandwidthGBs / bytesPerToken
+여러 장(§6): eff × memBandwidthGBs 자리에 GPU 처리량 T 를 쓴다 (`gpuThroughputGBs`)
+  같은 카드 N 장: T = eff × BW × MULTI_GPU_TG_FACTOR(1)
+  서로 다른 카드(10-03 D67): T = MULTI_GPU_TG_FACTOR / Σ_i ( s_i / (eff_i × BW_i) ),  s_i = (vram_i − osReserve_i) / Σ_j (vram_j − osReserve_j)
 ```
 
 ### 3.2 효율 계수 (실측 70여 점에서 도출, 출처: llama.cpp 공식 스레드·LocalScore·hardware-corner)
@@ -157,7 +165,7 @@ tg = min(1 / t, full-gpu 값)
 - **입력 정의(GGUF 헤더 실측, 데이터 레이어 `model-quants.json` 행 필드)**: `expertGB` = 이름에 `_exps` 가 든 라우팅 전문가 텐서 합(트렁크 층만). `nonExpertGB` = GPU 에 상주하는 나머지(어텐션·공유 전문가·라우터·출력층·dense FFN·`token_embd_norm`). llama.cpp 는 입력층(`token_embd`·`per_layer_token_embd`·`position_embd`·`token_types` — LLM_TENSOR_LAYER_INPUT)을 항상 CPU 에 두므로 제외한다. 다만 출력층이 없는 tied 모델은 GPU 에 출력층으로 복제되므로 포함한다. MTP·NextN 블록은 기본 로드가 아니라(`load_mtp=false` → TENSOR_SKIP) 둘 다에서 뺀다. 파싱 합계 = 파일 크기 ±0.02GB 로 33행 검증. `expertGB + nonExpertGB` 가 곧 full-gpu 의 그래픽카드 상주 가중치다(§2.4-1). dense 행은 같은 헤더 읽기로 `offGpuGB`(= 파일 − GPU 상주, 97행)를 둔다(10-03 D62).
 - **실측이 없는 입력(bpw 사다리·엔진 단독 호출)**: `nonExpertGB` 는 기준 양자화에서 균등 bpw 로 유도한 값이다. 더 큰 양자화는 bpw 비율로 키우고 줄이지는 않는다(`nonExpertGBFor`). `expertGB` = 파일 − 비전문가. `activeExpertFrac` 도 없으면 09-30 식(`활성 슬라이스 − 비전문가` 를 전부 RAM 에서)으로 계산한다.
 - **보정**: `CPU_MOE_RAM_EFF` = 0.5. 공개 실측에 N 을 적힌 그대로 넣고 맞췄다(η 0.45·0.55 보다 편향이 작다). 회귀 42점 기준으로 전체 평균 오차는 11.1%, 편향 −2.4%, ±20% 안 35점, 최대 39.7%다. NVIDIA(CUDA) 35점은 평균 10.3%, ±20% 안 89%, AMD ROCm 7점은 평균 14.9%, 최대 27.7%다. Vulkan(−31~+84%)·8채널 서버 RAM(CPU 연산 한계로 +30% 일관)·32k 이상 깊은 컨텍스트 서버 측정은 제외했다. 목록은 `packages/engine/test/fixtures.ts` `CPU_MOE_CASES`.
-- **명령(데이터 레이어 `snippet.ts`)**: `-ngl all --n-cpu-moe N` 으로 추정과 같은 배치를 명시한다(명시하면 llama.cpp fit 의 가중치 배치는 꺼진다). **전문가 층 단위 ≠ 블록 단위(10-03 D63)**: 라우팅 전문가가 일부 블록에만 있는 모델(데이터 `arch.expertLayers` — Nemotron-H 의 Mamba·어텐션 블록 사이 MoE 블록, Ling-3.0 의 앞쪽 dense 층)은 엔진 입력 `moeLayers` = 전문가 층 수(`expertLayers` 길이)이고, 명령 값은 엔진 N 번째 전문가 층까지 덮는 블록 수(`expertLayers[N−1] + 1`, `cpuMoeFlagLayers`)로 바꾼다 — `--n-cpu-moe` 가 "앞 N 블록"이라 그대로 쓰면 GPU 에 전문가가 더 남는다(Nemotron 실배치 기준 균등 근사 대비 최대 +1.03GB, 여유 1층 0.44GB 초과). 각주가 GPU 에 남는 층을 셀 때도 블록이 아니라 전문가 층으로 센다(`gpuExpertLayerCount` — 판정 문장과 같은 값). 각주 안내는 두 가지다. 메모리 부족 시 올릴 다음 값(전문가 층을 하나씩 더 RAM 으로 보내는 값 1~2개, `nextCpuMoeFlags` — 모든 블록에 전문가가 있으면 N+1·N+2, Nemotron 처럼 띄엄띄엄 있으면 전문가 없는 블록을 건너뛴 값), 그리고 b7410+ 는 두 옵션 없이도 자동 배치된다는 안내다. Ollama 0.30+ 는 자동 배치라 명령을 보여 주되 버전을 안내한다.
+- **명령(데이터 레이어 `snippet.ts`)**: `-ngl all --n-cpu-moe N` 으로 추정과 같은 배치를 명시한다(명시하면 llama.cpp fit 의 가중치 배치는 꺼진다). **예외 — GPU 여러 장(같은 카드 D58·서로 다른 카드 D67, 10-03 정정)**: `-ngl`·`--n-cpu-moe` 를 빼고 `--fit`(b7410+ 기본)에 맡긴다(`LlamaCppPlan.ngl = 'auto'`). 층은 카드마다 남은 메모리 비율로 나뉘는데 `--n-cpu-moe N` 은 앞쪽 N 층만 CPU 로 보내므로, GPU 에 남는 전문가가 뒤쪽 층을 맡은 마지막 카드에 몰린다 — 엔진은 합산 용량만 보므로 그 카드가 메모리 부족이 될 수 있다. `--fit` 은 장치마다 여유(기본 1024MiB)를 두고 카드를 차례로 채운다(https://github.com/ggml-org/llama.cpp/blob/2145525a4081d66ff1a87cf43ef809f95a85ac0c/common/fit.cpp#L660-L750, 사용자가 -ngl·텐서 배치를 주면 멈춘다 #L463-L485). 계산기 카드가 이 명령과 각주("카드마다 1GiB쯤 비워 두고 알아서 나눠 올린다")를 보인다. **전문가 층 단위 ≠ 블록 단위(10-03 D63)**: 라우팅 전문가가 일부 블록에만 있는 모델(데이터 `arch.expertLayers` — Nemotron-H 의 Mamba·어텐션 블록 사이 MoE 블록, Ling-3.0 의 앞쪽 dense 층)은 엔진 입력 `moeLayers` = 전문가 층 수(`expertLayers` 길이)이고, 명령 값은 엔진 N 번째 전문가 층까지 덮는 블록 수(`expertLayers[N−1] + 1`, `cpuMoeFlagLayers`)로 바꾼다 — `--n-cpu-moe` 가 "앞 N 블록"이라 그대로 쓰면 GPU 에 전문가가 더 남는다(Nemotron 실배치 기준 균등 근사 대비 최대 +1.03GB, 여유 1층 0.44GB 초과). 각주가 GPU 에 남는 층을 셀 때도 블록이 아니라 전문가 층으로 센다(`gpuExpertLayerCount` — 판정 문장과 같은 값). 각주 안내는 두 가지다. 메모리 부족 시 올릴 다음 값(전문가 층을 하나씩 더 RAM 으로 보내는 값 1~2개, `nextCpuMoeFlags` — 모든 블록에 전문가가 있으면 N+1·N+2, Nemotron 처럼 띄엄띄엄 있으면 전문가 없는 블록을 건너뛴 값), 그리고 b7410+ 는 두 옵션 없이도 자동 배치된다는 안내다. Ollama 0.30+ 는 자동 배치라 명령을 보여 주되 버전을 안내한다.
 - **이력**: 09-30(D55)은 RAM 몫을 라우팅 전문가만으로 고쳤다(이전 ~2.5× 과소). 10-01(D56)은 전문가 일부 GPU 배치를 넣고, 실측 분할로 gpt-oss(유도 0.65/0.81 vs 실측 1.30/1.69GB)·UD 파일의 비전문가 과소를 해소했다. 이로써 D23 의 +1층 여유를 `CPU_MOE_GPU_LAYER_MARGIN` 으로 일반화했다.
 
 ### 3.4 partial-offload (dense) — 절벽 경고
@@ -188,12 +196,18 @@ F: tg < 2 || 모든 quant 미탑재
 부분 오프로드(§3.4): gpuFrac < 0.9면 B 상한, ≥ 0.9면 8 tok/s 이상에서 A까지(S는 full-gpu 전용) — `verdict.ts`가 정본.
 근거: 20 tok/s ≈ 읽는 속도 상회(쾌적 체감), 8 ≈ 인내 가능, 2 미만 = 실사용 불가. 생각 모드가 있는 모델(`thinking` 필드 — 늘 생각·기본 켜짐·기본 꺼짐·자동. 끌 수 있어도 포함)은 사고 토큰 때문에 임계 ×1.5 상향(S ≥ 30 · A ≥ 12 · B ≥ 3 tok/s). 생각 모드가 없는 모델(phi-4 등)은 제외 — PROGRESS §4 D59(10-01, 옛 `category: reasoning` 기준 대체).
 
-## 6. 멀티 GPU (베타 — 계산기만, 10-01 D58)
-같은 GPU N 장(`Hardware.gpuCount`, 2~4). usable = vramGB × N − osReserve(화면 출력 1장분), 연산 버퍼는 GPU 마다(×N), 물리 한도 = vramGB × N.
-tg = 단일 카드 식 그대로 × `MULTI_GPU_TG_FACTOR`(= 1) — 층 나눠 올리기(llama.cpp 기본 `-sm layer`)는 토큰마다 GPU 를 차례로 지나므로 대역폭이 합산되지 않는다.
-- 근거(공개 실측 10점, `test/fixtures.ts` MULTI_GPU_CASES): 70B급 2~4장의 실효 대역폭은 카드 1장 피크의 75~90%(2×3090 16.57 · 2×4090 19.22 · 4×4090 21.25 tok/s) — 단일 카드 클래스 계수 0.70 보다 높아 추가 감속 없음이 10점 전부 보수 쪽(−22~0%, MAE ~12%). 같은 모델 1장 → N장 손실은 CUDA 최근 빌드 0~3%(A40 1→3장 동일).
-- 옛 표기 "단일 카드 계수 × 0.68" 은 근거(2×3090 70B 14~16 tok/s)를 잘못 옮긴 것 — 그 실측은 0.68~0.75 실효 계수에 해당한다(10-01 정정).
-- 실측 조인 없음(1장 기준 실측), 라벨은 이론 추정 고정. AMD·Vulkan 은 장수 손실 편차가 크다(7900 XTX ROCm −7.5%·Vulkan −25%). `-sm tensor`(2026-04, PR #19378)는 dense 1.2~2.3× — 모델링하지 않고 안내만. `-sm row` 는 CUDA 에서 제거(PR #24216). 허브·콤보는 1장 기준, 이종 조합은 범위 밖.
+## 6. 멀티 GPU (베타 — 계산기만, 10-01 D58 · 10-03 D67)
+같은 GPU N 장(`Hardware.gpuCount`, 2~4) 또는 카드 목록(`Hardware.gpus: GpuUnit[]`, 서로 다른 카드 — 10-03 D67, 엔진 0.7.0). usable = Σ vram − osReserve(화면 출력 카드 몫 — 같은 카드면 1장분), 연산 버퍼는 GPU 마다(×N), 물리 한도 = Σ vram.
+층 나눠 올리기(llama.cpp 기본 `-sm layer`)는 층과 그 층의 KV 가 맡은 카드에만 있고 토큰이 카드를 차례로 지나므로 대역폭이 합산되지 않는다. `-ts` 가 없으면 카드마다 남은 메모리 비율로 층을 나눈다(입력층은 CPU, 출력층은 마지막 장치 — https://github.com/ggml-org/llama.cpp/blob/99b95488cac0f00ce3f05af113a8c1e287753f87/src/llama-model.cpp#L1558-L1616, 메인테이너 설명 https://github.com/ggml-org/llama.cpp/discussions/6046, 문서 https://github.com/ggml-org/llama.cpp/blob/b9afc19cb409be990784200ded9e007093beb607/docs/multi-gpu.md).
+- **같은 카드**: tg = 단일 카드 식 그대로 × `MULTI_GPU_TG_FACTOR`(= 1). 카드 목록이라도 카드가 전부 같으면(`isUniformGpus`) 같은 연산이라 출력이 바이트까지 같다(fit.test 가 회귀 10점 전부에서 고정).
+  - 근거(공개 실측 10점, `test/fixtures.ts` MULTI_GPU_CASES): 70B급 2~4장의 실효 대역폭은 카드 1장 피크의 75~90%(2×3090 16.57 · 2×4090 19.22 · 4×4090 21.25 tok/s) — 단일 카드 클래스 계수 0.70 보다 높아 추가 감속 없음이 10점 전부 보수 쪽(−22~0%, MAE ~12%). 같은 모델 1장 → N장 손실은 CUDA 최근 빌드 0~3%(A40 1→3장 동일).
+  - 옛 표기 "단일 카드 계수 × 0.68" 은 근거(2×3090 70B 14~16 tok/s)를 잘못 옮긴 것 — 그 실측은 0.68~0.75 실효 계수에 해당한다(10-01 정정).
+- **서로 다른 카드(10-03 D67)**: 토큰 1개 시간 = 카드별 (그 카드가 읽는 바이트 ÷ 그 카드 처리량)의 합 → GPU 처리량 T = factor / Σ s_i/(eff_i × BW_i), s_i = 남은 메모리 비율(§3.1). cpu-moe 의 GPU 몫·부분 오프로드의 GPU 쪽도 같은 T(넘치는 모드는 카드가 모두 차서 카드별 메모리 몫이 용량 비율에 가깝다 — 속도 배분은 근사). **대표 추정은 모든 카드에 나눠 올린 llama.cpp 기본 동작**이다 — 빠른 카드 한 장에 들어가는 작은 모델도 느린 카드에 몫이 가서 느려진다(3090 + 3060 × Qwen3 8B: 3090 한 장 105 → 두 장 68 tok/s). 그 카드만 쓰는 경우(`--device`)는 판정에 넣지 않고 계산기 카드의 참고 줄로만 보인다(데이터 레이어가 카드 한 장 구성으로 한 번 더 평가 — 엔진 무관). 카드 부분집합을 고르는 안은 판정이 사용자 설정(`--device`)에 기대게 돼 버렸다(적대적 검토 — 기본값 실측 39.2 대 부분집합 추정 54.9, ±30% 밖).
+  - 근거 3점(`test/fixtures.ts` HETERO_GPU_CASES, verify-regression 7): ① RTX 5070 Ti + RTX 3060 12GB, Gemma 4 31B Q4_K_M 18.81GB, CUDA `-ngl 99`·`-ts` 없음, tg128 실측 21.8 → 클래스 계수(nvidia 0.70) 추정 20.3, **−6.8%(보수 쪽)** (https://github.com/ggml-org/llama.cpp/discussions/21112) ② RTX 3060 12GB + Tesla P100 16GB, 카드별 단일 실측(9B 깊이 0: 3060 54.9 · P100 33.5 tok/s)으로 effOverride 를 맞추면 층 분할 9B 39.2 → 추정 40.2 **+2.6%**, 같은 처리량으로 27B(16.8GB) 13.81 → 13.6 **−1.5%** (https://github.com/kuraneko1/llama-split-bench/blob/272b0dee42afd60b823e769dd896630e6b13a402/examples/results-3060-p100.md) — 식만 검증, 클래스 계수 검증은 ①뿐.
+  - 반례(범위 밖): RX 7800 XT + RX 580, Vulkan, Qwen3.6-35B-A3B Q4_K_M `-ts 28/15` tg128 48.59 — 클래스 계수 추정 약 112(+131%) (https://github.com/ggml-org/llama.cpp/discussions/22183). 2017년 카드·Vulkan 은 계수 표본 밖이고, P100 도 9B 단일 실측의 실효 계수가 약 0.26 으로 클래스 값 0.70 과 거리가 멀다.
+  - **섞기 자격(데이터 레이어 정책, `canMixWith` — `// source: docs/02 §6 (policy)`)**: 두 카드 모두 카탈로그 데스크톱 dGPU · 같은 계열(nvidia 끼리 또는 amd 끼리 — `MIXABLE_GPU_CLASSES`) · FP16 크리플 아님(GTX 10 — 위 Pascal 반례). 제조사를 섞으려면 Vulkan 같은 다른 백엔드가 필요한데 그 계수는 표본 밖이다(같은 카드 여러 장도 Vulkan 은 −25%). 노트북·Arc·통합 메모리·CPU·커스텀 입력은 1번 카드가 될 수 없다. 합계 최대 4장(계산기).
+  - **검증점이 없는 곳**: 서로 다른 카드의 MoE(전량 탑재·cpu-moe) 0점, AMD(ROCm) 0점, 3장 이상 0점. cpu-moe 는 `--fit` 이 dense 부분만 있는 층을 뒤에서부터 채운 뒤 앞쪽부터 전문가 층으로 바꿔(common/fit.cpp L660-L750) 토큰마다 읽는 바이트의 카드별 분포가 용량 비율과 다를 수 있고, 장치마다 비워 두는 1GiB 도 엔진은 모델링하지 않는다(cpuMoeLayers 가 낙관적일 수 있다).
+- 공통: 실측 조인 없음(1장 기준 실측), 라벨은 이론 추정 고정. AMD·Vulkan 은 장수 손실 편차가 크다(7900 XTX ROCm −7.5%·Vulkan −25%). `-sm tensor`(2026-04, PR #19378)는 dense 1.2~2.3× — 모델링하지 않고 안내만(같은 카드). `-sm row` 는 CUDA 에서 제거(PR #24216). 허브·콤보는 1장 기준. 여러 장 cpu-moe 명령은 `--fit` 자동 배치(§3.3). pp(`ppEstimate`)는 1번 카드 값 그대로다 — 계산기는 pp 를 보이지 않는다(콤보 페이지는 1장).
 
 ## 7. 검증 결과 (2026-08-09 — CI 회귀 테스트로 이식 완료)
 
@@ -202,6 +216,7 @@ tg = 단일 카드 식 그대로 × `MULTI_GPU_TG_FACTOR`(= 1) — 층 나눠 �
 - KV: 아키텍처 7종 공식값 **전수 일치**
 - 속도: 실측 12점 대조 **MAE 6.3% / max 17.1%** (worst: M4 Pro −17%, 5060Ti MoE −15% → 클래스 계수 한계, Phase 2 기기별 보정 대상)
 - cpu-moe(09-30 → 10-01): 전문가 전부 RAM 공개 실측 3점(3060 Ti+DDR5-6800 gpt-oss-120b 24.85 · 5080+DDR5-4800 Qwen3.5-35B-A3B Q4_K_M 51.0·Q8_0 35.7) 각 ±20% 이내 + 전문가 일부 GPU 배치(`--n-cpu-moe N`)를 포함한 공개 실측 전체 MAE < 12%·±20% 안 ≥ 80%·전부 ±40% 안 (verify-regression 5)
+- 멀티 GPU(§6): 같은 카드 2~4장 공개 실측 10점 전부 ±30% 안·과대 5% 이하·MAE < 15%(verify-regression 6) + 서로 다른 카드 3점(5070 Ti + 3060 −6.8% · 3060 + P100 카드별 계수 +2.6%·−1.5%, verify-regression 7 — 10-03 D67)
 - 판정: RTX 4060 8GB에서 8B Q4_K_M "가능"(실측 38~42 tok/s로 확인) / 14B Q4_K_M "풀 오프로드 불가" — 커뮤니티 통념과 일치
 - CI 이식 시 print 스크립트가 아닌 **assertion 테스트로 변환**할 것 (Windows cp949 콘솔 인코딩 이슈가 외부 리뷰에서 재현됨)
 

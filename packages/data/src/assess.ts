@@ -13,6 +13,7 @@ import {
   EFF,
   evaluate,
   fit,
+  gpuCountOf,
   gpuResidentGBFor,
   kvGB,
   usableGB,
@@ -21,6 +22,7 @@ import {
   verdictOf,
   weightsGB,
   type FitResult,
+  type GpuUnit,
   type Hardware,
   type KvQuant,
   type Mode,
@@ -141,11 +143,45 @@ export function dgpuRamBandwidth(gpus: readonly GpuCore[]): number {
 /** dGPU 구성 옵션 — 허브는 정책 기본값(D2), 계산기는 사용자 입력 (P1-3 D33). */
 export type DgpuOptions = {
   os?: Os;
-  /** 이 GPU 가 화면 출력을 담당하는가 (OS 예약 VRAM, docs/02 §2.3) */
+  /** 이 GPU 가 화면 출력을 담당하는가 (OS 예약 VRAM, docs/02 §2.3) — 여러 장이면 1번 카드 */
   isDisplayGpu?: boolean;
   /** 같은 GPU 장수 — 계산기 멀티 GPU(docs/02 §6 베타, D58). 허브·콤보는 1장 */
   gpuCount?: number;
+  /**
+   * 함께 꽂은 다른 dGPU(계산기, docs/02 §6 베타, 10-03 D67) — 자격은 호출부가 `canMixWith` 로 거른다. 있으면 엔진 카드 목록
+   * `gpus` = [이 GPU × gpuCount, …extraGpus] (화면 출력은 1번 카드만). 허브·콤보는 없음
+   */
+  extraGpus?: readonly GpuCore[];
 };
+
+/**
+ * 서로 다른 GPU 섞기 자격 정책 (docs/02 §6, 10-03 D67) — 효율 계수가 검증된 계열 가운데 한 프로세스에서 한 가지 백엔드(CUDA·ROCm)로
+ * 묶이는 것만. 제조사를 섞으려면 Vulkan 같은 다른 백엔드가 필요한데 그 계수는 표본 밖이다(같은 카드 여러 장도 Vulkan 은 −25%, D58)
+ */
+// source: docs/02 §6 (policy)
+export const MIXABLE_GPU_CLASSES: readonly GpuCore['effClass'][] = Object.freeze(['nvidia', 'amd']);
+
+/** 섞어 쓸 수 있는 카드인가 — 데스크톱 dGPU · NVIDIA·AMD 계열 · FP16 크리플 제외(Pascal 반례 — docs/02 §6) */
+export function isMixableGpu(gpu: Pick<GpuCore, 'kind' | 'form' | 'effClass' | 'fp16Tflops'>): boolean {
+  return gpu.kind === 'dgpu' && gpu.form === 'desktop' && MIXABLE_GPU_CLASSES.includes(gpu.effClass) && !isFp16Crippled(gpu);
+}
+
+/** 1번 GPU 에 다른 카드를 함께 꽂아 계산할 수 있는가 — 둘 다 자격이 있고 같은 계열(같은 백엔드) */
+export function canMixWith(
+  primary: Pick<GpuCore, 'kind' | 'form' | 'effClass' | 'fp16Tflops'>,
+  other: Pick<GpuCore, 'kind' | 'form' | 'effClass' | 'fp16Tflops'>,
+): boolean {
+  return isMixableGpu(primary) && isMixableGpu(other) && primary.effClass === other.effClass;
+}
+
+function gpuUnit(gpu: GpuCore, display: boolean): GpuUnit {
+  return {
+    vramGB: gpu.vramGB ?? 0,
+    memBandwidthGBs: gpu.memBandwidthGBs,
+    effClass: gpu.effClass,
+    ...(display ? { isDisplayGpu: true } : {}),
+  };
+}
 
 /** dGPU + 지정 시스템 RAM 의 엔진 하드웨어 (RAM 힌트 계산에도 쓴다). */
 export function dgpuHardware(
@@ -154,7 +190,8 @@ export function dgpuHardware(
   ramBandwidthGBs: number,
   opts: DgpuOptions = {},
 ): Hardware {
-  return {
+  const display = opts.isDisplayGpu ?? true;
+  const base: Hardware = {
     kind: 'dgpu',
     os: opts.os ?? HUB_POLICY.dgpuOs,
     vramGB: gpu.vramGB,
@@ -163,8 +200,18 @@ export function dgpuHardware(
     ramGB,
     ramBandwidthGBs,
     effClass: gpu.effClass,
-    isDisplayGpu: opts.isDisplayGpu ?? true,
-    ...(opts.gpuCount !== undefined && opts.gpuCount > 1 ? { gpuCount: opts.gpuCount } : {}),
+    isDisplayGpu: display,
+  };
+  const extras = opts.extraGpus ?? [];
+  const count = Math.max(1, Math.floor(opts.gpuCount ?? 1));
+  if (extras.length === 0) return count > 1 ? { ...base, gpuCount: count } : base;
+  // 서로 다른 카드 (D67): 위 필드는 1번 카드 값, 장수·VRAM·대역폭·화면 출력은 카드 목록이 정한다
+  return {
+    ...base,
+    gpus: [
+      ...Array.from({ length: count }, (_, i) => gpuUnit(gpu, display && i === 0)),
+      ...extras.map((extra) => gpuUnit(extra, false)),
+    ],
   };
 }
 
@@ -429,7 +476,8 @@ function memoryNeed(
   const kv = kvGB(mq.kvBytesPerToken, ctx, kvQuant);
   const hw = config.hw;
   const cpuPath = hw.kind === 'cpu' || (fits && result.mode === 'cpu-only');
-  const gpuNeed = needWeightsGB(hw.kind, mq) + kv + computeBufferGB(ctx);
+  // 연산 버퍼는 GPU 마다(엔진 fit 과 같다 — 여러 장이면 ×N, docs/02 §6)
+  const gpuNeed = needWeightsGB(hw.kind, mq) + kv + computeBufferGB(ctx) * gpuCountOf(hw);
   const base = {
     totalNeedGB: gpuNeed,
     needGB: cpuPath ? weights + kv : gpuNeed,
@@ -486,8 +534,8 @@ export function assessQuant(input: AssessQuantInput): QuantAssessment {
   const joinable =
     fitResult.fits &&
     (config.hw.kind !== 'dgpu' || fitResult.mode === 'full-gpu') &&
-    // 실측은 1장 기준 — 멀티 GPU(D58) 구성에는 붙이지 않는다
-    (config.hw.gpuCount ?? 1) === 1 &&
+    // 실측은 1장 기준 — 여러 장(같은 카드 D58·서로 다른 카드 D67) 구성에는 붙이지 않는다. 통합·CPU 는 늘 1
+    gpuCountOf(config.hw) === 1 &&
     ctx === HUB_POLICY.referenceCtx &&
     kvQuant === 'f16';
   const points = joinable ? measuredPoints(input.benchmarks, gpu.id, model.id, row.quant) : [];
@@ -689,15 +737,12 @@ function ramHintFor(
   if (gpu.kind !== 'dgpu') return undefined;
   for (const ramGB of [HUB_POLICY.dgpuRamGB, ...HUB_POLICY.ramHintGB]) {
     if (ramGB <= config.ramGB) continue;
+    // 현재 구성에서 RAM 만 바꾼다 — 1번 GPU 로 다시 만들면 함께 꽂은 카드(D67)가 사라진다. 1장·같은 카드 구성은 결과가 같다
     const hintConfig: HwConfig = {
       gpuId: gpu.id,
       ramGB,
       assumedRam: false,
-      hw: dgpuHardware(gpu, ramGB, config.hw.ramBandwidthGBs, {
-        os: config.hw.os,
-        isDisplayGpu: config.hw.isDisplayGpu,
-        ...(config.hw.gpuCount !== undefined ? { gpuCount: config.hw.gpuCount } : {}),
-      }),
+      hw: { ...config.hw, ramGB },
     };
     const assessed = assessQuant({
       gpu,

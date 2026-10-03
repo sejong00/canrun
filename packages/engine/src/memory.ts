@@ -10,7 +10,7 @@ import {
   QUANT_BPW,
   UNIFIED_USABLE_FRACTION,
 } from './constants';
-import type { Hardware, KvQuant, ModelQuant, QuantId } from './types';
+import type { GpuUnit, Hardware, KvQuant, ModelQuant, QuantId } from './types';
 
 /**
  * 가중치 크기 GB — 1순위 fileGB(실제 GGUF), 2순위 paramsB × bpw / 8 (§2.1).
@@ -58,17 +58,81 @@ export function osReserveGB(hw: Pick<Hardware, 'kind' | 'os' | 'isDisplayGpu'>):
   return OS_RESERVE_GB.headless;
 }
 
-/** dGPU 장수 (§6) — 정수 1 이상, dGPU 가 아니면 1 */
-export function gpuCountOf(hw: Pick<Hardware, 'kind' | 'gpuCount'>): number {
+/** 카드 목록(`Hardware.gpus`, 10-03 D67)이 있는 dGPU 인가 */
+function hasGpuList(hw: Pick<Hardware, 'kind' | 'gpus'>): hw is Pick<Hardware, 'kind'> & { gpus: readonly GpuUnit[] } {
+  return hw.kind === 'dgpu' && hw.gpus !== undefined && hw.gpus.length > 0;
+}
+
+/** dGPU 장수 (§6) — 정수 1 이상, dGPU 가 아니면 1. 카드 목록이 있으면 그 길이 */
+export function gpuCountOf(hw: Pick<Hardware, 'kind' | 'gpuCount' | 'gpus'>): number {
+  if (hasGpuList(hw)) return hw.gpus.length;
   if (hw.kind !== 'dgpu' || hw.gpuCount === undefined) return 1;
   return Math.max(1, Math.floor(hw.gpuCount));
+}
+
+/**
+ * dGPU 카드 목록 (§6, 10-03 D67) — `gpus` 가 있으면 그대로, 없으면 위 필드로 `gpuCount` 장을 만든다(화면 출력은 1번 카드만).
+ * dGPU 가 아니면 빈 목록
+ */
+export function gpuUnitsOf(hw: Hardware): GpuUnit[] {
+  if (hw.kind !== 'dgpu') return [];
+  if (hasGpuList(hw)) return [...hw.gpus];
+  return Array.from({ length: gpuCountOf(hw) }, (_, i) => ({
+    vramGB: hw.vramGB ?? 0,
+    memBandwidthGBs: hw.memBandwidthGBs,
+    effClass: hw.effClass,
+    ...(hw.effOverride !== undefined ? { effOverride: hw.effOverride } : {}),
+    ...(i === 0 && hw.isDisplayGpu ? { isDisplayGpu: true } : {}),
+  }));
+}
+
+/** 카드가 전부 같은가 (VRAM·대역폭·효율 — 화면 출력 여부는 보지 않는다). 같으면 같은 GPU N 장(D58)과 같은 식을 탄다 */
+export function isUniformGpus(units: readonly GpuUnit[]): boolean {
+  const [first] = units;
+  return units.every(
+    (u) =>
+      u.vramGB === first!.vramGB &&
+      u.memBandwidthGBs === first!.memBandwidthGBs &&
+      u.effClass === first!.effClass &&
+      u.effOverride === first!.effOverride,
+  );
+}
+
+/** 카드 한 장의 OS 예약 GB — 화면 출력 카드만 (§2.3) */
+function unitReserveGB(os: Hardware['os'], unit: GpuUnit): number {
+  return osReserveGB({ kind: 'dgpu', os, isDisplayGpu: unit.isDisplayGpu });
+}
+
+/** 하드웨어 전체의 OS 예약 GB — 카드 목록이 있으면 화면 출력 카드의 예약 합, 아니면 `osReserveGB` (§2.3·§6) */
+export function gpuOsReserveGB(hw: Hardware): number {
+  if (!hasGpuList(hw)) return osReserveGB(hw);
+  return hw.gpus.reduce((sum, u) => sum + unitReserveGB(hw.os, u), 0);
+}
+
+/** dGPU VRAM 합 GB (물리 한도, §2.4) — 같은 카드면 vram × N (D58 과 같은 연산), 서로 다른 카드면 카드별 합 */
+export function vramTotalGB(hw: Hardware): number {
+  if (!hasGpuList(hw)) return (hw.vramGB ?? 0) * gpuCountOf(hw);
+  if (isUniformGpus(hw.gpus)) return hw.gpus[0]!.vramGB * hw.gpus.length;
+  return hw.gpus.reduce((sum, u) => sum + u.vramGB, 0);
+}
+
+/**
+ * 카드마다 층을 나눠 받는 몫 (§6, 10-03 D67) — llama.cpp 는 `-ts` 가 없으면 장치마다 남은 메모리 비율로 층을 나눈다.
+ * 남은 메모리 = VRAM − 화면 출력 예약(음수는 0). 합이 0 이면 똑같이 나눈다. 합은 1
+ */
+export function gpuSharesOf(hw: Hardware): number[] {
+  const units = gpuUnitsOf(hw);
+  const caps = units.map((u) => Math.max(0, u.vramGB - unitReserveGB(hw.os, u)));
+  const pool = caps.reduce((a, b) => a + b, 0);
+  return caps.map((cap) => (pool > 0 ? cap / pool : 1 / units.length));
 }
 
 /** 모드별 사용 가능 메모리 GB (§2.3). */
 export function usableGB(hw: Hardware): number {
   switch (hw.kind) {
     case 'dgpu':
-      return (hw.vramGB ?? 0) * gpuCountOf(hw) - osReserveGB(hw);
+      // 카드 목록이 없으면 vram × N − 예약 1장분(D58 식 그대로), 있으면 Σ VRAM − Σ 화면 출력 예약 (D67)
+      return vramTotalGB(hw) - gpuOsReserveGB(hw);
     case 'unified':
       return hw.ramGB * UNIFIED_USABLE_FRACTION;
     case 'cpu':

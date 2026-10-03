@@ -10,7 +10,12 @@
  *    0.30(2026-06) 이후는 llama-server 를 `-ngl` 없이 띄워 llama.cpp `--fit` 이 MoE 전문가 일부를 RAM 에 자동 배치
  *    (ollama/ollama llm/llama_server.go "NumGPU == -1 (default): don't pass -ngl") — 층 수 지정 옵션은 없다
  *  - llama.cpp b7410(2025-12-15, PR #16653) 이후 `--fit on` 기본: `-ngl`·`--n-cpu-moe` 를 생략하면 같은 방향으로
- *    자동 배치(뒤쪽 층 전문가를 CPU 로). 명시하면 fit 의 가중치 배치는 꺼진다 — 우리 명령은 추정과 같은 N 을 명시한다
+ *    자동 배치(뒤쪽 층 전문가를 CPU 로). 명시하면 fit 의 가중치 배치는 꺼진다 — 우리 명령은 추정과 같은 N 을 명시한다.
+ *    예외: GPU 가 여러 장이면(같은 카드 D58·서로 다른 카드 D67) cpu-moe 명령에서 두 옵션을 뺀다(10-03 D67). 층은 카드마다 남은
+ *    메모리 비율로 나뉘는데 `--n-cpu-moe N` 은 앞쪽 N 층만 CPU 로 보내 GPU 전문가가 뒤쪽 층을 맡은 마지막 카드에 몰린다 — 엔진은
+ *    합산 용량만 보므로 그 카드가 메모리 부족이 될 수 있다. `--fit` 은 장치마다 여유(기본 1024MiB)를 두고 카드를 차례로 채운다
+ *    (https://github.com/ggml-org/llama.cpp/blob/2145525a4081d66ff1a87cf43ef809f95a85ac0c/common/fit.cpp#L660-L750, 사용자가
+ *    -ngl·텐서 배치를 주면 fit 이 멈춘다 #L463-L485)
  *  - Ollama KV 캐시 양자화 = 서버 env `OLLAMA_KV_CACHE_TYPE`(f16|q8_0|q4_0, 전역), 플래시 어텐션 필요 —
  *    `OLLAMA_FLASH_ATTENTION=1` 로 강제 (https://docs.ollama.com/faq "How can I set the quantization type for the K/V cache?",
  *    "How can I enable Flash Attention?"). f16(기본)이면 env 를 붙이지 않는다
@@ -18,6 +23,7 @@
  */
 
 import {
+  gpuCountOf,
   type KvQuant,
   type Mode,
   type Os,
@@ -99,7 +105,10 @@ export type CommandFile = {
 
 export type LlamaCppPlan = {
   command: string;
-  ngl: 'all' | number;
+  /**
+   * `-ngl` 값. 'auto' = `-ngl`·`--n-cpu-moe` 를 빼고 llama.cpp `--fit`(b7410+ 기본)에 배치를 맡긴다 — GPU 여러 장의 cpu-moe 만(10-03 D67)
+   */
+  ngl: 'all' | 'auto' | number;
   /**
    * cpu-moe: 전문가를 CPU 에 둘 층 수 = 엔진 fit 이 VRAM 여유로 정한 값(추정의 근거와 같은 배치, 10-01 D56).
    * 전체 층과 같으면 전문가 전부 RAM.
@@ -183,13 +192,18 @@ export function commandPlan(
   };
   if (!q.fits) return { ...base, ollamaOmitted: 'no-fit' };
 
-  let ngl: 'all' | number;
+  let ngl: LlamaCppPlan['ngl'];
   let nCpuMoe: number | undefined;
   switch (mode) {
     case 'full-gpu':
       ngl = 'all';
       break;
     case 'cpu-moe':
+      // GPU 여러 장이면 배치를 --fit 에 맡긴다 (헤더 주석 — 앞쪽 N 층 배치는 마지막 카드에 전문가가 몰린다)
+      if (gpuCountOf(config.hw) > 1) {
+        ngl = 'auto';
+        break;
+      }
       ngl = 'all';
       nCpuMoe = cpuMoeFlagLayers(model, q.result.cpuMoeLayers);
       break;
@@ -207,7 +221,7 @@ export function commandPlan(
   const flags = [
     `-hf ${file.repo}:${file.tag}`,
     `-c ${ctx}`,
-    `-ngl ${ngl}`,
+    ...(ngl !== 'auto' ? [`-ngl ${ngl}`] : []),
     ...(nCpuMoe !== undefined ? [`--n-cpu-moe ${nCpuMoe}`] : []),
     '-fa on',
     ...(kvQuant !== 'f16' ? [`--cache-type-k ${kvQuant}`, `--cache-type-v ${kvQuant}`] : []),

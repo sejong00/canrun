@@ -2,7 +2,7 @@
 
 import { CPU_MOE_RAM_EFF, EFF, MOE_TG_CAP_TOKS, MULTI_GPU_TG_FACTOR, PP_COEF } from './constants';
 import type { FitResult } from './fit';
-import { expertGBFor, gpuCountOf, kvGB, nonExpertGBFor, weightsGB } from './memory';
+import { expertGBFor, gpuCountOf, gpuSharesOf, isUniformGpus, kvGB, nonExpertGBFor, weightsGB } from './memory';
 import type { Hardware, KvQuant, ModelQuant } from './types';
 
 export type SpeedOptions = { ctx?: number; kvQuant?: KvQuant };
@@ -28,6 +28,23 @@ function gpuEff(hw: Hardware, moe: boolean): number {
   return resolveEff(hw, moe) * (gpuCountOf(hw) > 1 ? MULTI_GPU_TG_FACTOR : 1);
 }
 
+/**
+ * GPU 쪽 실효 처리량 GB/s — GPU 에 있는 바이트를 토큰마다 읽는 속도 (§3.1·§6).
+ * 카드 1장·같은 카드 N 장(D58): eff × 대역폭 (× `MULTI_GPU_TG_FACTOR`). 같은 카드로만 된 목록도 같은 연산이라 출력이 바이트까지 같다.
+ * 서로 다른 카드(10-03 D67): 층과 그 층의 KV 는 맡은 카드에만 있고 토큰은 카드를 차례로 지나므로, 바이트 1GB 를 읽는 시간은
+ * 카드별 (몫 ÷ 그 카드의 eff × 대역폭)의 합이다 — 몫은 남은 메모리 비율(`gpuSharesOf`, llama.cpp 기본 층 분할).
+ * 느린 카드에 올라간 몫만큼 전체가 느려진다(빠른 카드 한 장에 들어가는 모델도 기본 분할이면 두 카드에 나뉜다)
+ */
+export function gpuThroughputGBs(hw: Hardware, moe: boolean): number {
+  const units = hw.kind === 'dgpu' ? hw.gpus : undefined;
+  if (!units || units.length === 0) return gpuEff(hw, moe) * hw.memBandwidthGBs;
+  const factor = units.length > 1 ? MULTI_GPU_TG_FACTOR : 1;
+  if (isUniformGpus(units)) return resolveEff(units[0]!, moe) * factor * units[0]!.memBandwidthGBs;
+  const shares = gpuSharesOf(hw);
+  const secondsPerGB = units.reduce((sum, u, i) => sum + shares[i]! / (resolveEff(u, moe) * u.memBandwidthGBs), 0);
+  return factor / secondsPerGB;
+}
+
 /** 토큰당 읽기 바이트 GB: weightsRead(MoE 는 active 비율 스케일) + kvRead(ctx) (§3.1). */
 export function bytesPerTokenGB(mq: ModelQuant, ctx: number, kvQuant?: KvQuant): number {
   const w = weightsGB(mq);
@@ -37,7 +54,7 @@ export function bytesPerTokenGB(mq: ModelQuant, ctx: number, kvQuant?: KvQuant):
 
 /** full-gpu(§3.1) — MoE 는 §9 상한 캡. */
 function tgFullGpu(hw: Hardware, mq: ModelQuant, bytes: number): number {
-  const tg = (gpuEff(hw, isMoe(mq)) * hw.memBandwidthGBs) / bytes;
+  const tg = gpuThroughputGBs(hw, isMoe(mq)) / bytes;
   return isMoe(mq) ? Math.min(tg, MOE_TG_CAP_TOKS) : tg;
 }
 
@@ -52,7 +69,7 @@ function tgCpuOnly(hw: Hardware, mq: ModelQuant, bytes: number): number {
  * - 전문가 읽기량 routed = expertGB × topK/experts (실측 행). 없으면 활성 슬라이스 − 비전문가(09-30 식).
  * - CPU 에 둔 층 비율 f = cpuMoeLayers / moeLayers (fit 이 VRAM 여유로 정한 `--n-cpu-moe`). 정보가 없으면 f = 1(전부 RAM).
  * - RAM 몫: routed × f ÷ (CPU_MOE_RAM_EFF × RAM 대역폭)
- * - GPU 몫: (비전문가 + routed × (1 − f) + KV 읽기) ÷ (GPU 클래스 MoE 효율 × VRAM 대역폭)
+ * - GPU 몫: (비전문가 + routed × (1 − f) + KV 읽기) ÷ (GPU 클래스 MoE 효율 × VRAM 대역폭) — 카드가 여럿이면 `gpuThroughputGBs`(§6)
  * 상한은 full-gpu 값. (09-30 이전 식은 활성 파라미터 전체를 RAM 속도로 읽어 ~2.5× 과소 — PROGRESS §4 D55)
  */
 function tgCpuMoe(
@@ -79,7 +96,7 @@ function tgCpuMoe(
       : 1;
   const ramGB = routed * f;
   const gpuGB = nonExpert + routed * (1 - f) + kvRead;
-  const seconds = ramGB / (CPU_MOE_RAM_EFF * hw.ramBandwidthGBs) + gpuGB / (gpuEff(hw, true) * hw.memBandwidthGBs);
+  const seconds = ramGB / (CPU_MOE_RAM_EFF * hw.ramBandwidthGBs) + gpuGB / gpuThroughputGBs(hw, true);
   return Math.min(1 / seconds, tgFullGpu(hw, mq, bytes));
 }
 

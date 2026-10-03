@@ -280,3 +280,52 @@ describe('assembleResults — multi-GPU (D58, beta)', () => {
     expect(differsFromHubAssumption(withGpu('rtx-3090', { gpus: 2 }), two.hardware)).toBe(true);
   });
 });
+
+describe('assembleResults — mixed GPUs (10-03 D67, beta)', () => {
+  const pair = assembleResults(catalog, withGpu('rtx-3090', { ramGB: 64, plus: ['rtx-3060-12gb'] }))!;
+  const alone = assembleResults(catalog, withGpu('rtx-3090', { ramGB: 64 }))!;
+  const card = (r: typeof pair, id: string) => r.all.find((c) => c.model.id === id)!;
+
+  it('RTX 3090 + RTX 3060 12GB: 36GB in all, every estimate theoretical, no measured badge, combo link labelled', () => {
+    expect(pair.hardware.gpuCount).toBe(2);
+    expect(pair.hardware.extras.map((g) => g.id)).toEqual(['rtx-3060-12gb']);
+    expect(pair.hardware.theoretical).toBe(true);
+    expect(pair.all.every((c) => c.combo.display.result.confidence === 'theoretical' && c.measuredCount === 0)).toBe(true);
+    expect(alone.all.some((c) => c.measuredCount > 0)).toBe(true);
+    expect(differsFromHubAssumption(withGpu('rtx-3090', { plus: ['rtx-3060-12gb'] }), pair.hardware)).toBe(true);
+    const llama70 = card(pair, 'llama-3.3-70b');
+    expect(llama70.combo.baseline.result.vram.limit).toBe(36);
+    expect(llama70.combo.baseline.result.mode).toBe('partial-offload');
+  });
+
+  it('a model that fits on the 3090 alone is estimated on both cards (llama.cpp default split, slower) with a one-card hint', () => {
+    const pairCard = card(pair, 'qwen3-8b');
+    const aloneCard = card(alone, 'qwen3-8b');
+    expect(pairCard.combo.display.result.mode).toBe('full-gpu');
+    expect(pairCard.combo.display.result.tgTokS.est).toBeLessThan(aloneCard.combo.display.result.tgTokS.est);
+    expect(pairCard.singleGpu?.gpu.id).toBe('rtx-3090');
+    expect(pairCard.singleGpu?.result.tgTokS.est).toBeCloseTo(aloneCard.combo.display.result.tgTokS.est, 9);
+    expect(pairCard.singleGpu?.result.confidence).toBe('theoretical');
+    // 한 장에 안 들어가는 모델·같은 카드 여러 장·1장엔 힌트가 없다
+    expect(card(pair, 'llama-3.3-70b').singleGpu).toBeUndefined();
+    const two = assembleResults(catalog, withGpu('rtx-3090', { ramGB: 64, gpus: 2 }))!;
+    expect(two.all.some((c) => c.singleGpu)).toBe(false);
+    expect(alone.all.some((c) => c.singleGpu)).toBe(false);
+  });
+
+  it('several GPUs get their own llama.cpp command on every card that fits (the combo page command is for one card); cpu-moe leaves placement to --fit', () => {
+    for (const run of [pair, assembleResults(catalog, withGpu('rtx-4060', { ramGB: 64, gpus: 2 }))!]) {
+      for (const c of run.all) {
+        expect(c.command !== undefined, c.model.id).toBe(c.combo.display.fits);
+        if (c.combo.display.result.mode === 'cpu-moe') {
+          expect(c.commandFitAuto).toBe(true);
+          expect(c.command).not.toMatch(/-ngl|--n-cpu-moe/);
+        } else {
+          expect(c.commandFitAuto).toBeUndefined();
+        }
+      }
+      expect(run.all.some((c) => c.commandFitAuto)).toBe(true);
+    }
+    expect(alone.all.some((c) => c.command)).toBe(false);
+  });
+});

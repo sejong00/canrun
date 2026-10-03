@@ -1,9 +1,11 @@
 /**
  * 계산기 아일랜드 공용 — 번역 바인딩·경로·리듀서 (클라이언트, P1-3).
  */
-import type { CatalogLite, ManualSpec } from '@canrun/data/client';
+import type { CatalogLite, GpuCore, ManualSpec } from '@canrun/data/client';
 import type { EffClass } from '@canrun/engine';
+import type { ResolvedHardware } from '@/lib/calc/hardware';
 import { makeT, type Dict, type TranslateWithHas } from '@/lib/i18n-lite';
+import { gpuName } from '@/lib/phrases';
 import { hasManualNumber, normalize, type CalcState, type CustomHardware, type HardwareChoice } from '@/lib/calc/state';
 
 export type CalcTranslators = {
@@ -70,6 +72,33 @@ export function classKey(effClass: EffClass): string {
   }
 }
 
+/**
+ * 구성의 GPU 이름 (D58·D67) — 같은 카드 묶음은 "2× RTX 3090"/"RTX 3090 2장", 서로 다른 카드는 "A + B". 넣은 순서, 같은 id 는 한 묶음
+ */
+export function gpuSetLabel(t: CalcTranslators, hw: Pick<ResolvedHardware, 'gpu' | 'gpuCount' | 'extras'>): string {
+  const groups: { gpu: GpuCore; n: number }[] = [{ gpu: hw.gpu, n: hw.gpuCount - hw.extras.length }];
+  for (const extra of hw.extras) {
+    const group = groups.find((g) => g.gpu.id === extra.id);
+    if (group) group.n += 1;
+    else groups.push({ gpu: extra, n: 1 });
+  }
+  return groups
+    .map(({ gpu, n }) => (n > 1 ? t.calc('gpuTimes', { gpu: gpuName(t.names, gpu), n }) : gpuName(t.names, gpu)))
+    .reduce((a, b) => t.calc('gpuPlus', { a, b }));
+}
+
+/** 같은 묶음 순서의 카드별 VRAM — 가정 문장 "(24 + 12 GB)" 용 */
+export function gpuSetVram(hw: Pick<ResolvedHardware, 'gpu' | 'extras'>): number[] {
+  const ids = [hw.gpu.id];
+  const vram = [hw.gpu.vramGB ?? 0];
+  for (const extra of hw.extras) {
+    if (ids.includes(extra.id)) continue;
+    ids.push(extra.id);
+    vram.push(extra.vramGB ?? 0);
+  }
+  return vram;
+}
+
 /** `lib/links.ts localeHref` 와 같은 규칙 (클라이언트 사본 — routing 모듈을 끌어오지 않는다) */
 export function localePrefix(locale: string): string {
   return locale === 'en' ? '' : `/${locale}`;
@@ -94,6 +123,8 @@ export type CalcAction =
   /** 직접 입력 모델 값 병합(D66) — 숫자 칸에 값이 생기면 불러온 HF 모델을 뺀다. null = 직접 입력 지우기 */
   | { type: 'manual'; patch: Partial<ManualSpec> | null }
   | { type: 'gpus'; gpus: number | undefined }
+  /** 함께 꽂은 다른 카드 목록 통째로 (10-03 D67) — 정리(자격·최대 4장·같은 카드 접기)는 normalize */
+  | { type: 'plus'; plus: string[] | undefined }
   | { type: 'clearFilters' }
   // 모델 모드 (10-03 D65)
   | { type: 'mode'; mode: CalcState['mode'] }
@@ -169,6 +200,8 @@ export function makeReducer(catalog: CatalogLite) {
       }
       case 'gpus':
         return normalize({ ...state, gpus: action.gpus }, catalog);
+      case 'plus':
+        return normalize({ ...state, plus: action.plus }, catalog);
       case 'clearFilters':
         return { ...state, cat: [], size: [], min: undefined };
       case 'mode':
@@ -182,8 +215,8 @@ export function makeReducer(catalog: CatalogLite) {
         );
       case 'useGpu': {
         // 'hardware' 와 같은 RAM·OS 유지 규칙으로 바꾼 뒤, 통합·CPU 행이면 그 행의 메모리 용량으로 (`m` = 대상 모델은 그대로 강조).
-        // GPU 수는 1장으로 되돌린다 — 행은 1장으로 계산했으니 넘어간 화면도 그 행과 같아야 한다(여러 장이면 전부 이론 추정이 된다, 리뷰 반영)
-        const next = withHardware({ ...state, mode: 'hardware', gpus: undefined }, { kind: 'catalog', gpuId: action.gpuId }, catalog);
+        // GPU 수는 1장으로 되돌리고 함께 꽂은 카드도 뺀다(D67) — 행은 1장으로 계산했으니 넘어간 화면도 그 행과 같아야 한다(여러 장이면 전부 이론 추정이 된다, 리뷰 반영)
+        const next = withHardware({ ...state, mode: 'hardware', gpus: undefined, plus: undefined }, { kind: 'catalog', gpuId: action.gpuId }, catalog);
         const kind = catalog.gpus.find((g) => g.id === action.gpuId)?.kind;
         return kind !== 'dgpu' && action.ramGB !== undefined ? normalize({ ...next, ramGB: action.ramGB }, catalog) : next;
       }

@@ -5,14 +5,15 @@ import {
   computeBufferGB,
   expertGBFor,
   gpuCountOf,
+  gpuOsReserveGB,
   gpuResidentGBFor,
   kvGB,
-  osReserveGB,
   usableGB,
   usableRamGB,
   weightsGB,
   weightsGBFromBpw,
   nonExpertGBFor,
+  vramTotalGB,
 } from './memory';
 import type { Hardware, KvQuant, Mode, ModelQuant, QuantId, VramBreakdown } from './types';
 
@@ -58,9 +59,9 @@ function breakdown(
 function fitOnce(hw: Hardware, mq: ModelQuant, weights: number, opts?: FitOptions): FitResult {
   const ctx = opts?.ctx ?? DEFAULT_CTX;
   const kv = kvGB(mq.kvBytesPerToken, ctx, opts?.kvQuant);
-  // 연산 버퍼는 GPU 마다 따로 (§6 멀티 GPU — 장수 1 이면 그대로)
+  // 연산 버퍼는 GPU 마다 따로 (§6 멀티 GPU — 장수 1 이면 그대로). OS 예약은 화면 출력 카드 몫(서로 다른 카드면 카드별 합, D67)
   const buffer = computeBufferGB(ctx) * gpuCountOf(hw);
-  const osReserve = osReserveGB(hw);
+  const osReserve = gpuOsReserveGB(hw);
 
   // cpu 단독 하드웨어는 곧바로 4번 경로
   if (hw.kind === 'cpu') {
@@ -73,8 +74,8 @@ function fitOnce(hw: Hardware, mq: ModelQuant, weights: number, opts?: FitOption
     };
   }
 
-  const pool = usableGB(hw); // dgpu: vram−osReserve, unified: ram×0.70
-  const limit = hw.kind === 'dgpu' ? (hw.vramGB ?? 0) * gpuCountOf(hw) : hw.ramGB;
+  const pool = usableGB(hw); // dgpu: Σvram−osReserve, unified: ram×0.70
+  const limit = hw.kind === 'dgpu' ? vramTotalGB(hw) : hw.ramGB;
 
   // 1. full-gpu (unified 포함 — 통합 풀에 전량 탑재). dGPU 는 llama.cpp 가 그래픽카드에 올리는 가중치만 센다(10-03 D62):
   //    입력 임베딩은 시스템 RAM, MTP 블록은 미적재. 통합 메모리는 파일 전체(Metal 은 mmap 범위째 GPU 버퍼로 감싼다)
@@ -88,6 +89,7 @@ function fitOnce(hw: Hardware, mq: ModelQuant, weights: number, opts?: FitOption
   // 2. cpu-moe (MoE 전용, dgpu): 비전문가+kv+buffer 를 GPU 에 두고, 남는 VRAM 만큼 전문가 층을 GPU 에 채운 뒤
   //    나머지 층(앞쪽 N 층 — `--n-cpu-moe N`)의 전문가만 RAM 에 둔다 (10-01 D56: llama.cpp --fit 기본 배치와 같은 방향).
   //    moeLayers 가 없는 입력은 층 단위 배치를 못 하므로 전문가 전부 RAM (09-30 가정).
+  //    카드가 여럿이면(§6) 합산 풀에 채운다 — 넘치는 모드라 카드가 모두 차서 카드별 메모리 몫은 용량 비율에 가깝다(속도 배분은 근사, D67)
   if (hw.kind === 'dgpu' && isMoe(mq)) {
     const nonExpert = nonExpertGBFor(mq)!;
     const expert = expertGBFor(mq)!;

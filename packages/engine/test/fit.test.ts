@@ -3,16 +3,21 @@ import { describe, expect, it } from 'vitest';
 import { CPU_MOE_GPU_LAYER_MARGIN } from '../src/constants';
 import { fit } from '../src/fit';
 import { evaluate } from '../src/index';
-import { computeBufferGB, kvGB, osReserveGB, usableGB, usableRamGB } from '../src/memory';
+import { computeBufferGB, gpuUnitsOf, kvGB, osReserveGB, usableGB, usableRamGB } from '../src/memory';
+import { tgEstimate } from '../src/speed';
 import type { Hardware, ModelQuant } from '../src/types';
 import {
+  GPT_OSS_120B,
+  HETERO_GPU_CASES,
   LLAMA31_8B_Q4,
   LLAMA31_8B_Q4_RESIDENT,
   LLAMA33_70B_Q4,
   M4_MAX_128,
+  MULTI_GPU_CASES,
   QWEN3_14B_Q4,
   QWEN35_35B_A3B_Q4,
   QWEN36_35B_A3B_Q4_SPLIT,
+  QWEN3_8B_Q4,
   RTX_3060_12GB,
   RTX_4060_8GB,
   RTX_4090,
@@ -253,5 +258,64 @@ describe('§6 multi-GPU (beta): same GPU × N', () => {
   it('ignores gpuCount on non-dGPU hardware and treats < 1 as 1', () => {
     expect(usableGB({ ...M4_MAX_128, gpuCount: 4 })).toBeCloseTo(usableGB(M4_MAX_128), 6);
     expect(usableGB({ ...one3090, gpuCount: 0 })).toBeCloseTo(usableGB(one3090), 6);
+  });
+});
+
+describe('§6 mixed GPUs (beta, 10-03 D67): RTX 3090 (display, Windows) + RTX 3060 12GB', () => {
+  const mixed: Hardware = {
+    ...RTX_4090,
+    os: 'windows',
+    vramGB: 24,
+    memBandwidthGBs: 936,
+    isDisplayGpu: true,
+    gpus: [
+      { vramGB: 24, memBandwidthGBs: 936, effClass: 'nvidia', isDisplayGpu: true },
+      { vramGB: 12, memBandwidthGBs: 360, effClass: 'nvidia' },
+    ],
+  };
+  const LLAMA33_70B_IQ2: ModelQuant = { ...LLAMA33_70B_Q4, quant: 'IQ2_M', fileGB: 24.12 };
+
+  it('a small model still goes on both cards (llama.cpp default split) — limit 36, one compute buffer per card, display reserve once', () => {
+    const r = fit(mixed, QWEN3_8B_Q4);
+    expect(r.mode).toBe('full-gpu');
+    expect(r.vram.limit).toBe(36);
+    expect(r.vram.buffer).toBeCloseTo(2 * computeBufferGB(8192), 9);
+    expect(r.vram.osReserve).toBeCloseTo(0.6, 9);
+  });
+
+  it('70B IQ2_M fits on the pair (need 27.95 ≤ 35.4), 70B Q4_K_M overflows into partial offload (gpuFrac ≈ 0.742)', () => {
+    const iq2 = fit(mixed, LLAMA33_70B_IQ2);
+    expect(iq2.mode).toBe('full-gpu');
+    expect(iq2.vram.total - iq2.vram.osReserve).toBeCloseTo(27.95, 2);
+    expect(usableGB(mixed)).toBeCloseTo(35.4, 9);
+    const q4 = fit(mixed, LLAMA33_70B_Q4);
+    expect(q4.mode).toBe('partial-offload');
+    expect(q4.gpuFrac).toBeCloseTo(0.742, 3);
+  });
+
+  it('MoE cpu-moe fills the pooled VRAM like two same-size cards with the same total', () => {
+    const pair: Hardware = { ...RTX_4090, os: 'windows', vramGB: 18, isDisplayGpu: true, gpuCount: 2 };
+    const oss: ModelQuant = { ...GPT_OSS_120B, moeLayers: 36, activeExpertFrac: 4 / 128 };
+    const a = fit(mixed, oss);
+    const b = fit(pair, oss);
+    expect(a.mode).toBe('cpu-moe');
+    expect(a.cpuMoeLayers).toBeGreaterThan(0);
+    expect(a.cpuMoeLayers).toBe(b.cpuMoeLayers);
+    expect(a.vram).toEqual(b.vram);
+  });
+
+  it('a card list of identical cards is the same as gpuCount — fit and speed deep-equal for every same-GPU regression point', () => {
+    const points = [...MULTI_GPU_CASES.map((c) => ({ hw: c.hw, mq: c.mq, ctx: c.ctx })), { hw: RTX_4090, mq: QWEN3_8B_Q4, ctx: 8192 }];
+    for (const { hw, mq, ctx } of points) {
+      const asList: Hardware = { ...hw, gpus: gpuUnitsOf(hw) };
+      const r = fit(hw, mq, { ctx });
+      expect(fit(asList, mq, { ctx })).toEqual(r);
+      expect(tgEstimate(asList, mq, r, { ctx })).toBe(tgEstimate(hw, mq, r, { ctx }));
+      expect(evaluate(asList, mq, { ctx })).toEqual(evaluate(hw, mq, { ctx }));
+    }
+  });
+
+  it('the regression points all land in full-gpu on both cards', () => {
+    for (const c of HETERO_GPU_CASES) expect(fit(c.hw, c.mq, { ctx: c.ctx }).mode).toBe('full-gpu');
   });
 });

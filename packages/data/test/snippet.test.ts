@@ -295,3 +295,36 @@ describe('--n-cpu-moe N keeps the GPU side within usable VRAM for every cpu-moe 
     expect(partial).toBeGreaterThan(500);
   });
 });
+
+describe('several GPUs (D58 같은 카드 · 10-03 D67 서로 다른 카드)', () => {
+  const planOn = (gpuId: string, modelId: string, opts: { gpuCount?: number; extra?: string[] }) => {
+    const g = gpu(gpuId);
+    const config = hardwareConfigs(g, seed.gpus, {
+      ramGB: 64,
+      ...(opts.gpuCount ? { gpuCount: opts.gpuCount } : {}),
+      ...(opts.extra ? { extraGpus: opts.extra.map(gpu) } : {}),
+    })[0]!;
+    const c = assessCombo(seed, g, config, model(modelId), { theoretical: true });
+    return { combo: c, plan: commandPlan(g, config, model(modelId), row(modelId, c.display.quant), c.display) };
+  };
+
+  it('cpu-moe: -ngl and --n-cpu-moe are left out so llama.cpp --fit places the experts per card (front-layer N piles experts on the last card)', () => {
+    for (const opts of [{ gpuCount: 2 }, { extra: ['rtx-3060-12gb'] }]) {
+      const { combo, plan } = planOn('rtx-4060', 'gpt-oss-120b', opts);
+      expect(combo.display.result.mode).toBe('cpu-moe');
+      expect(plan.llamaCpp?.ngl).toBe('auto');
+      expect(plan.llamaCpp?.nCpuMoe).toBeUndefined();
+      expect(plan.llamaCpp?.command).toBe('llama-server -hf ggml-org/gpt-oss-120b-GGUF:MXFP4 -c 8192 -fa on');
+    }
+    // 1장이면 그대로 엔진 배치를 명시
+    expect(planOn('rtx-5060-ti-16gb', 'gpt-oss-120b', {}).plan.llamaCpp?.nCpuMoe).toBe(30);
+  });
+
+  it('full GPU on mixed cards: plain -ngl all (the default split is the modelled split); partial keeps -ngl K', () => {
+    const full = planOn('rtx-3090', 'llama-3.1-8b', { extra: ['rtx-3060-12gb'] }).plan;
+    expect(full.llamaCpp?.command).toMatch(/ -ngl all -fa on$/);
+    const { combo, plan } = planOn('rtx-3090', 'llama-3.3-70b', { extra: ['rtx-3060-12gb'] });
+    expect(combo.display.result.mode).toBe('partial-offload');
+    expect(plan.llamaCpp?.ngl).toBe(Math.floor((combo.display.gpuFrac ?? 0) * model('llama-3.3-70b').arch.layers));
+  });
+});

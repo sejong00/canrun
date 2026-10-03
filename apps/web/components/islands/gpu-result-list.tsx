@@ -1,7 +1,7 @@
 'use client';
 import type { GpuCore, PricedOption } from '@canrun/data/client';
 import { useId, type Dispatch } from 'react';
-import type { CalcAction, CalcTranslators } from '@/components/islands/calc-shared';
+import { gpuSetLabel, type CalcAction, type CalcTranslators } from '@/components/islands/calc-shared';
 import { GpuResultRow } from '@/components/islands/gpu-result-row';
 import { Pill } from '@/components/pill';
 import { VerdictChip } from '@/components/verdict-chip';
@@ -200,9 +200,7 @@ export function GpuResultList({
                       <Pill tone="info">{t.calc('mineLabel')}</Pill>
                       {mine.hardware.gpu.id !== 'custom' && (
                         <span>
-                          {mine.hardware.gpuCount > 1
-                            ? t.calc('gpuTimes', { gpu: gpuName(t.names, mine.hardware.gpu), n: mine.hardware.gpuCount })
-                            : gpuName(t.names, mine.hardware.gpu)}
+                          {gpuSetLabel(t, mine.hardware)}
                         </span>
                       )}
                     </>

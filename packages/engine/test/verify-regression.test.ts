@@ -8,6 +8,7 @@
  *  3) 속도 12점: 각 점이 클래스 밴드(±12%/±20%) 이내 + MAE < 7% (검증값 6.3%)
  *  4) 판정 새너티: 4060 8GB 통념 일치
  *  5) cpu-moe(전문가 RAM) 3점: 각 ±20% 이내 + MAE < 12% (09-30 보정 — 이전 식은 ~2.5× 과소)
+ *  6) 같은 GPU 여러 장 10점(D58) · 7) 서로 다른 GPU 섞기 3점(D67)
  */
 import { describe, expect, it } from 'vitest';
 import { fit } from '../src/fit';
@@ -16,6 +17,7 @@ import { kvBytesPerToken, kvGB, weightsGBFromBpw } from '../src/memory';
 import { tgEstimate } from '../src/speed';
 import {
   CPU_MOE_CASES,
+  HETERO_GPU_CASES,
   MULTI_GPU_CASES,
   GPT_OSS_20B,
   KV_CASES,
@@ -161,5 +163,32 @@ describe('6) multi-GPU layer split (§6 beta, D58): 공개 실측 10점', () => 
 
   it('MAE < 15%', () => {
     expect(errors.reduce((a, b) => a + Math.abs(b), 0) / errors.length).toBeLessThan(0.15);
+  });
+});
+
+describe('7) mixed GPUs layer split (§6 beta, 10-03 D67): 공개 실측 3점', () => {
+  const rows = HETERO_GPU_CASES.map((c) => {
+    const r = fit(c.hw, c.mq, { ctx: c.ctx });
+    return { c, r, error: (tgEstimate(c.hw, c.mq, r, { ctx: c.ctx }) - c.measuredTg) / c.measuredTg };
+  });
+
+  it.each(rows.map((row) => [row.c.label, row] as const))('%s: 두 카드 모두에 전량 탑재(기본 층 분할)', (_, { r }) => {
+    expect(r.mode).toBe('full-gpu');
+  });
+
+  it('class coefficients (5070 Ti + 3060): within ±30% and never more than 5% optimistic (≈ −7%)', () => {
+    for (const { error } of rows.filter((row) => row.c.kind === 'class')) {
+      expect(Math.abs(error)).toBeLessThanOrEqual(0.3);
+      expect(error).toBeLessThanOrEqual(0.05);
+      expect(error).toBeCloseTo(-0.068, 2);
+    }
+  });
+
+  it('formula with per-card coefficients fitted to single-card runs (3060 + P100): each within ±10% (+2.6% · −1.5%)', () => {
+    const formula = rows.filter((row) => row.c.kind === 'formula');
+    expect(formula).toHaveLength(2);
+    for (const { error } of formula) expect(Math.abs(error)).toBeLessThanOrEqual(0.1);
+    expect(formula[0]!.error).toBeCloseTo(0.026, 2);
+    expect(formula[1]!.error).toBeCloseTo(-0.015, 2);
   });
 });

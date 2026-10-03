@@ -6,7 +6,7 @@
  * docs/02 §7 갱신이 선행되어야 한다 (CLAUDE.md 규칙 1).
  */
 
-import type { EffClass, Hardware, ModelQuant, QuantId } from '../src/types';
+import type { EffClass, GpuUnit, Hardware, ModelQuant, QuantId } from '../src/types';
 
 // ---------- 1) 가중치: params × bpw/8 vs 실제 GGUF 크기 (11종, HF 실측) ----------
 export type WeightsCase = {
@@ -389,4 +389,51 @@ export const MULTI_GPU_CASES: readonly MultiGpuCase[] = [
   { label: '4×RTX 4000 Ada Llama 3 70B Q4_K_M tg512', hw: multi(4, 20, 360, 'nvidia'), mq: L3_70B_Q4, ctx: 512, measuredTg: 7.36, source: XD },
   { label: '2×V100 32GB Qwen2 72B Q4_0 tg128', hw: multi(2, 32, 900, 'nvidia'), mq: Q2_72B_Q40, ctx: 128, measuredTg: 17.22, source: 'https://github.com/ggml-org/llama.cpp/discussions/15013#discussioncomment-14472498' },
   { label: '2×7900 XTX ROCm Gemma 4 31B Q8_0 tg128', hw: multi(2, 24, 960, 'amd'), mq: G4_31B_Q8, ctx: 128, measuredTg: 22.97, source: 'https://github.com/ggml-org/llama.cpp/discussions/15021#discussioncomment-18122692' },
+];
+
+// ---------- 7) 서로 다른 GPU 섞기 (§6 베타, 10-03 D67) — 층 나눠 올리기, `-ts` 없이 남은 메모리 비율 분할, 모델 전부 VRAM ----------
+export type HeteroGpuCase = MultiGpuCase & {
+  /** 'class' = 클래스 계수 그대로(카탈로그 계열 실측) · 'formula' = 카드별 단일 실측으로 effOverride 를 맞춰 식만 검증 */
+  kind: 'class' | 'formula';
+};
+
+/** 카드 목록 하드웨어 — 위 필드는 1번 카드 값(타입 계약), 화면 출력 없음(헤드리스 벤치) */
+export const hetero = (units: readonly GpuUnit[]): Hardware => ({
+  ...dgpu(units[0]!.vramGB, units[0]!.memBandwidthGBs, units[0]!.effClass, units[0]!.effOverride),
+  gpus: units,
+});
+
+// Gemma 4 31B Q4_K_M — 17.52 GiB = 18.81GB(실측 글의 파일), KV 80 KiB/tok (카탈로그 gemma-4-31b)
+const G4_31B_Q4 = dense(18.81, 80, 30.7);
+// Qwen3.5-9B Q4_K_M 5.681GB (https://huggingface.co/unsloth/Qwen3.5-9B-GGUF), KV 32 KiB/tok · Qwen3.8-27B 가중치 16.8GB, KV 64 KiB/tok (카탈로그)
+const Q35_9B_Q4 = dense(5.681, 32, 9.65);
+const Q38_27B_Q4 = dense(16.8, 64, 27.78);
+const SPLIT_BENCH = 'https://github.com/kuraneko1/llama-split-bench/blob/272b0dee42afd60b823e769dd896630e6b13a402/examples/results-3060-p100.md';
+// 카드별 단일 실측(깊이 0 디코드: 3060 단독 54.9 · P100 단독 33.5 tok/s, 9B)에서 역산한 effOverride — 그 카드 혼자면 실측과 같아지도록.
+// 대역폭(3060 360 · P100 732 GB/s)은 effOverride × 대역폭으로 상쇄되어 결과에 영향이 없다
+const Q35_9B_BYTES = 5.681 + (32 * 1024 * 128) / 1e9;
+const RTX3060_FIT: GpuUnit = { vramGB: 12, memBandwidthGBs: 360, effClass: 'nvidia', effOverride: (54.9 * Q35_9B_BYTES) / 360 };
+const P100_FIT: GpuUnit = { vramGB: 16, memBandwidthGBs: 732, effClass: 'nvidia', effOverride: (33.5 * Q35_9B_BYTES) / 732 };
+
+/**
+ * 공개 실측 3점. 반례(범위 밖, 회귀에 넣지 않음): RX 7800 XT + RX 580 Vulkan, Qwen3.6-35B-A3B Q4_K_M `-ts 28/15` tg128 48.59
+ * (https://github.com/ggml-org/llama.cpp/discussions/22183) — 클래스 계수로는 약 112(+131%). 2017년 카드·Vulkan 은 계수 표본 밖이라
+ * 섞기 자격(데이터 레이어 `canMixWith` — 같은 제조사 데스크톱·FP16 크리플 제외)으로 막는다.
+ * P100 은 카탈로그 밖(FP16 은 되지만 Pascal) — 클래스 계수 0.70 대신 단일 실측으로 맞춘 effOverride 로 식만 검증한다.
+ */
+export const HETERO_GPU_CASES: readonly HeteroGpuCase[] = [
+  {
+    label: 'RTX 5070 Ti + RTX 3060 12GB, Gemma 4 31B Q4_K_M tg128 (CUDA, -ngl 99, -ts 없음)',
+    kind: 'class',
+    hw: hetero([
+      { vramGB: 16, memBandwidthGBs: 896, effClass: 'nvidia' },
+      { vramGB: 12, memBandwidthGBs: 360, effClass: 'nvidia' },
+    ]),
+    mq: G4_31B_Q4,
+    ctx: 128,
+    measuredTg: 21.8,
+    source: 'https://github.com/ggml-org/llama.cpp/discussions/21112',
+  },
+  { label: 'RTX 3060 12GB + Tesla P100 16GB, Qwen3.5-9B Q4_K_M 층 분할', kind: 'formula', hw: hetero([RTX3060_FIT, P100_FIT]), mq: Q35_9B_Q4, ctx: 128, measuredTg: 39.2, source: SPLIT_BENCH },
+  { label: 'RTX 3060 12GB + Tesla P100 16GB, Qwen3.8-27B Q4_K_M 층 분할', kind: 'formula', hw: hetero([RTX3060_FIT, P100_FIT]), mq: Q38_27B_Q4, ctx: 128, measuredTg: 13.81, source: SPLIT_BENCH },
 ];

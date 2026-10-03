@@ -1,9 +1,10 @@
 'use client';
 import type { CatalogLite, GpuCore } from '@canrun/data/client';
-import { isFp16Crippled } from '@canrun/data/client';
+import { isFp16Crippled, isMixableGpu } from '@canrun/data/client';
 import { useEffect, useId, useRef, useState, type Dispatch, type KeyboardEvent } from 'react';
 import { CustomHardwareFields } from '@/components/islands/custom-hardware-fields';
 import { DetectButton } from '@/components/islands/detect-button';
+import { ExtraGpus } from '@/components/islands/extra-gpus';
 import { GpuListbox, browseOrder } from '@/components/islands/gpu-listbox';
 import { Pill } from '@/components/pill';
 import { formatCtx, formatInt } from '@/lib/format';
@@ -13,6 +14,7 @@ import {
   DDR_KINDS,
   GPU_COUNT_OPTIONS,
   KV_OPTIONS,
+  MAX_GPUS,
   defaultOs,
   defaultRam,
   findGpu,
@@ -269,6 +271,10 @@ export function HardwareForm({ locale, catalog, names, t, state, dispatch, hydra
   const sibling = selected ? laptopSibling(selected, catalog.gpus) : undefined;
   const customOpen = state.hardware.kind === 'custom';
   const customKind = state.hardware.kind === 'custom' ? state.hardware.custom.kind : undefined;
+  // 서로 다른 GPU 함께 쓰기 (D67) — 1번이 섞기 자격 카드일 때만. "GPU 수"는 1번 카드 장수라 합계 4장에서 추가 카드 수를 뺀 만큼만
+  const mixable = selected !== undefined && isMixableGpu(selected);
+  const plusCount = mixable ? (state.plus?.length ?? 0) : 0;
+  const multiGpu = (state.gpus ?? 1) + plusCount > 1;
 
   return (
     <form
@@ -447,7 +453,7 @@ export function HardwareForm({ locale, catalog, names, t, state, dispatch, hydra
           {isDgpu && (
             <div className="flex flex-col gap-1">
               <label htmlFor={`${id}-gpus`} className="text-sm font-medium">
-                {t.calc('gpuCountLabel')}
+                {t.calc(plusCount > 0 ? 'gpuCountLabelSame' : 'gpuCountLabel')}
               </label>
               <select
                 id={`${id}-gpus`}
@@ -460,7 +466,7 @@ export function HardwareForm({ locale, catalog, names, t, state, dispatch, hydra
                   dispatch({ type: 'gpus', gpus: n > 1 ? n : undefined });
                 }}
               >
-                {GPU_COUNT_OPTIONS.map((n) => (
+                {GPU_COUNT_OPTIONS.filter((n) => n <= MAX_GPUS - plusCount).map((n) => (
                   <option key={n} value={n}>
                     {t.calc('gpuCountOption', { n })}
                   </option>
@@ -517,6 +523,8 @@ export function HardwareForm({ locale, catalog, names, t, state, dispatch, hydra
           </div>
         </div>
 
+        {mixable && <ExtraGpus catalog={catalog} t={t} primary={selected} state={state} dispatch={dispatch} hydrated={hydrated} />}
+
         <div className="flex flex-wrap items-start gap-6">
           <fieldset data-kv-toggle className="flex flex-wrap items-center gap-3 text-sm">
             <legend className="mb-1 font-medium">{t.calc('kvLabel')}</legend>
@@ -532,7 +540,7 @@ export function HardwareForm({ locale, catalog, names, t, state, dispatch, hydra
             <label className="flex min-h-9 items-center gap-2 text-sm">
               <input type="checkbox" name="display" value="1" checked={state.display} disabled={!hydrated} onChange={(e) => dispatch({ type: 'display', display: e.currentTarget.checked })} />
               <span>
-                {t.calc('displayLabel')}
+                {t.calc(multiGpu ? 'displayLabelMulti' : 'displayLabel')}
                 <span className="block text-xs text-muted-foreground">{t.calc('displayHint')}</span>
               </span>
             </label>

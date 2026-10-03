@@ -1,7 +1,7 @@
 /**
  * 계산기 상태 (P1-3 D31) — 순수 타입·기본값·정규화. URL 코덱(url.ts)과 아일랜드 리듀서가 공유한다.
  */
-import { HUB_POLICY, MANUAL_NUMBER_FIELDS, type CatalogLite, type GpuCore, type ManualSpec } from '@canrun/data/client';
+import { canMixWith, HUB_POLICY, isMixableGpu, MANUAL_NUMBER_FIELDS, type CatalogLite, type GpuCore, type ManualSpec } from '@canrun/data/client';
 import type { EffClass, KvQuant, Os, Verdict } from '@canrun/engine';
 
 export type DdrKind = 'ddr4-3200' | 'ddr5-5600' | 'ddr5-6000';
@@ -90,6 +90,11 @@ export type CalcState = {
   display: boolean;
   /** 같은 dGPU 장수 2~4 (1 이면 생략) — 멀티 GPU 베타(docs/02 §6, D58): VRAM 합산·층 나눠 올리기, 이론 추정 */
   gpus?: number;
+  /**
+   * 함께 꽂은 다른 dGPU 의 카탈로그 id (10-03 D67) — 1번 GPU 와 같은 계열의 데스크톱 카드(`canMixWith`), 넣은 순서 그대로,
+   * `gpus` 와 합쳐 최대 4장. 1번과 같은 id 는 `gpus` 로 접는다. 1번을 입력하는 중(none·unresolved)엔 그대로 둔다
+   */
+  plus?: string[];
   ctx: number;
   kv: KvQuant;
   cat: Category[];
@@ -119,6 +124,8 @@ export const HF_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,95}\/[A-Za-z0-9][A-Za-z0-9
 export const CTX_OPTIONS: readonly number[] = HUB_POLICY.matrixCtx;
 /** 같은 dGPU 장수 선택지 */
 export const GPU_COUNT_OPTIONS: readonly number[] = [1, 2, 3, 4];
+/** 계산기가 다루는 GPU 최대 장수 — 같은 카드·서로 다른 카드 합계 (D58·D67) */
+export const MAX_GPUS = Math.max(...GPU_COUNT_OPTIONS);
 export const KV_OPTIONS: readonly KvQuant[] = ['f16', 'q8_0', 'q4_0'];
 /** dGPU 시스템 RAM 선택지 (GB) */
 export const DGPU_RAM_OPTIONS: readonly number[] = [8, 16, 24, 32, 48, 64, 96, 128, 192, 256];
@@ -284,10 +291,35 @@ export function normalize(state: CalcState, catalog: CatalogLite): CalcState {
     (next.hardware.kind === 'catalog' && findGpu(catalog, next.hardware.gpuId)?.kind === 'dgpu') ||
     (next.hardware.kind === 'custom' && next.hardware.custom.kind === 'dgpu');
   if (next.gpus !== undefined && (!dgpuChoice || next.gpus === 1 || !GPU_COUNT_OPTIONS.includes(next.gpus))) next.gpus = undefined;
+  if (next.plus !== undefined) Object.assign(next, normalizePlus(next, catalog));
   // 모델 모드 (D65): 허용 목록 밖이면 기본값, 종류는 정규 순서·중복 제거
   if (!CALC_MODES.includes(next.mode)) next.mode = 'hardware';
   next.type = HW_TYPES.filter((t) => state.type.includes(t));
   if (next.budget !== undefined && !BUDGET_OPTIONS_USD.includes(next.budget)) next.budget = undefined;
   if (!GPU_SORT_KEYS.includes(next.gsort)) next.gsort = 'verdict';
   return next;
+}
+
+/**
+ * 함께 꽂은 카드 정리 (10-03 D67): 1번이 카탈로그 dGPU 면 같은 계열 데스크톱 카드만 남기고 1번과 같은 id 는 장수로 접는다(최대 4장 —
+ * 넘치는 몫은 뒤에서부터 버린다). 1번을 입력하는 중(none·unresolved)엔 섞을 수 있는 카드면 그대로 둔다 — 이름을 고치는 동안 줄이 지워지지 않게.
+ * 1번이 자격 없음(커스텀·통합·CPU·노트북·Arc·FP16 크리플)이면 모두 지운다. 순서는 넣은 순서 그대로(결과는 순서와 무관 — D67 기록)
+ */
+function normalizePlus(state: CalcState, catalog: CatalogLite): Pick<CalcState, 'gpus' | 'plus'> {
+  const ids = state.plus ?? [];
+  const hw = state.hardware;
+  const known = ids.map((id) => findGpu(catalog, id)).filter((g): g is GpuCore => g !== undefined && isMixableGpu(g));
+  if (hw.kind === 'none' || hw.kind === 'unresolved') {
+    const kept = known.slice(0, MAX_GPUS - (state.gpus ?? 1)).map((g) => g.id);
+    return { gpus: state.gpus, plus: kept.length > 0 ? kept : undefined };
+  }
+  const primary = hw.kind === 'catalog' ? findGpu(catalog, hw.gpuId) : undefined;
+  if (!primary || !isMixableGpu(primary)) return { gpus: state.gpus, plus: undefined };
+  const same = known.filter((g) => g.id === primary.id).length;
+  const count = Math.min(MAX_GPUS, (state.gpus ?? 1) + same);
+  const others = known
+    .filter((g) => g.id !== primary.id && canMixWith(primary, g))
+    .slice(0, MAX_GPUS - count)
+    .map((g) => g.id);
+  return { gpus: count > 1 ? count : undefined, plus: others.length > 0 ? others : undefined };
 }

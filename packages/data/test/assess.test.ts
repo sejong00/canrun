@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import {
   assessCombo,
   baselineRow,
+  canMixWith,
   cheapestOptions,
   classifyLicense,
   ctxMatrix,
@@ -13,6 +14,7 @@ import {
   hardwareConfigs,
   HUB_POLICY,
   isFp16Crippled,
+  isMixableGpu,
   memoryMatrix,
   modelGpuRows,
   rankableStreet,
@@ -686,5 +688,71 @@ describe('그래픽카드에 올라가는 가중치로 full-gpu 판정 (10-03 D6
     expect(c.baseline.result.vram.weights).toBeCloseTo(4.92, 6);
     expect(c.baseline.memory.offGpuGB).toBe(0);
     expect(c.baseline.memory.totalNeedGB).toBeCloseTo(4.92 + c.baseline.result.vram.kv + c.baseline.result.vram.buffer, 9);
+  });
+});
+
+describe('서로 다른 GPU 섞기 (docs/02 §6 베타, 10-03 D67)', () => {
+  it('자격: 같은 계열(NVIDIA·AMD)의 데스크톱 dGPU 끼리만, FP16 크리플·노트북·Arc·통합·CPU 제외', () => {
+    expect(canMixWith(gpu('rtx-3090'), gpu('rtx-3060-12gb'))).toBe(true);
+    expect(canMixWith(gpu('rx-7900-xtx'), gpu('rx-7800-xt'))).toBe(true);
+    expect(canMixWith(gpu('rtx-3090'), gpu('rx-7900-xtx'))).toBe(false);
+    expect(canMixWith(gpu('rtx-3090'), gpu('gtx-1080-ti'))).toBe(false);
+    expect(canMixWith(gpu('rtx-4090'), gpu('rtx-4090-laptop'))).toBe(false);
+    expect(canMixWith(gpu('arc-b580'), gpu('arc-b580'))).toBe(false);
+    expect(canMixWith(gpu('apple-m4'), gpu('rtx-3060-12gb'))).toBe(false);
+    expect(canMixWith(gpu('cpu-ddr5-5600-2ch'), gpu('rtx-3060-12gb'))).toBe(false);
+    // 섞을 수 있는 카드 = NVIDIA 데스크톱 24 + AMD 6 (GTX 1080 Ti 제외)
+    expect(seed.gpus.filter(isMixableGpu).map((g) => g.effClass).sort()).toEqual([...Array(6).fill('amd'), ...Array(24).fill('nvidia')]);
+  });
+
+  const mixed = (ramGB: number) => hardwareConfigs(gpu('rtx-3090'), seed.gpus, { ramGB, extraGpus: [gpu('rtx-3060-12gb')] })[0]!;
+
+  it('카드 목록 = 1번 × 장수 + 추가 카드, 화면 출력은 1번만 — 추가 카드가 없으면 예전 하드웨어 그대로', () => {
+    expect(mixed(64).hw.gpus).toEqual([
+      { vramGB: 24, memBandwidthGBs: 936, effClass: 'nvidia', isDisplayGpu: true },
+      { vramGB: 12, memBandwidthGBs: 360, effClass: 'nvidia' },
+    ]);
+    const three = hardwareConfigs(gpu('rtx-3090'), seed.gpus, { gpuCount: 2, isDisplayGpu: false, extraGpus: [gpu('rtx-3060-12gb')] })[0]!;
+    expect(three.hw.gpus?.map((u) => [u.vramGB, u.isDisplayGpu ?? false])).toEqual([[24, false], [24, false], [12, false]]);
+    expect(hardwareConfigs(gpu('rtx-3090'), seed.gpus, { gpuCount: 2, extraGpus: [] })[0]!.hw).toEqual(
+      hardwareConfigs(gpu('rtx-3090'), seed.gpus, { gpuCount: 2 })[0]!.hw,
+    );
+    expect(hardwareConfigs(gpu('rtx-3090'), seed.gpus, { gpuCount: 2 })[0]!.hw.gpuCount).toBe(2);
+  });
+
+  it('실측은 붙이지 않는다(1장 기준) — 통합 메모리·CPU 는 그대로 조인된다', () => {
+    const g = gpu('rtx-3090');
+    const measuredModels = seed.models.filter((m) =>
+      seed.benchmarks.some((bp) => bp.gpuId === 'rtx-3090' && bp.modelId === m.id),
+    );
+    expect(measuredModels.length).toBeGreaterThan(0);
+    let joinedAlone = 0;
+    for (const m of measuredModels) {
+      const alone = assessCombo(seed, g, hardwareConfigs(g, seed.gpus)[0]!, m);
+      if (alone.perQuant.some((q) => q.measured)) joinedAlone += 1;
+      const pair = assessCombo(seed, g, mixed(32), m, { theoretical: true });
+      expect(pair.perQuant.every((q) => q.measured === undefined && q.result.confidence === 'theoretical'), m.id).toBe(true);
+    }
+    expect(joinedAlone).toBeGreaterThan(0);
+  });
+
+  it('RAM 힌트 구성은 함께 꽂은 카드를 유지한다 (1번 GPU 로 다시 만들지 않는다)', () => {
+    const g = gpu('rtx-3090');
+    const config = mixed(16);
+    const c = assessCombo(seed, g, config, model('gpt-oss-120b'), { ramHint: true, theoretical: true });
+    expect(c.ramHint).toBeDefined();
+    expect(c.ramHint!.config.hw.gpus).toHaveLength(2);
+    expect(c.ramHint!.config.hw).toEqual({ ...config.hw, ramGB: c.ramHint!.ramGB });
+  });
+
+  it('필요량 문장의 연산 버퍼는 카드마다 (엔진 fit 과 같은 값)', () => {
+    const g = gpu('rtx-3090');
+    const one = assessCombo(seed, g, hardwareConfigs(g, seed.gpus)[0]!, model('llama-3.3-70b'));
+    const pair = assessCombo(seed, g, mixed(32), model('llama-3.3-70b'), { theoretical: true });
+    expect(pair.baseline.memory.totalNeedGB - one.baseline.memory.totalNeedGB).toBeCloseTo(0.5 + 0.3 * (8192 / 32768), 9);
+    // 3090 + 3060 = 36GB(사용 가능 35.4) — 70B Q4_K_M 은 부분 오프로드, 분모는 VRAM 합
+    expect(pair.baseline.result.mode).toBe('partial-offload');
+    expect(pair.baseline.result.vram.limit).toBe(36);
+    expect(pair.baseline.memory.gpuUsableGB).toBeCloseTo(35.4, 9);
   });
 });

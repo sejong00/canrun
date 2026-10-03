@@ -3,7 +3,7 @@
  * 카탈로그 GPU 는 `hardwareConfigs` 에 사용자 선택(RAM·DDR·OS·화면 출력)을 넘기고, 커스텀 하드웨어는 합성 GpuCore 로
  * 같은 경로를 태운 뒤 결과를 theoretical 로 고정한다.
  */
-import { hardwareConfigs, HUB_POLICY, type CatalogLite, type GpuCore, type HwConfig } from '@canrun/data/client';
+import { canMixWith, hardwareConfigs, HUB_POLICY, type CatalogLite, type GpuCore, type HwConfig } from '@canrun/data/client';
 import {
   DDR_PROFILE,
   cpuProfileFor,
@@ -22,8 +22,10 @@ export type ResolvedHardware = {
   config: HwConfig;
   /** 커스텀 하드웨어·멀티 GPU — 추정은 전부 이론(±30%) */
   theoretical: boolean;
-  /** 같은 dGPU 장수 (1 이상) */
+  /** dGPU 전체 장수 (1 이상) — 1번 GPU 장수 + 함께 꽂은 카드 수 */
   gpuCount: number;
+  /** 함께 꽂은 다른 카드 (10-03 D67, 넣은 순서) — 없으면 빈 배열. 1번 GPU 장수 = gpuCount − extras.length */
+  extras: GpuCore[];
   /** 실제 평가에 쓰인 값 (기본값 채움) */
   ramGB: number;
   os: HwConfig['hw']['os'];
@@ -88,7 +90,7 @@ export function resolveHardware(state: CalcState, catalog: CatalogLite): Resolve
       ramBandwidthGBs: ddrBandwidth(catalog, state.ddr),
       ...(gpuCount > 1 ? { gpuCount } : {}),
     });
-    return config ? { gpu, config, theoretical: true, ramGB, os, gpuCount } : undefined;
+    return config ? { gpu, config, theoretical: true, ramGB, os, gpuCount, extras: [] } : undefined;
   }
 
   let gpu = findGpu(catalog, hw.gpuId);
@@ -100,16 +102,22 @@ export function resolveHardware(state: CalcState, catalog: CatalogLite): Resolve
     gpu.kind === 'dgpu'
       ? (state.ramGB ?? defaultRam(hw, catalog))
       : snapRam(state.ramGB ?? defaultRam(hw, catalog), ramOptions(hw, catalog));
-  // 멀티 GPU(D58)는 보정 표본 밖 — 이론 추정으로 고정
-  const gpuCount = gpu.kind === 'dgpu' ? (state.gpus ?? 1) : 1;
+  // 멀티 GPU(같은 카드 D58·서로 다른 카드 D67)는 보정 표본 밖 — 이론 추정으로 고정
+  const primaryCount = gpu.kind === 'dgpu' ? (state.gpus ?? 1) : 1;
+  const extras =
+    gpu.kind === 'dgpu'
+      ? (state.plus ?? []).map((id) => findGpu(catalog, id)).filter((g): g is GpuCore => g !== undefined && canMixWith(gpu, g))
+      : [];
+  const gpuCount = primaryCount + extras.length;
   const [config] = hardwareConfigs(gpu, catalog.gpus, {
     ramGB,
     os,
     isDisplayGpu: state.display,
     ramBandwidthGBs: ddrBandwidth(catalog, state.ddr),
-    ...(gpuCount > 1 ? { gpuCount } : {}),
+    ...(primaryCount > 1 ? { gpuCount: primaryCount } : {}),
+    ...(extras.length > 0 ? { extraGpus: extras } : {}),
   });
-  return config ? { gpu, config, theoretical: gpuCount > 1, ramGB, os, gpuCount } : undefined;
+  return config ? { gpu, config, theoretical: gpuCount > 1, ramGB, os, gpuCount, extras } : undefined;
 }
 
 /**

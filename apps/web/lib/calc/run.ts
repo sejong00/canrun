@@ -6,16 +6,19 @@ import {
   assessCombo,
   commandPlan,
   compareCombos,
+  estimateAt,
   hardwareConfigs,
   HUB_POLICY,
   pickConfigCombo,
   verdictRank,
   type CatalogLite,
   type ComboAssessment,
+  type GpuCore,
+  type HwConfig,
   type ModelCore,
   type ModelQuantCore,
 } from '@canrun/data/client';
-import type { Os, Verdict } from '@canrun/engine';
+import type { Os, Result, Verdict } from '@canrun/engine';
 import { resolveHardware, type ResolvedHardware } from './hardware';
 import { normalize, sizeBucket, type CalcState, type SizeBucket } from './state';
 
@@ -36,8 +39,18 @@ export type ResultCard = {
    * `pickConfigCombo`). 사용자 구성과 다르면 "상세" 링크에 부기한다. dGPU 는 `differsFromHubAssumption`(D2) 이 맡는다
    */
   hubConfig?: { ramGB: number; os: Os };
-  /** 불러온 모델(콤보 페이지가 없다)만: 표시 quant 의 llama.cpp 명령 — 콤보 페이지 스니펫과 같은 조립 */
+  /**
+   * 표시 quant 의 llama.cpp 명령 — 콤보 페이지 스니펫과 같은 조립. 불러온 모델(콤보 페이지가 없다)과 GPU 여러 장 구성(콤보 페이지 명령은
+   * 1장 기준이다 — 10-03 D67)에만
+   */
   command?: string;
+  /** 명령이 `-ngl`·`--n-cpu-moe` 없이 llama.cpp `--fit` 에 배치를 맡긴다 (GPU 여러 장의 cpu-moe — D67) */
+  commandFitAuto?: boolean;
+  /**
+   * 서로 다른 카드 구성(D67)에서 표시 quant 가 카드 한 장에 다 들어가고 그 카드만 쓰면 더 빠를 때 — 가장 빠른 카드와 그때의 추정.
+   * 판정·표시 속도는 llama.cpp 기본(모든 카드에 나눠 올리기) 그대로이고 이건 참고 줄이다
+   */
+  singleGpu?: { gpu: GpuCore; result: Result };
 };
 
 export type VerdictCounts = Record<Verdict, number> & { otherQuant: number };
@@ -68,12 +81,44 @@ function countVerdicts(cards: readonly ResultCard[]): VerdictCounts {
   return counts;
 }
 
+/**
+ * 서로 다른 카드 구성(D67): 표시 quant 를 카드 한 장씩으로 다시 평가해 전량 탑재되고 지금 추정보다 빠른 카드 중 가장 빠른 것.
+ * 1번 카드만 화면 출력 예약을 진다(사용자 설정 그대로). 같은 카드 묶음은 한 번만 본다
+ */
+function fastestSingleGpu(
+  catalog: CatalogLite,
+  hardware: ResolvedHardware,
+  model: ModelCore,
+  combo: ComboAssessment,
+  ctx: number,
+  kvQuant: CalcState['kv'],
+): ResultCard['singleGpu'] {
+  const q = combo.display;
+  if (hardware.extras.length === 0 || !q.fits || q.result.mode !== 'full-gpu') return undefined;
+  const { config } = hardware;
+  const cards = [hardware.gpu, ...hardware.extras].filter((g, i, all) => all.findIndex((x) => x.id === g.id) === i);
+  let best: ResultCard['singleGpu'];
+  for (const card of cards) {
+    const single: HwConfig = hardwareConfigs(card, catalog.gpus, {
+      ramGB: config.ramGB,
+      os: config.hw.os,
+      isDisplayGpu: card.id === hardware.gpu.id && config.hw.isDisplayGpu === true,
+      ramBandwidthGBs: config.hw.ramBandwidthGBs,
+    })[0]!;
+    const { fit, result } = estimateAt(card, single, model, q, { ctx, kvQuant, theoretical: true });
+    if (fit.mode !== 'full-gpu' || result.tgTokS.est <= q.result.tgTokS.est) continue;
+    if (!best || result.tgTokS.est > best.result.tgTokS.est) best = { gpu: card, result };
+  }
+  return best;
+}
+
 export function assembleResults(catalog: CatalogLite, rawState: CalcState, extra?: ExtraModel): RunResult | undefined {
   // 하드웨어 종류에 맞지 않는 필드(CPU 프로필의 DDR, Apple 의 OS 등)를 먼저 정리한다
   const state = normalize(rawState, catalog);
   const hardware = resolveHardware(state, catalog);
   if (!hardware) return undefined;
   const { gpu, config, theoretical } = hardware;
+  const multi = hardware.gpuCount > 1 && gpu.id !== 'custom';
   // 통합·CPU 의 콤보 페이지 구성 후보 (기본 인자 = 허브 경로와 동일). 옵션이 하나면 평가 없이 그 구성
   const hubConfigs = gpu.kind !== 'dgpu' && !theoretical ? hardwareConfigs(gpu, catalog.gpus) : [];
 
@@ -97,6 +142,10 @@ export function assembleResults(catalog: CatalogLite, rawState: CalcState, extra
       const picked = hubConfigs[combos.indexOf(pickConfigCombo(combos))]!;
       hubConfig = { ramGB: picked.ramGB, os: picked.hw.os };
     }
+    // GPU 여러 장: 콤보 페이지 명령은 1장 기준이라 이 구성의 명령을 카드에 직접 단다(D67 — cpu-moe 는 --fit 자동 배치)
+    const row = multi ? catalog.modelQuants.find((r) => r.modelId === model.id && r.quant === combo.display.quant) : undefined;
+    const llama = row && combo.display.fits ? commandPlan(gpu, config, model, row, combo.display, { ctx, kvQuant: state.kv }).llamaCpp : undefined;
+    const singleGpu = fastestSingleGpu(catalog, hardware, model, combo, ctx, state.kv);
     return {
       model,
       combo,
@@ -105,6 +154,8 @@ export function assembleResults(catalog: CatalogLite, rawState: CalcState, extra
       measuredCount,
       bucket: sizeBucket(model.paramsB),
       ...(hubConfig ? { hubConfig } : {}),
+      ...(llama ? { command: llama.command, ...(llama.ngl === 'auto' ? { commandFitAuto: true } : {}) } : {}),
+      ...(singleGpu ? { singleGpu } : {}),
     };
   });
 
@@ -143,8 +194,8 @@ export function assembleResults(catalog: CatalogLite, rawState: CalcState, extra
     });
     // 명령은 실제 파일(저장소·파일 이름)이 있는 불러온 모델만 — 직접 입력 모델은 받을 파일이 없다
     const row = extra.origin === 'hf' ? extra.rows.find((r) => r.quant === combo.display.quant) : undefined;
-    const command =
-      row && combo.display.fits ? commandPlan(gpu, config, extra.model, row, combo.display, { ctx, kvQuant: state.kv }).llamaCpp?.command : undefined;
+    const llama = row && combo.display.fits ? commandPlan(gpu, config, extra.model, row, combo.display, { ctx, kvQuant: state.kv }).llamaCpp : undefined;
+    const singleGpu = fastestSingleGpu(withExtra, hardware, extra.model, combo, ctx, state.kv);
     pinned = {
       model: extra.model,
       combo,
@@ -152,7 +203,8 @@ export function assembleResults(catalog: CatalogLite, rawState: CalcState, extra
       clamped: ctx < state.ctx,
       measuredCount: 0,
       bucket: sizeBucket(extra.model.paramsB),
-      ...(command ? { command } : {}),
+      ...(llama ? { command: llama.command, ...(llama.ngl === 'auto' ? { commandFitAuto: true } : {}) } : {}),
+      ...(singleGpu ? { singleGpu } : {}),
     };
   }
 

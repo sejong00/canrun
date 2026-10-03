@@ -14,6 +14,8 @@ export function llamaNotes(t: Translate, locale: string, plan: CommandPlan, kvQ8
   if (!llama) return [];
   const notes: SnippetNote[] = [];
   if (llama.ngl === 'all') notes.push({ key: 'ngl', text: t('nglAll') });
+  // GPU 여러 장의 cpu-moe(10-03 D67) — 두 옵션 없이 --fit 자동 배치. 콤보 페이지는 1장이라 계산기만 해당
+  else if (llama.ngl === 'auto') notes.push({ key: 'cpuMoeFit', text: t('cpuMoeFit') });
   else if (llama.ngl === 0) notes.push({ key: 'ngl', text: t('nglZero') });
   else notes.push({ key: 'ngl', text: t('nglN', { n: llama.ngl, layers: plan.layers }) });
   if (llama.nCpuMoe !== undefined) {
