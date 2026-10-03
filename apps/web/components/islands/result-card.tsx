@@ -48,6 +48,8 @@ export function ResultCard({
   const licenseClass = classifyLicense(model.license);
   const custom = hardware.gpu.id === 'custom';
   const detailQuery = comboDetailQuery(state, hardware, card.ctx);
+  // `?ram=N` 이면 콤보 페이지가 사용자 RAM 으로 열린다 — 라벨의 허브 가정에서 RAM 을 뺀다 (10-03 D64 리뷰 반영)
+  const ramShown = detailQuery.startsWith('?ram=');
   const comboHref = custom || external ? undefined : `${prefix}/can-i-run/${model.id}/on/${hardware.gpu.id}${detailQuery}`;
   // 컨텍스트 여유는 돌아가는 카드에만 — F(미탑재·너무 느림)엔 `maxCtx` 가 없고 현재 ctx 를 여유로 보이면 거짓
   const maxCtx = q.result.verdict === 'F' ? undefined : (combo.maxCtx ?? card.ctx);
@@ -65,8 +67,8 @@ export function ResultCard({
   const osLabel = (os: ResolvedHardware['os']) => t.calc(os === 'windows' ? 'osWindows' : os === 'linux' ? 'osLinux' : 'osMacos');
   const detailsLabel =
     hardware.gpu.kind === 'dgpu'
-      ? differsFromHubAssumption(state, hardware)
-        ? t.calc('cardDetailsHub')
+      ? differsFromHubAssumption(state, hardware, ramShown)
+        ? t.calc(ramShown ? 'cardDetailsHubNoRam' : 'cardDetailsHub')
         : t.calc('cardDetails')
       : hubOther && (hubOther.ramGB !== hardware.ramGB || hubOther.os !== hardware.os)
         ? t.calc('cardDetailsHubOther', { ram: formatInt(locale, hubOther.ramGB), os: osLabel(hubOther.os) })

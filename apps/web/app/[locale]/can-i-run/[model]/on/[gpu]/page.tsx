@@ -33,6 +33,7 @@ import {
   assumeShort,
   comboFaq,
   comboMemoryLabel,
+  ramStepSentence,
   titleVerdictText,
   usableGBFor,
   verdictSentence,
@@ -187,51 +188,55 @@ export default async function ComboPage({ params }: Props) {
     };
   });
   // 시스템 RAM 토글 (10-03 D64) — 맨 위 판정이 RAM 계단에서 바뀌는 dGPU 페이지만. 엔진을 싣지 않고 서버가 RAM 마다 완성한
-  // 판정 문장(헤더와 같은 verdictSentence)과, 들어가는 양자화마다 실행 계획 1개(명령은 RAM 과 무관 — 양자화로 중복 제거)를 넘긴다.
+  // 판정 문장(ramStepSentence — 헤더와 같은 문장 규칙, 안 들어가면 시스템 RAM 몫으로)과, 들어가는 양자화마다 실행 계획 1개
+  // (명령은 RAM 과 무관 — 양자화로 중복 제거)를 넘긴다. 안내 문장·코드 영역 이름은 RAM 을 밝혀야 해서 단계마다 따로 만든다.
   // 정적 기준 RAM(qConfig — 보통 32GB, RAM 힌트 페이지는 힌트 RAM)은 정적 블록이 그 자체라 문장·계획을 싣지 않는다
   let ramToggle: CtxKvRam | undefined;
   if (page.ramSensitive) {
     const initialRam = page.qConfig.ramGB;
     const plans: RamPlanView[] = [];
-    const planOf = new Map<string, number>();
+    const planOf = new Map<string, { index: number; tag: string }>();
     const options = page.ramSteps.map((step) => {
       const d = step.combo.display;
       const isInitial = step.ramGB === initialRam;
-      let plan = -1;
-      if (!isInitial && d.fits) {
-        if (!planOf.has(d.quant)) {
-          const row = catalog.modelQuants.find((r) => r.modelId === model.id && r.quant === d.quant)!;
-          const cp = commandPlan(gpu, step.config, model, row, d);
-          if (cp.llamaCpp) {
-            planOf.set(d.quant, plans.length);
-            plans.push({
-              intro: tSnippet('intro', { quant: cp.file.tag }),
-              file: snippetFileText(tSnippet, locale, cp),
-              command: cp.llamaCpp.command,
-              notes: llamaNotes(tSnippet, locale, cp, kvQ8).map((n) => n.text),
-              ...(cp.ollama
-                ? {
-                    ollama: {
-                      code: `${cp.ollama.serve}\n${cp.ollama.run}`,
-                      replSet: cp.ollama.replSet,
-                      notes: ollamaNotes(tSnippet, cp),
-                      serveHint: cp.os === 'windows' ? tSnippet('serveWindows') : tSnippet('serveUnix'),
-                    },
-                  }
-                : { ollamaOmitted: tSnippet('ollamaSharded') }),
-            });
-          }
+      const ram = formatInt(locale, step.ramGB);
+      if (!isInitial && d.fits && !planOf.has(d.quant)) {
+        const row = catalog.modelQuants.find((r) => r.modelId === model.id && r.quant === d.quant)!;
+        const cp = commandPlan(gpu, step.config, model, row, d);
+        if (cp.llamaCpp) {
+          planOf.set(d.quant, { index: plans.length, tag: cp.file.tag });
+          plans.push({
+            file: snippetFileText(tSnippet, locale, cp),
+            command: cp.llamaCpp.command,
+            notes: llamaNotes(tSnippet, locale, cp, kvQ8).map((n) => n.text),
+            ...(cp.ollama
+              ? {
+                  ollama: {
+                    code: `${cp.ollama.serve}\n${cp.ollama.run}`,
+                    replSet: cp.ollama.replSet,
+                    notes: ollamaNotes(tSnippet, cp),
+                    serveHint: cp.os === 'windows' ? tSnippet('serveWindows') : tSnippet('serveUnix'),
+                  },
+                }
+              : { ollamaOmitted: tSnippet('ollamaSharded') }),
+          });
         }
-        plan = planOf.get(d.quant) ?? -1;
       }
+      const planned = !isInitial && d.fits ? planOf.get(d.quant) : undefined;
       return {
         ram: step.ramGB,
-        label: t.gpuHub('ramOption', { ram: formatInt(locale, step.ramGB) }),
-        summary: isInitial
-          ? ''
-          : t.combo('hintPrefix', { ram: formatInt(locale, step.ramGB) }) +
-            verdictSentence(t, { ...page, combo: step.combo, config: step.config }, locale),
-        plan,
+        label: t.gpuHub('ramOption', { ram }),
+        summary: isInitial ? '' : ramStepSentence(t, page, step, locale),
+        plan: planned?.index ?? -1,
+        ...(planned
+          ? {
+              view: {
+                intro: tCtx('ramIntro', { ram, quant: planned.tag }),
+                llamaCpp: tCtx('ramRegion', { ram, tool: tSnippet('llamaCpp') }),
+                ollama: tCtx('ramRegion', { ram, tool: tSnippet('ollama') }),
+              },
+            }
+          : {}),
       };
     });
     ramToggle = {
@@ -248,6 +253,8 @@ export default async function ComboPage({ params }: Props) {
       },
     };
   }
+  // RAM 토글이 있는 섹션의 제목 — "실행 방법"이 다른 RAM 의 명령을 고르는 곳으로 이 이름을 가리킨다
+  const ramSection = t.combo('ctxTitleRam');
   // 메모리 열의 분모 — dGPU 는 VRAM 전체, 통합은 GPU 사용 가능량 (허브 표와 동일)
   const memTotal = gpu.kind === 'dgpu' ? (gpu.vramGB ?? 0) : q.memory.gpuUsableGB;
 
@@ -488,7 +495,7 @@ export default async function ComboPage({ params }: Props) {
 
         <section aria-labelledby="ctx-heading" className="flex flex-col gap-3">
           <h2 id="ctx-heading" className="text-xl font-semibold tracking-tight">
-            {t.combo(ramToggle ? 'ctxTitleRam' : 'ctxTitle')}
+            {ramToggle ? ramSection : t.combo('ctxTitle')}
           </h2>
           <CtxKvControls
             cells={cells}
@@ -572,13 +579,19 @@ export default async function ComboPage({ params }: Props) {
             {tSnippet('title')}
           </h2>
           {page.plan.llamaCpp ? (
-            <CommandSnippet plan={page.plan} kvGB={kvQ8} hintRamGB={page.usesRamHint ? page.qConfig.ramGB : undefined} />
+            <CommandSnippet
+              plan={page.plan}
+              kvGB={kvQ8}
+              hintRamGB={page.usesRamHint ? page.qConfig.ramGB : undefined}
+              {...(ramToggle ? { ramBasis: { ramGB: page.qConfig.ramGB, section: ramSection } } : {})}
+            />
           ) : (
             <p data-no-run className="rounded-lg border border-border p-4 text-sm text-muted-foreground">
               {tSnippet(gpu.kind === 'cpu' ? 'noFitCpu' : gpu.kind === 'unified' ? 'noFitUnified' : 'noFit', {
                 usable: gb(usableGBFor(page, q)),
                 ram: gb(q.memory.ramUsableGB),
               })}
+              {ramToggle && ` ${tSnippet('ramOther', { section: ramSection })}`}
             </p>
           )}
         </section>

@@ -404,6 +404,39 @@ describe('ramSteps — dGPU 시스템 RAM 계단 (10-03 D64)', () => {
     }
   });
 
+  it('the best option a RAM row shows (display, recommended, last resort) never gets worse as RAM grows (review fix)', () => {
+    // 표시 양자화는 기준이 불가일 때만 추천으로 바뀐다 — 정적 목록이 추천·최후 수단을 함께 적어야 RAM 을 늘린 행이 나빠 보이지 않는다
+    const best = (c: (typeof all)[number]['combo']) =>
+      Math.max(
+        verdictRank(c.display.result.verdict),
+        c.recommended ? verdictRank(c.recommended.result.verdict) : 0,
+        c.lastResort ? verdictRank(c.lastResort.result.verdict) : 0,
+      );
+    for (const { g, m, steps } of all) {
+      for (let i = 1; i < steps.length; i += 1) {
+        expect(best(steps[i]!.combo), `${m.id}@${g.id} ${steps[i - 1]!.ramGB}→${steps[i]!.ramGB}GB`).toBeGreaterThanOrEqual(
+          best(steps[i - 1]!.combo),
+        );
+      }
+    }
+  });
+
+  it('a baseline that misses at one RAM step but fits at a larger one needs more system RAM than that step can use', () => {
+    // RAM 토글 문장(ramStepSentence)이 "시스템 RAM 에 X GB 를 둬야 하는데 쓸 수 있는 RAM 은 Y GB" 로 말하는 근거
+    let checked = 0;
+    for (const { g, m, steps } of all) {
+      for (const s of steps) {
+        const base = s.combo.baseline;
+        if (base.fReason !== 'no-fit') continue;
+        const fitting = steps.map((x) => x.combo.perQuant.find((q) => q.quant === base.quant)!).find((q) => q.fits);
+        if (!fitting) continue;
+        expect(fitting.memory.ramGB, `${m.id}@${g.id} ${base.quant} ${s.ramGB}GB`).toBeGreaterThan(base.memory.ramUsableGB);
+        checked += 1;
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
+  });
+
   it('some pages change with RAM (gpt-oss-120b on an 8 GB card does), most do not; verdict changes imply sensitivity', () => {
     const sensitive = all.filter((c) => ramSensitive(c.steps));
     expect(sensitive.length).toBeGreaterThan(0);

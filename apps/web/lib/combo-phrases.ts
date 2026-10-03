@@ -2,7 +2,7 @@
  * 콤보 페이지 문장 조립 — 제목·description·헤더·FAQ 가 **같은 판정 문장**을 쓴다 (결정 D14).
  * 모든 속도 문장은 speedPhrase(밴드 + 신뢰 라벨)를 거친다 (CLAUDE.md 규칙 3).
  */
-import { maxCtxAtVerdict, titleVerdict, type QuantAssessment } from '@canrun/data';
+import { maxCtxAtVerdict, titleVerdict, type QuantAssessment, type RamStep } from '@canrun/data';
 import type { Locale } from '@/i18n/routing';
 import type { ComboPage } from './combos';
 import { formatCtx, formatGB, formatInt, formatUSD } from './format';
@@ -196,6 +196,57 @@ export function verdictSentence(t: ComboTranslators, page: ComboPage, locale: Lo
     });
   }
   return sentence;
+}
+
+/**
+ * 시스템 RAM 토글의 단계 문장 (10-03 D64 리뷰 반영) — "시스템 RAM 16GB 기준: " + 헤더와 같은 판정 문장 규칙.
+ * 단, 그 RAM 에서 기준 양자화가 안 들어가면 VRAM 몫만 말하는 `verdictNoFit*`(모자란 양이 RAM 단계마다 같다) 대신
+ * 시스템 RAM 몫으로 말한다: dGPU 에서 들어가는 양자화의 RAM 몫은 RAM 용량과 무관하므로(combo.test) 그 양자화가
+ * 들어가는 더 큰 단계에서 읽고, 계단 끝(128GB)에서도 안 들어가면 그 사실만 말한다. RAM 힌트 꼬리("RAM 96GB 구성의
+ * 판정")는 붙이지 않는다 — 목록과 라디오가 이미 그 RAM 을 보여 준다.
+ */
+export function ramStepSentence(t: ComboTranslators, page: ComboPage, step: RamStep, locale: Locale): string {
+  const prefix = t.combo('hintPrefix', { ram: formatInt(locale, step.ramGB) });
+  const { baseline: base, display } = step.combo;
+  if (base.fReason !== 'no-fit') {
+    return prefix + verdictSentence(t, { ...page, combo: step.combo, config: step.config }, locale);
+  }
+  const gb = (v: number) => formatGB(locale, v);
+  const usable = base.memory.ramUsableGB;
+  const fitting = page.ramSteps
+    .map((s) => s.combo.perQuant.find((x) => x.quant === base.quant))
+    .find((x) => x?.fits);
+  let sentence: string;
+  if (!fitting) {
+    sentence = t.combo('ramStepNoFitAny', {
+      quant: base.quant,
+      max: formatInt(locale, page.ramSteps.at(-1)?.ramGB ?? step.ramGB),
+    });
+  } else if (gb(fitting.memory.ramGB) === gb(usable)) {
+    // 반올림하면 같은 수(gpt-oss-120b 64GB: 60.004 vs 60) — "60.0GB 가 필요한데 60.0GB" 로 읽히지 않게
+    sentence = t.combo('ramStepNoFitTight', { quant: base.quant, usable: gb(usable) });
+  } else {
+    sentence = t.combo('ramStepNoFit', { quant: base.quant, need: gb(fitting.memory.ramGB), usable: gb(usable) });
+  }
+  // 기준이 안 들어가면 표시 양자화는 추천(F 아님)이거나 기준 그대로(미탑재) — 표시가 F 면 쓸 만한 파일이 없다
+  if (display.result.verdict === 'F') {
+    sentence += t.combo('ramStepNone');
+  } else {
+    sentence += t.combo('altSuffix', {
+      altQuant: quantText(t.hint, display),
+      altVerdict: t.verdict(display.result.verdict),
+      altSpeed: speedPhrase(t.common, t.confidence, locale, display),
+    });
+  }
+  const { lastResort } = step.combo;
+  if (lastResort && display.tier !== 'desperate') {
+    sentence += t.combo('lastResortSuffix', {
+      quant: lastResort.quant,
+      verdict: t.verdict(lastResort.result.verdict),
+      speed: speedPhrase(t.common, t.confidence, locale, lastResort),
+    });
+  }
+  return prefix + sentence;
 }
 
 /** FAQ 3문항 (docs/04 §4 ⑧) — 표와 같은 계산 결과에서 수치를 뽑는다 */

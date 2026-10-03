@@ -27,12 +27,18 @@ export function CommandSnippet({
   plan,
   kvGB,
   hintRamGB,
+  ramBasis,
 }: {
   plan: CommandPlan;
   /** 8k 기준 q8_0 KV 캐시 크기 (각주용) */
   kvGB: number;
   /** F 페이지: RAM 힌트 구성으로 만든 명령임을 밝힌다 */
   hintRamGB?: number;
+  /**
+   * 시스템 RAM 에 따라 명령이 달라지는 dGPU 페이지(10-03 D64 리뷰 반영): 이 명령의 RAM 과 다른 RAM 의 명령을 고르는 섹션
+   * 이름 — 계산기 "실행 방법" 링크(`?ram=N#snippet`)로 바로 들어와도 이 블록이 어느 RAM 의 명령인지 읽힌다
+   */
+  ramBasis?: { ramGB: number; section: string };
 }) {
   const locale = useLocale();
   const t = useTranslations('Snippet');
@@ -54,8 +60,13 @@ export function CommandSnippet({
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm text-muted-foreground">{t('intro', { quant: plan.file.tag })}</p>
-      {hintRamGB !== undefined && (
-        <p className="text-sm text-muted-foreground">{t('hintConfig', { ram: formatInt(locale, hintRamGB) })}</p>
+      {(hintRamGB !== undefined || ramBasis) && (
+        <p {...(ramBasis ? { 'data-snippet-ram': ramBasis.ramGB } : {})} className="text-sm text-muted-foreground">
+          {hintRamGB !== undefined
+            ? t('hintConfig', { ram: formatInt(locale, hintRamGB) })
+            : t('ramBasis', { ram: formatInt(locale, ramBasis!.ramGB) })}
+          {ramBasis && ` ${t('ramOther', { section: ramBasis.section })}`}
+        </p>
       )}
       <p className="text-sm break-all">{fileText}</p>
 

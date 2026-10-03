@@ -177,6 +177,8 @@ for (const locale of LOCALES) {
       await expect(summary).toContainText(quant);
       expect((await summary.textContent()) ?? '', 'rule 3 band').toMatch(RANGE_RE);
       await expect(summary).not.toHaveText(BELOW);
+      // 기준 파일이 안 들어가는 이유는 시스템 RAM 몫으로 말한다 — 16GB 에서 쓸 수 있는 RAM 12.0GB (리뷰 반영: VRAM 몫만 말하지 않는다)
+      await expect(summary).toContainText(/12[.,]0\s?GB/);
       await expect(row).toHaveAttribute('aria-current', 'true');
       await expect(page.locator('[data-ctx-cell][aria-current]')).toHaveCount(0);
       await expect(page.locator('[data-ctx-slider]')).toBeDisabled();
@@ -185,6 +187,9 @@ for (const locale of LOCALES) {
       // 아일랜드가 그리는 결과 블록: 설명·파일 줄·명령이 모두 고른 RAM 의 양자화를 따른다
       const result = page.locator('[data-ram-result="16"]');
       await expect(result.locator('p').nth(0), 'intro line').toContainText(quant);
+      await expect(result.locator('p').nth(0), 'intro line names the RAM').toContainText('16');
+      // 코드 영역 이름에 RAM 이 들어가 정적 스니펫의 같은 이름 영역과 구분된다
+      await expect(result.locator('[role="region"]').first()).toHaveAttribute('aria-label', /16/);
       await expect(result.locator('p').nth(1), 'file line').toContainText(quant);
       await expect(result.locator('[data-ram-code="llama.cpp"]')).toContainText(quant);
       await expect(result.locator('[data-ram-code="llama.cpp"]')).toContainText('-c 8192');
@@ -223,6 +228,21 @@ for (const locale of LOCALES) {
       expect(problems).toEqual([]);
     });
 
+    test('the calculator "How to run" link (?ram=16#snippet) lands on commands that say which RAM they are for', async ({ page }) => {
+      const problems = collectProblems(page);
+      await open(page, `${ramPath}?ram=16#snippet`);
+      const quant = (await page.locator('[data-ram-step="16"]').getAttribute('data-quant')) ?? '';
+      const assumedRam = (await page.locator('[data-ram-step][data-assumed]').getAttribute('data-ram-step')) ?? '';
+      // 앵커의 정적 명령은 정적 기준 RAM 의 것이라고 밝히고, 다른 RAM 의 명령이 있는 섹션 이름을 가리킨다
+      const note = page.locator('#snippet [data-snippet-ram]');
+      await expect(note).toHaveAttribute('data-snippet-ram', assumedRam);
+      await expect(note).toContainText(assumedRam);
+      await expect(note).toContainText(((await page.locator('#ctx-heading').textContent()) ?? '').trim());
+      // 그 섹션에는 16GB 가 골라져 있고 16GB 의 파일로 된 명령이 있다
+      await expect(page.locator('[data-ram-result="16"] [data-ram-code="llama.cpp"]')).toContainText(quant);
+      expect(problems).toEqual([]);
+    });
+
     test('a RAM-hint page starts at the hint RAM; a RAM where nothing fits shows no command', async ({ page }) => {
       await open(page, localePath(locale, '/can-i-run/gpt-oss-120b/on/rtx-4060'));
       const commandsRow = page.locator('[data-ram-step][data-commands]');
@@ -241,6 +261,12 @@ for (const locale of LOCALES) {
     test('a page without a static run command shows the command a bigger RAM allows, never "the commands below"', async ({ page }) => {
       await open(page, localePath(locale, '/can-i-run/llama-3.3-70b/on/rtx-5060'));
       await expect(page.locator('[data-no-run]')).toBeVisible();
+      // 명령이 없는 자리에서도 다른 RAM 의 명령이 있는 곳을 가리킨다
+      await expect(page.locator('[data-no-run]')).toContainText(((await page.locator('#ctx-heading').textContent()) ?? '').trim());
+      // 판정만 같고 들어가는지만 바뀌는 행도 어느 파일인지 적는다 (리뷰 반영)
+      for (const row of await page.locator('[data-ram-step]').all()) {
+        await expect(row).toContainText((await row.getAttribute('data-quant')) ?? '');
+      }
       const runs = page.locator('[data-ram-step][data-fits="true"]');
       expect(await runs.count(), 'some RAM step fits').toBeGreaterThan(0);
       const ram = (await runs.first().getAttribute('data-ram-step')) ?? '';
@@ -270,8 +296,23 @@ for (const locale of LOCALES) {
     test('the RAM result block does not widen the page', async ({ page }) => {
       await open(page, localePath(locale, '/can-i-run/qwen3-30b-a3b-2507/on/rtx-4060?ram=16'));
       await expect(page.locator('[data-ram-result="16"] [data-ram-code="llama.cpp"]')).toBeVisible();
-      const scrollX = (await page.evaluate('(() => { window.scrollTo(100, 0); return window.scrollX; })()')) as number;
-      expect(scrollX).toBe(0);
+      // 레이아웃으로 잰다 — isMobile 에뮬레이션은 넓어진 내용에 맞춰 레이아웃 뷰포트를 키워 scrollX 검사로는 잡히지 않는다(리뷰 지적).
+      // fieldset 기본 min-inline-size(min-content)가 줄바꿈 없는 명령 폭까지 늘어나지 않고, 명령은 코드 영역 안에서 가로로 스크롤된다
+      const box = (await page.evaluate(`(() => {
+        const right = (s) => document.querySelector(s).getBoundingClientRect().right;
+        const code = document.querySelector('[data-ram-result="16"] [role="region"]');
+        return {
+          main: right('main'),
+          fieldset: right('[data-ctx-controls]'),
+          result: right('[data-ram-result="16"]'),
+          code: code.getBoundingClientRect().right,
+          scrolls: code.scrollWidth > code.clientWidth,
+        };
+      })()`)) as { main: number; fieldset: number; result: number; code: number; scrolls: boolean };
+      expect(box.fieldset, 'fieldset inside <main>').toBeLessThanOrEqual(box.main + 0.5);
+      expect(box.result, 'RAM result inside <main>').toBeLessThanOrEqual(box.main + 0.5);
+      expect(box.code, 'code region inside <main>').toBeLessThanOrEqual(box.main + 0.5);
+      expect(box.scrolls, 'the long command scrolls inside its region').toBe(true);
     });
   });
 

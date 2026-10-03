@@ -87,6 +87,10 @@ describe('assembleResults — options', () => {
     const big = run.all.find((c) => c.model.id === 'gpt-oss-120b')!;
     expect(big.combo.ramHint?.ramGB).toBeGreaterThan(16);
     expect(differsFromHubAssumption(withGpu('rtx-4060', { ramGB: 16 }), run.hardware)).toBe(true);
+    // "상세" 링크가 `?ram=16` 으로 그 RAM 을 넘기면 RAM 차이는 라벨 조건이 아니다 (10-03 D64 리뷰) — 다른 차이는 그대로
+    expect(differsFromHubAssumption(withGpu('rtx-4060', { ramGB: 16 }), run.hardware, true)).toBe(false);
+    const linux16 = withGpu('rtx-4060', { ramGB: 16, os: 'linux' });
+    expect(differsFromHubAssumption(linux16, resolveHardware(linux16, catalog)!, true)).toBe(true);
     expect(differsFromHubAssumption(withGpu('rtx-4060'), resolveHardware(withGpu('rtx-4060'), catalog)!)).toBe(false);
     expect(differsFromHubAssumption(withGpu('rtx-4060', { os: 'linux' }), resolveHardware(withGpu('rtx-4060', { os: 'linux' }), catalog)!)).toBe(true);
     expect(differsFromHubAssumption(withGpu('apple-m4'), resolveHardware(withGpu('apple-m4'), catalog)!)).toBe(false);

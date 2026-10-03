@@ -112,12 +112,15 @@ export function resolveHardware(state: CalcState, catalog: CatalogLite): Resolve
   return config ? { gpu, config, theoretical: gpuCount > 1, ramGB, os, gpuCount } : undefined;
 }
 
-/** 허브 가정(D2)과 다른 항목 — "상세 (허브 가정 기준)" 라벨 조건 (D33) */
-export function differsFromHubAssumption(state: CalcState, resolved: ResolvedHardware): boolean {
+/**
+ * 허브 가정(D2)과 다른 항목 — "상세 (허브 가정 기준)" 라벨 조건 (D33). `ramShown`: "상세" 링크가 `?ram=N` 으로 사용자 RAM 을
+ * 넘겨 콤보 페이지가 그 RAM 으로 열린다(10-03 D64) — RAM 차이는 라벨에 적지 않는다(리뷰 반영: "RAM 32GB 기준" 라벨과 엇갈림)
+ */
+export function differsFromHubAssumption(state: CalcState, resolved: ResolvedHardware, ramShown = false): boolean {
   if (resolved.gpu.kind !== 'dgpu') return false;
   return (
     resolved.gpuCount > 1 ||
-    resolved.ramGB !== HUB_POLICY.dgpuRamGB ||
+    (!ramShown && resolved.ramGB !== HUB_POLICY.dgpuRamGB) ||
     resolved.os !== HUB_POLICY.dgpuOs ||
     !state.display ||
     state.ddr !== 'ddr5-5600'

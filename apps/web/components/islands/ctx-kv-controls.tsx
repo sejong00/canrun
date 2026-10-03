@@ -7,8 +7,9 @@ import { useHydrated } from '@/lib/hydration';
  * 콤보 페이지 ctx 슬라이더 · KV 토글 (docs/01 F3, P1-3 결정 D28) + 시스템 RAM 토글 (10-03 D64) — 엔진 미탑재.
  * 서버가 ctx×KV 셀마다 만든 문장·명령(규칙 3 밴드 포함)을 props 로 받아, 선택한 셀을 정적 표에서 강조하고
  * 요약 문장과 실행 커맨드 블록(llama.cpp·Ollama·각주)을 그 셀의 것으로 바꾼다. URL 은 건드리지 않는다.
- * RAM 토글(맨 위 판정이 RAM 에 따라 바뀌는 dGPU 페이지만)은 정적 스니펫을 건드리지 않는다 — 다른 RAM 을 고르면
- * ctx·KV 를 8k·f16 으로 고정하고, 서버가 만든 그 RAM 의 판정 문장·파일·명령을 아일랜드가 직접 그린다.
+ * RAM 토글(맨 위 판정이 RAM 에 따라 바뀌는 dGPU 페이지만)은 정적 스니펫을 8k·f16 으로 되돌리기만 하고 RAM 내용으로
+ * 바꾸지 않는다 — 다른 RAM 을 고르면 ctx·KV 를 8k·f16 으로 고정하고, 서버가 만든 그 RAM 의 판정 문장·파일·명령을
+ * 아일랜드가 직접 그린다. fieldset 은 기본 min-inline-size 가 min-content 라 min-w-0 으로 풀어 둔다(명령 줄이 폭을 넓히지 않게).
  * 상태 갱신은 이벤트 핸들러에서만 (react-hooks 7, D36).
  */
 export type CtxCellView = {
@@ -41,8 +42,6 @@ export type CtxKvLabels = {
 
 /** RAM 단계의 실행 계획 — 들어가는 양자화마다 1개(명령은 RAM 과 무관해 양자화로 중복 제거) */
 export type RamPlanView = {
-  /** "IQ4_XS 파일을 쓰는 명령입니다…" */
-  intro: string;
   /** "파일: … (GB, repo)." */
   file: string;
   command: string;
@@ -59,6 +58,11 @@ export type RamOptionView = {
   summary: string;
   /** plans 인덱스 — 이 RAM 에서 표시 양자화가 들어가지 않으면 -1 */
   plan: number;
+  /**
+   * plan 이 있을 때만: 그 RAM 을 밝힌 안내("시스템 RAM 16GB에서는 IQ4_XS 파일을 씁니다…")와 코드 영역 이름
+   * ("시스템 RAM 16GB용 llama.cpp 명령") — 정적 스니펫의 같은 이름 영역과 구분된다 (리뷰 반영)
+   */
+  view?: { intro: string; llamaCpp: string; ollama: string };
 };
 
 export type CtxKvRam = {
@@ -195,14 +199,16 @@ function Code({ code, label, name }: { code: string; label: string; name: string
 /** 다른 RAM 을 골랐을 때의 결과 블록 — 파일·llama.cpp·Ollama 명령(그 RAM 에서 들어갈 때만)과 계산기 링크 */
 function RamResult({ ram, option }: { ram: CtxKvRam; option: RamOptionView }) {
   const plan = ram.plans[option.plan];
+  const view = option.view;
+  // min-w-0: 줄바꿈 없는 명령(<pre>)이 이 블록·바깥 fieldset 을 넓혀 휴대폰에서 페이지가 가로로 밀리지 않게 (리뷰 반영)
   return (
-    <div data-ram-result={option.ram} className="flex basis-full flex-col gap-3">
-      {plan && (
+    <div data-ram-result={option.ram} className="flex min-w-0 basis-full flex-col gap-3">
+      {plan && view && (
         <>
-          <p className="text-muted-foreground">{plan.intro}</p>
+          <p className="text-muted-foreground">{view.intro}</p>
           <p className="break-all">{plan.file}</p>
           <p className="font-medium">{ram.labels.llamaCpp}</p>
-          <Code code={plan.command} label={ram.labels.llamaCpp} name="llama.cpp" />
+          <Code code={plan.command} label={view.llamaCpp} name="llama.cpp" />
           <ul className={NOTES_CLASS}>
             {plan.notes.map((text) => (
               <li key={text}>{text}</li>
@@ -212,7 +218,7 @@ function RamResult({ ram, option }: { ram: CtxKvRam; option: RamOptionView }) {
           {plan.ollama ? (
             <>
               <p className="text-xs text-muted-foreground">{plan.ollama.serveHint}</p>
-              <Code code={plan.ollama.code} label={ram.labels.ollama} name="ollama" />
+              <Code code={plan.ollama.code} label={view.ollama} name="ollama" />
               <ul className={NOTES_CLASS}>
                 {plan.ollama.notes.map((text) => (
                   <li key={text}>{text}</li>
@@ -288,7 +294,7 @@ export function CtxKvControls(p: CtxKvProps) {
     <fieldset
       data-ctx-controls
       aria-label={p.labels.title}
-      className="flex flex-wrap items-end gap-4 rounded-lg border border-border p-4 text-sm"
+      className="flex min-w-0 flex-wrap items-end gap-4 rounded-lg border border-border p-4 text-sm"
     >
       {ram && (
         <fieldset data-ram-toggle className="flex basis-full flex-wrap items-center gap-x-3 gap-y-1">
