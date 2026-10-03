@@ -55,6 +55,36 @@ describe('formatMemGB keeps an entered fraction without padding whole numbers', 
   });
 });
 
+describe('calculator reducer — manual model values (D66)', () => {
+  it('a value replaces a loaded HF model; an empty patch (opening the panel, clearing a field) does not', () => {
+    const loaded = at('rtx-4060', { hf: 'Qwen/Qwen3-4B' });
+    expect(reduce(loaded, { type: 'manual', patch: {} }).hf).toBe('Qwen/Qwen3-4B');
+    expect(reduce(loaded, { type: 'manual', patch: { paramsB: undefined } })).toMatchObject({ hf: 'Qwen/Qwen3-4B', manual: undefined });
+    const typed = reduce(loaded, { type: 'manual', patch: { paramsB: 8 } });
+    expect(typed).toMatchObject({ manual: { paramsB: 8 } });
+    expect(typed.hf).toBeUndefined();
+  });
+
+  it('patches merge; mid-typing out-of-range values stay; clearing the last field drops the spec', () => {
+    let s = reduce(at('rtx-4060'), { type: 'manual', patch: { paramsB: 8.03 } });
+    s = reduce(s, { type: 'manual', patch: { headDim: 1 } });
+    expect(s.manual).toEqual({ paramsB: 8.03, headDim: 1 });
+    s = reduce(s, { type: 'manual', patch: { headDim: undefined, paramsB: undefined } });
+    expect(s.manual).toBeUndefined();
+  });
+
+  it('loading an HF model, picking a catalog model or a catalog card target drops the manual values; null removes them', () => {
+    const typed = at('rtx-4060', { manual: { paramsB: 8, layers: 32, kvHeads: 8, headDim: 128 } });
+    expect(reduce(typed, { type: 'hf', hf: 'Qwen/Qwen3-4B' })).toMatchObject({ hf: 'Qwen/Qwen3-4B', manual: undefined });
+    expect(reduce(typed, { type: 'hf', hf: undefined }).manual).toEqual(typed.manual);
+    expect(reduce({ ...typed, mode: 'model' }, { type: 'pickModel', focus: 'qwen3-14b' }).manual).toBeUndefined();
+    expect(reduce(typed, { type: 'toModel', focus: 'qwen3-14b' }).manual).toBeUndefined();
+    // 직접 입력 카드의 "이 모델이 돌아가는 GPU 보기"는 그 모델 그대로
+    expect(reduce(typed, { type: 'toModel' })).toMatchObject({ mode: 'model', manual: typed.manual });
+    expect(reduce(typed, { type: 'manual', patch: null }).manual).toBeUndefined();
+  });
+});
+
 describe('calculator reducer — model mode (10-03 D65)', () => {
   it('switching modes keeps hardware, RAM, filters and the shared min verdict', () => {
     const start = at('rtx-4060', { ramGB: 16, min: 'A', cat: ['coding'], focus: 'qwen3-14b' });

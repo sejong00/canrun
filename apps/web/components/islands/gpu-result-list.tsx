@@ -80,7 +80,7 @@ export function GpuResultList({
   return (
     <section aria-labelledby="results-heading" data-gpu-results className="flex flex-col gap-4">
       <h2 id="results-heading" tabIndex={-1} className="text-xl font-semibold tracking-tight">
-        {run ? t.modelHub('gpuTitle', { model: run.model.name }) : t.calc('resultsHeading')}
+        {run ? (run.origin === 'manual' ? t.calc('manualGpuTitle') : t.modelHub('gpuTitle', { model: run.model.name })) : t.calc('resultsHeading')}
       </h2>
       <p data-results-count aria-live="polite" className="text-sm text-muted-foreground">
         {view ? t.calc('gpuResultsCount', { shown: view.rows.length, total }) : ''}
@@ -210,6 +210,7 @@ export function GpuResultList({
                   {...(mineMeta ? { meta: mineMeta } : {})}
                   action={{ label: t.calc('mineAllModels'), onClick: onMineAll, marker: 'mine-all' }}
                   current
+                  approxSize={run.origin === 'manual'}
                 />
               </ul>
               <p className="text-xs text-muted-foreground">{t.calc('mineNote')}</p>
@@ -261,6 +262,7 @@ export function GpuResultList({
                       : {})}
                     action={{ label: t.calc('useThisGpu'), onClick: () => onUseGpu(gpu.id, gpu.kind === 'dgpu' ? undefined : combo.ramGB), marker: 'use-gpu' }}
                     current={gpu.id === mineId}
+                    approxSize={run.origin === 'manual'}
                     rowAttrs={{
                       'data-gpu-row': '',
                       'data-gpu-id': gpu.id,
@@ -274,7 +276,7 @@ export function GpuResultList({
           )}
           {laptopShown && <p className="text-xs text-muted-foreground">{t.calc('laptopNote')}</p>}
           {run.all.some((r) => r.combo.reasoning) && <p className="text-xs text-muted-foreground">{t.common('reasoningNote')}</p>}
-          {run.external && <p className="text-xs text-muted-foreground">{t.calc('hfNote')}</p>}
+          {run.external && <p className="text-xs text-muted-foreground">{run.origin === 'manual' ? t.calc('manualNote') : t.calc('hfNote')}</p>}
           {note && <p className="text-xs text-muted-foreground">{note}</p>}
         </>
       )}

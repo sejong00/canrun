@@ -44,6 +44,10 @@ ModelQuant { modelId, quant:QuantId, fileGB, expertGB?, nonExpertGB?, offGpuGB?,
      // fileName (P1-2 D20, PROGRESS §4 09-29): repo 상대 실파일 경로 /^[^\s/][^\s]*\.gguf$/i — 분할이면 첫 조각 `…-00001-of-0000N.gguf`,
      //   UD 변형은 이름의 `UD-` 유지(플레인 파일이 없는 unsloth repo의 Q4_K_M 행 등). zod는 optional이지만 validateAll이 전 행 존재를
      //   강제(빌드가 호출), 값은 sync-models가 기록(§5.1 ④). 콤보 스니펫 `-hf {repo}:{tag}` 태그·다운로드 안내의 원천
+     // 카탈로그 밖 모델(계산기 전용 — data/*.json 에 쓰지 않으므로 sources·zod 검증 대상 아님, 규칙 2 밖): 같은 코어 모양(ModelCore + ModelQuantCore[])을
+     //   브라우저에서 조립해 고정 카드로만 쓴다. HF 불러오기 `buildHfModel`(hf.ts, D57 — 실파일 크기·fileName) · 직접 입력 `buildManualModel`
+     //   (manual.ts, 10-03 D66 — fileGB = paramsB × bpw / 8 어림(Q2_K·IQ4_XS·Q4_K_M·Q8_0), ggufRepo '' · fileName 없음 → 명령 없음, nonExpertGB 는 derive.ts 유도,
+     //   license 'unknown', 생각 모드 체크 시 thinking 'default-on'). 둘 다 이론 추정 고정(docs/02 §4)
 PublishPlan (data/publish.json, 단일 객체 — P1-2 D9) { currentBatch:int ≥ 0,
      batches:[{ batch:int ≥ 1, gpuIds:GpuId[], modelIds:ModelId[], plannedAt?:date, note? }] }
      // 검증: 항목 안 id 중복 거부 · gpuIds/modelIds는 카탈로그 FK(validateAll) · batches가 비면 currentBatch 0만, 아니면 ≤ max(batch)

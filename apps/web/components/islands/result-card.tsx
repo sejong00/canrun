@@ -10,6 +10,12 @@ import type { ResultCard as Card } from '@/lib/calc/run';
 import type { CalcState } from '@/lib/calc/state';
 import { memoryText, modeKey, noteLines, quantText, speedPhrase } from '@/lib/phrases';
 
+/**
+ * 카탈로그 밖 모델 카드의 출처 — 불러온 HF 모델(D57: HF 링크·배지·실행 명령), 직접 입력한 모델(D66: 링크·라이선스·명령 없음,
+ * 파일 크기는 bpw 어림이라 "약 N GB")
+ */
+export type PinnedMeta = { kind: 'hf'; baseId: string; ggufRepo: string } | { kind: 'manual' };
+
 const LICENSE_TONE: Record<ReturnType<typeof classifyLicense>, PillTone> = {
   permissive: 'neutral',
   custom: 'caution',
@@ -39,8 +45,8 @@ export function ResultCard({
   hardware: ResolvedHardware;
   prefix: string;
   focused: boolean;
-  /** 카탈로그 밖 모델(HF 에서 불러옴, D57) — 허브·콤보 페이지 대신 HF 링크와 실행 명령 */
-  external?: { baseId: string; ggufRepo: string };
+  /** 카탈로그 밖 모델 — 허브·콤보 페이지 대신 HF 링크와 실행 명령(D57), 직접 입력이면 링크 없이(D66) */
+  external?: PinnedMeta;
   /** 이 모델이 돌아가는 GPU 목록으로 (모델 모드, 10-03 D65) */
   onSeeGpus?: () => void;
 }) {
@@ -49,6 +55,9 @@ export function ResultCard({
   const baseline = combo.baseline.result.verdict;
   const notes = noteLines({ reason: t.reason, hint: t.hint, verdict: t.verdict, common: t.common }, locale, combo, hardware.gpu.kind, false);
   const licenseClass = classifyLicense(model.license);
+  const manual = external?.kind === 'manual';
+  // 직접 입력 모델의 파일 크기는 bpw 어림 — 실제 파일처럼 소수 둘째 자리로 쓰지 않는다(규칙 3)
+  const sizeText = (gb: number) => (manual ? t.calc('approxGB', { value: formatGB(locale, gb, 1) }) : t.common('gb', { value: formatGB(locale, gb, 2) }));
   const custom = hardware.gpu.id === 'custom';
   const detailQuery = comboDetailQuery(state, hardware, card.ctx);
   // `?ram=N` 이면 콤보 페이지가 사용자 RAM 으로 열린다 — 라벨의 허브 가정에서 RAM 을 뺀다 (10-03 D64 리뷰 반영)
@@ -85,10 +94,12 @@ export function ResultCard({
       className={`flex min-w-0 flex-col gap-2 rounded-lg border p-4 ${focused ? 'border-foreground' : 'border-border'}`}
     >
       <h3 className="flex flex-wrap items-center gap-2 text-base font-semibold">
-        {external ? (
+        {external?.kind === 'hf' ? (
           <a href={`https://huggingface.co/${external.baseId}`} rel="noopener noreferrer nofollow" target="_blank">
             {model.name}
           </a>
+        ) : manual ? (
+          <span>{model.name}</span>
         ) : (
           <a href={`${prefix}/model/${model.id}`}>{model.name}</a>
         )}
@@ -101,15 +112,16 @@ export function ResultCard({
       <div className="flex flex-wrap items-center gap-2">
         <VerdictChip verdict={baseline} label={t.verdict(baseline)} />
         {combo.reasoning && <Pill>{t.common('reasoningMark')}</Pill>}
-        {external && <Pill tone="info">{t.calc('hfBadge')}</Pill>}
+        {external?.kind === 'hf' && <Pill tone="info">{t.calc('hfBadge')}</Pill>}
+        {manual && <Pill tone="info">{t.calc('manualBadge')}</Pill>}
         {model.korean && <Pill tone="info">{t.calc('badgeKorean')}</Pill>}
-        <Pill tone={LICENSE_TONE[licenseClass]}>{t.license(licenseClass)}</Pill>
+        {!manual && <Pill tone={LICENSE_TONE[licenseClass]}>{t.license(licenseClass)}</Pill>}
         {measuredText && <Pill tone="info">{measuredText}</Pill>}
       </div>
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
         <dt className="text-muted-foreground">{t.calc('cardQuant')}</dt>
         <dd>
-          {quantText(t.hint, q)} · {t.tier(q.tier)} · {t.common('gb', { value: formatGB(locale, q.fileGB, 2) })}
+          {quantText(t.hint, q)} · {t.tier(q.tier)} · {sizeText(q.fileGB)}
         </dd>
         {q.fReason !== 'no-fit' && (
           <>
@@ -167,7 +179,7 @@ export function ResultCard({
                   <th scope="row" className="py-1 pr-2 font-medium">
                     {x.quant}
                   </th>
-                  <td className="py-1 pr-2 tabular-nums">{t.common('gb', { value: formatGB(locale, x.fileGB, 2) })}</td>
+                  <td className="py-1 pr-2 tabular-nums">{sizeText(x.fileGB)}</td>
                   <td className="py-1 pr-2">
                     <VerdictChip verdict={x.result.verdict} label={t.verdict(x.result.verdict)} compact />
                   </td>
@@ -187,11 +199,11 @@ export function ResultCard({
         </div>
       )}
       <p className="flex flex-wrap gap-3 text-sm">
-        {external ? (
+        {external?.kind === 'hf' ? (
           <a href={`https://huggingface.co/${external.ggufRepo}`} rel="noopener noreferrer nofollow" target="_blank">
             {t.calc('hfViewOnHf')}
           </a>
-        ) : comboHref ? (
+        ) : manual ? null : comboHref ? (
           <>
             <a href={comboHref} data-combo-link>
               {detailsLabel}

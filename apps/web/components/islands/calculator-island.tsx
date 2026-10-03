@@ -1,27 +1,32 @@
 'use client';
 import { usableGB } from '@canrun/engine';
-import type { CatalogLite } from '@canrun/data/client';
+import { buildManualModel, isManualMoe, type CatalogLite, type ManualSpec } from '@canrun/data/client';
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { GpuResultList } from '@/components/islands/gpu-result-list';
 import { HardwareForm } from '@/components/islands/hardware-form';
 import { HfModelPanel, type HfPanelStatus } from '@/components/islands/hf-model-panel';
+import { ManualModelFields } from '@/components/islands/manual-model-fields';
 import { ModeSwitch } from '@/components/islands/mode-switch';
 import { ModelForm } from '@/components/islands/model-form';
+import type { PinnedMeta } from '@/components/islands/result-card';
 import { ResultList } from '@/components/islands/result-list';
 import { ShareButton } from '@/components/islands/share-button';
 import { bindTranslators, classKey, localePrefix, makeReducer } from '@/components/islands/calc-shared';
-import { formatCtx, formatGB, formatInt, formatMemGB } from '@/lib/format';
+import { formatCtx, formatGB, formatInt, formatMemGB, formatParams } from '@/lib/format';
 import type { KrwRate } from '@/lib/krw';
 import { matchGpu } from '@/lib/calc/gpu-match';
 import type { ResolvedHardware } from '@/lib/calc/hardware';
 import type { HfLoadResult } from '@/lib/calc/hf-load';
 import { assembleResults, type ExtraModel } from '@/lib/calc/run';
 import { assembleModelRows, filterGpuRows, myConfigRow } from '@/lib/calc/run-model';
-import { defaultState, type CalcState } from '@/lib/calc/state';
+import { defaultState, hasManualValue, type CalcState } from '@/lib/calc/state';
 import { parseCalcQuery, serializeCalcQuery } from '@/lib/calc/url';
 import { useHydrated } from '@/lib/hydration';
 import type { Dict } from '@/lib/i18n-lite';
 import { gpuName } from '@/lib/phrases';
+
+/** 직접 입력 값이 없을 때 칸에 넘기는 빈 값 — 렌더마다 새 객체면 칸의 검사 메모가 매번 다시 돈다 */
+const NO_MANUAL: ManualSpec = {};
 
 /**
  * 계산기 아일랜드 (docs/01 F1·F4, P1-3). SSR 은 폼만(기본 상태) — 결과·콤보박스 승격·감지 버튼 활성은
@@ -54,6 +59,9 @@ export function CalculatorIsland({
   const [restored, setRestored] = useState(false);
   // 모델 폼이 차지할 최소 높이 — SSR 하드웨어 폼이 화면에 보이던 높이(`?mode=model` 딥링크의 레이아웃 이동 방지, D65)
   const [formSlot, setFormSlot] = useState<number | undefined>(undefined);
+  // "모델 값 직접 입력" 펼침·MoE 체크 (D66) — 패널이 모드마다 다른 자리에 다시 그려지므로 여기서 갖는다. 펼치기·체크만으로는 상태를 바꾸지 않는다
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manualMoe, setManualMoe] = useState(false);
 
   // 마운트: URL → 상태 (islands/** 한정 set-state-in-effect 예외, D36) + popstate 복원.
   // 하이드레이션 전에 입력창에 타이핑한 텍스트(D29)는 URL 에 GPU 가 없을 때 그대로 해석해 시드한다
@@ -71,12 +79,23 @@ export function CalculatorIsland({
       if (parsed.hardware.kind === 'none') parsed.hardware = { kind: 'custom', custom: { kind: 'dgpu', effClass: 'nvidia' } };
       else if (parsed.hardware.kind !== 'custom') details.open = false;
     }
+    // 직접 입력 값이 있으면(공유 링크) 펼치고, 하이드레이션 전에 펼쳤으면 그대로 둔다 (입력 칸은 하이드레이션 전엔 비활성)
+    const manualDetails = document.querySelector<HTMLDetailsElement>('details[data-manual-model]');
+    if (parsed.manual || manualDetails?.open) setManualOpen(true);
+    if (parsed.manual && isManualMoe(parsed.manual)) setManualMoe(true);
     const form = document.querySelector<HTMLElement>('form[data-calc-form]')?.getBoundingClientRect();
     const visible = form ? Math.min(form.height, window.innerHeight - form.top) : 0;
     if (visible > 0) setFormSlot(Math.round(visible));
     dispatch({ type: 'restore', state: parsed });
     setRestored(true);
-    const onPop = () => dispatch({ type: 'restore', state: parseCalcQuery(window.location.search, catalog, names) });
+    const onPop = () => {
+      const restoredState = parseCalcQuery(window.location.search, catalog, names);
+      if (restoredState.manual) {
+        setManualOpen(true);
+        setManualMoe(isManualMoe(restoredState.manual));
+      }
+      dispatch({ type: 'restore', state: restoredState });
+    };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
   }, [catalog, names]);
@@ -145,9 +164,21 @@ export function CalculatorIsland({
     setHfLoad(undefined);
     setHfStatus({ kind: 'idle' });
   };
-  const removeHf = () => {
+  // "빼기" — 불러온 모델과 직접 입력 값을 함께 뺀다
+  const removeExtra = () => {
     dropHf();
     dispatch({ type: 'hf', hf: undefined });
+    dispatch({ type: 'manual', patch: null });
+  };
+  // 직접 입력 (D66): 값이 생기는 순간 불러온 모델에서 넘어온다 — 진행 중인 불러오기 결과도 버린다(차례 번호). 키를 누를 때마다가 아니라
+  // 불러온 모델이 걸려 있거나 불러오는 중일 때만, 또는 이전 불러오기의 안내 문장이 남아 있을 때만
+  const patchManual = (patch: Partial<ManualSpec>) => {
+    if (hasManualValue({ ...state.manual, ...patch }) && (state.hf !== undefined || hfStatus.kind !== 'idle')) dropHf();
+    dispatch({ type: 'manual', patch });
+  };
+  const setMoe = (moe: boolean) => {
+    setManualMoe(moe);
+    if (!moe) patchManual({ activeParamsB: undefined, experts: undefined, topK: undefined });
   };
   // 모드를 넘기는 버튼 뒤에는 결과 제목으로 포커스(화면이 통째로 바뀐다) — 갱신이 그려진 뒤
   const focusResults = () => window.setTimeout(() => document.getElementById('results-heading')?.focus(), 0);
@@ -168,12 +199,23 @@ export function CalculatorIsland({
     dispatch({ type: 'mode', mode: 'hardware' });
     focusResults();
   };
-  // 메모 — 매 렌더 새 객체면 아래 결과 조립(전 모델 평가)이 매번 다시 돈다
-  const extra = useMemo<ExtraModel | undefined>(
-    () => (hfLoad && hfLoad.result.kind === 'ok' && hfLoad.id === state.hf ? { model: hfLoad.result.model, rows: hfLoad.result.rows } : undefined),
-    [hfLoad, state.hf],
-  );
-  const hfMeta = extra && hfLoad?.result.kind === 'ok' ? { baseId: hfLoad.result.baseId, ggufRepo: hfLoad.result.ggufRepo } : undefined;
+  // 메모 — 매 렌더 새 객체면 아래 결과 조립(전 모델 평가)이 매번 다시 돈다. 직접 입력 값은 내용(문자열 키)이 바뀔 때만
+  // (정규화가 빈 칸을 걷어 내며 객체를 새로 만들어도 다시 계산하지 않게). 이름은 화면 문구 — 빌더는 비워 둔다
+  const manualKey = state.manual ? JSON.stringify(state.manual) : '';
+  const manualName = t.calc('manualName');
+  const manualBuild = useMemo(() => (manualKey ? buildManualModel(JSON.parse(manualKey) as ManualSpec) : undefined), [manualKey]);
+  const extra = useMemo<ExtraModel | undefined>(() => {
+    if (manualBuild?.kind === 'ok') return { model: { ...manualBuild.model, name: manualName }, rows: manualBuild.rows, origin: 'manual' };
+    return hfLoad && hfLoad.result.kind === 'ok' && hfLoad.id === state.hf
+      ? { model: hfLoad.result.model, rows: hfLoad.result.rows, origin: 'hf' }
+      : undefined;
+  }, [manualBuild, manualName, hfLoad, state.hf]);
+  const pinnedMeta: PinnedMeta | undefined =
+    extra?.origin === 'manual'
+      ? { kind: 'manual' }
+      : extra && hfLoad?.result.kind === 'ok'
+        ? { kind: 'hf', baseId: hfLoad.result.baseId, ggufRepo: hfLoad.result.ggufRepo }
+        : undefined;
 
   const modelMode = state.mode === 'model';
   const results = useMemo(
@@ -201,7 +243,9 @@ export function CalculatorIsland({
 
   const assumption = results ? assumptionText(t, locale, state, results.hardware) : undefined;
   const shareText = modelRun
-    ? t.share('textModel', { model: modelRun.model.name })
+    ? modelRun.origin === 'manual'
+      ? t.share('textManualModel', { params: formatParams(locale, modelRun.model.paramsB) })
+      : t.share('textModel', { model: modelRun.model.name })
     : results
       ? shareTextFor(t, locale, state, results.hardware)
       : undefined;
@@ -213,12 +257,31 @@ export function CalculatorIsland({
       status={hfStatus}
       hasHardware={results !== undefined}
       modelMode={modelMode}
-      canRemove={state.hf !== undefined || hfStatus.kind === 'loading'}
+      canRemove={state.hf !== undefined || hfStatus.kind === 'loading' || state.manual !== undefined}
       text={hfText}
       onTextChange={setHfText}
       onLoad={loadHf}
-      onRemove={removeHf}
-    />
+      onRemove={removeExtra}
+    >
+      <ManualModelFields
+        locale={locale}
+        t={t}
+        hydrated={hydrated}
+        spec={state.manual ?? NO_MANUAL}
+        open={manualOpen}
+        onOpenChange={setManualOpen}
+        moe={manualMoe}
+        onMoeChange={setMoe}
+        onPatch={patchManual}
+        status={
+          extra?.origin === 'manual'
+            ? modelMode
+              ? t.calc('manualReadyModelMode')
+              : `${t.calc('manualReady')}${results ? '' : ` ${t.calc('hfNeedGpu')}`}`
+            : ''
+        }
+      />
+    </HfModelPanel>
   );
 
   return (
@@ -236,7 +299,9 @@ export function CalculatorIsland({
               dispatch={dispatch}
               hydrated={hydrated}
               ctx={modelRun?.ctx ?? state.ctx}
-              {...(extra ? { hfName: extra.model.name } : {})}
+              {...(extra
+                ? { extraLabel: extra.origin === 'manual' ? extra.model.name : t.calc('modelHfOption', { model: extra.model.name }) }
+                : {})}
               onPick={pickModel}
             />
             {hfPanel}
@@ -295,7 +360,7 @@ export function CalculatorIsland({
           hydrated={hydrated}
           prefix={prefix}
           issueUrl={issueUrl}
-          {...(hfMeta ? { hfMeta } : {})}
+          {...(pinnedMeta ? { pinnedMeta } : {})}
           onSeeGpus={seeGpus}
         />
       )}

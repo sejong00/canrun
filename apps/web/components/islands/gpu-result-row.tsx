@@ -22,6 +22,7 @@ export function GpuResultRow({
   detail,
   action,
   current = false,
+  approxSize = false,
   rowAttrs,
 }: {
   locale: string;
@@ -37,6 +38,8 @@ export function GpuResultRow({
   action: { label: string; onClick: () => void; marker: 'use-gpu' | 'mine-all' };
   /** 내 GPU — 테두리 강조 */
   current?: boolean;
+  /** 직접 입력 모델(D66) — 파일 크기가 bpw 어림이라 "약 N GB" */
+  approxSize?: boolean;
   /** `<li>` 의 data-* (목록 행만) */
   rowAttrs?: Record<`data-${string}`, string | number>;
 }) {
@@ -57,7 +60,8 @@ export function GpuResultRow({
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
         <dt className="text-muted-foreground">{t.calc('cardQuant')}</dt>
         <dd>
-          {quantText(t.hint, q)} · {t.common('gb', { value: formatGB(locale, q.fileGB, 2) })}
+          {quantText(t.hint, q)} ·{' '}
+          {approxSize ? t.calc('approxGB', { value: formatGB(locale, q.fileGB, 1) }) : t.common('gb', { value: formatGB(locale, q.fileGB, 2) })}
         </dd>
         {q.fReason !== 'no-fit' && (
           <>

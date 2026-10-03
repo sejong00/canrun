@@ -37,7 +37,8 @@ export type GpuRow = {
   hubConfig?: { ramGB: number; os: Os };
 };
 
-export type ModelTarget = { model: ModelCore; external: boolean };
+/** `origin` — 카탈로그 밖 모델의 출처(불러온 HF·직접 입력 D66), 카탈로그 모델이면 없다 */
+export type ModelTarget = { model: ModelCore; external: boolean; origin?: ExtraModel['origin'] };
 
 export type ModelRunResult = ModelTarget & {
   /** 평가 ctx — 모델 최대보다 큰 선택은 최대로 클램프 */
@@ -53,7 +54,7 @@ export type ModelRunResult = ModelTarget & {
 
 /** 대상 모델 — 불러온 모델(완료)이 있으면 그것, 아니면 카탈로그 모델(`m`) */
 export function modelTarget(catalog: CatalogLite, state: Pick<CalcState, 'focus'>, extra?: ExtraModel): ModelTarget | undefined {
-  if (extra) return { model: extra.model, external: true };
+  if (extra) return { model: extra.model, external: true, origin: extra.origin };
   const model = state.focus === undefined ? undefined : catalog.models.find((m) => m.id === state.focus);
   return model ? { model, external: false } : undefined;
 }
@@ -80,7 +81,7 @@ export function assembleModelRows(
 ): ModelRunResult | undefined {
   const target = modelTarget(catalog, state, extra);
   if (!target) return undefined;
-  const { model, external } = target;
+  const { model, external, origin } = target;
   const ctx = Math.min(state.ctx, model.maxContext);
   const atReference = ctx === HUB_POLICY.referenceCtx && state.kv === 'f16';
   const rows = modelGpuRows(catalogWith(catalog, extra), model, {
@@ -102,7 +103,16 @@ export function assembleModelRows(
     return { gpu, combo, type: hwTypeOf(gpu), ...(street ? { street } : {}), ...(hubConfig ? { hubConfig } : {}) };
   });
 
-  return { model, external, ctx, clamped: ctx < state.ctx, all, counts: countVerdicts(all), cheapest: cheapestOptions(rows) };
+  return {
+    model,
+    external,
+    ...(origin ? { origin } : {}),
+    ctx,
+    clamped: ctx < state.ctx,
+    all,
+    counts: countVerdicts(all),
+    cheapest: cheapestOptions(rows),
+  };
 }
 
 export type GpuView = {

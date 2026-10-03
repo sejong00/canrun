@@ -1,11 +1,14 @@
 /**
  * 계산기 공유 URL 코덱 (P1-3 D31) — 기본값 생략·키 순서 고정·미지 키 삭제. 순수 함수.
- *   gpu=<id|이름|별칭|custom> [kind class vram mem bw fp16] gpus ram ddr os display ctx kv cat min size sort mode m hf type budget gsort
+ *   gpu=<id|이름|별칭|custom> [kind class vram mem bw fp16] gpus ram ddr os display ctx kv cat min size sort mode m hf mm type budget gsort
  * 모델 모드(10-03 D65): `mode=model` + 대상 `m`(카탈로그) 또는 `hf`(불러온 모델), GPU 필터 `type`·`budget`·`gsort`. `ctx`·`kv`·`min` 은
  * 두 모드가 같은 뜻으로 쓴다. 기본 모드(hardware)는 생략하므로 기존 하드웨어 모드 URL 은 그대로다.
+ * 직접 입력 모델(D66): `mm=p8.03-l32-k8-d128` — 글자+숫자 조각을 '-' 로 잇고 순서는 p a e t l k d f c h 로 고정
+ * (전체·활성 파라미터, 전문가 수, top-k, 층, KV 헤드, 헤드 차원, 전체 어텐션 층, 최대 컨텍스트, 생각 모드 h1). 숫자만 받는다 —
+ * 공유 링크로 임의 문구를 심을 수 없게. 조각마다 범위를 검사해 틀린 조각만 버린다(커스텀 하드웨어와 같다). `hf` 가 있으면 버린다.
  * 홈 GET 폼은 `gpu=<자유 텍스트>` 만 보내고 여기서 별칭·fuzzy 로 해석한다 (해석 실패 = unresolved, 폼에 텍스트 유지).
  */
-import type { CatalogLite } from '@canrun/data/client';
+import { manualRangeIssue, type CatalogLite, type ManualNumberField, type ManualSpec } from '@canrun/data/client';
 import type { EffClass, KvQuant, Os } from '@canrun/engine';
 import { matchGpu, type GpuNames } from './gpu-match';
 import {
@@ -50,6 +53,52 @@ function list<T extends string>(raw: string | null, allowed: readonly T[]): T[] 
   return allowed.filter((v) => picked.includes(v));
 }
 
+/** 직접 입력 모델 조각 글자 — 배열 순서가 곧 URL 순서 */
+const MANUAL_SEGMENTS: readonly (readonly [string, ManualNumberField | 'maxContext' | 'thinking'])[] = [
+  ['p', 'paramsB'],
+  ['a', 'activeParamsB'],
+  ['e', 'experts'],
+  ['t', 'topK'],
+  ['l', 'layers'],
+  ['k', 'kvHeads'],
+  ['d', 'headDim'],
+  ['f', 'fullAttnLayers'],
+  ['c', 'maxContext'],
+  ['h', 'thinking'],
+];
+const MANUAL_SEGMENT_RE = /^([a-z])(\d+(?:\.\d+)?)$/;
+
+/** 한 칸이 URL 에 실릴 수 있는 값인가 — 숫자 칸은 고정 범위·정수, 컨텍스트는 선택지, 생각 모드는 1 */
+function manualValueOk(field: ManualNumberField | 'maxContext' | 'thinking', value: number): boolean {
+  if (field === 'maxContext') return CTX_OPTIONS.includes(value);
+  if (field === 'thinking') return value === 1;
+  return manualRangeIssue(field, value) === undefined;
+}
+
+function parseManual(raw: string | null): ManualSpec | undefined {
+  if (!raw) return undefined;
+  const spec: ManualSpec = {};
+  for (const segment of raw.split('-')) {
+    const m = MANUAL_SEGMENT_RE.exec(segment);
+    const field = m ? MANUAL_SEGMENTS.find(([letter]) => letter === m[1])?.[1] : undefined;
+    if (!m || !field || spec[field] !== undefined) continue;
+    const value = Number(m[2]);
+    if (!manualValueOk(field, value)) continue;
+    if (field === 'thinking') spec.thinking = true;
+    else spec[field] = value;
+  }
+  return spec;
+}
+
+function serializeManual(spec: ManualSpec): string {
+  const parts: string[] = [];
+  for (const [letter, field] of MANUAL_SEGMENTS) {
+    const value = field === 'thinking' ? (spec.thinking ? 1 : undefined) : spec[field];
+    if (value !== undefined && manualValueOk(field, value)) parts.push(`${letter}${String(value)}`);
+  }
+  return parts.join('-');
+}
+
 export function parseCalcQuery(search: string, catalog: CatalogLite, names: GpuNames = {}): CalcState {
   const q = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search);
   const state = defaultState();
@@ -85,6 +134,7 @@ export function parseCalcQuery(search: string, catalog: CatalogLite, names: GpuN
   state.mode = oneOf(q.get('mode'), CALC_MODES) ?? 'hardware';
   state.focus = q.get('m') ?? undefined;
   state.hf = q.get('hf')?.trim() || undefined;
+  state.manual = parseManual(q.get('mm'));
   state.type = list<HwType>(q.get('type'), HW_TYPES);
   const budget = num(q.get('budget'), 1, 100_000);
   state.budget = budget !== undefined && BUDGET_OPTIONS_USD.includes(budget) ? budget : undefined;
@@ -122,6 +172,8 @@ export function serializeCalcQuery(state: CalcState, catalog: CatalogLite): stri
   if (s.mode !== 'hardware') q.set('mode', s.mode);
   if (s.focus !== undefined) q.set('m', s.focus);
   if (s.hf !== undefined) q.set('hf', s.hf);
+  const mm = s.manual ? serializeManual(s.manual) : '';
+  if (mm) q.set('mm', mm);
   if (s.type.length > 0) q.set('type', s.type.join(','));
   if (s.budget !== undefined) q.set('budget', String(s.budget));
   if (s.gsort !== 'verdict') q.set('gsort', s.gsort);

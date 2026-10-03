@@ -12,6 +12,8 @@ export * from './snippet';
 export * from './publish';
 export * from './license';
 export * from './derive';
+// 계산기 "모델 값 직접 입력" (D66)
+export * from './manual';
 export type {
   BenchPoint,
   Gpu,

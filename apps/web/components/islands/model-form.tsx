@@ -7,7 +7,7 @@ import { CTX_OPTIONS, KV_OPTIONS, type CalcState } from '@/lib/calc/state';
 
 // 하드웨어 폼과 같은 컨트롤 크기 — 모바일 16px(iOS 확대 방지)·44px
 const SELECT = 'h-11 rounded-md border border-border bg-background px-2 text-base sm:h-10 sm:text-sm';
-const HF_VALUE = '__hf';
+const EXTRA_VALUE = '__extra';
 
 /**
  * 모델 모드 입력 (10-03 D65) — 하드웨어 폼 자리에 대신 놓인다. 대상 모델(카탈로그 select, 불러온 모델이면 그 이름)·
@@ -21,7 +21,7 @@ export function ModelForm({
   dispatch,
   hydrated,
   ctx,
-  hfName,
+  extraLabel,
   onPick,
 }: {
   catalog: CatalogLite;
@@ -31,13 +31,13 @@ export function ModelForm({
   hydrated: boolean;
   /** 목록을 실제로 계산한 컨텍스트 — 모델 최대보다 큰 선택은 최대로 줄어든 값(가정 문장용, select 는 사용자의 선택 그대로) */
   ctx: number;
-  /** 불러온 모델(완료)의 이름 — 있으면 그 모델이 대상 */
-  hfName?: string;
+  /** 카탈로그 밖 대상(불러온 모델 D57·직접 입력 모델 D66)의 선택지 문구 — 있으면 그 모델이 대상 */
+  extraLabel?: string;
   onPick: (modelId: string) => void;
 }) {
   const id = useId();
   const models = useMemo(() => [...catalog.models].sort((a, b) => a.name.localeCompare(b.name, 'en')), [catalog]);
-  const value = hfName !== undefined ? HF_VALUE : (state.focus ?? '');
+  const value = extraLabel !== undefined ? EXTRA_VALUE : (state.focus ?? '');
 
   return (
     <section
@@ -60,15 +60,15 @@ export function ModelForm({
           disabled={!hydrated}
           onChange={(e) => {
             const next = e.currentTarget.value;
-            if (next && next !== HF_VALUE) onPick(next);
+            if (next && next !== EXTRA_VALUE) onPick(next);
           }}
         >
           <option value="" disabled>
             {t.calc('modelPlaceholder')}
           </option>
-          {hfName !== undefined && (
-            <option value={HF_VALUE} disabled>
-              {t.calc('modelHfOption', { model: hfName })}
+          {extraLabel !== undefined && (
+            <option value={EXTRA_VALUE} disabled>
+              {extraLabel}
             </option>
           )}
           {models.map((m) => (

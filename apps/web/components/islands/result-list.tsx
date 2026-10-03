@@ -2,7 +2,7 @@
 import type { CatalogLite } from '@canrun/data/client';
 import { useId, type Dispatch } from 'react';
 import type { CalcAction, CalcTranslators } from '@/components/islands/calc-shared';
-import { ResultCard } from '@/components/islands/result-card';
+import { ResultCard, type PinnedMeta } from '@/components/islands/result-card';
 import { VerdictChip } from '@/components/verdict-chip';
 import type { RunResult } from '@/lib/calc/run';
 import { CATEGORIES, SIZE_BUCKETS, type CalcState, type SizeBucket } from '@/lib/calc/state';
@@ -26,7 +26,7 @@ export function ResultList({
   hydrated,
   prefix,
   issueUrl,
-  hfMeta,
+  pinnedMeta,
   onSeeGpus,
 }: {
   locale: string;
@@ -38,8 +38,8 @@ export function ResultList({
   hydrated: boolean;
   prefix: string;
   issueUrl: string;
-  /** 불러온 모델의 HF 저장소 (결과 맨 위 카드의 링크) — D57 */
-  hfMeta?: { baseId: string; ggufRepo: string };
+  /** 결과 맨 위 카드의 출처 — 불러온 모델의 HF 저장소(D57) 또는 직접 입력(D66) */
+  pinnedMeta?: PinnedMeta;
   /** 카드 → 그 모델의 GPU 목록(모델 모드, D65). 불러온 모델 카드는 인자 없이 */
   onSeeGpus: (modelId?: string) => void;
 }) {
@@ -112,8 +112,8 @@ export function ResultList({
             </div>
           </div>
 
-          {results.pinned && hfMeta && (
-            <div data-hf-result className="flex min-w-0 flex-col gap-2">
+          {results.pinned && pinnedMeta && (
+            <div data-hf-result data-pinned-kind={pinnedMeta.kind} className="flex min-w-0 flex-col gap-2">
               <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <ResultCard
                   locale={locale}
@@ -123,11 +123,11 @@ export function ResultList({
                   hardware={results.hardware}
                   prefix={prefix}
                   focused={false}
-                  external={hfMeta}
+                  external={pinnedMeta}
                   onSeeGpus={() => onSeeGpus()}
                 />
               </ul>
-              <p className="text-xs text-muted-foreground">{t.calc('hfNote')}</p>
+              <p className="text-xs text-muted-foreground">{pinnedMeta.kind === 'manual' ? t.calc('manualNote') : t.calc('hfNote')}</p>
             </div>
           )}
 

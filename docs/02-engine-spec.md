@@ -58,6 +58,7 @@ type Result = {
 | MXFP4 | 4.25 | — | gpt-oss/Kimi K3 네이티브. **반드시 실제 파일 크기 사용**(bpw 환산 금지) |
 
 출처: llama.cpp `tools/quantize/README.md` 공식 실측표(Llama-3.1-8B). **검증: 실제 파일 11종 대조 MAE 0.7%, 최대 1.6%** (§7).
+2순위를 쓰는 곳: bestQuant 사다리의 미등록 quant(§2.4-5)와 계산기 "모델 값 직접 입력"(10-03 D66 — 실제 파일이 없다, §4 이론 추정 고정).
 주의: Unsloth UD(*_XL) 변형과 네이티브 양자화 모델(gpt-oss, Kimi K2.6/K3, DeepSeek FP8)은 flat bpw에서 이탈 — 실제 크기 필수.
 
 ### 2.2 KV 캐시 (토큰당 바이트)
@@ -175,6 +176,7 @@ kvRead 항이 자연 반영 (예: 4090 Qwen3-8B: 8k에서 118 → 16k에서 95 �
 - `rough`: **pp(프롬프트 처리) 전용** 4번째 라벨 — **±40%**(§3.5, est×0.6~1.4). tg·판정에는 쓰지 않으며, 엔진 `Result.confidence`(§1)에는 없고 데이터 레이어가 pp 표시에만 붙인다(P1-2 D13, PROGRESS §4 09-29)
 - `theoretical`: 신형 기기/특이 아키텍처 등 검증 밖 → **±30%** 밴드 + "제출로 검증에 참여" CTA
   - 판정 주체는 데이터 레이어(`EvaluateOptions.theoretical`). P1-1 규칙(`packages/data/src/assess.ts` `isTheoretical`): ① MoE × MoE 계수가 없는 클래스(현재 intel-arc — §3.2) ② mode = cpu-moe(10-01 부분 배치 개정 후에도 유지 — NVIDIA 공개 실측 35점 평균 오차 10.3%·±20% 안 89% 지만 최대 40% 라 보정 추정(±20%, 검증 최대 오차 이상이어야 함)을 못 단다. 가장 넓은 라벨 ±30% 를 쓰고, 그 표시 범위 밖 공개 점 4개는 모두 과소 추정(실제가 더 빠름) — verify-regression 5 가 "표시 범위를 넘는 과대 추정 없음"을 강제) ③ 비전문가 크기(행 실측·모델 유도 둘 다)가 없는 MoE가 부분 오프로드로 떨어진 경우(엔진이 dense 경로로 계산) ④ llama.cpp 구동이 검증되지 않은 커스텀 아키텍처(HyperCLOVA X SEED Think 14B), 또는 구동은 되지만 속도 모델(대역폭 계수)이 검증되지 않은 상수 상태 층 하이브리드(Mamba2·short-conv·KDA+MLA — Nemotron 3.5 Lightning·LFM2.5·Ling-3.0 Tiny·Flash, PROGRESS §4 10-03 D63, 실측이 생기면 뺀다) ⑤ FP16 크리플 GPU(`fp16Tflops` < 1 — GTX 10, 계수 도출 표본 밖. `01` §9 P1-1 개정: GPU 판정 유지 + 주의 배지) ⑥ 통합 메모리 칩의 cpu-only(cpu 계수 검증점은 데스크톱 DDR5뿐 — CPU측 대역폭은 `01` §3 `unifiedCpuBandwidth`로 GPU 경로 이하로 제한)
+  - **카탈로그 밖 모델은 항상 `theoretical`**(위 규칙과 별개로 호출자가 고정 — `apps/web/lib/calc/run.ts`·`run-model.ts` 의 `theoretical: true`): 계산기 HF 불러오기(D57 — 레코드가 검증 밖, 실측 조인 0)와 **직접 입력(10-03 D66)** — 가중치는 §2.1 2순위(`paramsB × bpw / 8`, 엔진 `weightsGBFromBpw`), KV 는 §2.2 기본식(`kvBytesPerToken`, 전체 어텐션 층 수를 넣으면 그 층만), MoE 비전문가는 `derive.ts` 유도. bpw 어림은 카탈로그 실파일 대비 dense 행 −8.7%~+6.5%(평균 |오차| 2.0%), MoE 행 −8.0%~+12.6%(평균 |오차| 3.2%) — 예외로 전문가 FFN 폭이 256 배수가 아니어서 K-quant 가 큰 형식으로 대체된 Nemotron 3.5 Lightning 은 Q2_K −34%·Q4_K_M −24%(2026-10-03, data/model-quants.json). 엔진 무변경(스펙 버전 유지)
 
 ## 5. 판정 임계값 (ctx 8k, Q4_K_M 기준)
 ```

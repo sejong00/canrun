@@ -147,6 +147,62 @@ describe('hf= (카탈로그 밖 모델, D57)', () => {
   });
 });
 
+describe('mm= (모델 값 직접 입력, D66)', () => {
+  const mmOf = (qs: string) => new URLSearchParams(qs.slice(1)).get('mm');
+
+  it('round-trips a dense spec right after hf= and before the model-mode keys, no escaping', () => {
+    const s: CalcState = {
+      ...defaultState(),
+      hardware: { kind: 'catalog', gpuId: 'rtx-4060' },
+      manual: { paramsB: 8.03, layers: 32, kvHeads: 8, headDim: 128 },
+    };
+    const qs = serializeCalcQuery(s, catalog);
+    expect(qs).toBe('?gpu=rtx-4060&mm=p8.03-l32-k8-d128');
+    expect(roundTrip(s)).toEqual(normalize(s, catalog));
+    expect(serializeCalcQuery({ ...s, mode: 'model', type: ['laptop'] }, catalog)).toBe('?gpu=rtx-4060&mode=model&mm=p8.03-l32-k8-d128&type=laptop');
+    // 조각 글자·숫자·점·'-' 만 — URLSearchParams 가 이스케이프하지 않는다 (hf= 는 %2F 를 쓴다)
+    expect(qs).not.toContain('%');
+  });
+
+  it('canonical segment order p a e t l k d f c h regardless of the input order', () => {
+    const s = parseCalcQuery('?mm=h1-c262144-d128-k4-l48-t8-e128-a3.3-p30.5', catalog);
+    expect(s.manual).toEqual({ paramsB: 30.5, activeParamsB: 3.3, experts: 128, topK: 8, layers: 48, kvHeads: 4, headDim: 128, maxContext: 262144, thinking: true });
+    expect(mmOf(serializeCalcQuery(s, catalog))).toBe('p30.5-a3.3-e128-t8-l48-k4-d128-c262144-h1');
+    expect(mmOf(serializeCalcQuery(parseCalcQuery('?mm=f8-d256-k8-l48-p12.2', catalog), catalog))).toBe('p12.2-l48-k8-d256-f8');
+  });
+
+  it('keeps partial specs, drops unknown, malformed and out-of-range segments one by one', () => {
+    expect(parseCalcQuery('?mm=p8.03-l32', catalog).manual).toEqual({ paramsB: 8.03, layers: 32 });
+    const s = parseCalcQuery('?mm=p8.03-x5-l32.5-k-d2000-k8-c5000-h2-e1-t0-a-1', catalog);
+    expect(s.manual).toEqual({ paramsB: 8.03, kvHeads: 8 });
+    // 같은 글자가 두 번이면 처음 것
+    expect(parseCalcQuery('?mm=p8-p9', catalog).manual).toEqual({ paramsB: 8 });
+    // 남는 것이 없으면 키 자체가 없다
+    expect(parseCalcQuery('?mm=zzz', catalog).manual).toBeUndefined();
+    expect(parseCalcQuery('?mm=', catalog).manual).toBeUndefined();
+    // 자유 텍스트는 실을 수 없다
+    expect(parseCalcQuery(`?mm=${encodeURIComponent('<script>-p8')}`, catalog).manual).toEqual({ paramsB: 8 });
+  });
+
+  it('serialises only values a link can carry — mid-typing values stay in the state but not in the URL', () => {
+    const s: CalcState = { ...defaultState(), manual: { paramsB: 8, headDim: 1, layers: -3, maxContext: 5000 } };
+    expect(normalize(s, catalog).manual).toEqual({ paramsB: 8, headDim: 1, layers: -3, maxContext: 5000 });
+    expect(serializeCalcQuery(s, catalog)).toBe('?mm=p8');
+    expect(serializeCalcQuery({ ...defaultState(), manual: { headDim: 1 } }, catalog)).toBe('');
+  });
+
+  it('hf= wins over mm= (the real files), but an invalid hf= does not drop a valid mm=', () => {
+    expect(parseCalcQuery('?hf=Qwen%2FQwen3-4B&mm=p8-l32-k8-d128', catalog)).toMatchObject({ hf: 'Qwen/Qwen3-4B', manual: undefined });
+    expect(parseCalcQuery('?hf=nope&mm=p8-l32-k8-d128', catalog)).toMatchObject({ hf: undefined, manual: { paramsB: 8, layers: 32, kvHeads: 8, headDim: 128 } });
+  });
+
+  it('normalize drops empty specs and unticked thinking', () => {
+    expect(normalize({ ...defaultState(), manual: {} }, catalog).manual).toBeUndefined();
+    expect(normalize({ ...defaultState(), manual: { paramsB: undefined, thinking: false } }, catalog).manual).toBeUndefined();
+    expect(normalize({ ...defaultState(), manual: { paramsB: 8, thinking: false } }, catalog).manual).toEqual({ paramsB: 8 });
+  });
+});
+
 describe('gpus= (멀티 GPU, D58)', () => {
   it('round-trips 2–4 identical dGPUs right after the hardware keys; drops 1, out-of-range and non-dGPU', () => {
     const s: CalcState = { ...defaultState(), hardware: { kind: 'catalog', gpuId: 'rtx-3090' }, gpus: 2, ramGB: 64 };

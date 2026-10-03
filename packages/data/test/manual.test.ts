@@ -1,0 +1,154 @@
+/**
+ * 계산기 "모델 값 직접 입력" (D66) — 입력 → 엔진 입력 레코드. 쌍둥이(카탈로그 모델의 config 값을 그대로 넣은 입력)는
+ * KV·비전문가 크기가 카탈로그 기록과 같아야 하고, 양자화 행은 bpw 어림(실제 파일과 몇 % 차이)이다.
+ */
+import { describe, expect, it } from 'vitest';
+import {
+  buildManualModel,
+  deriveNonExpertGB,
+  MANUAL_LIMITS,
+  MANUAL_MODEL_ID,
+  MANUAL_UNKNOWN_MAX_CONTEXT,
+  manualIssues,
+  manualRangeIssue,
+  type ManualBuild,
+  type ManualSpec,
+} from '../src/index';
+import { loadSeed } from './seed';
+
+const seed = loadSeed();
+const catalogModel = (id: string) => seed.models.find((m) => m.id === id)!;
+
+const LLAMA_8B: ManualSpec = { paramsB: 8.03, layers: 32, kvHeads: 8, headDim: 128, maxContext: 131072 };
+const QWEN3_30B_A3B: ManualSpec = { paramsB: 30.5, activeParamsB: 3.3, experts: 128, topK: 8, layers: 48, kvHeads: 4, headDim: 128 };
+
+function ok(build: ManualBuild): Extract<ManualBuild, { kind: 'ok' }> {
+  if (build.kind !== 'ok') throw new Error(`expected ok, got ${JSON.stringify(build)}`);
+  return build;
+}
+
+describe('buildManualModel — catalog twins', () => {
+  it('Llama 3.1 8B numbers: KV equals the catalog record, four bpw rows, dense, unknown license', () => {
+    const { model, rows } = ok(buildManualModel(LLAMA_8B));
+    expect(model.id).toBe(MANUAL_MODEL_ID);
+    expect(model.arch.kvBytesPerTokenF16).toBe(catalogModel('llama-3.1-8b').arch.kvBytesPerTokenF16);
+    expect(model.arch.kvBytesPerTokenF16).toBe(131072);
+    expect(model.arch.attnType).toBe('full');
+    expect(rows.map((r) => [r.quant, r.fileGB])).toEqual([
+      ['Q2_K', 3.17],
+      ['IQ4_XS', 4.48],
+      ['Q4_K_M', 4.91],
+      ['Q8_0', 8.53],
+    ]);
+    expect(rows.every((r) => r.modelId === MANUAL_MODEL_ID && r.fileName === undefined)).toBe(true);
+    expect(model).toMatchObject({ moe: false, license: 'unknown', maxContext: 131072, korean: false, category: ['chat'] });
+    expect(model.thinking).toBeUndefined();
+    expect(model.nonExpertGB).toBeUndefined();
+    expect(model.activeParamsB).toBeUndefined();
+  });
+
+  it('Qwen3-30B-A3B numbers: nonExpertGB equals the catalog record, experts/topK carried', () => {
+    const { model } = ok(buildManualModel(QWEN3_30B_A3B));
+    const twin = catalogModel('qwen3-30b-a3b-2507');
+    expect(model.moe).toBe(true);
+    expect(model.nonExpertGB).toBe(twin.nonExpertGB);
+    expect(model.nonExpertGB).toBe(0.91);
+    expect(model.activeParamsB).toBe(3.3);
+    expect(model.arch).toMatchObject({ experts: 128, topK: 8, kvBytesPerTokenF16: twin.arch.kvBytesPerTokenF16 });
+  });
+
+  it('Gemma 3 12B with 8 full-attention layers out of 48: KV equals the catalog record (sliding layers left out)', () => {
+    const { model } = ok(buildManualModel({ paramsB: 12.2, layers: 48, kvHeads: 8, headDim: 256, fullAttnLayers: 8 }));
+    expect(model.arch.kvBytesPerTokenF16).toBe(catalogModel('gemma-3-12b').arch.kvBytesPerTokenF16);
+    expect(model.arch.kvBytesPerTokenF16).toBe(65536);
+    expect(model.arch.attnType).toBe('hybrid');
+  });
+
+  it('no max context → a value above the whole context ladder (no clamping); thinking → default-on', () => {
+    const { model } = ok(buildManualModel({ ...LLAMA_8B, maxContext: undefined, thinking: true }));
+    expect(model.maxContext).toBe(MANUAL_UNKNOWN_MAX_CONTEXT);
+    expect(model.maxContext).toBeGreaterThan(262144);
+    expect(model.thinking).toBe('default-on');
+  });
+
+  it('the bpw estimate stays close to the real catalog files: dense within ±10%, MoE within ±13% (documented in D66)', () => {
+    const worst = { dense: 0, moe: 0 };
+    for (const m of seed.models) {
+      // 전문가 FFN 폭이 256 배수가 아니라 K-quant 가 더 큰 형식으로 대체된 모델 — 실제 파일이 어림보다 최대 34% 크다 (D63 §5, D66 §5)
+      if (m.id === 'nemotron-3.5-lightning-30b-a3b') continue;
+      const built = ok(buildManualModel({ paramsB: m.paramsB, layers: 32, kvHeads: 8, headDim: 128 }));
+      for (const row of built.rows) {
+        const real = seed.modelQuants.find((r) => r.modelId === m.id && r.quant === row.quant);
+        if (!real) continue;
+        const err = Math.abs(row.fileGB - real.fileGB) / real.fileGB;
+        if (m.moe) worst.moe = Math.max(worst.moe, err);
+        else worst.dense = Math.max(worst.dense, err);
+      }
+    }
+    expect(worst.dense).toBeGreaterThan(0);
+    expect(worst.dense).toBeLessThan(0.1);
+    expect(worst.moe).toBeLessThan(0.13);
+  });
+});
+
+describe('buildManualModel — incomplete and invalid input', () => {
+  it('missing required values → incomplete with the missing fields', () => {
+    expect(buildManualModel({})).toEqual({ kind: 'incomplete', missing: ['paramsB', 'layers', 'kvHeads', 'headDim'] });
+    expect(buildManualModel({ ...LLAMA_8B, headDim: undefined })).toEqual({ kind: 'incomplete', missing: ['headDim'] });
+    // MoE 값을 하나라도 넣으면 셋 다 필요하다
+    expect(buildManualModel({ ...LLAMA_8B, experts: 64 })).toEqual({ kind: 'incomplete', missing: ['activeParamsB', 'topK'] });
+  });
+
+  it('out of range or a fraction in an integer field → invalid range with the limits', () => {
+    expect(buildManualModel({ ...LLAMA_8B, paramsB: 0.05 })).toEqual({ kind: 'invalid', field: 'paramsB', issue: { code: 'range', min: 0.1, max: 2000, integer: false } });
+    expect(buildManualModel({ ...LLAMA_8B, layers: 0 })).toMatchObject({ kind: 'invalid', field: 'layers', issue: { code: 'range', integer: true } });
+    expect(buildManualModel({ ...LLAMA_8B, headDim: 2000 })).toMatchObject({ kind: 'invalid', field: 'headDim' });
+    expect(buildManualModel({ ...LLAMA_8B, layers: 32.5 })).toMatchObject({ kind: 'invalid', field: 'layers' });
+    expect(manualRangeIssue('kvHeads', Number.NaN)).toMatchObject({ code: 'range' });
+    expect(manualRangeIssue('paramsB', 2000)).toBeUndefined();
+    // 입력 도중의 값(헤드 차원 '1')도 상태에 남아 안내 문장이 보인다 — 여기선 범위 오류
+    expect(manualIssues({ headDim: 1 })).toEqual({ headDim: { code: 'range', ...MANUAL_LIMITS.headDim } });
+  });
+
+  it('full-attention layers above the layer count → range up to the layer count', () => {
+    expect(buildManualModel({ ...LLAMA_8B, fullAttnLayers: 33 })).toEqual({
+      kind: 'invalid',
+      field: 'fullAttnLayers',
+      issue: { code: 'range', min: 1, max: 32, integer: true },
+    });
+    expect(ok(buildManualModel({ ...LLAMA_8B, fullAttnLayers: 32 })).model.arch.kvBytesPerTokenF16).toBe(131072);
+  });
+
+  it('MoE consistency: top-k must be below the expert count, active below total', () => {
+    expect(buildManualModel({ ...QWEN3_30B_A3B, topK: 128 })).toEqual({ kind: 'invalid', field: 'topK', issue: { code: 'topk-too-large' } });
+    expect(buildManualModel({ ...QWEN3_30B_A3B, activeParamsB: 30.5 })).toEqual({ kind: 'invalid', field: 'activeParamsB', issue: { code: 'active-too-large' } });
+    // 반올림 값으로 비교 (HF 경로와 같다)
+    expect(buildManualModel({ ...QWEN3_30B_A3B, activeParamsB: 30.499 })).toMatchObject({ issue: { code: 'active-too-large' } });
+  });
+
+  it('active too small for the expert ratio → the minimum that works, and that minimum is accepted', () => {
+    const tooSmall = buildManualModel({ ...QWEN3_30B_A3B, activeParamsB: 1.5 });
+    expect(tooSmall).toEqual({ kind: 'invalid', field: 'activeParamsB', issue: { code: 'active-too-small', min: 1.92 } });
+    // 1.91 은 유도값이 0.0025GB 라 반올림하면 0 — 안내한 최소값(1.92)은 통과해야 한다 (적대적 검토 반영)
+    expect(buildManualModel({ ...QWEN3_30B_A3B, activeParamsB: 1.91 })).toMatchObject({ issue: { code: 'active-too-small', min: 1.92 } });
+    const atMin = ok(buildManualModel({ ...QWEN3_30B_A3B, activeParamsB: 1.92 }));
+    expect(atMin.model.nonExpertGB).toBeGreaterThan(0);
+    // 여러 비율에서 안내한 최소값은 늘 통과하고 0.01 아래는 통과하지 않는다
+    for (const [p, e, t] of [[30.5, 128, 8], [8, 64, 2], [235, 128, 8], [120, 32, 4], [1.2, 16, 15], [0.5, 4, 1]] as const) {
+      const issue = manualIssues({ paramsB: p, activeParamsB: 0.1, experts: e, topK: t }).activeParamsB;
+      if (issue?.code !== 'active-too-small') continue; // 0.1 이 이미 충분한 비율
+      expect(buildManualModel({ paramsB: p, activeParamsB: issue.min, experts: e, topK: t, layers: 32, kvHeads: 8, headDim: 128 }).kind, `${p}/${e}/${t}`).toBe('ok');
+      const below = Math.round((issue.min - 0.01) * 100) / 100;
+      if (below >= 0.1) {
+        const arch = { totalParamsB: p, activeParamsB: below, experts: e, topK: t };
+        const fileGB = Math.round(((p * 4.8944) / 8) * 100) / 100;
+        expect(Math.round(deriveNonExpertGB(arch, fileGB) * 100) / 100, `${p}/${e}/${t} below`).toBeLessThanOrEqual(0);
+      }
+    }
+  });
+
+  it('range problems come first in field order', () => {
+    const build = buildManualModel({ paramsB: 0, layers: 0 });
+    expect(build).toMatchObject({ kind: 'invalid', field: 'paramsB' });
+  });
+});

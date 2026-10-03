@@ -39,6 +39,7 @@ export * from './license';
 export * from './publish';
 export * from './snippet';
 export * from './combo';
+export * from './manual';
 
 /**
  * `data/<파일명>` → 파일 전체 스키마. `scripts/validate-data.ts` 가 순회하며,

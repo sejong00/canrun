@@ -1,10 +1,10 @@
 /**
  * 계산기 아일랜드 공용 — 번역 바인딩·경로·리듀서 (클라이언트, P1-3).
  */
-import type { CatalogLite } from '@canrun/data/client';
+import type { CatalogLite, ManualSpec } from '@canrun/data/client';
 import type { EffClass } from '@canrun/engine';
 import { makeT, type Dict, type TranslateWithHas } from '@/lib/i18n-lite';
-import { normalize, type CalcState, type CustomHardware, type HardwareChoice } from '@/lib/calc/state';
+import { hasManualValue, normalize, type CalcState, type CustomHardware, type HardwareChoice } from '@/lib/calc/state';
 
 export type CalcTranslators = {
   calc: TranslateWithHas;
@@ -91,11 +91,13 @@ export type CalcAction =
   | { type: 'sort'; sort: CalcState['sort'] }
   | { type: 'focus'; focus: string | undefined }
   | { type: 'hf'; hf: string | undefined }
+  /** 직접 입력 모델 값 병합(D66) — 값이 하나라도 생기면 불러온 HF 모델을 뺀다. null = 직접 입력 지우기 */
+  | { type: 'manual'; patch: Partial<ManualSpec> | null }
   | { type: 'gpus'; gpus: number | undefined }
   | { type: 'clearFilters' }
   // 모델 모드 (10-03 D65)
   | { type: 'mode'; mode: CalcState['mode'] }
-  /** 카탈로그 모델로 대상 바꾸기 — 불러온 모델은 뺀다(아일랜드가 HF 불러오기 차례 번호도 올린다) */
+  /** 카탈로그 모델로 대상 바꾸기 — 불러온·직접 입력한 모델은 뺀다(아일랜드가 HF 불러오기 차례 번호도 올린다) */
   | { type: 'pickModel'; focus: string }
   /** 하드웨어 모드 카드 → 그 모델의 GPU 목록 (`focus` 가 없으면 불러온 모델 카드 — 대상 유지) */
   | { type: 'toModel'; focus?: string }
@@ -156,7 +158,14 @@ export function makeReducer(catalog: CatalogLite) {
       case 'focus':
         return normalize({ ...state, focus: action.focus }, catalog);
       case 'hf':
-        return normalize({ ...state, hf: action.hf }, catalog);
+        // 불러온 모델이 생기면 직접 입력 값은 내려놓는다 (hf 와 mm 은 하나만 — 실제 파일을 쓰는 hf 우선)
+        return normalize({ ...state, hf: action.hf, ...(action.hf !== undefined ? { manual: undefined } : {}) }, catalog);
+      case 'manual': {
+        if (action.patch === null) return normalize({ ...state, manual: undefined }, catalog);
+        const manual: ManualSpec = { ...state.manual, ...action.patch };
+        // 펼치기·빈 칸 지우기만으로는 불러온 모델을 빼지 않는다 — 값이 하나라도 있을 때만 (적대적 검토 반영)
+        return normalize({ ...state, manual, ...(hasManualValue(manual) ? { hf: undefined } : {}) }, catalog);
+      }
       case 'gpus':
         return normalize({ ...state, gpus: action.gpus }, catalog);
       case 'clearFilters':
@@ -164,9 +173,12 @@ export function makeReducer(catalog: CatalogLite) {
       case 'mode':
         return normalize({ ...state, mode: action.mode }, catalog);
       case 'pickModel':
-        return normalize({ ...state, focus: action.focus, hf: undefined }, catalog);
+        return normalize({ ...state, focus: action.focus, hf: undefined, manual: undefined }, catalog);
       case 'toModel':
-        return normalize({ ...state, mode: 'model', ...(action.focus !== undefined ? { focus: action.focus, hf: undefined } : {}) }, catalog);
+        return normalize(
+          { ...state, mode: 'model', ...(action.focus !== undefined ? { focus: action.focus, hf: undefined, manual: undefined } : {}) },
+          catalog,
+        );
       case 'useGpu': {
         // 'hardware' 와 같은 RAM·OS 유지 규칙으로 바꾼 뒤, 통합·CPU 행이면 그 행의 메모리 용량으로 (`m` = 대상 모델은 그대로 강조).
         // GPU 수는 1장으로 되돌린다 — 행은 1장으로 계산했으니 넘어간 화면도 그 행과 같아야 한다(여러 장이면 전부 이론 추정이 된다, 리뷰 반영)

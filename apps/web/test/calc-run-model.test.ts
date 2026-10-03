@@ -2,7 +2,7 @@
  * 계산기 모델 모드 (10-03 D65) — 브라우저 카탈로그(lite)로 조립한 GPU 행이 모델 허브 표(`summarizeModel`)와 같고,
  * 종류·예산·판정 필터와 정렬, 컨텍스트 클램프, 불러온 모델(이론 추정), "내 구성" 행이 규칙대로 동작한다.
  */
-import { HUB_POLICY, summarizeModel, toCatalogLite, verdictRank } from '@canrun/data/client';
+import { buildManualModel, HUB_POLICY, summarizeModel, toCatalogLite, verdictRank } from '@canrun/data/client';
 import { describe, expect, it } from 'vitest';
 import { loadSeed } from '../../../packages/data/test/seed';
 import { assembleResults } from '../lib/calc/run';
@@ -93,7 +93,7 @@ describe('assembleModelRows — conditions', () => {
     const base = seed.models.find((m) => m.id === 'qwen3-8b')!;
     const rows = seed.modelQuants.filter((r) => r.modelId === 'qwen3-8b').map((r) => ({ ...r, modelId: 'hf-qwen3-8b' }));
     const model = { ...base, id: 'hf-qwen3-8b', name: 'Qwen3 8B (HF)' };
-    const r = assembleModelRows(catalog, modelState('llama-3.1-8b'), { model, rows })!;
+    const r = assembleModelRows(catalog, modelState('llama-3.1-8b'), { model, rows, origin: 'hf' })!;
     // 불러온 모델이 있으면 그것이 대상 (m 보다 우선)
     expect(r.model.id).toBe('hf-qwen3-8b');
     expect(r.external).toBe(true);
@@ -104,6 +104,19 @@ describe('assembleModelRows — conditions', () => {
       const t = twin.all.find((x) => x.gpu.id === row.gpu.id)!;
       expect(row.combo.baseline.result.verdict, row.gpu.id).toBe(t.combo.baseline.estimate.verdict);
     }
+  });
+});
+
+describe('assembleModelRows — a manual model (D66) as the target', () => {
+  it('every row theoretical, origin manual, no combo pages; overrides the catalog m=', () => {
+    const build = buildManualModel({ paramsB: 8.03, layers: 32, kvHeads: 8, headDim: 128, maxContext: 131072 });
+    if (build.kind !== 'ok') throw new Error('build');
+    const r = assembleModelRows(catalog, modelState('qwen3-14b'), { model: { ...build.model, name: 'Custom model' }, rows: build.rows, origin: 'manual' })!;
+    expect(r.model.id).toBe('manual');
+    expect(r).toMatchObject({ external: true, origin: 'manual' });
+    expect(r.all.every((x) => x.combo.display.result.confidence === 'theoretical')).toBe(true);
+    expect(r.all.every((x) => x.hubConfig === undefined)).toBe(true);
+    expect(run('qwen3-14b').origin).toBeUndefined();
   });
 });
 

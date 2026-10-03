@@ -1,7 +1,7 @@
 /**
  * 계산기 결과 조립 (P1-3) — 허브 가정과 같은 입력에서 `assessCombo`(허브·콤보 정본)와 동치, 정렬·필터·클램프·커스텀.
  */
-import { assessCombo, hardwareConfigs, pickConfigCombo, toCatalogLite, verdictRank } from '@canrun/data/client';
+import { assessCombo, buildManualModel, hardwareConfigs, pickConfigCombo, toCatalogLite, verdictRank, type ManualSpec } from '@canrun/data/client';
 import { describe, expect, it } from 'vitest';
 import { loadSeed } from '../../../packages/data/test/seed';
 import { differsFromHubAssumption, resolveHardware } from '../lib/calc/hardware';
@@ -212,7 +212,7 @@ describe('assembleResults — pinned extra model (HF, D57)', () => {
     const rows = seed.modelQuants.filter((r) => r.modelId === 'qwen3-8b').map((r) => ({ ...r, modelId: 'hf-qwen3-8b' }));
     const model = { ...base, id: 'hf-qwen3-8b', name: 'Qwen3 8B (HF)' };
     const plain = assembleResults(catalog, withGpu('rtx-4060'))!;
-    const run = assembleResults(catalog, withGpu('rtx-4060', { cat: ['coding'] }), { model, rows })!;
+    const run = assembleResults(catalog, withGpu('rtx-4060', { cat: ['coding'] }), { model, rows, origin: 'hf' })!;
     expect(run.pinned?.model.id).toBe('hf-qwen3-8b');
     expect(run.pinned?.combo.baseline.result.confidence).toBe('theoretical');
     expect(run.pinned?.command).toContain('llama-server -hf');
@@ -221,6 +221,48 @@ describe('assembleResults — pinned extra model (HF, D57)', () => {
     // 같은 레코드면 순수 추정 판정은 카탈로그 모델과 같고(실측 조인은 없다) 라벨만 이론 추정
     const twin = plain.all.find((c) => c.model.id === 'qwen3-8b')!;
     expect(run.pinned?.combo.baseline.result.verdict).toBe(twin.combo.baseline.estimate.verdict);
+  });
+});
+
+describe('assembleResults — pinned manual model (D66)', () => {
+  const manual = (spec: ManualSpec) => {
+    const build = buildManualModel(spec);
+    if (build.kind !== 'ok') throw new Error(JSON.stringify(build));
+    return { model: { ...build.model, name: 'Custom model' }, rows: build.rows, origin: 'manual' as const };
+  };
+  const card = (run: ReturnType<typeof assembleResults>, id: string) => run!.all.find((c) => c.model.id === id)!;
+
+  it('Llama 3.1 8B numbers on an RTX 4060: theoretical, no command, counts unchanged, same verdict as the catalog estimate', () => {
+    const plain = assembleResults(catalog, withGpu('rtx-4060'))!;
+    const run = assembleResults(catalog, withGpu('rtx-4060'), manual({ paramsB: 8.03, layers: 32, kvHeads: 8, headDim: 128, maxContext: 131072 }))!;
+    expect(run.pinned?.model.id).toBe('manual');
+    expect(run.pinned?.combo.baseline.result.confidence).toBe('theoretical');
+    expect(run.pinned?.combo.display.result.confidence).toBe('theoretical');
+    // 받을 파일이 없다 — 명령 없음
+    expect(run.pinned?.command).toBeUndefined();
+    expect(run.counts).toEqual(plain.counts);
+    expect(run.all.some((c) => c.model.id === 'manual')).toBe(false);
+    expect(run.pinned?.combo.baseline.result.verdict).toBe(card(plain, 'llama-3.1-8b').combo.baseline.estimate.verdict);
+  });
+
+  it('Qwen3-30B-A3B numbers on an RTX 4060 with 32 GB RAM: the experts go to system RAM like the catalog model', () => {
+    const plain = assembleResults(catalog, withGpu('rtx-4060', { ramGB: 32 }))!;
+    const spec: ManualSpec = { paramsB: 30.5, activeParamsB: 3.3, experts: 128, topK: 8, layers: 48, kvHeads: 4, headDim: 128, maxContext: 262144 };
+    const run = assembleResults(catalog, withGpu('rtx-4060', { ramGB: 32 }), manual(spec))!;
+    const twin = card(plain, 'qwen3-30b-a3b-2507').combo;
+    expect(twin.display.estimate.mode).toBe('cpu-moe');
+    expect(run.pinned?.combo.display.result.mode).toBe(twin.display.estimate.mode);
+    // 2507 Instruct 는 생각 모드가 없다 — 체크하지 않으면 같은 기준, 체크하면 생각 모드 기준(×1.5, D59)
+    expect(twin.reasoning).toBe(false);
+    expect(run.pinned?.combo.reasoning).toBe(false);
+    const thinking = assembleResults(catalog, withGpu('rtx-4060', { ramGB: 32 }), manual({ ...spec, thinking: true }))!;
+    expect(thinking.pinned?.combo.reasoning).toBe(true);
+  });
+
+  it('an unknown max context never clamps the chosen context', () => {
+    const run = assembleResults(catalog, withGpu('rtx-4090', { ctx: 262144 }), manual({ paramsB: 8.03, layers: 32, kvHeads: 8, headDim: 128 }))!;
+    expect(run.pinned?.ctx).toBe(262144);
+    expect(run.pinned?.clamped).toBe(false);
   });
 });
 

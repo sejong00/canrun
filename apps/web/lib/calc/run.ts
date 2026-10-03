@@ -42,12 +42,15 @@ export type ResultCard = {
 
 export type VerdictCounts = Record<Verdict, number> & { otherQuant: number };
 
-/** 카탈로그 밖 모델(Hugging Face 에서 불러옴, 계산기 P2 D57) — 엔진 입력 레코드 그대로 */
-export type ExtraModel = { model: ModelCore; rows: readonly ModelQuantCore[] };
+/**
+ * 카탈로그 밖 모델 — 엔진 입력 레코드 그대로. `hf` = Hugging Face 에서 불러옴(계산기 P2 D57, 실제 파일·llama.cpp 명령),
+ * `manual` = 방문자가 직접 넣은 모델 값(D66, 파일 크기는 bpw 어림·파일 이름이 없어 명령 없음)
+ */
+export type ExtraModel = { model: ModelCore; rows: readonly ModelQuantCore[]; origin: 'hf' | 'manual' };
 
 export type RunResult = {
   hardware: ResolvedHardware;
-  /** 불러온 모델 카드 — 목록 맨 위에 따로 보이고 카운트·필터·정렬에는 들어가지 않는다. 항상 이론 추정 */
+  /** 불러온·직접 입력한 모델 카드 — 목록 맨 위에 따로 보이고 카운트·필터·정렬에는 들어가지 않는다. 항상 이론 추정 */
   pinned?: ResultCard;
   /** 필터 전 전체 (정렬됨) */
   all: ResultCard[];
@@ -138,7 +141,8 @@ export function assembleResults(catalog: CatalogLite, rawState: CalcState, extra
       theoretical: true,
       ramHint: gpu.kind === 'dgpu',
     });
-    const row = extra.rows.find((r) => r.quant === combo.display.quant);
+    // 명령은 실제 파일(저장소·파일 이름)이 있는 불러온 모델만 — 직접 입력 모델은 받을 파일이 없다
+    const row = extra.origin === 'hf' ? extra.rows.find((r) => r.quant === combo.display.quant) : undefined;
     const command =
       row && combo.display.fits ? commandPlan(gpu, config, extra.model, row, combo.display, { ctx, kvQuant: state.kv }).llamaCpp?.command : undefined;
     pinned = {

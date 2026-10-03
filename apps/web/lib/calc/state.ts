@@ -1,7 +1,7 @@
 /**
  * 계산기 상태 (P1-3 D31) — 순수 타입·기본값·정규화. URL 코덱(url.ts)과 아일랜드 리듀서가 공유한다.
  */
-import { HUB_POLICY, type CatalogLite, type GpuCore } from '@canrun/data/client';
+import { HUB_POLICY, type CatalogLite, type GpuCore, type ManualSpec } from '@canrun/data/client';
 import type { EffClass, KvQuant, Os, Verdict } from '@canrun/engine';
 
 export type DdrKind = 'ddr4-3200' | 'ddr5-5600' | 'ddr5-6000';
@@ -100,6 +100,11 @@ export type CalcState = {
   focus?: string;
   /** 카탈로그 밖 모델 — Hugging Face 저장소 id(`org/repo`). 브라우저가 HF 에서 불러와 이론 추정으로 계산 (계산기 P2, PROGRESS §4 D57). 모델 모드에선 불러온 모델이 대상 */
   hf?: string;
+  /**
+   * 카탈로그 밖 모델 — 방문자가 직접 넣은 모델 값(계산기 P2, PROGRESS §4 D66). 입력 도중의 범위 밖 값도 그대로 둔다(안내 문장이 보이게 —
+   * 범위 검사는 URL 파서와 `buildManualModel`). `hf` 와 함께 있으면 `hf` 가 이긴다(실제 파일을 쓴다)
+   */
+  manual?: ManualSpec;
   /** 모델 모드 GPU 종류 필터 (빈 배열 = 전부) */
   type: HwType[];
   /** 모델 모드 예산 상한 (USD, BUDGET_OPTIONS_USD 중 하나) */
@@ -219,6 +224,19 @@ export function isCpuProfile(catalog: CatalogLite, gpuId: string): boolean {
   return findGpu(catalog, gpuId)?.kind === 'cpu';
 }
 
+/** 값이 있는 칸이 하나라도 있는가 (생각 모드는 체크했을 때만 값) */
+export function hasManualValue(spec: ManualSpec | undefined): boolean {
+  return spec !== undefined && Object.values(spec).some((v) => v !== undefined && v !== false);
+}
+
+/** 빈 칸(undefined)·체크 안 한 생각 모드를 지운다 — 다 비면 undefined. 지울 것이 없으면 같은 객체 */
+function compactManual(spec: ManualSpec): ManualSpec | undefined {
+  if (!hasManualValue(spec)) return undefined;
+  const entries = Object.entries(spec);
+  if (entries.every(([, v]) => v !== undefined && v !== false)) return spec;
+  return Object.fromEntries(entries.filter(([, v]) => v !== undefined && v !== false)) as ManualSpec;
+}
+
 /** 상태 정규화 — 하드웨어 종류에 맞지 않는 필드를 기본값으로 되돌린다 (URL 파싱·리듀서 공용) */
 export function normalize(state: CalcState, catalog: CatalogLite): CalcState {
   const next: CalcState = { ...state };
@@ -249,6 +267,8 @@ export function normalize(state: CalcState, catalog: CatalogLite): CalcState {
   next.size = SIZE_BUCKETS.filter((s) => state.size.includes(s));
   if (next.focus !== undefined && !catalog.models.some((m) => m.id === next.focus)) next.focus = undefined;
   if (next.hf !== undefined && !HF_ID_RE.test(next.hf)) next.hf = undefined;
+  // 직접 입력 모델(D66): hf 를 먼저 검증한 뒤 — 잘못된 hf= 때문에 유효한 mm= 이 사라지지 않게. 범위 검사는 하지 않는다(입력 도중의 값)
+  if (next.manual !== undefined) next.manual = next.hf !== undefined ? undefined : compactManual(next.manual);
   // 멀티 GPU 는 dGPU(카탈로그·커스텀) 에만 — 통합·CPU 로 바뀌면 지운다. 1장은 기본값이라 생략
   const dgpuChoice =
     next.hardware.kind === 'none' ||
