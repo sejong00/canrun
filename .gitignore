@@ -32,3 +32,4 @@ CLAUDE.local.md
 *.log
 .DS_Store
 sync-report.md
+new-models-report.md

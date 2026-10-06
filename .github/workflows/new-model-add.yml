@@ -5,6 +5,9 @@
 # ② 와의 계약(이름을 바꾸지 말 것): 브랜치 data/new-models · 라벨 new-model-add · 제목 접두 "feat(catalog): 신모델 자동 추가"
 #   · 본문 = 보고서(추정값과 근거, "확인 필요" 표) · 스킵 목록 scripts/new-model-skips.json.
 # 브랜치는 매 실행 main 에서 다시 만든다(create-pull-request 기본 — 전날 PR 이 열려 있으면 그 PR 이 갱신된다).
+#   단 열린 PR 에 ① 이 아닌 커밋(제목이 "feat(catalog): 신모델 자동 추가" 가 아닌 것 — ② 의 수정·스킵 목록·main 병합)이 있으면
+#   덮어쓰지 않고 그날 보고서를 그 PR 에 코멘트한다(10-06 리뷰 — create-pull-request 의 리셋·강제 푸시가 ② 의 수정을 지운다).
+# data-sync PR(data/hf-sync)과 함께 열려 있으면 data/models.json 에서 충돌한다 — ② 가 이 PR 을 머지한 뒤 Data sync 를 다시 돌린다(docs/03 §5.3).
 # GITHUB_TOKEN 이 만든 PR 이라 CI job 이 돌지 않는다(data-sync 와 같음 — PROGRESS §5) → 검사는 이 job 안에서 먼저 돈다.
 # 추가가 0 이거나 검사가 실패하면 PR 대신 그날 new-model 요약 이슈(있으면)에 보고서를 코멘트하고, 검사 실패는 런을 실패로 남긴다.
 name: New model add
@@ -56,8 +59,29 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: gh label create new-model-add --color 1d76db --description "신모델 자동 추가 PR (docs/03 §5.3)" 2>/dev/null || true
 
-      - uses: peter-evans/create-pull-request@v8
+      - name: Keep an open PR that ② has worked on
+        id: open
         if: steps.auto.outputs.added != '0' && steps.auto.outputs.gate == 'pass'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          # ① 의 커밋은 늘 하나(제목 "feat(catalog): 신모델 자동 추가 (날짜)") — 다른 제목의 커밋이 있으면 ② 가 고친 것이라 브랜치를 그대로 둔다
+          pr=$(gh pr list --head data/new-models --state open --json number --jq '.[0].number // empty')
+          others=0
+          if [ -n "$pr" ]; then
+            others=$(gh pr view "$pr" --json commits --jq '[.commits[] | select(.messageHeadline | startswith("feat(catalog): 신모델 자동 추가") | not)] | length')
+          fi
+          echo "pr=$pr" >> "$GITHUB_OUTPUT"
+          if [ "$others" != "0" ]; then
+            echo "keep=true" >> "$GITHUB_OUTPUT"
+            echo "열린 PR #$pr 에 ② 의 커밋 ${others}개 — 브랜치를 갱신하지 않고 보고서를 코멘트한다"
+          else
+            echo "keep=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: peter-evans/create-pull-request@v8
+        if: steps.auto.outputs.added != '0' && steps.auto.outputs.gate == 'pass' && steps.open.outputs.keep != 'true'
         with:
           branch: data/new-models
           title: 'feat(catalog): 신모델 자동 추가 (${{ steps.auto.outputs.date }})'
@@ -71,6 +95,20 @@ jobs:
             packages/data/src/index.ts
             apps/web/assets/og/*
           labels: new-model-add
+
+      - name: Comment the report on the kept PR (②'s fixes stay)
+        if: steps.auto.outputs.added != '0' && steps.auto.outputs.gate == 'pass' && steps.open.outputs.keep == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ steps.open.outputs.pr }}
+        run: |
+          {
+            echo "> 오늘 ① 실행 결과입니다. 이 PR 에 ② 가 고친 커밋이 있어 브랜치를 갱신하지 않았습니다 — 아래 모델은 이 PR 을 머지하거나 닫은 뒤 다음 실행에서 다시 넣습니다."
+            echo
+            cat new-models-report.md
+          } > kept-report.md
+          gh pr comment "$PR" --body-file kept-report.md
 
       - name: Comment the report on today's new-model digest (no PR)
         if: steps.auto.outputs.added == '0' || steps.auto.outputs.gate == 'fail'

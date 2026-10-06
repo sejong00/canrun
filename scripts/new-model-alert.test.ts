@@ -64,6 +64,9 @@ describe('isRepack', () => {
       'orcarouter/GLM-5.3-Flash-Uncensored-FP8',
       'z-lab/Qwen3.8-27B-DFlash2',
       'LiquidAI/LFM2.5-VL-3B-DSpark', // 추측 디코딩 드래프트 (10-06 D71)
+      'ibm-granite/granite-4.2-8b-mxfp4', // 공식 형식 변형 (10-06 리뷰)
+      'inclusionAI/Ling-3.0-flash-fp4',
+      'LiquidAI/LFM2.5-2.6B-ONNX',
     ]) {
       expect(isRepack(id), id).toBe(true);
     }

@@ -90,9 +90,10 @@ export function knownHfIds(models: readonly Model[], ggufRepos: readonly string[
  * 양자화·포맷 리팩과 검열 제거·드래프트 파생 — 원본이 아니므로 후보 제외
  * (09-28 트리아지 71건 중 절반이 이 부류). BF16 은 NVIDIA 등이 원본 표기로 쓰므로 제외하지 않는다.
  * dspark = 추측 디코딩 드래프트(10-06 자동 추가 작업 중 확인: LiquidAI·skt·LGAI-EXAONE 의 `-DSpark` 저장소, D71).
+ * fp4(mxfp4·nvfp4)·onnx = 공식 제작사가 함께 올리는 형식 변형(10-06 리뷰: ibm-granite/granite-4.2-8b-mxfp4·LiquidAI/LFM2.5-2.6B-ONNX).
  */
 const REPACK_PATTERN =
-  /gguf|awq|gptq|-bnb-|fp8|nvfp4|mlx|-int[48]\b|w4a16|exl2|abliterat|uncensor|obliterat|dflash|dspark/i;
+  /gguf|awq|gptq|-bnb-|fp8|fp4|mlx|-int[48]\b|w4a16|exl2|onnx|abliterat|uncensor|obliterat|dflash|dspark/i;
 
 export const isRepack = (hfId: string): boolean => REPACK_PATTERN.test(hfId);
 

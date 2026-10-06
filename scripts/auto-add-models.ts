@@ -6,10 +6,11 @@
  *     카탈로그에 없고 스킵 목록(scripts/new-model-skips.json)에 없는 후보. 이슈 이력의 기보고 제외는 쓰지 않는다 —
  *     출시 직후 다운로드가 적던 모델이 며칠 뒤 기준을 넘을 수 있어 매일 다시 평가한다.
  *  2) 선별 — 공식 제작사 허용 목록 또는 최근 30일 다운로드 ≥ 20,000, 인기 신호(다운로드 → likes) 큰 순으로 한 번에 최대 3종.
- *  3) 추정 — 생각 모드(채팅 템플릿)·용도(이름·태그·파이프라인)·한국어(제작사)를 add-model 옵션으로 넘긴다. 표시 이름·인기도는 add-model 기본값.
+ *  3) 추정 — 생각 모드(채팅 템플릿 → 모델 카드)·용도(이름·태그·파이프라인)·한국어(제작사)를 add-model 옵션으로 넘긴다. 표시 이름·인기도는 add-model 기본값.
  *  4) 추가 — add-model 의 planAddition·applyAddition 을 그대로 부르고, 한 종마다 validate-data·pnpm test(공유 카드 글꼴이 모자라면 다시 받음).
  *     깨지면 그 후보만 되돌린다. 마지막에 pnpm build·test:export 한 번.
  *  5) 보고서(PR 본문) — 추가한 모델과 추정 근거, ②(Claude 정기 작업)가 확인할 것, 자동으로 넣지 않은 후보와 이유.
+ *     열린 PR 에 ② 가 고친 커밋이 있으면 워크플로가 브랜치를 덮어쓰지 않고 보고서를 그 PR 에 코멘트한다(AUTO_COMMIT_PREFIX).
  * PR 은 워크플로가 만든다(브랜치 data/new-models, 라벨 new-model-add). 자동 머지·main 푸시는 하지 않는다.
  *
  * 실행: pnpm exec tsx scripts/auto-add-models.ts --report new-models-report.md   # 추가 + 검사 (CI)
@@ -111,14 +112,28 @@ export type Selection = {
   /** 자동 추가를 시도할 후보 — 인기 신호 큰 순 */
   eligible: AutoCandidate[];
   review: ReviewItem[];
-  /** 스킵 목록으로 뺀 후보 */
+  /** 스킵 목록으로 뺀 후보 — hfId 는 후보 이름(형식 변형이면 스킵 목록 이름과 다를 수 있다) */
   skipped: NewModelSkip[];
+  /** 학습 중간 단계·교사 모델 저장소 — 보고서에 한 줄로 */
+  checkpoints: string[];
   /** 창(14일)보다 오래됐거나 생성일을 모르는 후보 수 — 보고서에 수만 */
   stale: number;
 };
 
 const DRAFT_TAGS = new Set(['draft-model', 'speculative-decoding']);
 const BASE_NAME = /(?:^|[-_])base(?:[-_]|$)/i;
+/** 이름에 Base 가 있어도 대화용인 표기 — K-intelligence/Midm-2.0-Base-Instruct (10-06 리뷰) */
+const CHAT_NAME = /instruct|chat|(?:^|[-_])it(?:[-_]|$)/i;
+/** 대화용 짝 저장소 접미 — 같은 org 에 `<이름>-Instruct` 등이 있으면 `<이름>` 은 Base 다(google/gemma-3-270m, meta-llama/Llama-3.2-3B) */
+const CHAT_SUFFIXES = ['-instruct', '-it', '-chat'] as const;
+/**
+ * 학습 중간 단계·교사 모델 저장소 — 공식 제작사가 최종 대화용 모델과 함께 올린다(10-06 리뷰: openbmb/MiniCPM5-2B-SFT·-Midtrain,
+ * nvidia/NVIDIA-Nemotron-Labs-Teacher-*, google/gemma-3-12b-pt, trillionlabs/Tri-70B-Intermediate-Checkpoints).
+ */
+const CHECKPOINT_NAME = /(?:^|[-_])(?:sft|dpo|mid-?train(?:ing)?|pre-?train(?:ed|ing)?|pt|teacher|ckpt|checkpoints?|intermediate)(?:[-_]|$)/i;
+/** 같은 모델의 형식 변형 접미 — 스킵 목록은 이 접미를 뗀 이름으로 맞춘다(zai-org/GLM-5.3-Flash-BF16 → GLM-5.3-Flash) */
+const FORMAT_SUFFIX = /(?:[-_](?:bf16|fp16|fp8|fp4|mxfp4|nvfp4|int4|int8|awq|gptq|onnx|mlx|gguf))+$/i;
+export const variantKey = (hfId: string): string => hfId.toLowerCase().replace(FORMAT_SUFFIX, '');
 /**
  * 대화용 범용 모델이 아닌 용도 특화 모델 — 화자 분리·안전 분류·보상·임베딩·검색·음성·시계열·로봇 등.
  * 허용 목록 제작사라도 자동으로 넣지 않는다(10-06 드라이런: google/DiarizationLM-Gemma-4-E4B-v1).
@@ -126,9 +141,14 @@ const BASE_NAME = /(?:^|[-_])base(?:[-_]|$)/i;
 const TASK_MODEL =
   /diariz|guard|shield|safety|reward|embed|rerank|retriev|classif|forecast|time-?series|robot|(?:^|[-_.])(?:asr|tts|vla|prm)(?:[-_.\d]|$)/i;
 
+/** 같은 org 에 대화용 짝(`<이름>-Instruct`·`-it`·`-Chat`)이 있는가 — ids 는 소문자 */
+const hasChatSibling = (hfId: string, ids: ReadonlySet<string>): boolean =>
+  CHAT_SUFFIXES.some((s) => ids.has(`${hfId.toLowerCase()}${s}`));
+
 /**
- * 선별 — 스킵 목록 → 창(14일) → 드래프트·Base·용도 특화 → 허용 목록 또는 다운로드 ≥ 20,000.
+ * 선별 — 스킵 목록(형식 변형 접미를 뗀 이름으로) → 창(14일) → 드래프트·Base·중간 체크포인트·용도 특화 → 허용 목록 또는 다운로드 ≥ 20,000.
  * candidates 는 filterCandidates(카탈로그·리팩·OCR·타 org 파생 제외) 결과, details 는 그 원본 API 레코드(소문자 id → 태그·파이프라인).
+ * siblingIds(소문자)는 Base 판정용 — 조회한 API 레코드 id ∪ 카탈로그·GGUF 저장소 id. 없으면 details 의 id 만 본다.
  */
 export function selectCandidates(input: {
   candidates: readonly Candidate[];
@@ -136,14 +156,16 @@ export function selectCandidates(input: {
   skips: readonly NewModelSkip[];
   allowed: ReadonlySet<string>;
   now: Date;
+  siblingIds?: ReadonlySet<string>;
 }): Selection {
-  const skipById = new Map(input.skips.map((s) => [s.hfId.toLowerCase(), s]));
+  const skipById = new Map(input.skips.map((s) => [variantKey(s.hfId), s]));
+  const siblings = input.siblingIds ?? new Set(input.details.keys());
   const windowStart = input.now.getTime() - AUTO_WINDOW_DAYS * DAY_MS;
-  const sel: Selection = { eligible: [], review: [], skipped: [], stale: 0 };
+  const sel: Selection = { eligible: [], review: [], skipped: [], checkpoints: [], stale: 0 };
   for (const c of input.candidates) {
-    const skip = skipById.get(c.hfId.toLowerCase());
+    const skip = skipById.get(variantKey(c.hfId));
     if (skip) {
-      sel.skipped.push(skip);
+      sel.skipped.push({ ...skip, hfId: c.hfId });
       continue;
     }
     const created = c.createdAt === undefined ? Number.NaN : Date.parse(c.createdAt);
@@ -154,16 +176,21 @@ export function selectCandidates(input: {
     const detail = input.details.get(c.hfId.toLowerCase());
     const tags = detail?.tags ?? [];
     const base = { hfId: c.hfId, downloads: c.downloads, createdAt: c.createdAt?.slice(0, 10) };
+    const name = baseName(c.hfId);
     if (tags.some((t) => DRAFT_TAGS.has(t))) {
-      sel.review.push({ ...base, reason: '드래프트 모델', detail: '추측 디코딩용 드래프트 — 계산기 대상이 아님' });
+      sel.review.push({ ...base, reason: '드래프트 모델', detail: '추측 디코딩용 드래프트라 계산기 대상이 아닙니다' });
       continue;
     }
-    if (BASE_NAME.test(baseName(c.hfId))) {
-      sel.review.push({ ...base, reason: 'Base 모델', detail: '대화용(Instruct) 모델이 아님 — 같은 제작사의 대화용 모델이 나오면 그쪽을 넣음' });
+    if ((BASE_NAME.test(name) && !CHAT_NAME.test(name)) || hasChatSibling(c.hfId, siblings)) {
+      sel.review.push({ ...base, reason: 'Base 모델', detail: '대화용(Instruct) 모델이 아닙니다 — 같은 제작사의 대화용 모델을 넣습니다' });
       continue;
     }
-    if (TASK_MODEL.test(baseName(c.hfId))) {
-      sel.review.push({ ...base, reason: '용도 특화 모델', detail: '이름으로 보아 대화용 범용 모델이 아님 — 필요하면 수동 add-model' });
+    if (CHECKPOINT_NAME.test(name)) {
+      sel.checkpoints.push(c.hfId);
+      continue;
+    }
+    if (TASK_MODEL.test(name)) {
+      sel.review.push({ ...base, reason: '용도 특화 모델', detail: '이름으로 보아 대화용 범용 모델이 아닙니다 — 필요하면 add-model 로 직접 넣습니다' });
       continue;
     }
     const official = input.allowed.has(orgOf(c.hfId).toLowerCase());
@@ -171,7 +198,7 @@ export function selectCandidates(input: {
       sel.review.push({
         ...base,
         reason: '기준 미달',
-        detail: `허용 목록 밖 제작사이고 30일 다운로드 ${c.downloads.toLocaleString('en-US')}회 < ${AUTO_MIN_DOWNLOADS.toLocaleString('en-US')}회`,
+        detail: `허용 목록 밖 제작사이고 30일 다운로드가 ${c.downloads.toLocaleString('en-US')}회로 기준(${AUTO_MIN_DOWNLOADS.toLocaleString('en-US')}회)보다 적습니다`,
       });
       continue;
     }
@@ -198,32 +225,56 @@ const generationTail = (template: string): string => {
   return i < 0 ? '' : template.slice(i);
 };
 
+/** 템플릿 변수 `thinking` 으로 켜고 끄는 분기 — `{% if not thinking %}`·`{%- elif thinking %}` (DeepSeek-V3.1·V3.2, Granite 3.3). `message.thinking` 은 아님 */
+const THINKING_VAR = /\{%-?\s*(?:el)?if\s+(?:not\s+)?thinking\s*-?%\}/;
+/** 생각 블록 표지 — `<think>`·`<thought>`(EXAONE Deep)·`[THINK]`(Magistral)·`/think`·`/no_think` 스위치 */
+const THINK_MARKER = /<think>|<thought>|\[THINK\]|\/no_?think\b|(?:^|[\s'"])\/think\b/;
+/** 응답 시작에 열어 두는 생각 블록(바로 닫는 빈 블록 제외) */
+const OPEN_THINK = /<(think|thought)>(?!(?:\s|\\n)*<\/\1>)|\[THINK\](?!(?:\s|\\n)*\[\/THINK\])/;
+/** 모델 카드가 non-thinking 전용이라고 밝힘 — Qwen3-*-Instruct-2507 */
+const CARD_NON_THINKING = /only\s+non-thinking|non-thinking\s+mode\s+only|does\s+not\s+generate\s+`*<think>/i;
 /**
- * 생각 모드 추정 — 채팅 템플릿(tokenizer_config.json 의 chat_template 또는 chat_template.jinja) 기준.
+ * 모델 카드의 생각 모드 표지 — 채팅 템플릿에 표지가 없는 생각 모델(10-06 리뷰: tencent/Hunyuan-A13B·7B "slow-thinking",
+ * MiniMaxAI/MiniMax-M1 "reasoning model"). 카탈로그 생각 모드 없는 모델 13종의 카드에는 하나도 없다(10-06 확인).
+ */
+const CARD_THINKING =
+  /thinking[- ]mode|reasoning (?:model|mode)|slow[- ]thinking|hybrid (?:reasoning|thinking)|thinking[ _]budget|enable_thinking|reasoning_effort|<\/?think>|<\/?thought>|\/no_?think\b/i;
+
+/** 템플릿에서 표지를 못 찾았을 때 — 이름 → 모델 카드 순으로 본다 */
+function thinkingFallback(templateNote: string, hfId: string, card: string | undefined, templateKnown: boolean): ThinkingEstimate {
+  if (/think|reason|(?:^|[-_])r1(?:[-_]|$)/i.test(baseName(hfId))) {
+    return { value: 'default-on', sure: false, basis: `${templateNote}, 이름에 생각 모드 표기가 있습니다` };
+  }
+  if (card === undefined) return { sure: false, basis: `${templateNote}, 모델 카드를 받지 못했습니다` };
+  if (CARD_NON_THINKING.test(card)) return { sure: templateKnown, basis: `${templateNote}, 모델 카드에 non-thinking 전용이라고 적혀 있습니다` };
+  const hit = CARD_THINKING.exec(card)?.[0];
+  if (hit !== undefined) return { value: 'default-on', sure: false, basis: `${templateNote}, 모델 카드에 \`${hit}\` 표현이 있습니다` };
+  return { sure: templateKnown, basis: `${templateNote}, 모델 카드에도 생각 모드 표지가 없습니다` };
+}
+
+/**
+ * 생각 모드 추정 — 채팅 템플릿(tokenizer_config.json 의 chat_template 또는 chat_template.jinja)과 모델 카드(README) 기준.
  * 판정은 생각 모드가 "있는지"만 본다(×1.5, D59 — assess.isReasoning) — 확실하지 않아도 표지가 있으면 최선의 값을 넣고 sure:false 로
- * ② 확인을 건다(미지정은 생각하는 모델을 낙관적으로 판정한다). 카탈로그 43종 템플릿으로 맞춰 봄(10-06): 확정한 값은 모두 카탈로그와 같다.
+ * ② 확인을 건다(미지정은 생각하는 모델을 낙관적으로 판정한다). 카탈로그 43종 + 다른 공식 모델 40여 종 템플릿으로 맞춰 봄(10-06): 확정한 값은 모두 맞다.
  *  - enable_thinking: `| default(true|false)`·`if … is defined else True|False` 가 있으면 그 값. 없으면 "끄라고 할 때만 끈다"
  *    (`is not defined or enable_thinking`·`is defined and enable_thinking is false`) → default-on, "켜라고 할 때만 켠다"
  *    (`is defined and enable_thinking [is true] %}`) → default-off. 둘 다·둘 다 아님(중첩 분기) → default-on + 확인 필요.
  *  - reasoning_effort(enable_thinking 없음): 생각 블록을 비우는 분기가 없으면 always(gpt-oss), 있으면 default-on
  *    (기본 단계가 medium·high·xhigh 로 적혀 있으면 확정 — Solar Open·Open2, 아니면 확인 필요).
- *  - `<think>` 만: 응답 시작에 `<think>` 를 열어 두면 always(R1 Distill·LFM2.5), 아니면 default-on + 확인 필요.
- *  - 표지 없음: 이름에 think·reason·R1 이 있으면 default-on + 확인 필요(HyperCLOVA X THINK 는 자체 표기), 아니면 없음.
+ *  - 템플릿 변수 `thinking`(`{% if not thinking %}`): `set thinking = true|false` 가 기본값, 없으면 넘기지 않을 때 꺼짐 → default-off(DeepSeek-V3.1·Granite 3.3).
+ *  - `<think>`·`<thought>`·`[THINK]`·`/no_think` 표지만: 응답 시작에 생각 블록을 열어 두면 always(R1 Distill·LFM2.5·EXAONE Deep), 아니면 default-on + 확인 필요.
+ *  - 표지 없음: 이름에 think·reason·R1 이 있으면 default-on + 확인 필요(HyperCLOVA X THINK 는 자체 표기). 아니면 모델 카드 —
+ *    non-thinking 전용이라고 밝히면 없음, 생각 모드 표지가 있으면 default-on + 확인 필요, 둘 다 없으면 없음. 카드를 못 받으면 확인 필요.
  */
-export function estimateThinking(template: string | undefined, hfId: string): ThinkingEstimate {
-  const nameHint = /think|reason|(?:^|[-_])r1(?:[-_]|$)/i.test(baseName(hfId));
-  if (template === undefined) {
-    return nameHint
-      ? { value: 'default-on', sure: false, basis: '채팅 템플릿을 받지 못함 — 이름에 생각 모드 표기' }
-      : { sure: false, basis: '채팅 템플릿을 받지 못함' };
-  }
+export function estimateThinking(template: string | undefined, hfId: string, card?: string): ThinkingEstimate {
+  if (template === undefined) return thinkingFallback('채팅 템플릿을 받지 못했고', hfId, card, false);
   if (/enable_thinking/.test(template)) {
     const explicit =
       /enable_thinking\s*\|\s*default\(\s*(true|false)\s*\)/i.exec(template) ??
       /enable_thinking\s+if\s+enable_thinking\s+is\s+defined\s+else\s+(true|false)\b/i.exec(template);
     if (explicit?.[1] !== undefined) {
       const on = explicit[1].toLowerCase() === 'true';
-      return { value: on ? 'default-on' : 'default-off', sure: true, basis: `enable_thinking 기본값 ${on ? 'true' : 'false'}` };
+      return { value: on ? 'default-on' : 'default-off', sure: true, basis: `enable_thinking 기본값이 ${on ? 'true' : 'false'} 입니다` };
     }
     const on =
       /enable_thinking\s+is\s+(?:not\s+defined|undefined)\s+or\s+enable_thinking\b/.test(template) ||
@@ -231,28 +282,34 @@ export function estimateThinking(template: string | undefined, hfId: string): Th
     const off = /enable_thinking\s+is\s+defined\s+and\s+enable_thinking(?:\s+is\s+true)?\s*-?%\}/.test(template);
     if (on !== off) {
       return on
-        ? { value: 'default-on', sure: true, basis: 'enable_thinking — 끄라고 할 때만 끈다' }
-        : { value: 'default-off', sure: true, basis: 'enable_thinking — 켜라고 할 때만 켠다' };
+        ? { value: 'default-on', sure: true, basis: 'enable_thinking 을 끄라고 할 때만 끕니다' }
+        : { value: 'default-off', sure: true, basis: 'enable_thinking 을 켜라고 할 때만 켭니다' };
     }
-    return { value: 'default-on', sure: false, basis: 'enable_thinking 있음 — 템플릿에서 기본값을 확정하지 못함' };
+    return { value: 'default-on', sure: false, basis: 'enable_thinking 이 있지만 템플릿에서 기본값을 확정하지 못했습니다' };
   }
   if (/reasoning_effort/.test(template)) {
-    if (!EMPTY_THINK.test(template)) return { value: 'always', sure: true, basis: 'reasoning_effort — 생각 블록을 비우는 단계 없음(gpt-oss 류)' };
+    if (!EMPTY_THINK.test(template)) return { value: 'always', sure: true, basis: 'reasoning_effort 만 있고 생각 블록을 비우는 단계가 없습니다(gpt-oss 류)' };
     const def = /reasoning_effort\s+if\s+reasoning_effort\s+is\s+defined\s+else\s+["'](\w+)["']/.exec(template)?.[1];
     if (def !== undefined && /^(?:medium|high|xhigh|max)$/i.test(def)) {
-      return { value: 'default-on', sure: true, basis: `reasoning_effort 기본 ${def} — 낮추면 생각 블록을 비운다` };
+      return { value: 'default-on', sure: true, basis: `reasoning_effort 기본값이 ${def} 이고, 낮추면 생각 블록을 비웁니다` };
     }
-    return { value: 'default-on', sure: false, basis: 'reasoning_effort 로 생각 블록을 비울 수 있음 — 기본 단계를 확정하지 못함' };
+    return { value: 'default-on', sure: false, basis: 'reasoning_effort 로 생각 블록을 비울 수 있지만 기본 단계를 확정하지 못했습니다' };
   }
-  if (/<think>/.test(template)) {
-    // 응답 시작에 빈 생각 블록(<think></think>)이 아닌 열린 <think> 를 넣으면 늘 생각한다
-    return /<think>(?!(?:\s|\\n)*<\/think>)/.test(generationTail(template))
-      ? { value: 'always', sure: true, basis: '응답 시작에 <think> 를 열어 둠(끄는 스위치 없음)' }
-      : { value: 'default-on', sure: false, basis: '<think> 만 있음 — 켜고 끄는 스위치 없음' };
+  if (THINKING_VAR.test(template)) {
+    const def = /set\s+thinking\s*=\s*(true|false)\b/i.exec(template)?.[1]?.toLowerCase();
+    if (def === 'true') return { value: 'default-on', sure: true, basis: '`thinking` 변수 기본값이 true 입니다' };
+    return {
+      value: 'default-off',
+      sure: true,
+      basis: def === 'false' ? '`thinking` 변수 기본값이 false 입니다' : '`thinking` 변수를 넘기지 않으면 꺼집니다',
+    };
   }
-  return nameHint
-    ? { value: 'default-on', sure: false, basis: '템플릿에 생각 표지 없음 — 이름에 생각 모드 표기' }
-    : { sure: true, basis: '채팅 템플릿에 생각 모드 표지 없음' };
+  if (THINK_MARKER.test(template)) {
+    return OPEN_THINK.test(generationTail(template))
+      ? { value: 'always', sure: true, basis: '응답 시작에 생각 블록(`<think>` 등)을 열어 둡니다 — 끄는 스위치가 없습니다' }
+      : { value: 'default-on', sure: false, basis: '`<think>` 같은 생각 표지만 있고 켜고 끄는 스위치를 찾지 못했습니다' };
+  }
+  return thinkingFallback('채팅 템플릿에 생각 모드 표지가 없고', hfId, card, true);
 }
 
 const CATEGORY_ORDER = ['chat', 'coding', 'reasoning', 'vision'] as const;
@@ -387,6 +444,8 @@ export type ReportInput = {
   added: readonly AddedModel[];
   review: readonly ReviewItem[];
   skipped: readonly NewModelSkip[];
+  /** 학습 중간 단계·교사 모델 저장소로 뺀 후보 */
+  checkpoints: readonly string[];
   stale: number;
   gate: GateResult;
   fontRefreshed: boolean;
@@ -395,22 +454,33 @@ export type ReportInput = {
 /** PR 본문 마커 — ② 가 추가 모델 목록을 기계적으로 읽는다 */
 export const REPORT_MARKER = 'new-model-add:';
 
+/** ① 커밋 제목 접두 — 워크플로가 열린 PR 에 이 제목이 아닌 커밋(② 의 수정)이 있으면 브랜치를 덮어쓰지 않는다 */
+export const AUTO_COMMIT_PREFIX = 'feat(catalog): 신모델 자동 추가';
+
 const hf = (repo: string): string => `[${repo}](https://huggingface.co/${repo})`;
 const num = (n: number): string => n.toLocaleString('en-US');
+
+/**
+ * add-model 경고 중 자동 추가가 이미 다룬 것(옵션 안내 — 생각 모드·카테고리·표시명·최대 컨텍스트)은 보고서에서 뺀다.
+ * 같은 내용은 "② 가 확인할 것" 체크리스트에 있다. 나머지(GGUF 헤더 측정 등)는 그대로 싣는다.
+ */
+export function reportWarnings(warnings: readonly string[]): string[] {
+  return warnings.filter((w) => !/^(?:생각 모드 미지정|카테고리는 기본값|최대 컨텍스트 \S+ 는 config 값|표시명 ")/.test(w));
+}
 
 /** 보고서(PR 본문·이슈 코멘트) — 합니다체 */
 export function renderReport(r: ReportInput): string {
   const out: string[] = [];
-  out.push(`## 신모델 자동 추가 — ${r.date}${r.dry ? ' (드라이런: 파일을 쓰지 않음)' : ''}`, '');
+  out.push(`## 신모델 자동 추가 — ${r.date}${r.dry ? ' (드라이런: 파일을 쓰지 않았습니다)' : ''}`, '');
   out.push(
     '자동 추가(docs/03 §5.3)가 Hugging Face 신모델 후보를 골라 `add-model` 로 레코드를 만듭니다. ' +
-      '생각 모드·용도·한국어 표시는 채팅 템플릿과 이름으로 **추정**한 값이라, 머지 전에 모델 카드와 대조해 주세요.',
+      '생각 모드·용도·한국어 표시는 채팅 템플릿·모델 카드·이름으로 **추정**한 값이라, 머지 전에 모델 카드와 대조해 주세요.',
     '',
   );
 
   out.push(`### ${r.dry ? '추가할 모델' : '추가한 모델'} (${r.added.length}종)`, '');
   if (r.added.length === 0) {
-    out.push(r.dry ? '오늘 자동으로 넣을 모델이 없습니다.' : '자동으로 넣은 모델이 없습니다 — PR 을 만들지 않습니다.', '');
+    out.push(r.dry ? '오늘 자동으로 넣을 모델이 없습니다.' : '자동으로 넣은 모델이 없어 PR 을 만들지 않습니다.', '');
   } else {
     out.push('| 모델 | 구조 | 기준 GGUF | 파라미터 | 생각 모드 (추정) | 용도 (추정) | 한국어 (추정) | 인기도 |');
     out.push('|---|---|---|---|---|---|---|---|');
@@ -418,13 +488,13 @@ export function renderReport(r: ReportInput): string {
       const params = `${m.paramsB}B${m.activeParamsB !== undefined ? ` (활성 ${m.activeParamsB}B)` : ''}`;
       const thinking = `${m.thinking.value ?? '없음'}${m.thinking.sure ? '' : ' ⚠확인 필요'} — ${m.thinking.basis}`;
       out.push(
-        `| ${hf(m.hfId)} → \`${m.id}\` (${m.name}) | ${m.structure} | ${hf(m.ggufRepo)} | ${params} | ${thinking} | ${m.category.join(',')} — ${m.categoryBasis} | ${m.korean.value ? '예' : '아니오'} — ${m.korean.basis} | ${m.popularity} (30일 ${num(m.downloads)}회) |`,
+        `| ${hf(m.hfId)} → \`${m.id}\` (${m.name}) | ${m.structure} | ${hf(m.ggufRepo)} | ${params} | ${thinking} | ${m.category.join(',')} ⚠확인 필요 — ${m.categoryBasis} | ${m.korean.value ? '예' : '아니오'} — ${m.korean.basis} | ${m.popularity} (30일 ${num(m.downloads)}회) |`,
       );
     }
     out.push('');
-    const warned = r.added.filter((m) => m.warnings.length > 0);
+    const warned = r.added.map((m) => ({ hfId: m.hfId, warnings: reportWarnings(m.warnings) })).filter((m) => m.warnings.length > 0);
     if (warned.length > 0) {
-      out.push('add-model 경고:', '');
+      out.push('add-model 이 남긴 경고:', '');
       for (const m of warned) for (const w of m.warnings) out.push(`- **${m.hfId}**: ${w}`);
       out.push('');
     }
@@ -432,13 +502,16 @@ export function renderReport(r: ReportInput): string {
     out.push('### ② 가 확인할 것', '');
     for (const m of r.added) {
       out.push(
-        `- [ ] **${m.hfId}** 생각 모드 \`${m.thinking.value ?? '없음'}\`${m.thinking.sure ? '' : ' (⚠확인 필요)'} — 모델 카드·채팅 템플릿과 대조 (근거: ${m.thinking.basis})`,
-        `- [ ] **${m.hfId}** 용도 \`${m.category.join(',')}\` · 표시 이름 "${m.name}" · 최대 컨텍스트 ${num(m.maxContext)}(config 값 — 카드의 기본 길이와 다르면 고침) · 라이선스 "${m.license}" · 인기도 ${m.popularity}`,
+        `- [ ] **${m.hfId}** 생각 모드 \`${m.thinking.value ?? '없음'}\`${m.thinking.sure ? '' : ' (⚠확인 필요)'} — 모델 카드·채팅 템플릿과 대조합니다 (근거: ${m.thinking.basis})`,
+        `- [ ] **${m.hfId}** 용도 \`${m.category.join(',')}\` (⚠확인 필요 — 자동 추정은 카탈로그 관례와 절반쯤 다릅니다. 범용 대형 모델의 coding, 생각 모드가 있는 모델의 reasoning 은 카드 기준으로 정합니다)`,
+        `- [ ] **${m.hfId}** 표시 이름 "${m.name}" · 최대 컨텍스트 ${num(m.maxContext)}(config 값이라 카드의 기본 길이와 다르면 고칩니다) · 라이선스 "${m.license}" · 인기도 ${m.popularity} — 고칠 값은 \`data/models.json\` 에서 고칩니다`,
       );
     }
     out.push(
-      '- [ ] 봇이 만든 PR 이라 CI job 이 돌지 않습니다 — close→reopen 으로 CI 를 돌려 초록인지 본 뒤 머지',
-      '- [ ] 넣지 않기로 한 모델은 이 PR 에서 빼고 `scripts/new-model-skips.json` 에 skip·wait 와 이유를 적기',
+      '- [ ] 봇이 연 PR 이라 CI 가 돌지 않습니다 — PR 을 닫았다 다시 열어 CI 가 통과하는지 확인한 뒤 머지합니다',
+      '- [ ] 넣지 않기로 한 모델은 이 PR 에서 빼고 `scripts/new-model-skips.json` 에 skip·wait 와 이유를 적습니다',
+      `- [ ] 이 PR 에 고친 커밋을 올리면(제목은 \`${AUTO_COMMIT_PREFIX}\` 가 아닌 것으로) 다음 ① 실행이 브랜치를 덮어쓰지 않고 그날 보고서를 코멘트로 남깁니다. 끝내지 못할 PR 은 닫습니다`,
+      '- [ ] `data/hf-sync` PR 이 함께 열려 있으면 두 PR 이 `data/models.json` 에서 충돌합니다 — 이 PR 을 머지한 뒤 `gh workflow run data-sync.yml` 로 그 PR 을 main 기준으로 다시 만듭니다',
       '',
     );
   }
@@ -447,6 +520,10 @@ export function renderReport(r: ReportInput): string {
   out.push(`### 확인 필요 — 자동으로 넣지 않은 후보 (${r.review.length}건)`, '');
   if (r.review.length === 0) out.push('없습니다.', '');
   else {
+    out.push(
+      '계속 넣을 수 없는 후보(보류 구조·GGUF 없음 등)는 `scripts/new-model-skips.json` 에 wait·skip 으로 적어 주세요 — 적지 않으면 출시 14일 동안 매일 다시 시도해 하루 시도 횟수를 씁니다.',
+      '',
+    );
     out.push('| 모델 | 이유 | 내용 | 30일 다운로드 | 생성일 |', '|---|---|---|---|---|');
     for (const item of r.review) {
       out.push(`| ${hf(item.hfId)} | ${item.reason} | ${item.detail} | ${item.downloads === undefined ? '—' : num(item.downloads)} | ${item.createdAt ?? '—'} |`);
@@ -456,7 +533,10 @@ export function renderReport(r: ReportInput): string {
   if (r.skipped.length > 0) {
     out.push(`스킵 목록(\`scripts/new-model-skips.json\`)으로 뺀 후보: ${r.skipped.map((s) => `${s.hfId}(${s.decision})`).join(', ')}`, '');
   }
-  if (r.stale > 0) out.push(`출시 ${AUTO_WINDOW_DAYS}일이 지난 trending 후보 ${r.stale}종은 보지 않았습니다(요약 이슈 트리아지 몫).`, '');
+  if (r.checkpoints.length > 0) {
+    out.push(`학습 중간 단계·교사 모델 저장소로 보고 뺀 후보 ${r.checkpoints.length}종: ${r.checkpoints.join(', ')}`, '');
+  }
+  if (r.stale > 0) out.push(`출시 ${AUTO_WINDOW_DAYS}일이 지난 인기 급상승 후보 ${r.stale}종은 보지 않았습니다(그날 요약 이슈에서 따로 판단합니다).`, '');
 
   out.push('### 검사', '');
   const gate = r.gate;
@@ -504,6 +584,18 @@ export async function fetchChatTemplate(hfId: string, opts: { token?: string; fe
       } else if (tc.status === 401 || tc.status === 403) gated = true;
     }
     if (!gated) return undefined;
+  }
+  return undefined;
+}
+
+/** 모델 카드(README.md) — 게이트 저장소(401·403)는 unsloth 미러에서. 못 받으면 undefined */
+export async function fetchModelCard(hfId: string, opts: { token?: string; fetchImpl?: FetchLike } = {}): Promise<string | undefined> {
+  const fetchImpl = opts.fetchImpl ?? globalThis.fetch;
+  const headers = authHeaders(opts.token);
+  for (const repo of [hfId, `unsloth/${baseName(hfId)}`]) {
+    const res = await fetchWithRetry(`https://huggingface.co/${repo}/raw/main/README.md`, headers, fetchImpl);
+    if (res.ok) return await res.text();
+    if (res.status !== 401 && res.status !== 403) return undefined;
   }
   return undefined;
 }
@@ -594,13 +686,16 @@ async function main(): Promise<void> {
   const details = new Map<string, HfApiModel>();
   for (const m of [...trending, ...orgReleases]) details.set(m.id.toLowerCase(), m);
   const candidates = filterCandidates(known, trending, orgReleases, now, AUTO_WINDOW_DAYS);
-  const sel = selectCandidates({ candidates, details, skips, allowed: allowedOrgs(catalogIds), now });
-  console.log(`후보 ${candidates.length}종 → 시도 대상 ${sel.eligible.length}종 · 확인 필요 ${sel.review.length}종 · 스킵 ${sel.skipped.length}종 · 오래됨 ${sel.stale}종`);
+  const siblingIds = new Set([...details.keys(), ...known]);
+  const sel = selectCandidates({ candidates, details, skips, allowed: allowedOrgs(catalogIds), now, siblingIds });
+  console.log(
+    `후보 ${candidates.length}종 → 시도 대상 ${sel.eligible.length}종 · 확인 필요 ${sel.review.length}종 · 스킵 ${sel.skipped.length}종 · 중간 체크포인트 ${sel.checkpoints.length}종 · 오래됨 ${sel.stale}종`,
+  );
 
   let fontRefreshed = false;
   const result = await runAdditions(sel.eligible, async (c): Promise<Attempt> => {
     const base = { hfId: c.hfId, downloads: c.downloads, createdAt: c.createdAt?.slice(0, 10) };
-    const thinking = estimateThinking(await fetchChatTemplate(c.hfId, { token }), c.hfId);
+    const thinking = estimateThinking(await fetchChatTemplate(c.hfId, { token }), c.hfId, await fetchModelCard(c.hfId, { token }));
     const category = estimateCategory({ hfId: c.hfId, tags: c.tags, ...(c.pipelineTag !== undefined ? { pipelineTag: c.pipelineTag } : {}), ...(thinking.value !== undefined ? { thinking: thinking.value } : {}) });
     const korean = estimateKorean(c.hfId);
     const catalog = readCatalogRaw(); // 앞 후보를 추가했으면 그 상태에서
@@ -614,7 +709,7 @@ async function main(): Promise<void> {
     const { plan } = res;
     for (const line of plan.lines) console.log(line);
     if (classifyLicense(plan.summary.license) === 'unknown') {
-      return { kind: 'review', item: { ...base, reason: '처음 보는 라이선스', detail: `"${oneLine(plan.summary.license)}" — packages/data/src/license.ts 배지 맵에 분류를 더한 뒤 add-model` } };
+      return { kind: 'review', item: { ...base, reason: '처음 보는 라이선스', detail: `"${oneLine(plan.summary.license)}" — packages/data/src/license.ts 배지 맵에 분류를 더한 뒤 add-model 로 넣습니다` } };
     }
     const added = toAddedModel(plan, c, { thinking, categoryBasis: category.basis, korean });
     if (args.dry) return { kind: 'added', added };
@@ -647,6 +742,7 @@ async function main(): Promise<void> {
     added: result.added,
     review: [...sel.review, ...result.review],
     skipped: sel.skipped,
+    checkpoints: sel.checkpoints,
     stale: sel.stale,
     gate,
     fontRefreshed,

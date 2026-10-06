@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { parseNewModelSkips } from '../packages/data/src/index';
 import {
   AUTO_MAX_ADD,
+  AUTO_COMMIT_PREFIX,
   AUTO_MIN_DOWNLOADS,
   AUTO_WINDOW_DAYS,
   REPORT_MARKER,
@@ -16,8 +17,10 @@ import {
   estimateThinking,
   orgsToQuery,
   renderReport,
+  reportWarnings,
   runAdditions,
   selectCandidates,
+  variantKey,
   type AddedModel,
   type AutoCandidate,
   type ReportInput,
@@ -84,7 +87,7 @@ describe('selectCandidates — 허용 목록 또는 다운로드 2만, 스킵·�
       allowed,
       now: NOW,
     });
-    expect(sel.skipped.map((s) => s.hfId)).toEqual(['qwen/QWEN3.8-flash-next']);
+    expect(sel.skipped.map((s) => s.hfId)).toEqual(['Qwen/Qwen3.8-Flash-Next']);
     expect(sel.stale).toBe(2);
     expect(sel.review.map((r) => [r.hfId, r.reason])).toEqual([
       ['LiquidAI/LFM3-1B-Draft', '드래프트 모델'],
@@ -93,6 +96,43 @@ describe('selectCandidates — 허용 목록 또는 다운로드 2만, 스킵·�
       ['meta-llama/Llama-Prompt-Guard-3-86M', '용도 특화 모델'],
     ]);
     expect(sel.eligible.map((c) => c.hfId)).toEqual(['Qwen/Qwen4-9B']);
+  });
+
+  it('matches the skip list without format suffixes, keeps -Base-Instruct chat models, and spots Base by a chat sibling (10-06 리뷰)', () => {
+    const sel = selectCandidates({
+      candidates: [
+        cand('zai-org/GLM-5.3-Flash-BF16', { downloads: 63_789 }),
+        cand('K-intelligence/Midm-2.5-Base-Instruct', { downloads: 500 }),
+        cand('meta-llama/Llama-4.1-3B'),
+        cand('google/gemma-5-270m'),
+        cand('google/gemma-5-270m-it'),
+      ],
+      details: new Map(),
+      skips: [{ hfId: 'zai-org/GLM-5.3-Flash', decision: 'wait', reason: '⑧', decidedAt: '2026-10-04' }],
+      allowed: allowedOrgs([]),
+      now: NOW,
+      siblingIds: new Set(['meta-llama/llama-4.1-3b-instruct', 'google/gemma-5-270m', 'google/gemma-5-270m-it']),
+    });
+    expect(sel.skipped).toEqual([expect.objectContaining({ hfId: 'zai-org/GLM-5.3-Flash-BF16', decision: 'wait' })]);
+    expect(sel.review.map((r) => [r.hfId, r.reason])).toEqual([
+      ['meta-llama/Llama-4.1-3B', 'Base 모델'],
+      ['google/gemma-5-270m', 'Base 모델'],
+    ]);
+    expect(sel.eligible.map((c) => c.hfId)).toEqual(['K-intelligence/Midm-2.5-Base-Instruct', 'google/gemma-5-270m-it']);
+    expect(variantKey('zai-org/GLM-5.3-Flash-BF16')).toBe(variantKey('zai-org/glm-5.3-flash'));
+  });
+
+  it('lists training-stage and teacher checkpoints on one line instead of trying them (10-06 리뷰)', () => {
+    const sel = selectCandidates({
+      candidates: ['openbmb/MiniCPM6-2B-SFT', 'openbmb/MiniCPM6-2B-Midtrain', 'nvidia/NVIDIA-Nemotron-Labs-Teacher-8B', 'google/gemma-5-12b-pt', 'trillionlabs/Tri-70B-Intermediate-Checkpoints', 'allenai/AstaBrief_8B_SFT', 'openai/gpt-oss-30b']
+        .map((id) => cand(id)),
+      details: new Map(),
+      skips: [],
+      allowed: allowedOrgs([]),
+      now: NOW,
+    });
+    expect(sel.checkpoints).toHaveLength(6);
+    expect(sel.eligible.map((c) => c.hfId)).toEqual(['openai/gpt-oss-30b']);
   });
 
   it('queries watched orgs, the allowlist and catalog owners once each', () => {
@@ -178,9 +218,37 @@ describe('estimateThinking — 채팅 템플릿 (카탈로그 43종으로 맞춤
     expect(estimateThinking(history, 'org/Model-7B')).toMatchObject({ value: 'default-on', sure: false });
   });
 
-  it('no markers → no thinking mode; missing template or a Think name → flagged', () => {
-    expect(estimateThinking(gen(`{{- '<|start_header_id|>assistant<|end_header_id|>\\n\\n' }}`), 'meta-llama/Llama-3.2-3B-Instruct')).toEqual({ sure: true, basis: '채팅 템플릿에 생각 모드 표지 없음' });
-    expect(estimateThinking(undefined, 'mistralai/Mistral-Small-3.2-24B-Instruct-2506')).toEqual({ sure: false, basis: '채팅 템플릿을 받지 못함' });
+  it('<thought> opened at the start of every answer → always (EXAONE Deep, 10-06 리뷰)', () => {
+    const t = `{% set content = message['content'] %}{% if '</thought>' in content %}{% set content = content.split('</thought>')[-1].lstrip('\\n') %}{% endif %}{% if add_generation_prompt %}{{ '\\n[|assistant|]<thought>\\n' }}{% endif %}`;
+    expect(estimateThinking(t, 'LGAI-EXAONE/EXAONE-Deep-7.8B')).toMatchObject({ value: 'always', sure: true });
+  });
+
+  it('a `thinking` template variable picks its default: set false → default-off (DeepSeek-V3.1), unset → off (Granite 3.3) (10-06 리뷰)', () => {
+    const deepseek = `{% if not thinking is defined %}{% set thinking = false %}{% endif %}{%- if add_generation_prompt and ns.is_last_user and not ns.is_tool %}{{'<｜Assistant｜>'}}{%- if not thinking %}{{'</think>'}}{%- else %}{{'<think>'}}{%- endif %}{% endif %}`;
+    expect(estimateThinking(deepseek, 'deepseek-ai/DeepSeek-V3.1')).toMatchObject({ value: 'default-off', sure: true });
+    expect(estimateThinking(`{%- if tools %}…{%- elif thinking %}{{- 'You are a helpful AI assistant. Respond … <think> … </think>' }}{%- endif %}`, 'ibm-granite/granite-3.3-8b-instruct')).toMatchObject({
+      value: 'default-off',
+      sure: true,
+    });
+    expect(estimateThinking(`{% set thinking = true %}{%- if thinking %}{{'<think>'}}{%- endif %}`, 'org/Model')).toMatchObject({ value: 'default-on', sure: true });
+    // message.thinking(대화 기록의 생각 블록)은 스위치가 아니다 — LFM2.5 는 응답 시작에 <think> 를 열어 always
+    const lfm = `{%- set thinking = message.thinking or message.reasoning -%}{%- if thinking and keep_thinking -%}{{- "<think>" + thinking + "</think>" -}}{%- endif -%}{%- if add_generation_prompt -%}{{- "<|im_start|>assistant\\n<think>" -}}{%- endif -%}`;
+    expect(estimateThinking(lfm, 'LiquidAI/LFM2.5-2.6B')).toMatchObject({ value: 'always', sure: true });
+  });
+
+  it('no template markers → the model card decides; a missing card or template, or a Think name → flagged (10-06 리뷰)', () => {
+    const plain = gen(`{{- '<|start_header_id|>assistant<|end_header_id|>\\n\\n' }}`);
+    expect(estimateThinking(plain, 'meta-llama/Llama-3.2-3B-Instruct', '# Llama 3.2\nMultilingual dialogue model.')).toMatchObject({ sure: true });
+    expect(estimateThinking(plain, 'meta-llama/Llama-3.2-3B-Instruct', '# Llama 3.2').value).toBeUndefined();
+    // Hunyuan-A13B: 템플릿(794자)에 표지가 없고 카드에 slow-thinking·hybrid reasoning
+    const hunyuan = estimateThinking(plain, 'tencent/Hunyuan-A13B-Instruct', 'Our model defaults to using slow-thinking reasoning. **Hybrid Reasoning Support**');
+    expect(hunyuan).toMatchObject({ value: 'default-on', sure: false });
+    expect(hunyuan.basis).toContain('`');
+    expect(estimateThinking(plain, 'MiniMaxAI/MiniMax-M1-80k', 'the world\'s first open-weight, large-scale hybrid-attention reasoning model')).toMatchObject({ value: 'default-on', sure: false });
+    // Qwen3-*-Instruct-2507: 카드가 thinking mode 를 말하지만 non-thinking 전용이라고 밝힌다
+    expect(estimateThinking(plain, 'Qwen/Qwen3-4B-Instruct-2507', 'This model supports only non-thinking mode and does not generate ``<think></think>`` blocks')).toMatchObject({ sure: true });
+    expect(estimateThinking(plain, 'org/Model')).toMatchObject({ sure: false });
+    expect(estimateThinking(undefined, 'mistralai/Mistral-Small-3.2-24B-Instruct-2506', '# Mistral Small')).toMatchObject({ sure: false });
     expect(estimateThinking('{{ messages }}', 'naver-hyperclovax/HyperCLOVAX-SEED-Think-14B')).toMatchObject({ value: 'default-on', sure: false });
   });
 });
@@ -203,29 +271,45 @@ describe('renderReport — PR 본문', () => {
   const model: AddedModel = {
     hfId: 'Qwen/Qwen4-9B', id: 'qwen4-9b', name: 'Qwen4 9B', structure: 'qwen3_5_text · hybrid', ggufRepo: 'unsloth/Qwen4-9B-GGUF', paramsB: 9.65,
     license: 'Apache-2.0', popularity: 2, downloads: 45210, maxContext: 262144, category: ['chat', 'coding', 'vision'],
-    thinking: { value: 'default-on', sure: false, basis: 'enable_thinking 있음 — 템플릿에서 기본값을 확정하지 못함' },
+    thinking: { value: 'default-on', sure: false, basis: 'enable_thinking 이 있지만 템플릿에서 기본값을 확정하지 못했습니다' },
     categoryBasis: 'chat 기본 · 이름·태그에 code', korean: { value: false, basis: '한국 제작사 목록 밖' },
-    warnings: ['표시명 "Qwen4 9B" 은 자동 — 어색하면 --name 으로'],
+    warnings: [
+      '표시명 "Qwen4 9B" 은 자동 — 어색하면 --name 으로',
+      '생각 모드 미지정 — 모델 카드·채팅 템플릿에 thinking 이 있으면 --thinking always|default-on|default-off|auto 로 다시',
+      'Q4_K_M: GGUF 헤더 측정 실패(timeout) — 실측 없이 기록, 다음 sync-models 가 다시 잰다',
+    ],
   };
-  const base: ReportInput = { date: '2026-10-06', dry: false, added: [model], review: [], skipped: [], stale: 0, gate: { status: 'pass' }, fontRefreshed: false };
+  const base: ReportInput = { date: '2026-10-06', dry: false, added: [model], review: [], skipped: [], checkpoints: [], stale: 0, gate: { status: 'pass' }, fontRefreshed: false };
 
   it('lists each model with estimates and their basis, the review checklist and a machine-readable marker', () => {
     const md = renderReport({
       ...base,
       review: [{ hfId: 'org/Small-1B', reason: '기준 미달', detail: '허용 목록 밖', downloads: 120, createdAt: '2026-10-03' }],
       skipped: [{ hfId: 'Qwen/Qwen3.8-Flash-Next', decision: 'wait', reason: '⑥', decidedAt: '2026-10-04' }],
+      checkpoints: ['openbmb/MiniCPM6-2B-SFT'],
       stale: 5,
       fontRefreshed: true,
     });
     expect(md).toContain('## 신모델 자동 추가 — 2026-10-06');
     expect(md).toContain('### 추가한 모델 (1종)');
     expect(md).toContain('[Qwen/Qwen4-9B](https://huggingface.co/Qwen/Qwen4-9B) → `qwen4-9b` (Qwen4 9B)');
-    expect(md).toContain('default-on ⚠확인 필요 — enable_thinking 있음');
+    expect(md).toContain('default-on ⚠확인 필요 — enable_thinking 이 있지만');
+    expect(md).toContain('chat,coding,vision ⚠확인 필요 — chat 기본');
     expect(md).toContain('- [ ] **Qwen/Qwen4-9B** 생각 모드 `default-on` (⚠확인 필요)');
     expect(md).toContain('최대 컨텍스트 262,144');
     expect(md).toContain('| [org/Small-1B](https://huggingface.co/org/Small-1B) | 기준 미달 | 허용 목록 밖 | 120 | 2026-10-03 |');
     expect(md).toContain('Qwen/Qwen3.8-Flash-Next(wait)');
-    expect(md).toContain('trending 후보 5종');
+    expect(md).toContain('인기 급상승 후보 5종');
+    expect(md).toContain('중간 단계·교사 모델 저장소로 보고 뺀 후보 1종: openbmb/MiniCPM6-2B-SFT');
+    expect(md).toContain('new-model-skips.json` 에 wait·skip 으로 적어 주세요');
+    expect(md).toContain(`\`${AUTO_COMMIT_PREFIX}\` 가 아닌 것으로`);
+    expect(md).toContain('gh workflow run data-sync.yml');
+    // 자동 추가가 다룬 옵션 안내는 빼고, 나머지 경고는 싣는다
+    expect(md).toContain('GGUF 헤더 측정 실패');
+    expect(md).not.toContain('--name');
+    expect(md).not.toContain('--thinking');
+    // 명사형 종결·개발 은어 없이 합니다체
+    for (const word of ['close→reopen', 'CI job', '트리아지', '고침)', '적기']) expect(md, word).not.toContain(word);
     expect(md).toContain('scripts/og-font.ts');
     expect(md).toContain('통과했습니다');
     expect(md).toContain(`<!-- ${REPORT_MARKER} Qwen/Qwen4-9B -->`);
@@ -233,7 +317,7 @@ describe('renderReport — PR 본문', () => {
 
   it('empty run and failed final check say no PR is made', () => {
     const empty = renderReport({ ...base, added: [], gate: { status: 'none' } });
-    expect(empty).toContain('자동으로 넣은 모델이 없습니다 — PR 을 만들지 않습니다.');
+    expect(empty).toContain('자동으로 넣은 모델이 없어 PR 을 만들지 않습니다.');
     expect(empty).toContain('### 확인 필요 — 자동으로 넣지 않은 후보 (0건)');
     expect(empty).not.toContain('② 가 확인할 것');
     expect(empty).toContain(`<!-- ${REPORT_MARKER}  -->`);
@@ -241,6 +325,20 @@ describe('renderReport — PR 본문', () => {
     expect(failed).toContain('마지막 검사 `pnpm build` 가 실패해 PR 을 만들지 않았습니다');
     expect(failed).toContain('Error: boom');
     expect(renderReport({ ...base, dry: true, gate: { status: 'dry' } })).toContain('### 추가할 모델 (1종)');
+  });
+});
+
+describe('reportWarnings', () => {
+  it('drops option hints the auto flow already covers, keeps the rest', () => {
+    expect(
+      reportWarnings([
+        '카테고리는 기본값 — 용도 필터용(리즈닝은 --category chat,reasoning)',
+        '생각 모드 미지정 — …',
+        '최대 컨텍스트 262144 는 config 값 — 모델 카드의 기본(네이티브) 길이와 다르면 --max-context 로',
+        '표시명 "X" 은 자동 — 어색하면 --name 으로',
+        '라이선스 "foo" 가 배지 맵(packages/data/src/license.ts)에 없음 — 분류 추가 필요',
+      ]),
+    ).toEqual(['라이선스 "foo" 가 배지 맵(packages/data/src/license.ts)에 없음 — 분류 추가 필요']);
   });
 });
 
