@@ -18,9 +18,11 @@ import {
   FxSchema,
   ModelQuantSchema,
   ModelSchema,
+  NewModelSkipSchema,
   PublishSchema,
   QuantDefSchema,
   type BenchPoint,
+  type NewModelSkip,
   type DataMeta,
   type FxRate,
   type Gpu,
@@ -72,6 +74,19 @@ export const parseBenchmarks = (json: unknown): BenchPoint[] =>
 export const parsePublish = (json: unknown): PublishPlan => PublishSchema.parse(json);
 export const parseMeta = (json: unknown): DataMeta => MetaSchema.parse(json);
 export const parseFx = (json: unknown): FxRate => FxSchema.parse(json);
+/** 신모델 자동 추가 스킵 목록(D71) — hfId 는 대소문자 무시로 한 번씩만 */
+export const parseNewModelSkips = (json: unknown): NewModelSkip[] =>
+  z
+    .array(NewModelSkipSchema)
+    .superRefine((list, ctx) => {
+      const seen = new Set<string>();
+      for (const item of list) {
+        const key = item.hfId.toLowerCase();
+        if (seen.has(key)) ctx.addIssue({ code: 'custom', message: `duplicate hfId ${item.hfId}` });
+        seen.add(key);
+      }
+    })
+    .parse(json);
 
 /**
  * MoE nonExpertGB 유도 근거 — models.json 시드 값과의 일치를 validateAll 이 강제.

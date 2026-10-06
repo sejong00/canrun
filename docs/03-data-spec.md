@@ -195,8 +195,18 @@ KV = KiB/tok(f16). 파일 크기 = 실측 GGUF(decimal GB), 출처 repo 명기.
 
 6. **다운로드 수(10-06 D68)**: 원본 repo 마다 `GET /api/models/{hfId}` 의 `downloads`(최근 30일)를 다시 읽어 `hfDownloads30d`·`hfDownloadsAsOf`(실행일)를 Δ 임계 없이 쓴다(키는 `popularity` 바로 뒤). 리포트에는 모델별 행 없이 요약 한 줄("다운로드 수(원본 저장소 최근 30일) N종 갱신, 기준일 …")만 — 위임 머지 기준(SUSPICIOUS·ERROR 0)과 무관. 읽기 실패한 모델은 기존 값·기준일 유지 + 같은 줄에 실패 수(ERROR 아님). sources 에 HF 모델 URL(`https://huggingface.co/<hfId>`)이 없는 모델(손으로 쓴 레코드)은 값을 쓰지 않고 같은 줄에 "건너뜀"으로 적는다 — 그대로 쓰면 refine 이 쓰기 전 자가검증을 터뜨려 그 주 동기화 전체가 멈춘다(10-06 리뷰 반영). 다운로드 수만 바뀐 동기화는 `data/meta.json` 기준일을 올리지 않는다(페이지 내용이 그대로인데 사이트맵 lastmod·푸터 기준일이 매주 바뀌지 않게 — 다운로드 기준일은 `hfDownloadsAsOf`).
 
-### 5.2 `new-model-alert.ts` (출시 전 주 1회 → P1-5 출시부터 일 1회): HF trending + 지정 org 신규 릴리스 감지(`text-generation`·`image-text-to-text`) → 카탈로그·기보고·리팩·OCR 전용·타 org 파생 제외 → 새 후보가 있으면 요약 GitHub issue 1건 생성("48h 내 페이지" SLA는 출시 후 — `04-seo-content-plan.md` §8).
-### 5.3 가격 (`prices.json`): 주간 수동/반자동(정찰 소스: 아마존 표시가, 다나와 최저가). `priceAsOf` 없는 가격 표시 금지. TechPowerUp 등 DB **통째 스크래핑 금지**(개별 사실 확인·출처 기재만) — 법적 리스크 정책.
+### 5.2 `new-model-alert.ts` (출시 전 주 1회 → P1-5 출시부터 일 1회): HF trending + 지정 org 신규 릴리스 감지(`text-generation`·`image-text-to-text`) → 카탈로그·기보고·리팩(추측 디코딩 드래프트 dflash·dspark 포함)·OCR 전용·타 org 파생 제외 → 새 후보가 있으면 요약 GitHub issue 1건 생성("48h 내 페이지" SLA는 출시 후 — `04-seo-content-plan.md` §8). 탐지 함수(`fetchDetectionSources`·`filterCandidates`)는 §5.3 자동 추가가 같이 쓴다.
+
+### 5.3 `auto-add-models.ts` — 신모델 자동 추가 ① (10-06 D71, 매일 — `.github/workflows/new-model-add.yml`, New model alert 다음)
+역할 분담: **①(GitHub Actions, 무료)** 이 후보를 골라 `add-model` 로 레코드를 만들고 추정값을 채워 검사를 통과하면 PR 을 연다 — 자동 머지·main 푸시는 하지 않는다. **②(Claude 정기 클라우드 작업, 매일)** 가 PR 의 추정값을 모델 카드와 대조해 고치고 전체 검사 통과 시 머지한다(CLAUDE.md 위임, `docs/PROGRESS.md` §3).
+1. **후보**: §5.2 와 같은 탐지 함수 — 조회 org 는 감시 org ∪ 아래 허용 목록 ∪ 카탈로그 제작사, org 릴리스 창 14일. 최근 14일 안에 생성됐고(trending 포함) 카탈로그·스킵 목록에 없는 것. 이슈 이력의 기보고 제외는 쓰지 않는다 — 매일 다시 평가한다(출시 직후 다운로드가 적던 모델이 며칠 뒤 기준을 넘을 수 있다).
+2. **선별 기준**(정책 상수 — 코드 주석 `// source: docs/03 §5.3 (policy)`): ① 공식 제작사 허용 목록(`OFFICIAL_ORGS` — Qwen·meta-llama·google·mistralai·microsoft·openai·nvidia·deepseek-ai·ibm-granite·LGAI-EXAONE·naver-hyperclovax·kakaocorp·upstage·skt·K-intelligence·trillionlabs·Motif-Technologies·LiquidAI·inclusionAI·allenai·CohereLabs·moonshotai·zai-org·MiniMaxAI·tencent·baidu·HuggingFaceTB·tiiuae·stepfun-ai, 10-06 HF API 로 표기 확인 + 카탈로그 hfId 제작사) **또는** 최근 30일 다운로드 ≥ 20,000(`AUTO_MIN_DOWNLOADS`) ② 드래프트(태그 `draft-model`·`speculative-decoding`)·Base·용도 특화(이름에 화자 분리·guard·safety·reward·embed·rerank·ASR·TTS·시계열 등)는 넣지 않고 "확인 필요" ③ add-model 구조 분류가 보류가 아니고 Q4_K_M GGUF 가 있으며 라이선스가 배지 맵(`license.ts`)에 있을 것 ④ 한 번에 최대 3종(`AUTO_MAX_ADD`, 30일 다운로드 → likes 큰 순), 시도는 최대 8번(`AUTO_MAX_ATTEMPTS`) — 남은 후보는 다음 날.
+3. **자동 추정**(add-model 옵션으로 넘기고 PR 본문에 근거와 함께 "추정"으로 표시): **생각 모드** — 채팅 템플릿(`chat_template.jinja` → `tokenizer_config.json` 의 `chat_template`, 게이트 저장소는 unsloth 미러)에서 enable_thinking 기본값(`| default(…)`·`… else True|False`, 없으면 "끄라고 할 때만 끈다" = default-on / "켜라고 할 때만 켠다" = default-off) → reasoning_effort(생각 블록을 비우는 분기가 없으면 always, 있으면 default-on) → 응답 시작에 `<think>` 를 열어 두면 always → 표지 없음은 미지정. 확실하지 않으면 **최선의 값을 넣고 "확인 필요"** 를 단다 — 판정은 생각 모드가 있는지만 본다(×1.5, D59)라 미지정이 더 위험하다(생각하는 모델을 낙관적으로 판정). 카탈로그 43종 템플릿으로 맞춤: 확정한 36종 모두 카탈로그와 같고 7종이 확인 필요(그중 MiniCPM5 2종·HCX SEED Think 는 실제로 auto). **용도** — chat 기본 + 이름·태그 code/coder → coding, image-text-to-text·vision 태그 또는 config 비전 인코더 → vision, always → reasoning. **한국어** — 한국 제작사 org(`KOREAN_ORGS`) → korean. 표시 이름·인기도·최대 컨텍스트는 add-model 기본값(②가 카드와 대조).
+4. **검사**: 후보를 하나씩 add-model 함수(`planAddition`·`applyAddition`)로 추가 → `pnpm validate-data` → 공유 카드 글꼴 테스트가 새 글자로 실패하면 `scripts/og-font.ts` 로 다시 받음 → `pnpm test`. 깨지면 그 후보가 쓴 파일만 되돌리고 "확인 필요(검사 실패)". 마지막에 `pnpm build`·`pnpm run test:export` 한 번 — 실패하면 PR 없이 보고서를 그날 요약 이슈에 코멘트하고 런을 실패로 남긴다.
+5. **PR(②와의 계약 — 이름을 바꾸지 않는다)**: 브랜치 `data/new-models`(매 실행 main 에서 다시 만든다 — 열린 PR 은 갱신), 라벨 `new-model-add`, 제목 `feat(catalog): 신모델 자동 추가 (YYYY-MM-DD)`, 본문 = 보고서(추가한 모델 표: hfId·구조·기준 GGUF·파라미터·추정값과 근거·add-model 경고 → "② 가 확인할 것" → "확인 필요" 표 → 마커 `<!-- new-model-add: <hfId,…> -->`). 커밋 경로 `data/*.json`·`packages/data/src/index.ts`(MoE `MOE_ARCH`)·`apps/web/assets/og/*`. 추가가 0 이면 PR 없이 요약 이슈에 코멘트. GITHUB_TOKEN 이 만든 PR 이라 CI job 이 돌지 않는다(§5.1 data-sync 와 같음) — ② 가 close→reopen 으로 CI 를 본 뒤 머지.
+6. **스킵 목록** `scripts/new-model-skips.json` — `[{ "hfId", "decision": "skip" | "wait", "reason", "decidedAt" }]`(zod `NewModelSkipSchema`, 테스트가 검증). ① 은 여기 있는 hfId 를 후보에서 빼고, ② 가 "넣지 않음·대기" 판단을 여기에 적는다. 사이트에 나가는 데이터가 아니라 운영 메모라 `data/` 밖에 둔다(sources[] 규칙 대상 아님). 첫 내용 = `docs/PROGRESS.md` §2 「카탈로그 확장」의 엔진 후속 대기 4·llama.cpp 본선 대기 4·제외 3.
+
+### 5.4 가격 (`prices.json`): 주간 수동/반자동(정찰 소스: 아마존 표시가, 다나와 최저가). `priceAsOf` 없는 가격 표시 금지. TechPowerUp 등 DB **통째 스크래핑 금지**(개별 사실 확인·출처 기재만) — 법적 리스크 정책.
 
 ## 6. 자체 실측 프로토콜 (리그: RTX 5060 Ti 16GB + RAM 16GB, "own" sourceType)
 
@@ -220,6 +230,7 @@ llama-bench -m {model.gguf} -p 2048 -n 128 -d 8192,16384             # 컨텍스
 | 데이터 | 주기 | 방법 |
 |---|---|---|
 | 모델 파일 크기·신모델 | 주 1회 + 알림 시 즉시 | 파이프라인 PR |
+| 신모델 레코드 | 매일 | 자동 추가 PR(①) → Claude 정기 작업(②) 검토·머지 (§5.3, D71) |
 | 모델 HF 다운로드 수(최근 30일) | 주 1회 | 파이프라인 PR (자동 반영, 리포트 요약 한 줄 — D68) |
 | GPU 신제품 | 발표 시 | 수동 (Super/B770 등 미출시 rumor는 절대 미등록) |
 | 가격 | 주 1회 | 반자동 + priceAsOf |

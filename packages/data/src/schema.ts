@@ -387,6 +387,21 @@ export const AliasSchema = z.object({
   to: redirectPath,
 });
 
+/**
+ * 신모델 자동 추가의 스킵 목록 — `scripts/new-model-skips.json` (10-06 D71, docs/03 §5.3).
+ * 사이트에 나가는 데이터가 아니라 운영 메모라 data/*.json·schemaRegistry 밖에 둔다(sources[] 규칙 대상 아님).
+ * skip = 넣지 않음, wait = 엔진 확장·llama.cpp 본선 지원을 기다림 — 둘 다 자동 추가 후보에서 뺀다.
+ */
+export const NewModelSkipSchema = z
+  .object({
+    hfId: z.string().regex(/^[^\s/]+\/[^\s/]+$/),
+    decision: z.enum(['skip', 'wait']),
+    reason: z.string().min(1),
+    decidedAt: isoDate,
+  })
+  .strict();
+
+export type NewModelSkip = z.infer<typeof NewModelSkipSchema>;
 export type Gpu = z.infer<typeof GpuSchema>;
 export type Model = z.infer<typeof ModelSchema>;
 export type ModelQuantRecord = z.infer<typeof ModelQuantSchema>;

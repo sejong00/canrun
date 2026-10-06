@@ -15,7 +15,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseModels, type Model } from '../packages/data/src/index';
-import type { FetchLike } from './hf-common';
+import { authHeaders, fetchWithRetry, type FetchLike } from './hf-common';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const dataDir = join(repoRoot, 'data');
@@ -89,9 +89,10 @@ export function knownHfIds(models: readonly Model[], ggufRepos: readonly string[
 /**
  * 양자화·포맷 리팩과 검열 제거·드래프트 파생 — 원본이 아니므로 후보 제외
  * (09-28 트리아지 71건 중 절반이 이 부류). BF16 은 NVIDIA 등이 원본 표기로 쓰므로 제외하지 않는다.
+ * dspark = 추측 디코딩 드래프트(10-06 자동 추가 작업 중 확인: LiquidAI·skt·LGAI-EXAONE 의 `-DSpark` 저장소, D71).
  */
 const REPACK_PATTERN =
-  /gguf|awq|gptq|-bnb-|fp8|nvfp4|mlx|-int[48]\b|w4a16|exl2|abliterat|uncensor|obliterat|dflash/i;
+  /gguf|awq|gptq|-bnb-|fp8|nvfp4|mlx|-int[48]\b|w4a16|exl2|abliterat|uncensor|obliterat|dflash|dspark/i;
 
 export const isRepack = (hfId: string): boolean => REPACK_PATTERN.test(hfId);
 
@@ -124,15 +125,17 @@ function toCandidate(model: HfApiModel, reason: Candidate['reason']): Candidate 
 /**
  * 후보 선별: trending 은 likes 컷, org 릴리스는 시간 창. 기지 모델·GGUF 미러 제외,
  * trending/org 중복은 org-release 우선(더 구체적 사유). now 는 순수성 유지를 위해 주입.
+ * windowDays: org 릴리스 창 — 신모델 자동 추가(scripts/auto-add-models.ts, D71)는 14일로 부른다.
  */
 export function filterCandidates(
   known: ReadonlySet<string>,
   trending: readonly HfApiModel[],
   orgReleases: readonly HfApiModel[],
   now: Date,
+  windowDays: number = ORG_RELEASE_WINDOW_DAYS,
 ): Candidate[] {
   const byId = new Map<string, Candidate>();
-  const windowStart = now.getTime() - ORG_RELEASE_WINDOW_DAYS * 24 * 3600 * 1000;
+  const windowStart = now.getTime() - windowDays * 24 * 3600 * 1000;
 
   const pipelines: readonly string[] = LLM_PIPELINES;
   const eligible = (m: HfApiModel): boolean =>
@@ -210,10 +213,50 @@ export function buildDigest(
 
 const HF_BASE = 'https://huggingface.co';
 
-async function fetchJson(url: string, fetchImpl: FetchLike): Promise<HfApiModel[]> {
-  const res = await fetchImpl(url);
+async function fetchJson(url: string, headers: Record<string, string>, fetchImpl: FetchLike): Promise<HfApiModel[]> {
+  const res = await fetchWithRetry(url, headers, fetchImpl);
   if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);
   return (await res.json()) as HfApiModel[];
+}
+
+/**
+ * 탐지 원천 — 파이프라인별 HF trending 50 + org 마다 최근 생성 20. 신모델 자동 추가(D71)가 org 목록을 넓혀 같은 함수를 부른다.
+ * 429·5xx 는 1회 재시도(fetchWithRetry), 그래도 실패하면 throw.
+ */
+export async function fetchDetectionSources(
+  orgs: readonly string[],
+  opts: { token?: string; fetchImpl?: FetchLike } = {},
+): Promise<{ trending: HfApiModel[]; orgReleases: HfApiModel[] }> {
+  const fetchImpl = opts.fetchImpl ?? globalThis.fetch;
+  const headers = authHeaders(opts.token);
+  const trending: HfApiModel[] = [];
+  const orgReleases: HfApiModel[] = [];
+  for (const pipeline of LLM_PIPELINES) {
+    trending.push(
+      ...(await fetchJson(
+        `${HF_BASE}/api/models?sort=trendingScore&direction=-1&limit=50&pipeline_tag=${pipeline}`,
+        headers,
+        fetchImpl,
+      )),
+    );
+    for (const org of orgs) {
+      orgReleases.push(
+        ...(await fetchJson(
+          `${HF_BASE}/api/models?author=${org}&sort=createdAt&direction=-1&limit=20&pipeline_tag=${pipeline}`,
+          headers,
+          fetchImpl,
+        )),
+      );
+    }
+  }
+  return { trending, orgReleases };
+}
+
+/** 카탈로그(models.json hfId + model-quants.json ggufRepo)가 아는 id 집합 — 자동 추가(D71)도 같은 기준 */
+export function loadKnownHfIds(dir = dataDir): Set<string> {
+  const rawModels = JSON.parse(readFileSync(join(dir, 'models.json'), 'utf8')) as unknown;
+  const rawQuants = JSON.parse(readFileSync(join(dir, 'model-quants.json'), 'utf8')) as { ggufRepo: string }[];
+  return knownHfIds(parseModels(rawModels), rawQuants.map((mq) => mq.ggufRepo));
 }
 
 async function main(): Promise<void> {
@@ -222,33 +265,9 @@ async function main(): Promise<void> {
   const digestIdx = args.indexOf('--digest');
   const reportedPath = digestIdx >= 0 ? args[digestIdx + 1] : undefined;
   if (digestIdx >= 0 && reportedPath === undefined) throw new Error('--digest 에는 이슈 JSON 경로가 필요');
-  const fetchImpl = globalThis.fetch;
 
-  const rawModels = JSON.parse(readFileSync(join(dataDir, 'models.json'), 'utf8')) as unknown;
-  const rawQuants = JSON.parse(
-    readFileSync(join(dataDir, 'model-quants.json'), 'utf8'),
-  ) as { ggufRepo: string }[];
-  const models = parseModels(rawModels);
-  const known = knownHfIds(models, rawQuants.map((mq) => mq.ggufRepo));
-
-  const trending: HfApiModel[] = [];
-  const orgReleases: HfApiModel[] = [];
-  for (const pipeline of LLM_PIPELINES) {
-    trending.push(
-      ...(await fetchJson(
-        `${HF_BASE}/api/models?sort=trendingScore&direction=-1&limit=50&pipeline_tag=${pipeline}`,
-        fetchImpl,
-      )),
-    );
-    for (const org of WATCHED_ORGS) {
-      orgReleases.push(
-        ...(await fetchJson(
-          `${HF_BASE}/api/models?author=${org}&sort=createdAt&direction=-1&limit=20&pipeline_tag=${pipeline}`,
-          fetchImpl,
-        )),
-      );
-    }
-  }
+  const known = loadKnownHfIds();
+  const { trending, orgReleases } = await fetchDetectionSources(WATCHED_ORGS);
 
   const now = new Date();
   const candidates = filterCandidates(known, trending, orgReleases, now);

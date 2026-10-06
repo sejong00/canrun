@@ -1,0 +1,13 @@
+[
+  { "hfId": "Qwen/Qwen3.8-Flash-Next", "decision": "wait", "reason": "디스크에서 읽는 n-gram 임베딩 표(35GB) — 엔진 후속 ⑥ lazyGB 뒤 (PROGRESS §2 카탈로그 확장)", "decidedAt": "2026-10-04" },
+  { "hfId": "Nanbeige/Nanbeige4.2-3B", "decision": "wait", "reason": "층 2회 반복 구조 — 엔진 후속 ⑦ arch.loops 뒤 (#49, llama.cpp 본선 지원 PR #25994)", "decidedAt": "2026-10-04" },
+  { "hfId": "deepseek-ai/DeepSeek-V4-Flash-0731", "decision": "wait", "reason": "압축 어텐션, Q4_K_M 없이 MXFP4·UD 만 — 엔진 후속 ⑧ 뒤 (#8)", "decidedAt": "2026-10-04" },
+  { "hfId": "zai-org/GLM-5.3-Flash", "decision": "wait", "reason": "llama.cpp 본선 지원(PR #27773) 수정 진행 중·UD 만 — 엔진 후속 ⑧ + DSA 인덱서 뒤 (#32)", "decidedAt": "2026-10-04" },
+  { "hfId": "IFM/K2-Horizon-MoVA-36B-A4B", "decision": "wait", "reason": "llama.cpp 본선 미지원(PR #29535) — 머지되면 다시 확인 (#45)", "decidedAt": "2026-10-04" },
+  { "hfId": "IFM/K2-Horizon-7B", "decision": "wait", "reason": "llama.cpp 본선 미지원(PR #29535) — 머지되면 다시 확인 (#57)", "decidedAt": "2026-10-04" },
+  { "hfId": "XingChen-AGI/Xing4.0-29B-A4B", "decision": "wait", "reason": "llama.cpp 본선 미지원(PR #29012) — 머지되면 다시 확인 (#70)", "decidedAt": "2026-10-04" },
+  { "hfId": "Motif-Technologies/Motif-3", "decision": "wait", "reason": "llama.cpp 본선 미지원(PR #26298 draft) — 머지되면 다시 확인 (#19)", "decidedAt": "2026-10-04" },
+  { "hfId": "deepgrove/maple-preview", "decision": "skip", "reason": "3진 가중치, llama.cpp GPU 커널 미머지 (#22)", "decidedAt": "2026-10-04" },
+  { "hfId": "ByteDance/Ouro-1.4B", "decision": "skip", "reason": "층 ×4 반복·수요 낮음 — PR #29823 머지와 엔진 후속 ⑦ 뒤 재검토 (#44)", "decidedAt": "2026-10-04" },
+  { "hfId": "yandex/AliceAI-Foundation-80B-A3B-Base", "decision": "skip", "reason": "Base 전용·llama.cpp 본선 미지원 (#77)", "decidedAt": "2026-10-04" }
+]

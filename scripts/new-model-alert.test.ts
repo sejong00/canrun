@@ -63,6 +63,7 @@ describe('isRepack', () => {
       'audnai/penclaw-GLM-5.3-abliterated',
       'orcarouter/GLM-5.3-Flash-Uncensored-FP8',
       'z-lab/Qwen3.8-27B-DFlash2',
+      'LiquidAI/LFM2.5-VL-3B-DSpark', // 추측 디코딩 드래프트 (10-06 D71)
     ]) {
       expect(isRepack(id), id).toBe(true);
     }
@@ -138,6 +139,13 @@ describe('filterCandidates', () => {
     const out = filterCandidates(known, [], releases, NOW);
     expect(out.map((c) => c.hfId)).toEqual(['Qwen/Qwen4-9B']);
     expect(out[0]?.reason).toBe('org-release');
+  });
+
+  it('takes a wider org-release window when asked (auto-add uses 14 days — D71)', () => {
+    const tenDaysAgo = new Date(NOW.getTime() - 10 * DAY).toISOString();
+    const releases = [model({ id: 'Qwen/Qwen4-14B', createdAt: tenDaysAgo })];
+    expect(filterCandidates(known, [], releases, NOW)).toHaveLength(0);
+    expect(filterCandidates(known, [], releases, NOW, 14).map((c) => c.hfId)).toEqual(['Qwen/Qwen4-14B']);
   });
 
   it('dedupes across lists — org-release reason wins', () => {
