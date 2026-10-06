@@ -25,7 +25,7 @@ pnpm run sync-models -- --dry # HF 데이터 동기화 드라이런
 ## 세션 운영
 - **현재 위치·다음 태스크·결정 기록은 `docs/PROGRESS.md`가 단일 진실 원천.** 세션 시작은 `/canrun-start`, 태스크 종료는 `/canrun-wrap`.
 - 1세션 = 1태스크(`docs/06` 단위). AC 전부 충족 전 다음 태스크 금지. 규모 있는 태스크는 플랜 모드로 계획 먼저.
-- **위임 — 확인 없이 처리하고 결과만 보고**: CI 초록인 Dependabot PR 머지(npm minor/patch 그룹, GitHub Actions 액션 — 메이저 포함, CI가 안 도는 워크플로의 액션이면 머지 후 `workflow_dispatch`로 확인) · 리포트 SUSPICIOUS 0·ERROR 0인 data-sync PR 머지(CI 확인용 close→reopen 포함) · new-model 이슈 트리아지·닫기 · `git push origin main` — 게이트 통과한 태스크 커밋, 그리고 `/canrun-start`의 운영 점검 기록 커밋(`docs/PROGRESS.md`만, 시크릿 스캔 후). 머지는 `gh pr merge <N> --merge` 형식만(브랜치 삭제·`--admin` 금지). 위임 명령은 Bash 도구로 실행한다(허용 규칙이 Bash 기준).
+- **위임 — 확인 없이 처리하고 결과만 보고**: CI 초록인 Dependabot PR 머지(npm minor/patch 그룹, GitHub Actions 액션 — 메이저 포함, CI가 안 도는 워크플로의 액션이면 머지 후 `workflow_dispatch`로 확인) · 리포트 SUSPICIOUS 0·ERROR 0인 data-sync PR 머지(CI 확인용 close→reopen 포함) · new-model 이슈 트리아지·닫기 · 신모델 자동 추가 PR(브랜치 `data/new-models`, 10-06 사용자 위임) 머지 — 모델 카드와 자동 추정값(생각 모드·용도·표시 이름·라이선스·인기도)을 대조해 고친 뒤 전체 게이트 통과 시, 매일 도는 Claude 정기 작업 포함(사용자 확인 불필요) · `git push origin main` — 게이트 통과한 태스크 커밋, 그리고 `/canrun-start`의 운영 점검 기록 커밋(`docs/PROGRESS.md`만, 시크릿 스캔 후). 머지는 `gh pr merge <N> --merge` 형식만(브랜치 삭제·`--admin` 금지). 위임 명령은 Bash 도구로 실행한다(허용 규칙이 Bash 기준).
 - **확인 필요**: npm 메이저 업데이트, SUSPICIOUS·manual 데이터 반영, 저장소 설정 변경, 브랜치·태그 삭제와 force push, 비용이 드는 일. 판단이 애매하면 확인 쪽으로.
 - 설계 결정이나 스펙 이탈은 `docs/PROGRESS.md` §4에 근거와 함께 기록(스펙 문서를 고쳤다면 양쪽 모두).
 
