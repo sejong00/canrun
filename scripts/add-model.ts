@@ -11,7 +11,7 @@
  *     · 상수 상태 층 하이브리드(nemotron_h Mamba2 · lfm2 short-conv · bailing_hybrid KDA+MLA — 층 지도가 있을 때만).
  *     처음 보는 model_type, 반복 층·디스크 n-gram 임베딩·압축 어텐션 등은 "보류"로 멈춘다 — 엔진이 그 메모리를 모델링하지 않아 판정이 틀린다.
  *  3) GGUF 저장소를 고른다(공식 → ggml-org → bartowski → unsloth → lmstudio-community, Q4_K_M 이 있는 첫 곳) — 파일명·크기는 트리에서.
- *  4) 레코드를 쓰고, MoE 면 MOE_ARCH 에 한 줄 넣어 nonExpertGB 를 유도, data/meta.json 기준일을 오늘로.
+ *  4) 레코드를 쓰고(원본 저장소 최근 30일 다운로드 수·기준일 포함 — D68), MoE 면 MOE_ARCH 에 한 줄 넣어 nonExpertGB 를 유도, data/meta.json 기준일을 오늘로.
  *     양자화 행마다 GGUF 헤더를 Range 로 읽는다(scripts/gguf-header.ts): MoE 는 expertGB·nonExpertGB(10-01),
  *     dense 는 그래픽카드에 올리지 않는 몫 offGpuGB(10-03 D62), 둘 다 MTP 블록이 있으면 mtpGB.
  *     MoE 는 arch.experts/topK(config)를 기록하고, 헤더의 expert_count·expert_used_count 가 config 와 다르면 멈춘다.
@@ -42,7 +42,7 @@ import {
   slugFromHfId,
 } from '../packages/data/src/hf';
 import { measureSplit } from './gguf-header';
-import { fetchConfig, fetchTree, serializeRecords } from './hf-common';
+import { downloadsFields, fetchConfig, fetchTree, serializeRecords } from './hf-common';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const dataDir = join(repoRoot, 'data');
@@ -69,6 +69,7 @@ export {
   slugFromHfId,
 } from '../packages/data/src/hf';
 export type { ArchResult } from '../packages/data/src/hf';
+export { downloadsFields } from './hf-common';
 
 /** GGUF 헤더 실측 중 add-model 이 쓰는 값 (gguf-header.measureSplit 의 부분집합). fileGB = Content-Range 기준(알면) */
 export type RowMeasure = {
@@ -288,6 +289,8 @@ async function main(): Promise<void> {
     ...(moeFields['nonExpertGB'] !== undefined ? { nonExpertGB: moeFields['nonExpertGB'] } : {}),
     category, ...(args.thinking ? { thinking: args.thinking } : {}), ...(args.korean ? { korean: true } : {}),
     popularity: args.popularity ?? popularityFrom(info.downloads),
+    // 원본 저장소 최근 30일 다운로드 수와 기준일(D68 — 계산기 "다운로드 많은 순", 이후 sync-models 가 매주 갱신). 값이 없으면 필드 없이
+    ...downloadsFields(info.downloads, today),
     releasedAt: (info.createdAt ?? today).slice(0, 10),
     note: `add-model 생성(${today}). releasedAt = HF createdAt${mirror ? `. gated — arch 는 ${mirror} 미러 config` : ''}`,
     // MoE 는 experts/topK 의 출처로 config.json 을 명시 (게이트면 미러 config)

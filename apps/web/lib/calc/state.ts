@@ -27,8 +27,13 @@ export function sizeBucket(paramsB: number): SizeBucket {
   return 'xl';
 }
 
-export type SortKey = 'verdict' | 'speed' | 'size';
-export const SORT_KEYS: readonly SortKey[] = ['verdict', 'speed', 'size'];
+/**
+ * 모델 목록 정렬 (10-06 D68 — 규칙은 lib/calc/result-sort.ts): 추천순(기본) / 인기순 / 다운로드 많은 순 / 판정·속도 순 / 빠른 순 / 큰 모델부터.
+ * 배열 순서 = 정렬 메뉴 순서. 기본값 'rec' 은 URL 에서 생략하고 'verdict' 는 `sort=verdict` 로 적는다
+ */
+export type SortKey = 'rec' | 'popular' | 'downloads' | 'verdict' | 'speed' | 'size';
+export const SORT_KEYS: readonly SortKey[] = ['rec', 'popular', 'downloads', 'verdict', 'speed', 'size'];
+export const DEFAULT_SORT: SortKey = 'rec';
 
 /** 계산기 방향 (10-03 D65): 하드웨어 → 모델(기본) / 모델 → GPU */
 export type CalcMode = 'hardware' | 'model';
@@ -140,7 +145,7 @@ export function defaultState(): CalcState {
     kv: 'f16',
     cat: [],
     size: [],
-    sort: 'verdict',
+    sort: DEFAULT_SORT,
     type: [],
     gsort: 'verdict',
   };
@@ -280,6 +285,7 @@ export function normalize(state: CalcState, catalog: CatalogLite): CalcState {
   if (!KV_OPTIONS.includes(next.kv)) next.kv = 'f16';
   next.cat = CATEGORIES.filter((c) => state.cat.includes(c));
   next.size = SIZE_BUCKETS.filter((s) => state.size.includes(s));
+  if (!SORT_KEYS.includes(next.sort)) next.sort = DEFAULT_SORT;
   if (next.focus !== undefined && !catalog.models.some((m) => m.id === next.focus)) next.focus = undefined;
   if (next.hf !== undefined && !HF_ID_RE.test(next.hf)) next.hf = undefined;
   // 직접 입력 모델(D66): hf 를 먼저 검증한 뒤 — 잘못된 hf= 때문에 유효한 mm= 이 사라지지 않게. 범위 검사는 하지 않는다(입력 도중의 값)

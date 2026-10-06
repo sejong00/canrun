@@ -50,6 +50,23 @@ export function formatInt(locale: string, value: number): string {
   return new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(value);
 }
 
+/**
+ * 큰 횟수의 짧은 표기 (다운로드 수 — 10-06 D68): en 6.1M·98.8K·10.1M, ko 610만·12.3만·1,008만. 1만 미만은 그대로(1,234).
+ * 유효 숫자 3자리 또는 정수부 전체 중 더 정밀한 쪽(`roundingPriority` 미지원 브라우저는 유효 숫자 3자리 — ko 1,010만)
+ */
+export function formatCompact(locale: string, value: number): string {
+  if (value < 10_000) return formatInt(locale, value);
+  // roundingPriority 는 ES2023 Intl — 웹 tsconfig lib(ES2022)에 타입이 없어 교차 타입으로 넘긴다
+  const options: Intl.NumberFormatOptions & { roundingPriority?: 'morePrecision' } = {
+    notation: 'compact',
+    maximumFractionDigits: 0,
+    maximumSignificantDigits: 3,
+    roundingPriority: 'morePrecision',
+    useGrouping: true,
+  };
+  return new Intl.NumberFormat(locale, options).format(value);
+}
+
 /** 추정 밴드 폭 (%, 정수) — est × (1 ± band) 에서 역산 */
 export function bandPercent(result: Pick<Result, 'tgTokS'>): number {
   const { est, high } = result.tgTokS;

@@ -52,16 +52,40 @@ describe('assembleResults parity with the hubs (8k · f16 · policy defaults)', 
 });
 
 describe('assembleResults — options', () => {
-  it('sorted by verdict then speed by default; speed/size sorts reorder', () => {
-    const run = assembleResults(catalog, withGpu('rtx-4060'))!;
+  // 기본 정렬은 10-06(D68)부터 추천순 — 판정·속도 순은 sort: 'verdict' 로 명시한다
+  it('verdict sort orders by verdict then speed; speed/size sorts reorder', () => {
+    const run = assembleResults(catalog, withGpu('rtx-4060', { sort: 'verdict' }))!;
     const ranks = run.all.map((c) => 'FBAS'.indexOf(c.combo.baseline.result.verdict));
     expect([...ranks].sort((a, b) => b - a)).toEqual(ranks);
+    expect(run.all[0]!.model.paramsB).toBeLessThan(10); // 옛 기본 순서: 가장 빠른 작은 모델(지금 MiniCPM5 1B)이 맨 위
     const bySize = assembleResults(catalog, withGpu('rtx-4060', { sort: 'size' }))!.all.map((c) => c.model.paramsB);
     expect([...bySize].sort((a, b) => b - a)).toEqual(bySize);
     const bySpeed = assembleResults(catalog, withGpu('rtx-4060', { sort: 'speed' }))!.all;
     const first = bySpeed[0]!.combo.display.result.tgTokS.est;
     expect(bySpeed.every((c) => c.combo.display.fReason === 'no-fit' || c.combo.display.result.tgTokS.est <= first)).toBe(true);
     expect(run.counts.S + run.counts.A + run.counts.B + run.counts.F).toBe(catalog.models.length);
+  });
+
+  it('recommended (default): runs-well-or-better models largest first, then slow ones by speed, then the rest (D68)', () => {
+    const run = assembleResults(catalog, withGpu('rtx-4060'))!;
+    const group = (v: string) => (v === 'S' || v === 'A' ? 0 : v === 'B' ? 1 : 2);
+    const groups = run.all.map((c) => group(c.combo.baseline.result.verdict));
+    expect([...groups].sort((a, b) => a - b)).toEqual(groups);
+    const good = run.all.filter((c) => group(c.combo.baseline.result.verdict) === 0);
+    expect(good.map((c) => c.model.paramsB)).toEqual([...good.map((c) => c.model.paramsB)].sort((a, b) => b - a));
+    expect(run.all[0]!.model.paramsB).toBe(Math.max(...good.map((c) => c.model.paramsB)));
+    expect(run.all[0]!.model.paramsB).toBeGreaterThan(9); // 1B 모델이 아니다 — 사용자 지적(10-06)
+    const slow = run.all.filter((c) => c.combo.baseline.result.verdict === 'B').map((c) => c.combo.display.result.tgTokS.est);
+    expect(slow).toEqual([...slow].sort((a, b) => b - a));
+    // 필터·카운트는 정렬과 무관
+    expect(run.counts).toEqual(assembleResults(catalog, withGpu('rtx-4060', { sort: 'verdict' }))!.counts);
+  });
+
+  it('popular sorts by the 1–5 popularity, downloads by the Hugging Face 30-day count (D68)', () => {
+    const popular = assembleResults(catalog, withGpu('rtx-4060', { sort: 'popular' }))!.all.map((c) => c.model.popularity);
+    expect(popular).toEqual([...popular].sort((a, b) => b - a));
+    const downloads = assembleResults(catalog, withGpu('rtx-4060', { sort: 'downloads' }))!.all.map((c) => c.model.hfDownloads30d ?? -1);
+    expect(downloads).toEqual([...downloads].sort((a, b) => b - a));
   });
 
   it('filters by category, minimum verdict and size bucket', () => {

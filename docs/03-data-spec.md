@@ -29,7 +29,10 @@ Model { id, family, name, hfId, paramsB, activeParamsB?,   // moe ⇒ activePara
      attnOverrides?:{kvBytesPerTokenF16, reason, sources[]},  // 비-full 전용, arch.kvBytesPerTokenF16과 일치(미러) — 존재 시 sync가 arch 자동 갱신 안 함 (§5.1)
      maxContext, license, moe:boolean, nonExpertGB?,   // MoE attention+shared GB (derive.ts 균등 bpw 유도) — 10-01 부터 행 실측(ModelQuant.nonExpertGB)이 우선, 이 값은 bpw 사다리 폴백
      category:('chat'|'coding'|'reasoning'|'vision')[] (min 1),
-     korean?:boolean, popularity:1..5, releasedAt, note?, sources[] }
+     korean?:boolean, popularity:1..5, hfDownloads30d?, hfDownloadsAsOf?, releasedAt, note?, sources[] }
+     // hfDownloads30d·hfDownloadsAsOf (10-06 D68): 원본 저장소(hfId)의 Hugging Face 최근 30일 다운로드 수(정수)와 그 기준일 — `https://huggingface.co/api/models/<hfId>` 의 downloads
+     //   (게이트 저장소도 메타데이터는 토큰 없이 읽힌다). GGUF 저장소 다운로드는 들어 있지 않다. 둘 다 있거나 둘 다 없음, 값이 있으면 sources 에 HF 모델 URL 필수(zod refine —
+     //   값마다 API URL 을 sources 에 늘리지 않는다). sync-models 가 매주 갱신(§5.1 ⑥), add-model 이 추가할 때 채운다. 계산기 "다운로드 많은 순" 정렬·카드 줄(lite 카탈로그 키)
 ModelQuant { modelId, quant:QuantId, fileGB, expertGB?, nonExpertGB?, offGpuGB?, mtpGB?, ggufRepo, fileName?, sources[] }   // 실제 GGUF 크기 (decimal GB, 분할 합산)
      // expertGB·nonExpertGB (10-01 D56): GGUF 헤더 실측(scripts/gguf-header.ts), MoE 행 전용, 둘 다 있거나 둘 다 없음,
      //   0.75×fileGB ≤ expertGB + nonExpertGB ≤ fileGB + 0.02 (validateAll — 하한 10-03).
@@ -186,6 +189,8 @@ KV = KiB/tok(f16). 파일 크기 = 실측 GGUF(decimal GB), 출처 repo 명기.
 4. **`fileName` 기록(P1-2 D20)**: quant별로 매칭된 파일의 repo 상대 경로를 `fileName`에 기록(1의 크기 갱신과 같은 매칭 결과). **드래프트 파일은 제외** — basename 접두 `mmproj-`·`mtp-`·`eagle3-`는 매칭·크기 합산 모두에서 뺀다(gemma-4 MTP/EAGLE 드래프트가 fileGB에 합산되던 버그 교정 — repo 이름의 `MTP`는 무관). 단일 파일이거나 일관된 분할 세트(`-0000N-of-0000M`, 첫 조각을 기록)가 아니면 `error`(ambiguous match)로 리포트하고 반영하지 않는다. 레코드 키 순서는 `ggufRepo` 뒤에 `fileName`(한 레코드 한 줄 직렬화 유지).
 5. **행별 헤더 재측정(10-01 D56 MoE 분할 → 10-03 D62 dense 까지)**: 실측 값이 없거나 이번 동기화에서 fileGB·fileName 이 바뀐 행, 새 양자화 행의 GGUF 헤더를 Range 로 읽어(파일당 4~16MB, 분할은 조각마다) 다시 잰다. MoE 행은 리포트 field `split`(`expertGB`·`nonExpertGB`), dense 행은 field `offgpu`(`offGpuGB`), 둘 다 MTP 블록이 있으면 `mtpGB` 를 함께 기록한다(키는 fileGB 바로 뒤, 새 측정에 MTP 가 없으면 옛 `mtpGB` 삭제). 값이 없던 행의 측정 실패는 manual(다음 동기화 재시도 — 그동안 그 행은 파일 전체로 판정, 보수). **값이 있던 행의 파일이 바뀌었는데 재측정이 실패·보류되면 suspicious**(옛 값이 남으므로 위임 머지를 멈춤). 보류 조건: 측정한 파일 크기(Content-Range)가 fileGB 와 0.02 넘게 다름, MoE 분할 합 > fileGB + 0.02 또는 < 0.75×fileGB, dense offGpuGB > 0.25×fileGB — 다른 파일을 잰 것. config 의 experts/topK 변화는 manual. 첫 채움(10-03)은 일반 sync 와 섞지 않은 대상 한정 백필(트리·config 미조회, 같은 `planSplitChanges`·`applyChanges`)로 130행 auto·suspicious 0 — scratch 실측표와 ±0.01 일치.
 
+6. **다운로드 수(10-06 D68)**: 원본 repo 마다 `GET /api/models/{hfId}` 의 `downloads`(최근 30일)를 다시 읽어 `hfDownloads30d`·`hfDownloadsAsOf`(실행일)를 Δ 임계 없이 쓴다(키는 `popularity` 바로 뒤). 리포트에는 모델별 행 없이 요약 한 줄("다운로드 수(원본 저장소 최근 30일) N종 갱신, 기준일 …")만 — 위임 머지 기준(SUSPICIOUS·ERROR 0)과 무관. 읽기 실패한 모델은 기존 값·기준일 유지 + 같은 줄에 실패 수(ERROR 아님). 다운로드 수만 바뀐 동기화는 `data/meta.json` 기준일을 올리지 않는다(페이지 내용이 그대로인데 사이트맵 lastmod·푸터 기준일이 매주 바뀌지 않게 — 다운로드 기준일은 `hfDownloadsAsOf`).
+
 ### 5.2 `new-model-alert.ts` (출시 전 주 1회 → P1-5 출시부터 일 1회): HF trending + 지정 org 신규 릴리스 감지(`text-generation`·`image-text-to-text`) → 카탈로그·기보고·리팩·OCR 전용·타 org 파생 제외 → 새 후보가 있으면 요약 GitHub issue 1건 생성("48h 내 페이지" SLA는 출시 후 — `04-seo-content-plan.md` §8).
 ### 5.3 가격 (`prices.json`): 주간 수동/반자동(정찰 소스: 아마존 표시가, 다나와 최저가). `priceAsOf` 없는 가격 표시 금지. TechPowerUp 등 DB **통째 스크래핑 금지**(개별 사실 확인·출처 기재만) — 법적 리스크 정책.
 
@@ -211,6 +216,7 @@ llama-bench -m {model.gguf} -p 2048 -n 128 -d 8192,16384             # 컨텍스
 | 데이터 | 주기 | 방법 |
 |---|---|---|
 | 모델 파일 크기·신모델 | 주 1회 + 알림 시 즉시 | 파이프라인 PR |
+| 모델 HF 다운로드 수(최근 30일) | 주 1회 | 파이프라인 PR (자동 반영, 리포트 요약 한 줄 — D68) |
 | GPU 신제품 | 발표 시 | 수동 (Super/B770 등 미출시 rumor는 절대 미등록) |
 | 가격 | 주 1회 | 반자동 + priceAsOf |
 | 효율 계수 | P2부터 주 1회 배치 | 제출 실측 n≥3 조합만 override |

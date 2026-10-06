@@ -10,6 +10,7 @@ const lite = toCatalogLite(seed);
 /** 문서용·출처 필드 — 브라우저로 나가면 안 된다 */
 // hfId 는 10-01(D57)부터 브라우저로 간다 — 계산기 "목록에 없는 모델"이 HF 주소가 카탈로그 모델이면 그 카드로 안내 (공개 식별자, 문서 필드 아님)
 // msrpUSD 는 10-03(D65)부터 브라우저로 간다 — 계산기 모델 모드의 GPU 행이 모델 허브 표처럼 "출시가"를 보인다 (공개 가격, 순위·예산에는 안 씀)
+// hfDownloads30d·hfDownloadsAsOf 는 10-06(D68)부터 브라우저로 간다 — 계산기 "다운로드 많은 순" 정렬·카드 줄 (HF 공개 수치와 기준일)
 const FORBIDDEN_KEYS = ['sources', 'note', 'attnOverrides', 'releasedAt', 'launchYear', 'streetKRW', 'sourceUrl', 'hardwareDesc', 'backend'];
 
 function keysDeep(value: unknown, out = new Set<string>()): Set<string> {
@@ -41,17 +42,26 @@ describe('toCatalogLite', () => {
     for (const k of FORBIDDEN_KEYS) expect(keys.has(k), k).toBe(false);
   });
 
+  it('carries the Hugging Face download count and its date for the calculator sort (D68)', () => {
+    for (const model of seed.models) {
+      const liteModel = lite.models.find((m) => m.id === model.id)!;
+      expect(liteModel.hfDownloads30d, model.id).toBe(model.hfDownloads30d);
+      expect(liteModel.hfDownloadsAsOf, model.id).toBe(model.hfDownloadsAsOf);
+    }
+  });
+
   it('omits undefined fields (Flight would serialise them as "$undefined")', () => {
     const json = JSON.stringify(lite);
     expect(json).not.toContain('undefined');
     expect(JSON.parse(json)).toEqual(lite);
   });
 
-  it('stays small: gzip ≤ 8 KiB and deterministic', () => {
+  // 예산 8 → 9 KiB (10-06 D68): 모델 43종 7,977B 에 다운로드 수·기준일 +305B — 계산기 HTML(Flight 인라인)에만 실리고 스크립트 예산 밖
+  it('stays small: gzip ≤ 9 KiB and deterministic', () => {
     const a = JSON.stringify(lite);
     const b = JSON.stringify(toCatalogLite(seed));
     expect(a).toBe(b);
-    expect(gzipSync(a).length).toBeLessThanOrEqual(8 * 1024);
+    expect(gzipSync(a).length).toBeLessThanOrEqual(9 * 1024);
   });
 
   it('is enough for assessCombo — same verdicts as the full catalog for every hub configuration', () => {

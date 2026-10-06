@@ -12,6 +12,10 @@
  * 4) 행별 GGUF 헤더 실측(scripts/gguf-header.ts) — MoE 는 텐서 분할(expertGB/nonExpertGB, 10-01), dense 는 그래픽카드에
  *    올리지 않는 몫(offGpuGB, 10-03 D62), 둘 다 MTP 블록 크기(mtpGB, 있을 때만). 값이 없거나 이번 동기화에서 파일 크기·파일명이
  *    바뀐 행, 새 양자화 행은 헤더를 Range 로 읽어 다시 잰다. 실패하면 manual — 값은 그대로.
+ * 5) models.json: 원본 repo 의 최근 30일 다운로드 수(`/api/models/{hfId}` 의 downloads)와 기준일을 매주 다시 쓴다(10-06 D68 —
+ *    계산기 "다운로드 많은 순"). Δ 임계 없이 반영하고 리포트에는 요약 한 줄만(모델별 행 없음 — 위임 머지 기준과 무관).
+ *    읽기 실패는 기존 값 유지 + 요약에 실패 수(ERROR 아님). 다운로드 수만 바뀐 동기화는 data/meta.json 기준일을 올리지 않는다
+ *    (페이지 내용이 그대로인데 사이트맵 lastmod·푸터 기준일이 매주 바뀌지 않게 — 다운로드 기준일은 hfDownloadsAsOf 가 따로 진다).
  *
  * 실행: pnpm run sync-models -- --dry [--report <path>] [--only <modelId>]
  *   --dry 는 data/*.json 을 건드리지 않는다(리포트 파일은 PR body 용도로 작성 허용).
@@ -35,9 +39,11 @@ import { extractArch, extractMoe, matchQuantFiles, primaryFile, sumFileGB } from
 import { measureSplit } from './gguf-header';
 import {
   fetchConfig,
+  fetchDownloads,
   fetchTree,
   serializeRecords,
   type ConfigResult,
+  type DownloadsResult,
   type TreeEntry,
 } from './hf-common';
 
@@ -593,6 +599,44 @@ export function applyChanges(changes: readonly Change[], input: SyncInput): void
   }
 }
 
+/**
+ * 5) 원본 저장소 다운로드 수 (10-06 D68) — `Change` 행이 아니라 따로 모은다(리포트는 요약 한 줄, 위임 머지 기준 무관).
+ * 다시 읽은 모델은 값이 같아도 기준일을 갱신한다. 읽기 실패한 모델은 기존 값·기준일 그대로(없던 모델은 필드 없이 — 정렬 맨 뒤)
+ */
+export type DownloadsPlan = {
+  asOf: string;
+  updates: Array<{ id: string; downloads: number }>;
+  /** 읽기 실패 — 기존 값 유지 */
+  failed: string[];
+};
+
+export function planDownloads(
+  models: readonly Model[],
+  byHfId: ReadonlyMap<string, DownloadsResult>,
+  asOf: string,
+): DownloadsPlan {
+  const updates: DownloadsPlan['updates'] = [];
+  const failed: string[] = [];
+  for (const model of models) {
+    const res = byHfId.get(model.hfId);
+    if (res === undefined) continue; // --only 필터 등으로 미수집
+    if (res.downloads === undefined) failed.push(model.id);
+    else updates.push({ id: model.id, downloads: res.downloads });
+  }
+  return { asOf, updates, failed };
+}
+
+/** 다운로드 수·기준일을 raw 레코드에 쓴다 — 키는 popularity 바로 뒤(hfDownloads30d, hfDownloadsAsOf), 있으면 제자리 갱신 */
+export function applyDownloads(plan: DownloadsPlan, input: Pick<SyncInput, 'rawModels' | 'models'>): void {
+  for (const { id, downloads } of plan.updates) {
+    const idx = input.models.findIndex((model) => model.id === id);
+    const raw = idx >= 0 ? input.rawModels[idx] : undefined;
+    if (!raw) throw new Error(`applyDownloads: model not found for ${id}`);
+    const withCount = withKeyAfter(raw, 'hfDownloads30d', downloads, 'popularity');
+    input.rawModels[idx] = withKeyAfter(withCount, 'hfDownloadsAsOf', plan.asOf, 'hfDownloads30d');
+  }
+}
+
 const KIND_LABEL: Record<Change['kind'], string> = {
   auto: 'auto',
   suspicious: 'auto ⚠SUSPICIOUS',
@@ -603,8 +647,8 @@ const KIND_LABEL: Record<Change['kind'], string> = {
 
 const fmt = (v: number | string | undefined): string => (v === undefined ? '—' : String(v));
 
-/** 마크다운 diff 리포트 — PR body 겸용. */
-export function renderReport(changes: readonly Change[]): string {
+/** 마크다운 diff 리포트 — PR body 겸용. 다운로드 수(D68)는 표 아래 요약 한 줄 */
+export function renderReport(changes: readonly Change[], downloads?: DownloadsPlan): string {
   const lines: string[] = ['# HF sync report', ''];
   for (const file of ['model-quants.json', 'models.json'] as const) {
     const rows = changes.filter((c) => c.file === file);
@@ -622,6 +666,11 @@ export function renderReport(changes: readonly Change[]): string {
       );
     }
     lines.push('');
+  }
+  if (downloads && (downloads.updates.length > 0 || downloads.failed.length > 0)) {
+    const failed =
+      downloads.failed.length > 0 ? ` · 읽기 실패 ${downloads.failed.length}종은 기존 값 유지(${downloads.failed.join(', ')})` : '';
+    lines.push(`다운로드 수(원본 저장소 최근 30일) ${downloads.updates.length}종 갱신, 기준일 ${downloads.asOf}${failed}`, '');
   }
   const count = (kind: Change['kind']): number => changes.filter((c) => c.kind === kind).length;
   lines.push(
@@ -693,7 +742,7 @@ async function main(): Promise<void> {
 
   const repos = [...new Set(targetQuants.map((mq) => mq.ggufRepo))];
   console.log(
-    `fetching ${repos.length} GGUF repo tree(s) + ${targetModels.length} config(s) from HF…`,
+    `fetching ${repos.length} GGUF repo tree(s) + ${targetModels.length} config(s) + download counts from HF…`,
   );
 
   const treeByRepo = new Map<string, TreeEntry[] | { error: string }>();
@@ -715,6 +764,15 @@ async function main(): Promise<void> {
     console.log(`${mark} config ${model.hfId}${res.gated ? ' (gated)' : ''}`);
   });
 
+  // 다운로드 수(D68) — 기준일은 실행일. 스크립트는 빌드가 아니라 Date 사용 가능(D21 은 빌드 결정론)
+  const today = new Date().toISOString().slice(0, 10);
+  const downloadsByHfId = new Map<string, DownloadsResult>();
+  await mapPool(targetModels, 4, async (model) => {
+    const res = await fetchDownloads(model.hfId, { token });
+    downloadsByHfId.set(model.hfId, res);
+    if (res.error !== undefined) console.log(`✗ downloads ${model.hfId} (${res.error})`);
+  });
+
   const input: SyncInput = { rawModels, rawQuants, models, quants, treeByRepo, configByHfId };
   const planned = buildSyncPlan(input);
   // 행별 헤더 실측(MoE 분할·dense 그래픽카드 밖 몫·MTP) — 헤더만 Range 로 읽는다(행당 수 MB). 측정 실패는 manual 로 리포트
@@ -726,7 +784,8 @@ async function main(): Promise<void> {
   );
   if (splitChanges.length > 0) console.log(`measured ${splitChanges.length} row(s) from GGUF headers`);
   const changes = [...planned, ...splitChanges];
-  const report = renderReport(changes);
+  const downloads = planDownloads(targetModels, downloadsByHfId, today);
+  const report = renderReport(changes, downloads);
   console.log(`\n${report}`);
   if (args.report !== undefined) {
     writeFileSync(join(repoRoot, args.report), report);
@@ -735,20 +794,21 @@ async function main(): Promise<void> {
 
   if (!args.dry) {
     applyChanges(changes, input);
+    const nextQuants = serializeRecords(rawQuants);
+    // 기준일은 다운로드 수를 쓰기 전 내용으로 판단 — 다운로드 수만 바뀐 주는 meta.json 을 건드리지 않는다(D68)
+    const changed =
+      serializeRecords(rawModels) !== readFileSync(join(dataDir, 'models.json'), 'utf8') ||
+      nextQuants !== readFileSync(join(dataDir, 'model-quants.json'), 'utf8');
+    applyDownloads(downloads, input);
     // 자가검증: 쓰기 전 zod 재파싱 — 스키마 위반 상태로 디스크에 남기지 않는다
     parseModels(rawModels);
     parseModelQuants(rawQuants);
     const nextModels = serializeRecords(rawModels);
-    const nextQuants = serializeRecords(rawQuants);
-    const changed =
-      nextModels !== readFileSync(join(dataDir, 'models.json'), 'utf8') ||
-      nextQuants !== readFileSync(join(dataDir, 'model-quants.json'), 'utf8');
     writeFileSync(join(dataDir, 'models.json'), nextModels);
     writeFileSync(join(dataDir, 'model-quants.json'), nextQuants);
     console.log('data/models.json, data/model-quants.json updated');
     // 데이터 기준일(P1-5) — 내용이 실제로 바뀐 날만 갱신. 스크립트는 빌드가 아니라 Date 사용 가능(D21 은 빌드 결정론)
     if (changed) {
-      const today = new Date().toISOString().slice(0, 10);
       writeFileSync(join(dataDir, 'meta.json'), `${JSON.stringify({ dataUpdated: today }, null, 2)}\n`);
       console.log(`data/meta.json dataUpdated = ${today}`);
     }

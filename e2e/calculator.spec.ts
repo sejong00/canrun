@@ -97,6 +97,58 @@ for (const locale of LOCALES) {
       expect(problems).toEqual([]);
     });
 
+    test('sorting: recommended by default; popular, downloads and the old verdict order sync to the URL (D68)', async ({ page }) => {
+      const problems = collectProblems(page);
+      await open(page, `${path}?gpu=rtx-4060`);
+      const cards = page.locator('[data-results] [data-result-card]');
+      const select = page.locator('select[name="sort"]');
+      await expect(cards.first()).toBeVisible();
+      // 기본 = 추천순: 원활 이상으로 돌아가는 모델 중 큰 모델부터 — 1~4B 작은 모델이 맨 위가 아니다
+      await expect(select).toHaveValue('rec');
+      await expect(page.locator('[data-sort-note="rec"]')).toBeVisible();
+      await expect(cards.first().locator('[data-verdict]').first()).toHaveAttribute('data-verdict', /^[SA]$/);
+      const recFirst = (await cards.first().getAttribute('data-model-id')) ?? '';
+      expect(['minicpm5-1b', 'llama-3.2-1b', 'exaone-4.0-1.2b']).not.toContain(recFirst);
+      await expect(page.locator('[data-downloads]')).toHaveCount(0);
+
+      await select.selectOption('popular');
+      await expect.poll(() => new URL(page.url()).search).toBe('?gpu=rtx-4060&sort=popular');
+      await expect(page.locator('[data-sort-note="popular"]')).toBeVisible();
+
+      // 다운로드 많은 순: 카드마다 HF 다운로드 줄, 수치는 내림차순, 출처·기준일 안내 한 줄
+      await select.selectOption('downloads');
+      await expect.poll(() => new URL(page.url()).search).toBe('?gpu=rtx-4060&sort=downloads');
+      const note = page.locator('[data-sort-note="downloads"]');
+      await expect(note).toContainText('Hugging Face');
+      await expect(note).toContainText(/\d{4}-\d{2}-\d{2}/);
+      await expect(note).toContainText('GGUF');
+      const lines = page.locator('[data-results] [data-downloads]');
+      expect(await lines.count()).toBeGreaterThan(10);
+      await expect(lines.first()).toContainText('Hugging Face');
+      const counts: number[] = [];
+      for (const line of await lines.all()) counts.push(Number(await line.getAttribute('data-downloads')));
+      expect(counts).toEqual([...counts].sort((a, b) => b - a));
+
+      // 새로고침해도 유지
+      await page.reload();
+      await page.waitForLoadState('networkidle');
+      await expect(select).toHaveValue('downloads');
+      await expect(page.locator('[data-results] [data-downloads]').first()).toBeVisible();
+
+      // 판정·속도 순(D68 이전 기본) = sort=verdict — 가장 빠른 작은 모델이 다시 맨 위
+      await select.selectOption('verdict');
+      await expect.poll(() => new URL(page.url()).search).toBe('?gpu=rtx-4060&sort=verdict');
+      await expect(page.locator('[data-sort-note]')).toHaveCount(0);
+      await expect(cards.first()).not.toHaveAttribute('data-model-id', recFirst);
+      await expect(cards.first().locator('[data-verdict]').first()).toHaveAttribute('data-verdict', 'S');
+
+      // 추천순으로 돌아오면 sort 는 URL 에서 빠진다
+      await select.selectOption('rec');
+      await expect.poll(() => new URL(page.url()).search).toBe('?gpu=rtx-4060');
+      await expect(cards.first()).toHaveAttribute('data-model-id', recFirst);
+      expect(problems).toEqual([]);
+    });
+
     test('history: home form → calculator → change → back lands on home, forward restores', async ({ page }) => {
       const problems = collectProblems(page);
       await open(page, localePath(locale, '/'));

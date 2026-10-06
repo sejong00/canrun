@@ -6,6 +6,7 @@ import {
   activeFromName,
   classifyArch,
   displayName,
+  downloadsFields,
   familyOf,
   mapLicense,
   measureRows,
@@ -116,6 +117,11 @@ describe('GGUF repo choice and quant rows', () => {
     ]);
     expect(rows[0]?.sources).toEqual(['https://huggingface.co/org/m-GGUF']);
     expect(quantRowsFrom([f('m-Q8_0.gguf', 1)], 'org/m-GGUF', 'm')).toEqual([]);
+  });
+
+  it('records the 30-day download count and its date with the model (D68), or neither', () => {
+    expect(downloadsFields(6104298, '2026-10-06')).toEqual({ hfDownloads30d: 6104298, hfDownloadsAsOf: '2026-10-06' });
+    expect(downloadsFields(undefined, '2026-10-06')).toEqual({});
   });
 
   it('parses CLI args', () => {

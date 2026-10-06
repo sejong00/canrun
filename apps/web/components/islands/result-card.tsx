@@ -4,7 +4,7 @@ import type { CalcTranslators } from '@/components/islands/calc-shared';
 import { Pill, type PillTone } from '@/components/pill';
 import { SpeedCellCore } from '@/components/speed-text';
 import { VerdictChip } from '@/components/verdict-chip';
-import { formatCtx, formatGB, formatInt, formatParams } from '@/lib/format';
+import { formatCompact, formatCtx, formatGB, formatInt, formatParams } from '@/lib/format';
 import { comboDetailQuery, differsFromHubAssumption, type ResolvedHardware } from '@/lib/calc/hardware';
 import type { ResultCard as Card } from '@/lib/calc/run';
 import type { CalcState } from '@/lib/calc/state';
@@ -118,6 +118,12 @@ export function ResultCard({
         {!manual && <Pill tone={LICENSE_TONE[licenseClass]}>{t.license(licenseClass)}</Pill>}
         {measuredText && <Pill tone="info">{measuredText}</Pill>}
       </div>
+      {/* 다운로드 많은 순(10-06 D68)일 때만 — 정렬 기준 수치. 출처·기준일은 목록 위 안내 한 줄 */}
+      {state.sort === 'downloads' && !external && model.hfDownloads30d !== undefined && (
+        <p data-downloads={model.hfDownloads30d} className="text-xs text-muted-foreground">
+          {t.calc('cardDownloads', { count: formatCompact(locale, model.hfDownloads30d) })}
+        </p>
+      )}
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
         <dt className="text-muted-foreground">{t.calc('cardQuant')}</dt>
         <dd>

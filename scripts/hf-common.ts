@@ -4,6 +4,7 @@
  * - fetchTree: `GET /api/models/{repo}/tree/main?recursive=true` — Link rel="next"
  *   페이지네이션 순회, 429/5xx 1회 재시도. 공개 repo 는 무토큰으로 충분 (docs/05 §8).
  * - fetchConfig: 원본 repo 의 config.json — gated(401/403)는 오류가 아니라 상태로 반환.
+ * - fetchDownloads: 원본 repo 의 최근 30일 다운로드 수(`/api/models/{hfId}` 의 downloads, 10-06 D68).
  * - serializeRecords: data/*.json 시드 포맷(레코드당 1줄) 재현 — git diff 최소화.
  *   zod .parse 는 키 순서를 재배열하므로 호출자는 raw JSON.parse 레코드를 넘겨야 한다.
  *
@@ -72,6 +73,36 @@ export async function fetchConfig(hfId: string, opts: HfFetchOpts = {}): Promise
   } catch {
     return { error: `config ${hfId}: invalid JSON` };
   }
+}
+
+export type DownloadsResult = { downloads?: number; error?: string };
+
+/**
+ * 원본 저장소의 최근 30일 다운로드 수 — `GET /api/models/{hfId}` 의 `downloads` (10-06 D68).
+ * 게이트 저장소도 메타데이터는 토큰 없이 읽힌다. 실패·값 없음은 error 문자열로(호출자가 기존 값을 유지한다).
+ */
+export async function fetchDownloads(hfId: string, opts: HfFetchOpts = {}): Promise<DownloadsResult> {
+  const fetchImpl = opts.fetchImpl ?? globalThis.fetch;
+  try {
+    const res = await fetchWithRetry(`${HF_BASE}/api/models/${hfId}`, authHeaders(opts.token), fetchImpl);
+    if (!res.ok) return { error: `model info ${hfId}: HTTP ${res.status}` };
+    const downloads = ((await res.json()) as { downloads?: unknown }).downloads;
+    return validDownloads(downloads) ? { downloads } : { error: `model info ${hfId}: no downloads` };
+  } catch (err) {
+    return { error: `model info ${hfId}: ${err instanceof Error ? err.message : String(err)}` };
+  }
+}
+
+function validDownloads(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0;
+}
+
+/**
+ * models.json 에 쓰는 다운로드 필드 (D68) — 값이 정수가 아니면 빈 객체(필드 없이 기록). add-model·sync-models 공용.
+ * 레코드 키 순서는 `popularity` 바로 뒤(`hfDownloads30d`, `hfDownloadsAsOf`).
+ */
+export function downloadsFields(downloads: unknown, asOf: string): { hfDownloads30d?: number; hfDownloadsAsOf?: string } {
+  return validDownloads(downloads) ? { hfDownloads30d: downloads, hfDownloadsAsOf: asOf } : {};
 }
 
 /**

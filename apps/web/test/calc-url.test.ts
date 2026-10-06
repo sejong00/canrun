@@ -74,10 +74,24 @@ describe('serializeCalcQuery / parseCalcQuery', () => {
     expect(s.kv).toBe('f16');
     expect(s.os).toBeUndefined();
     expect(s.min).toBeUndefined();
-    expect(s.sort).toBe('verdict');
+    expect(s.sort).toBe('rec'); // 잘못된 값 → 기본 추천순 (D68)
     expect(s.cat).toEqual(['chat']);
     expect(s.size).toEqual(['xl']);
     expect(s.focus).toBeUndefined();
+  });
+
+  it('sort: the default (recommended) is omitted, the old default verdict order is written out, every key round-trips (D68)', () => {
+    const gpu: CalcState = { ...defaultState(), hardware: { kind: 'catalog', gpuId: 'rtx-4060' } };
+    expect(defaultState().sort).toBe('rec');
+    expect(serializeCalcQuery({ ...gpu, sort: 'rec' }, catalog)).toBe('?gpu=rtx-4060');
+    expect(serializeCalcQuery({ ...gpu, sort: 'verdict' }, catalog)).toBe('?gpu=rtx-4060&sort=verdict');
+    for (const sort of ['rec', 'popular', 'downloads', 'verdict', 'speed', 'size'] as const) {
+      expect(roundTrip({ ...gpu, sort }).sort, sort).toBe(sort);
+    }
+    // sort 가 없는 옛 공유 링크는 추천순으로 열린다(의도된 변화)
+    expect(parseCalcQuery('?gpu=rtx-4060', catalog).sort).toBe('rec');
+    expect(parseCalcQuery('?gpu=rtx-4060&sort=downloads', catalog).sort).toBe('downloads');
+    expect(normalize({ ...gpu, sort: 'nope' as CalcState['sort'] }, catalog).sort).toBe('rec');
   });
 
   it('resolves names and aliases from the home form to the canonical id, unknown text stays unresolved', () => {

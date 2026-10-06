@@ -4,7 +4,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { registeredDataFiles } from '../packages/data/src/index';
-import { fetchConfig, fetchTree, nextPageUrl, serializeRecords, type FetchLike } from './hf-common';
+import { downloadsFields, fetchConfig, fetchDownloads, fetchTree, nextPageUrl, serializeRecords, type FetchLike } from './hf-common';
 
 const dataDir = join(resolve(dirname(fileURLToPath(import.meta.url)), '..'), 'data');
 
@@ -121,5 +121,34 @@ describe('fetchConfig', () => {
     const res = await fetchConfig('org/missing', { fetchImpl });
     expect(res.gated).toBeUndefined();
     expect(res.error).toContain('HTTP 404');
+  });
+});
+
+describe('fetchDownloads (10-06 D68)', () => {
+  it('reads the 30-day downloads from the model info API', async () => {
+    let url = '';
+    const fetchImpl: FetchLike = (u) => {
+      url = String(u);
+      return Promise.resolve(jsonResponse({ id: 'meta-llama/Llama-3.1-8B-Instruct', gated: 'manual', downloads: 6104298 }));
+    };
+    await expect(fetchDownloads('meta-llama/Llama-3.1-8B-Instruct', { fetchImpl })).resolves.toEqual({ downloads: 6104298 });
+    expect(url).toBe('https://huggingface.co/api/models/meta-llama/Llama-3.1-8B-Instruct');
+  });
+
+  it('returns an error instead of throwing on HTTP errors, a missing count or a network failure', async () => {
+    const notFound: FetchLike = () => Promise.resolve(new Response('', { status: 404 }));
+    expect((await fetchDownloads('org/missing', { fetchImpl: notFound })).error).toContain('HTTP 404');
+    const noCount: FetchLike = () => Promise.resolve(jsonResponse({ id: 'org/x' }));
+    expect(await fetchDownloads('org/x', { fetchImpl: noCount })).toEqual({ error: 'model info org/x: no downloads' });
+    const offline: FetchLike = () => Promise.reject(new Error('ECONNRESET'));
+    expect((await fetchDownloads('org/x', { fetchImpl: offline })).error).toContain('ECONNRESET');
+  });
+
+  it('downloadsFields writes both fields or none', () => {
+    expect(downloadsFields(1234, '2026-10-06')).toEqual({ hfDownloads30d: 1234, hfDownloadsAsOf: '2026-10-06' });
+    expect(downloadsFields(0, '2026-10-06')).toEqual({ hfDownloads30d: 0, hfDownloadsAsOf: '2026-10-06' });
+    expect(downloadsFields(undefined, '2026-10-06')).toEqual({});
+    expect(downloadsFields(1.5, '2026-10-06')).toEqual({});
+    expect(downloadsFields('12', '2026-10-06')).toEqual({});
   });
 });

@@ -6,7 +6,6 @@ import {
   assessCombo,
   assessQuant,
   commandPlan,
-  compareCombos,
   hardwareConfigs,
   HUB_POLICY,
   pickConfigCombo,
@@ -21,6 +20,7 @@ import {
 } from '@canrun/data/client';
 import type { Os, Verdict } from '@canrun/engine';
 import { resolveHardware, type ResolvedHardware } from './hardware';
+import { compareCards } from './result-sort';
 import { normalize, sizeBucket, type CalcState, type SizeBucket } from './state';
 
 export type ResultCard = {
@@ -176,19 +176,8 @@ export function assembleResults(catalog: CatalogLite, rawState: CalcState, extra
     };
   });
 
-  const bySort = (a: ResultCard, b: ResultCard): number => {
-    switch (state.sort) {
-      case 'speed': {
-        const tg = (c: ResultCard) => (c.combo.display.fReason === 'no-fit' ? -1 : c.combo.display.result.tgTokS.est);
-        return tg(b) - tg(a) || a.model.id.localeCompare(b.model.id);
-      }
-      case 'size':
-        return b.model.paramsB - a.model.paramsB || a.model.id.localeCompare(b.model.id);
-      default:
-        return compareCombos(a.combo, b.combo);
-    }
-  };
-  all.sort(bySort);
+  // 정렬 규칙은 result-sort.ts (10-06 D68 — 기본 추천순)
+  all.sort(compareCards(state.sort));
 
   const minRank = state.min ? verdictRank(state.min) : 0;
   const cards = all.filter(

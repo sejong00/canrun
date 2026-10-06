@@ -2,7 +2,7 @@
  * 코어 타입 + 카탈로그 요약(lite) — 조립 함수(assess·combo·snippet)가 실제로 읽는 필드만 (P1-3 결정 D27).
  *
  * 서버는 zod 로 검증한 전체 레코드(`schema.ts`)를 쓰고, 계산기 아일랜드는 `toCatalogLite()` 결과를
- * props 로 받는다 — `sources`·`note` 같은 문서용 필드는 브라우저로 나가지 않는다(예외로 보내는 공개 값: `hfId` D57, `msrpUSD` D65).
+ * props 로 받는다 — `sources`·`note` 같은 문서용 필드는 브라우저로 나가지 않는다(예외로 보내는 공개 값: `hfId` D57, `msrpUSD` D65, `hfDownloads30d`·`hfDownloadsAsOf` D68).
  * 전체 레코드는 코어 타입에 구조적으로 대입되므로 허브·콤보 호출부는 그대로다.
  * 순수·브라우저 안전 (zod 는 type-only 로만 참조).
  */
@@ -44,6 +44,9 @@ export const MODEL_CORE_KEYS = [
   'thinking',
   'korean',
   'popularity',
+  // 계산기 "다운로드 많은 순" 정렬·카드 줄(10-06 D68) — HF 공개 수치와 그 기준일(공개 값, 문서 필드 아님)
+  'hfDownloads30d',
+  'hfDownloadsAsOf',
 ] as const satisfies readonly (keyof Model)[];
 
 /**

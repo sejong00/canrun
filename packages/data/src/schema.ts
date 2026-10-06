@@ -152,6 +152,14 @@ export const ModelSchema = z
     thinking: z.enum(['always', 'default-on', 'default-off', 'auto']).optional(),
     korean: z.boolean().optional(),
     popularity: z.number().int().min(1).max(5),
+    /**
+     * 원본 저장소(`hfId`)의 Hugging Face 최근 30일 다운로드 수 — `https://huggingface.co/api/models/<hfId>` 응답의 `downloads`
+     * (게이트 저장소도 메타데이터는 토큰 없이 읽힌다). GGUF 저장소 다운로드는 들어 있지 않다. 출처는 sources 의 HF 모델 URL(아래 refine 이
+     * 강제 — 값마다 API URL 을 sources 에 늘리지 않는다). 계산기 "다운로드 많은 순" 정렬·카드 줄(PROGRESS §4 D68).
+     * `scripts/sync-models.ts` 가 매주 다시 읽어 갱신하고 `add-model` 이 추가할 때 채운다. 기준일 `hfDownloadsAsOf` 와 둘 다 있거나 둘 다 없거나
+     */
+    hfDownloads30d: z.number().int().nonnegative().optional(),
+    hfDownloadsAsOf: isoDate.optional(),
     releasedAt: isoDate,
     /** 추정·재확인 플래그 등 데이터 출처 주의사항 (P0-4 sync 가 해소) */
     note: z.string().optional(),
@@ -165,6 +173,15 @@ export const ModelSchema = z
       ctx.addIssue({
         code: 'custom',
         message: `${model.id}: attnOverrides is only for non-full attention (docs/03 §5.1)`,
+      });
+    }
+    if ((model.hfDownloads30d === undefined) !== (model.hfDownloadsAsOf === undefined)) {
+      ctx.addIssue({ code: 'custom', message: `${model.id}: hfDownloads30d and hfDownloadsAsOf must be set together` });
+    }
+    if (model.hfDownloads30d !== undefined && !model.sources.includes(`https://huggingface.co/${model.hfId}`)) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `${model.id}: hfDownloads30d requires the Hugging Face model URL https://huggingface.co/${model.hfId} in sources (CLAUDE.md rule 2)`,
       });
     }
     if ((model.arch.experts === undefined) !== (model.arch.topK === undefined)) {

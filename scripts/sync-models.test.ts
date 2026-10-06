@@ -4,11 +4,13 @@ import { parseModelQuants, parseModels } from '../packages/data/src/index';
 import type { ConfigResult, TreeEntry } from './hf-common';
 import {
   applyChanges,
+  applyDownloads,
   buildSyncPlan,
   extractArch,
   extractMoe,
   matchQuantFiles,
   parseArgs,
+  planDownloads,
   planSplitChanges,
   renderReport,
   sumFileGB,
@@ -495,6 +497,50 @@ describe('renderReport', () => {
     expect(report).toContain('## model-quants.json');
     expect(report).toContain('| a/Q4_K_M | fileGB | 4.92 | 5.02 | +2.03% | auto |');
     expect(report).toContain('1 auto, 0 suspicious, 0 manual, 1 skipped, 0 error');
+  });
+});
+
+describe('downloads — planDownloads / applyDownloads / report line (10-06 D68)', () => {
+  const twoModels = () => [fullModel(), fullModel({ id: 'other-1b', hfId: 'org/other-1b', name: 'O', sources: ['https://huggingface.co/org/other-1b'] })];
+
+  it('writes the count and date right after popularity, updates in place next week', () => {
+    const input = makeInput({ models: twoModels(), quants: [quantRow()] });
+    const plan = planDownloads(input.models, new Map([['org/test-8b', { downloads: 1200 }], ['org/other-1b', { downloads: 0 }]]), '2026-10-06');
+    expect(plan).toEqual({ asOf: '2026-10-06', updates: [{ id: 'test-8b', downloads: 1200 }, { id: 'other-1b', downloads: 0 }], failed: [] });
+    applyDownloads(plan, input);
+    const keys = Object.keys(input.rawModels[0]!);
+    expect(keys.slice(keys.indexOf('popularity'), keys.indexOf('popularity') + 4)).toEqual(['popularity', 'hfDownloads30d', 'hfDownloadsAsOf', 'releasedAt']);
+    expect(parseModels(input.rawModels).map((m) => [m.hfDownloads30d, m.hfDownloadsAsOf])).toEqual([[1200, '2026-10-06'], [0, '2026-10-06']]);
+
+    const next = makeInput({ models: input.rawModels, quants: [quantRow()] });
+    applyDownloads(planDownloads(next.models, new Map([['org/test-8b', { downloads: 1500 }]]), '2026-10-13'), next);
+    expect(Object.keys(next.rawModels[0]!)).toEqual(keys);
+    expect(next.rawModels[0]).toMatchObject({ hfDownloads30d: 1500, hfDownloadsAsOf: '2026-10-13' });
+    expect(next.rawModels[1]).toMatchObject({ hfDownloads30d: 0, hfDownloadsAsOf: '2026-10-06' }); // 이번엔 읽지 않은 모델(--only 등)은 그대로
+  });
+
+  it('keeps the old value on a read failure and reports one summary line, never an ERROR row', () => {
+    const input = makeInput({ models: [fullModel({ hfDownloads30d: 900, hfDownloadsAsOf: '2026-09-29' }), twoModels()[1]!], quants: [quantRow()] });
+    const plan = planDownloads(input.models, new Map([['org/test-8b', { error: 'HTTP 503' }], ['org/other-1b', { downloads: 77 }]]), '2026-10-06');
+    expect(plan.failed).toEqual(['test-8b']);
+    applyDownloads(plan, input);
+    expect(input.rawModels[0]).toMatchObject({ hfDownloads30d: 900, hfDownloadsAsOf: '2026-09-29' });
+    expect(input.rawModels[1]).toMatchObject({ hfDownloads30d: 77, hfDownloadsAsOf: '2026-10-06' });
+    const report = renderReport([], plan);
+    expect(report).toContain('다운로드 수(원본 저장소 최근 30일) 1종 갱신, 기준일 2026-10-06 · 읽기 실패 1종은 기존 값 유지(test-8b)');
+    expect(report).toContain('0 auto, 0 suspicious, 0 manual, 0 skipped, 0 error');
+    expect(report).not.toContain('| test-8b |');
+  });
+
+  it('adds no line when nothing was read (old callers unchanged)', () => {
+    expect(renderReport([], { asOf: '2026-10-06', updates: [], failed: [] })).toBe(renderReport([]));
+  });
+
+  it('schema: count and date go together, and the HF model URL must be a source', () => {
+    expect(() => parseModels([fullModel({ hfDownloads30d: 5 })])).toThrow('must be set together');
+    expect(() => parseModels([fullModel({ hfDownloadsAsOf: '2026-10-06' })])).toThrow('must be set together');
+    expect(() => parseModels([fullModel({ hfDownloads30d: 5, hfDownloadsAsOf: '2026-10-06', sources: ['https://example.com/x'] })])).toThrow('Hugging Face model URL');
+    expect(() => parseModels([fullModel({ hfDownloads30d: -1, hfDownloadsAsOf: '2026-10-06' })])).toThrow();
   });
 });
 

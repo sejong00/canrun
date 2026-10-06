@@ -7,6 +7,8 @@
  * 직접 입력 모델(D66): `mm=p8.03-l32-k8-d128` — 글자+숫자 조각을 '-' 로 잇고 순서는 p a e t l k d f c h 로 고정
  * (전체·활성 파라미터, 전문가 수, top-k, 층, KV 헤드, 헤드 차원, 전체 어텐션 층, 최대 컨텍스트, 생각 모드 h1). 숫자만 받는다 —
  * 공유 링크로 임의 문구를 심을 수 없게. 조각마다 범위를 검사해 틀린 조각만 버린다(커스텀 하드웨어와 같다). `hf` 가 있으면 버린다.
+ * 정렬(10-06 D68): 기본 추천순(`rec`)은 생략, `sort=popular|downloads|verdict|speed|size`. 그 전의 기본(판정·속도 순)은 이제 `sort=verdict` 로
+ * 적고, sort 가 없는 옛 공유 링크는 추천순으로 열린다(의도된 변화).
  * 홈 GET 폼은 `gpu=<자유 텍스트>` 만 보내고 여기서 별칭·fuzzy 로 해석한다 (해석 실패 = unresolved, 폼에 텍스트 유지).
  */
 import { manualRangeIssue, type CatalogLite, type ManualNumberField, type ManualSpec } from '@canrun/data/client';
@@ -20,6 +22,7 @@ import {
   CUSTOM_CLASSES,
   DDR_KINDS,
   DEFAULT_DDR,
+  DEFAULT_SORT,
   GPU_SORT_KEYS,
   HW_TYPES,
   KV_OPTIONS,
@@ -133,7 +136,7 @@ export function parseCalcQuery(search: string, catalog: CatalogLite, names: GpuN
   state.cat = list<Category>(q.get('cat'), CATEGORIES);
   state.min = oneOf(q.get('min'), ['S', 'A', 'B'] as const);
   state.size = list<SizeBucket>(q.get('size'), SIZE_BUCKETS);
-  state.sort = oneOf(q.get('sort'), SORT_KEYS) ?? 'verdict';
+  state.sort = oneOf(q.get('sort'), SORT_KEYS) ?? DEFAULT_SORT;
   state.mode = oneOf(q.get('mode'), CALC_MODES) ?? 'hardware';
   state.focus = q.get('m') ?? undefined;
   state.hf = q.get('hf')?.trim() || undefined;
@@ -172,7 +175,7 @@ export function serializeCalcQuery(state: CalcState, catalog: CatalogLite): stri
   if (s.cat.length > 0) q.set('cat', s.cat.join(','));
   if (s.min !== undefined) q.set('min', s.min);
   if (s.size.length > 0) q.set('size', s.size.join(','));
-  if (s.sort !== 'verdict') q.set('sort', s.sort);
+  if (s.sort !== DEFAULT_SORT) q.set('sort', s.sort);
   if (s.mode !== 'hardware') q.set('mode', s.mode);
   if (s.focus !== undefined) q.set('m', s.focus);
   if (s.hf !== undefined) q.set('hf', s.hf);
