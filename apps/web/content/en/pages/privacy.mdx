@@ -1,11 +1,11 @@
-Effective October 1, 2026.
+Effective October 6, 2026.
 
 CanRun is built so that you do not have to give us anything to use it. This page explains what that means in practice.
 
 ## What we collect
 
 - **No accounts, no sign-ups and no forms.**
-- **CanRun itself sets no cookies**, and there are no analytics or tracking scripts on the site. Cookies used for advertising are explained under Advertising below.
+- **CanRun itself sets no cookies.** The only visitor statistics we use come from Cloudflare Web Analytics, which does not use cookies (see Visitor statistics below). Cookies used for advertising are explained under Advertising below.
 - **The calculator runs in your browser.** The GPU, memory and settings you choose are calculated on your device and are not sent to us. Your choices are written into the page address so you can bookmark or share it. If you share that link, whoever receives it can see those choices.
 - **GPU detection stays on your device.** When you press the detect button, your browser tells the page which graphics chip it is using. That check happens only in your browser, and nothing is sent anywhere.
 - **Loading a model that isn't listed sends a request from your browser to Hugging Face.** When you enter a model link in the calculator and press Load, or open a calculator link that already includes a loaded model, your browser asks Hugging Face (huggingface.co) for that model's details and file list. For some models, such as mixture-of-experts models, it also reads the first few megabytes of a model file from Hugging Face's download servers. Hugging Face handles request information such as your IP address under the [Hugging Face privacy policy](https://huggingface.co/privacy). The requests do not go through CanRun's servers, and we can't see which model you loaded. If you don't load a model and don't open such a link, nothing is requested from Hugging Face.
@@ -13,6 +13,16 @@ CanRun is built so that you do not have to give us anything to use it. This page
 ## Hosting
 
 The site is served by Cloudflare Pages. To deliver the pages and protect the site from abuse, Cloudflare processes technical information about each request, such as your IP address and browser type, under the [Cloudflare privacy policy](https://www.cloudflare.com/privacypolicy/). We do not receive a list of visitors from this.
+
+## Visitor statistics
+
+We use Cloudflare Web Analytics to see which pages people read and where visitors come from. When you open a page, your browser sends Cloudflare:
+
+- the address of the page, and the address of the site you came from if you followed a link
+- your country, browser, operating system and device type (desktop, phone or tablet)
+- timing information, such as how long the page took to load
+
+These statistics use no cookies or browser storage, and Cloudflare does not identify individuals by IP address or browser details for them ([about Cloudflare Web Analytics](https://www.cloudflare.com/web-analytics/)). We only see totals, such as visits per page or per country, so we cannot tell who viewed which page. If you block the statistics script (static.cloudflareinsights.com) with an ad blocker or a browser setting, the site works the same.
 
 ## Email
 
@@ -31,7 +41,7 @@ Ads do not affect verdicts or recommendations. How they are calculated is on the
 
 ## Changes
 
-If we add analytics, other advertising or affiliate links in the future, we will update this page before they go live, including what cookies they use and what choices you have.
+If we add other analytics, advertising or affiliate links in the future, we will update this page before they go live, including what cookies they use and what choices you have.
 
 ## Contact
 
