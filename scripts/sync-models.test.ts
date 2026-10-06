@@ -506,7 +506,7 @@ describe('downloads — planDownloads / applyDownloads / report line (10-06 D68)
   it('writes the count and date right after popularity, updates in place next week', () => {
     const input = makeInput({ models: twoModels(), quants: [quantRow()] });
     const plan = planDownloads(input.models, new Map([['org/test-8b', { downloads: 1200 }], ['org/other-1b', { downloads: 0 }]]), '2026-10-06');
-    expect(plan).toEqual({ asOf: '2026-10-06', updates: [{ id: 'test-8b', downloads: 1200 }, { id: 'other-1b', downloads: 0 }], failed: [] });
+    expect(plan).toEqual({ asOf: '2026-10-06', updates: [{ id: 'test-8b', downloads: 1200 }, { id: 'other-1b', downloads: 0 }], failed: [], noSource: [] });
     applyDownloads(plan, input);
     const keys = Object.keys(input.rawModels[0]!);
     expect(keys.slice(keys.indexOf('popularity'), keys.indexOf('popularity') + 4)).toEqual(['popularity', 'hfDownloads30d', 'hfDownloadsAsOf', 'releasedAt']);
@@ -533,7 +533,19 @@ describe('downloads — planDownloads / applyDownloads / report line (10-06 D68)
   });
 
   it('adds no line when nothing was read (old callers unchanged)', () => {
-    expect(renderReport([], { asOf: '2026-10-06', updates: [], failed: [] })).toBe(renderReport([]));
+    expect(renderReport([], { asOf: '2026-10-06', updates: [], failed: [], noSource: [] })).toBe(renderReport([]));
+  });
+
+  it('skips a hand-written record without the HF model URL instead of failing the whole sync (D68 review)', () => {
+    // 직접 작성 레코드(--수동 안내)는 sources 가 config.json 링크뿐일 수 있다 — 값을 쓰면 refine 이 쓰기 전 자가검증(parseModels)을 터뜨린다
+    const hand = fullModel({ id: 'hand-1b', hfId: 'org/hand-1b', name: 'H', sources: ['https://huggingface.co/org/hand-1b/blob/main/config.json'] });
+    const input = makeInput({ models: [fullModel(), hand], quants: [quantRow()] });
+    const plan = planDownloads(input.models, new Map([['org/test-8b', { downloads: 10 }], ['org/hand-1b', { downloads: 99 }]]), '2026-10-06');
+    expect(plan).toEqual({ asOf: '2026-10-06', updates: [{ id: 'test-8b', downloads: 10 }], failed: [], noSource: ['hand-1b'] });
+    applyDownloads(plan, input);
+    expect(() => parseModels(input.rawModels)).not.toThrow();
+    expect(input.rawModels[1]).not.toHaveProperty('hfDownloads30d');
+    expect(renderReport([], plan)).toContain('1종 갱신, 기준일 2026-10-06 · sources 에 HF 모델 URL 이 없어 건너뜀 1종(hand-1b');
   });
 
   it('schema: count and date go together, and the HF model URL must be a source', () => {

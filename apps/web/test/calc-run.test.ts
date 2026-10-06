@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { loadSeed } from '../../../packages/data/test/seed';
 import { differsFromHubAssumption, resolveHardware } from '../lib/calc/hardware';
 import { assembleResults } from '../lib/calc/run';
-import { defaultState, type CalcState } from '../lib/calc/state';
+import { defaultState, SIZE_BUCKETS, type CalcState } from '../lib/calc/state';
 
 const seed = loadSeed();
 const catalog = toCatalogLite(seed);
@@ -66,26 +66,46 @@ describe('assembleResults — options', () => {
     expect(run.counts.S + run.counts.A + run.counts.B + run.counts.F).toBe(catalog.models.length);
   });
 
-  it('recommended (default): runs-well-or-better models largest first, then slow ones by speed, then the rest (D68)', () => {
+  it('recommended (default): runs-well-or-better models by size group then popularity, then the rest (D68)', () => {
     const run = assembleResults(catalog, withGpu('rtx-4060'))!;
-    const group = (v: string) => (v === 'S' || v === 'A' ? 0 : v === 'B' ? 1 : 2);
-    const groups = run.all.map((c) => group(c.combo.baseline.result.verdict));
-    expect([...groups].sort((a, b) => a - b)).toEqual(groups);
-    const good = run.all.filter((c) => group(c.combo.baseline.result.verdict) === 0);
-    expect(good.map((c) => c.model.paramsB)).toEqual([...good.map((c) => c.model.paramsB)].sort((a, b) => b - a));
-    expect(run.all[0]!.model.paramsB).toBe(Math.max(...good.map((c) => c.model.paramsB)));
+    const verdicts = run.all.map((c) => c.combo.baseline.result.verdict);
+    const good = run.all.filter((c) => 'SA'.includes(c.combo.baseline.result.verdict));
+    expect(verdicts.slice(0, good.length).every((v) => 'SA'.includes(v))).toBe(true);
+    expect(verdicts.slice(good.length).every((v) => 'BF'.includes(v))).toBe(true);
+    // 크기 구간(필터와 같은 s·m·l·xl) 큰 쪽부터, 같은 구간이면 인기도 높은 쪽부터
+    const key = (c: (typeof good)[number]) => SIZE_BUCKETS.indexOf(c.bucket) * 10 + c.model.popularity;
+    expect(good.map(key)).toEqual([...good.map(key)].sort((a, b) => b - a));
     expect(run.all[0]!.model.paramsB).toBeGreaterThan(9); // 1B 모델이 아니다 — 사용자 지적(10-06)
-    const slow = run.all.filter((c) => c.combo.baseline.result.verdict === 'B').map((c) => c.combo.display.result.tgTokS.est);
-    expect(slow).toEqual([...slow].sort((a, b) => b - a));
+    // 같은 10–24B 구간에서는 거의 안 쓰이는 Kanana 1.5 15.7B-A3B(인기도 2)가 Gemma 4 12B(4)보다 뒤 — 리뷰 반영
+    const at = (id: string) => run.all.findIndex((c) => c.model.id === id);
+    expect(at('gemma-4-12b')).toBeLessThan(at('kanana-1.5-15.7b-a3b'));
     // 필터·카운트는 정렬과 무관
     expect(run.counts).toEqual(assembleResults(catalog, withGpu('rtx-4060', { sort: 'verdict' }))!.counts);
   });
 
-  it('popular sorts by the 1–5 popularity, downloads by the Hugging Face 30-day count (D68)', () => {
-    const popular = assembleResults(catalog, withGpu('rtx-4060', { sort: 'popular' }))!.all.map((c) => c.model.popularity);
-    expect(popular).toEqual([...popular].sort((a, b) => b - a));
-    const downloads = assembleResults(catalog, withGpu('rtx-4060', { sort: 'downloads' }))!.all.map((c) => c.model.hfDownloads30d ?? -1);
-    expect(downloads).toEqual([...downloads].sort((a, b) => b - a));
+  it('recommended on CPU only (everything Runs slowly): usable-speed models by size first, not the fastest 1B (D68 review)', () => {
+    for (const cpu of ['cpu-ddr5-5600-2ch', 'cpu-ddr5-6000-2ch']) {
+      const run = assembleResults(catalog, withGpu(cpu))!;
+      expect(run.counts.S + run.counts.A, cpu).toBe(0);
+      expect(run.all[0]!.model.paramsB, cpu).toBeGreaterThan(4);
+      // 쓸 만한 속도(원활 기준 8 tok/s, 리즈닝 ×1.5)인 B 가 먼저, 나머지 B 는 빠른 것부터
+      const usable = (c: (typeof run.all)[number]) => c.combo.display.result.tgTokS.est >= (c.combo.reasoning ? 12 : 8);
+      const b = run.all.filter((c) => c.combo.baseline.result.verdict === 'B');
+      const firstSlow = b.findIndex((c) => !usable(c));
+      expect(b.slice(0, firstSlow).every(usable), cpu).toBe(true);
+      const rest = b.slice(firstSlow).map((c) => c.combo.display.result.tgTokS.est);
+      expect(rest.every((tg, i) => i === 0 || tg <= rest[i - 1]!), cpu).toBe(true);
+    }
+  });
+
+  it('popular sorts by the 1–5 popularity, downloads by the Hugging Face 30-day count — models that cannot run go last (D68)', () => {
+    for (const sort of ['popular', 'downloads'] as const) {
+      const all = assembleResults(catalog, withGpu('rtx-3060-12gb', { sort }))!.all;
+      const value = (c: (typeof all)[number]) => (sort === 'popular' ? c.model.popularity : (c.model.hfDownloads30d ?? -1));
+      const runnable = all.filter((c) => c.combo.baseline.result.verdict !== 'F');
+      expect(all.slice(0, runnable.length)).toEqual(runnable);
+      for (const part of [runnable, all.slice(runnable.length)]) expect(part.map(value)).toEqual([...part.map(value)].sort((a, b) => b - a));
+    }
   });
 
   it('filters by category, minimum verdict and size bucket', () => {

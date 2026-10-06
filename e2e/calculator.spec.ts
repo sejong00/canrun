@@ -125,9 +125,20 @@ for (const locale of LOCALES) {
       const lines = page.locator('[data-results] [data-downloads]');
       expect(await lines.count()).toBeGreaterThan(10);
       await expect(lines.first()).toContainText('Hugging Face');
-      const counts: number[] = [];
-      for (const line of await lines.all()) counts.push(Number(await line.getAttribute('data-downloads')));
-      expect(counts).toEqual([...counts].sort((a, b) => b - a));
+      // 못 돌리는(불가) 모델은 맨 뒤, 그 앞뒤로 각각 내림차순 (D68 리뷰 반영)
+      const rows = await cards.evaluateAll((els) =>
+        els.map((el) => ({
+          verdict: el.querySelector('[data-verdict]')?.getAttribute('data-verdict') ?? '',
+          count: Number(el.querySelector('[data-downloads]')?.getAttribute('data-downloads') ?? -1),
+        })),
+      );
+      const runnable = rows.filter((r) => r.verdict !== 'F');
+      expect(runnable.length).toBeGreaterThan(10);
+      expect(rows.slice(0, runnable.length)).toEqual(runnable);
+      for (const part of [runnable, rows.slice(runnable.length)]) {
+        const counts = part.map((r) => r.count);
+        expect(counts).toEqual([...counts].sort((a, b) => b - a));
+      }
 
       // 새로고침해도 유지
       await page.reload();
@@ -146,6 +157,17 @@ for (const locale of LOCALES) {
       await select.selectOption('rec');
       await expect.poll(() => new URL(page.url()).search).toBe('?gpu=rtx-4060');
       await expect(cards.first()).toHaveAttribute('data-model-id', recFirst);
+      expect(problems).toEqual([]);
+    });
+
+    test('sorting on CPU only: no model runs well, so the note says so and the fastest 1B is not first (D68 review)', async ({ page }) => {
+      const problems = collectProblems(page);
+      await open(page, `${path}?gpu=cpu-ddr5-5600-2ch`);
+      const cards = page.locator('[data-results] [data-result-card]');
+      await expect(cards.first()).toBeVisible();
+      await expect(page.locator('[data-sort-note="rec-slow"]')).toBeVisible();
+      await expect(page.locator('[data-sort-note="rec"]')).toHaveCount(0);
+      expect(['minicpm5-1b', 'llama-3.2-1b', 'exaone-4.0-1.2b', 'ling-3.0-tiny']).not.toContain(await cards.first().getAttribute('data-model-id'));
       expect(problems).toEqual([]);
     });
 

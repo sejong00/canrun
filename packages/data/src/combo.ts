@@ -497,3 +497,8 @@ export function titleVerdict(combo: ComboAssessment): TitleVerdict {
 export function sMinTokS(reasoning: boolean): number {
   return VERDICT_THRESHOLDS.sMinTg * (reasoning ? VERDICT_THRESHOLDS.reasoningMultiplier : 1);
 }
+
+/** 리즈닝 모델의 A 임계 — 계산기 추천순이 겨우 가능(B) 가운데 "속도는 원활 기준을 넘는" 모델을 가를 때(docs/01 F4) */
+export function aMinTokS(reasoning: boolean): number {
+  return VERDICT_THRESHOLDS.aMinTg * (reasoning ? VERDICT_THRESHOLDS.reasoningMultiplier : 1);
+}

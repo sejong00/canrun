@@ -62,15 +62,16 @@ export function ResultList({
     (min, m) => (m.hfDownloadsAsOf !== undefined && (min === undefined || m.hfDownloadsAsOf < min) ? m.hfDownloadsAsOf : min),
     undefined,
   );
-  // 정렬 안내 한 줄 — 추천순·인기순은 순서의 뜻, 다운로드 순은 수치의 출처와 한계
-  const sortNote =
-    state.sort === 'rec'
-      ? t.calc('sortRecHint', { verdict: t.verdict('A') })
-      : state.sort === 'popular'
-        ? t.calc('sortPopularHint')
-        : state.sort === 'downloads' && downloadsAsOf !== undefined
-          ? t.calc('downloadsNote', { date: downloadsAsOf })
-          : undefined;
+  // 정렬 안내 한 줄 — 추천순·인기순은 순서의 뜻, 다운로드 순은 수치의 출처와 한계. 보이는 카드가 없으면 생략.
+  // 추천순은 보이는 카드에 쾌적·원활이 하나도 없으면(CPU 전용 등) 그 경우의 순서를 따로 밝힌다(D68 리뷰 반영)
+  const shown = results?.cards ?? [];
+  const anyRunsWell = shown.some((c) => c.combo.baseline.result.verdict === 'S' || c.combo.baseline.result.verdict === 'A');
+  let sortNote: string | undefined;
+  if (shown.length > 0) {
+    if (state.sort === 'rec') sortNote = t.calc(anyRunsWell ? 'sortRecHint' : 'sortRecHintSlow');
+    else if (state.sort === 'popular') sortNote = t.calc('sortPopularHint');
+    else if (state.sort === 'downloads' && downloadsAsOf !== undefined) sortNote = t.calc('downloadsNote', { date: downloadsAsOf });
+  }
 
   return (
     <section aria-labelledby="results-heading" className="flex flex-col gap-4">
@@ -144,7 +145,7 @@ export function ResultList({
             </div>
           </div>
           {sortNote && (
-            <p data-sort-note={state.sort} className="text-xs text-muted-foreground">
+            <p data-sort-note={state.sort === 'rec' && !anyRunsWell ? 'rec-slow' : state.sort} className="text-xs text-muted-foreground">
               {sortNote}
             </p>
           )}

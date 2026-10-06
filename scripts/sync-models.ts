@@ -608,6 +608,11 @@ export type DownloadsPlan = {
   updates: Array<{ id: string; downloads: number }>;
   /** 읽기 실패 — 기존 값 유지 */
   failed: string[];
+  /**
+   * sources 에 HF 모델 URL(`https://huggingface.co/<hfId>`)이 없어 쓰지 않은 모델 — 스키마 refine 이 다운로드 값에 그 URL 을 요구하므로
+   * 그대로 쓰면 쓰기 전 자가검증이 터져 주간 동기화 전체(fileGB·arch·split 갱신 포함)가 멈춘다(10-06 D68 리뷰 반영). 손으로 쓴 레코드에서 생길 수 있다
+   */
+  noSource: string[];
 };
 
 export function planDownloads(
@@ -617,13 +622,15 @@ export function planDownloads(
 ): DownloadsPlan {
   const updates: DownloadsPlan['updates'] = [];
   const failed: string[] = [];
+  const noSource: string[] = [];
   for (const model of models) {
     const res = byHfId.get(model.hfId);
     if (res === undefined) continue; // --only 필터 등으로 미수집
-    if (res.downloads === undefined) failed.push(model.id);
+    if (!model.sources.includes(hfUrl(model.hfId))) noSource.push(model.id); // 스키마 refine 과 같은 URL
+    else if (res.downloads === undefined) failed.push(model.id);
     else updates.push({ id: model.id, downloads: res.downloads });
   }
-  return { asOf, updates, failed };
+  return { asOf, updates, failed, noSource };
 }
 
 /** 다운로드 수·기준일을 raw 레코드에 쓴다 — 키는 popularity 바로 뒤(hfDownloads30d, hfDownloadsAsOf), 있으면 제자리 갱신 */
@@ -667,10 +674,14 @@ export function renderReport(changes: readonly Change[], downloads?: DownloadsPl
     }
     lines.push('');
   }
-  if (downloads && (downloads.updates.length > 0 || downloads.failed.length > 0)) {
+  if (downloads && (downloads.updates.length > 0 || downloads.failed.length > 0 || downloads.noSource.length > 0)) {
     const failed =
       downloads.failed.length > 0 ? ` · 읽기 실패 ${downloads.failed.length}종은 기존 값 유지(${downloads.failed.join(', ')})` : '';
-    lines.push(`다운로드 수(원본 저장소 최근 30일) ${downloads.updates.length}종 갱신, 기준일 ${downloads.asOf}${failed}`, '');
+    const noSource =
+      downloads.noSource.length > 0
+        ? ` · sources 에 HF 모델 URL 이 없어 건너뜀 ${downloads.noSource.length}종(${downloads.noSource.join(', ')} — 레코드에 URL 을 넣으면 다음 동기화부터 채움)`
+        : '';
+    lines.push(`다운로드 수(원본 저장소 최근 30일) ${downloads.updates.length}종 갱신, 기준일 ${downloads.asOf}${failed}${noSource}`, '');
   }
   const count = (kind: Change['kind']): number => changes.filter((c) => c.kind === kind).length;
   lines.push(
