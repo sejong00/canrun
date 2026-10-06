@@ -9,10 +9,20 @@ export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? 'https://canrunllm.
   '',
 );
 
-/** 사이트 내부 경로(`/`, `/ko`, `/gpu/rtx-4060` …)를 절대 URL로. */
+/**
+ * 사이트 내부 경로(`/`, `/ko`, `/gpu/rtx-4060` …)를 절대 URL로.
+ * 루트는 끝 슬래시 없이 `https://canrunllm.com` — 캐노니컬·hreflang·og:url(Next 가 끝 슬래시를 뗀다)·사이트맵과 같은 표기로
+ * 구조화 데이터(WebSite.url·경로 표시)까지 맞춘다 (10-06 PROGRESS §4 D70).
+ */
 export function absoluteUrl(pathname: string): string {
-  return pathname === '/' ? `${SITE_URL}/` : `${SITE_URL}${pathname}`;
+  return pathname === '/' ? SITE_URL : `${SITE_URL}${pathname}`;
 }
+
+/**
+ * 검색엔진이 사이트 이름을 알아보게 하는 다른 이름 — 홈의 WebSite 구조화 데이터 `alternateName` (10-06 사용자 요청, D70).
+ * 브랜드 표기라 로캘마다 번역하지 않고 en·ko 홈에 같은 목록을 쓴다.
+ */
+export const SITE_ALTERNATE_NAMES: readonly string[] = ['CanRun LLM', 'canrunllm.com', '캔런'];
 
 /** 문의·모델 추가 요청 주소 (P1-5 — 사용자가 제공한 공개 주소, docs/05 §8 공개 값) */
 export const CONTACT_EMAIL = 'turbojenm@gmail.com';

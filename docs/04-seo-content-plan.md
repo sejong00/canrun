@@ -51,7 +51,7 @@
 
 ## 5. 구조화 데이터 (JSON-LD, 템플릿 레벨)
 - `/calculator` `SoftwareApplication`(무료) · 콤보/허브 `FAQPage`(3문항, 수치 포함 답) + `BreadcrumbList` · 실측 섹션 `Dataset`(P2: 공개 데이터셋 — 백링크 자석) · 가이드 `Article`+`author`(실명 E-E-A-T — P1-4 사용자 결정으로 우선 브랜드 Organization "CanRun", 레지스트리 한 줄로 실명 전환 가능, D41) + 3단 `BreadcrumbList`(홈 › 가이드 › 글).
-- P1-3 구현 메모: `/calculator` = `SoftwareApplication`(`applicationCategory` UtilitiesApplication · `isAccessibleForFree` + `Offer` price 0 · `softwareVersion` = 엔진 스펙 버전) + `BreadcrumbList` 2단(홈 › 계산기) + `FAQPage` 3문항(답은 화면 FAQ 텍스트, tok/s 수치 없음 — 결과는 클라이언트 렌더). 홈 = `WebSite`(SearchAction 없음 — 사이트링크 검색창은 종료된 기능). export 테스트가 두 페이지의 타입 집합을 강제.
+- P1-3 구현 메모: `/calculator` = `SoftwareApplication`(`applicationCategory` UtilitiesApplication · `isAccessibleForFree` + `Offer` price 0 · `softwareVersion` = 엔진 스펙 버전) + `BreadcrumbList` 2단(홈 › 계산기) + `FAQPage` 3문항(답은 화면 FAQ 텍스트, tok/s 수치 없음 — 결과는 클라이언트 렌더). 홈 = `WebSite`(SearchAction 없음 — 사이트링크 검색창은 종료된 기능). 10-06: `alternateName` ["CanRun LLM", "canrunllm.com", "캔런"](Google 사이트 이름)과 `url` = 캐노니컬과 같은 표기(루트는 끝 슬래시 없음) — PROGRESS §4 D70. export 테스트가 두 페이지의 타입 집합을 강제.
 - P1-1 구현 메모: 허브 브레드크럼은 2단(홈 › 허브) — Google은 마지막 외 항목에 URL을 요구하는데 `/gpu`·`/model` 인덱스 페이지가 없다. **콤보는 3단(홈 › 모델 허브 › 콤보=캐노니컬)** — P1-2 D10(PROGRESS §4 09-29). FAQPage 답 텍스트 = 화면 FAQ 텍스트(export 테스트가 강제). FAQ 리치 결과는 2023년부터 정부·보건 사이트 한정이라 노출은 기대하지 않고 스펙대로만 둔다.
 
 ## 6. i18n·hreflang (동시 출시 스펙)

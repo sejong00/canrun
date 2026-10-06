@@ -60,11 +60,19 @@ export function softwareApplicationJsonLd(input: {
 }
 
 /** 홈 — WebSite (SearchAction 은 두지 않는다: 사이트링크 검색창 종료, P1-3 D25) */
-export function webSiteJsonLd(input: { name: string; url: string; inLanguage: string; description: string }) {
+export function webSiteJsonLd(input: {
+  name: string;
+  /** 사이트 이름의 다른 표기 (Google 사이트 이름 — 홈 페이지의 WebSite 에만, D70) */
+  alternateName?: readonly string[];
+  url: string;
+  inLanguage: string;
+  description: string;
+}) {
   return {
     '@context': 'https://schema.org',
     '@type': 'WebSite',
     name: input.name,
+    ...(input.alternateName && input.alternateName.length > 0 ? { alternateName: [...input.alternateName] } : {}),
     url: input.url,
     inLanguage: input.inLanguage,
     description: input.description,

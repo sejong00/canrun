@@ -9,7 +9,7 @@ import { webSiteJsonLd } from '@/lib/jsonld';
 import { calculatorHref, gpuHref, localeHref, modelHref } from '@/lib/links';
 import { gpuName, type Translate } from '@/lib/phrases';
 import { buildPageMetadata } from '@/lib/seo';
-import { absoluteUrl } from '@/lib/site';
+import { SITE_ALTERNATE_NAMES, absoluteUrl } from '@/lib/site';
 
 type Props = {
   params: Promise<{ locale: Locale }>;
@@ -60,6 +60,7 @@ export default async function HomePage({ params }: Props) {
       <JsonLd
         data={webSiteJsonLd({
           name: tSite('name'),
+          alternateName: SITE_ALTERNATE_NAMES,
           url: absoluteUrl(localeHref(locale, '/')),
           inLanguage: locale,
           description: t('metaDescription'),

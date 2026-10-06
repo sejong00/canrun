@@ -323,6 +323,15 @@ describe('structured data (docs/04 §5)', () => {
     }
   });
 
+  it('home WebSite: name CanRun + alternate names, url written exactly like the canonical (10-06 D70)', () => {
+    for (const page of pages.filter((p) => p.kind === 'home')) {
+      const site = page.jsonLd.find((b) => b['@type'] === 'WebSite')!;
+      expect(site.name, page.file).toBe('CanRun');
+      expect(site.alternateName, page.file).toEqual(['CanRun LLM', 'canrunllm.com', '캔런']);
+      expect(site.url, page.file).toBe(page.canonical);
+    }
+  });
+
   it('breadcrumbs: every item has a URL (결정 D7), the last one is the canonical; combos are 3 levels (D10)', () => {
     for (const page of pages.filter(isStructured)) {
       const crumbs = page.jsonLd.find((b) => b['@type'] === 'BreadcrumbList')!;
