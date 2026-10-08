@@ -9,5 +9,8 @@
   { "hfId": "Motif-Technologies/Motif-3", "decision": "wait", "reason": "llama.cpp 본선 미지원(PR #26298 draft) — 머지되면 다시 확인 (#19)", "decidedAt": "2026-10-04" },
   { "hfId": "deepgrove/maple-preview", "decision": "skip", "reason": "3진 가중치, llama.cpp GPU 커널 미머지 (#22)", "decidedAt": "2026-10-04" },
   { "hfId": "ByteDance/Ouro-1.4B", "decision": "skip", "reason": "층 ×4 반복·수요 낮음 — PR #29823 머지와 엔진 후속 ⑦ 뒤 재검토 (#44)", "decidedAt": "2026-10-04" },
-  { "hfId": "yandex/AliceAI-Foundation-80B-A3B-Base", "decision": "skip", "reason": "Base 전용·llama.cpp 본선 미지원 (#77)", "decidedAt": "2026-10-04" }
+  { "hfId": "yandex/AliceAI-Foundation-80B-A3B-Base", "decision": "skip", "reason": "Base 전용·llama.cpp 본선 미지원 (#77)", "decidedAt": "2026-10-04" },
+  { "hfId": "LiquidAI/d1-3B", "decision": "skip", "reason": "결정·분류 전용 모델(LFM2.5-VL-3B 파인튠, decision-model) — 대화용이 아님. 시도 시 manual.test 카탈로그 쌍 bpw 오차 15.7%로 실패(10-08 ① 런)", "decidedAt": "2026-10-08" },
+  { "hfId": "LiquidAI/d1-omni-600M", "decision": "skip", "reason": "결정·분류 전용 인코더(feature-extraction, LFM2.5-Encoder 기반) — 대화용이 아님", "decidedAt": "2026-10-08" },
+  { "hfId": "LiquidAI/d1-3B-w8a8", "decision": "skip", "reason": "d1-3B 의 torchao int8 양자화 변형 — 원본과 같이 대화용이 아님", "decidedAt": "2026-10-08" }
 ]
