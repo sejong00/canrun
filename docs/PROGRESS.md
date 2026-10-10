@@ -203,6 +203,7 @@
 
 ## 7. 이력 (최신이 위)
 
+- **10-10** 신모델 자동 추가 ② — ① 런 성공·추가 0종(10-09 도 0종). tencent/Youtu-Parsing-Omni 는 처음 보는 구조(youtu_vita_text)·문서 파싱 전용으로 보여 스킵 목록에 wait 로 적음(클라우드에서 HF 접근이 막혀 카드는 직접 못 읽음). Kolibri-1·Naive-N0.5-Flash 는 기준 미달이라 적지 않음
 - **10-08** 신모델 자동 추가 ② — ① 런 성공·추가 0종. LiquidAI d1-3B·d1-omni-600M·d1-3B-w8a8 은 결정·분류 전용(대화용 아님)이라 스킵 목록에 skip 으로 적음. Kolibri-1·Naive-N0.5-Flash 는 다운로드 기준 미달이라 적지 않음
 
 - **10-06** `6a6fedd` + 리뷰 반영 **신모델 자동 추가 ①(매일 PR) + ②(Claude 데스크톱 예약 작업 `canrun-new-model-review`, 매일 12:00 KST 검토·머지)** — HF 신모델을 사람 손 없이 카탈로그에 넣는다. ① 은 후보 선별·생각 모드 등 추정·검사 후 PR, ② 는 모델 카드와 대조해 고친 뒤 머지(§4 D71, docs/03 §5.3). ② 의 작업 지시는 `%USERPROFILE%\.claude\scheduled-tasks\canrun-new-model-review\SKILL.md`(저장소 밖 — 고칠 때는 데스크톱 앱 "예약됨"에서). 게이트: 유닛 812 · export 55 · E2E 198(Edge)
