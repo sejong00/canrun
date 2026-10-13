@@ -13,5 +13,6 @@
   { "hfId": "LiquidAI/d1-3B", "decision": "skip", "reason": "결정·분류 전용 모델(LFM2.5-VL-3B 파인튠, decision-model) — 대화용이 아님. 시도 시 manual.test 카탈로그 쌍 bpw 오차 15.7%로 실패(10-08 ① 런)", "decidedAt": "2026-10-08" },
   { "hfId": "LiquidAI/d1-omni-600M", "decision": "skip", "reason": "결정·분류 전용 인코더(feature-extraction, LFM2.5-Encoder 기반) — 대화용이 아님", "decidedAt": "2026-10-08" },
   { "hfId": "LiquidAI/d1-3B-w8a8", "decision": "skip", "reason": "d1-3B 의 torchao int8 양자화 변형 — 원본과 같이 대화용이 아님", "decidedAt": "2026-10-08" },
-  { "hfId": "tencent/Youtu-Parsing-Omni", "decision": "wait", "reason": "처음 보는 구조(model_type=youtu_vita_text)·이름상 문서 파싱 전용으로 보임 — llama.cpp 본선 지원과 Q4_K_M GGUF 가 나오면 용도와 함께 다시 확인", "decidedAt": "2026-10-10" }
+  { "hfId": "tencent/Youtu-Parsing-Omni", "decision": "wait", "reason": "처음 보는 구조(model_type=youtu_vita_text)·이름상 문서 파싱 전용으로 보임 — llama.cpp 본선 지원과 Q4_K_M GGUF 가 나오면 용도와 함께 다시 확인", "decidedAt": "2026-10-10" },
+  { "hfId": "openbmb/MiniCPM-V-4.7-1B", "decision": "wait", "reason": "MoE 인데 GGUF 실파일이 bpw 어림과 13% 넘게 달라 manual.test(MoE ±13%)가 실패(10-13 ① 런) — 원인(전문가 FFN 폭·비전 블록 등)을 확인하고 테스트 예외 여부를 정한 뒤 다시 확인. 30일 다운로드 14회", "decidedAt": "2026-10-13" }
 ]
