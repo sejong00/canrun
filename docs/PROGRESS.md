@@ -203,6 +203,7 @@
 
 ## 7. 이력 (최신이 위)
 
+- **10-14** 신모델 자동 추가 ② — ① 런 성공·추가 0종(PR 없음, 요약 이슈 #100). LiquidAI/LFM2.5-24B-A2B 는 처음 보는 구조(lfm2_moe)라 보류돼 스킵 목록에 wait, 같은 계열 -Base 는 skip 으로 적음(클라우드에서 HF 접근이 막혀 카드는 직접 못 읽음). Kolibri-1·GLM-5.3-Flash 리팩은 기준 미달이라 적지 않음
 - **10-13** 신모델 자동 추가 ② — PR #99 로 openbmb/MiniCPM-V-4.7-35B-A3B 추가(qwen3_5_moe_text·MoE 256E top-8, 생각 모드 default-on·용도 chat,vision 은 자동 추정 유지 — 클라우드에서 HF 접근이 막혀 카드는 직접 못 읽음, 템플릿 근거 그대로). 표시 이름을 제작사 표기 "MiniCPM-V 4.7 35B-A3B"로 바로잡음. openbmb/MiniCPM-V-4.7-1B 는 manual.test(MoE bpw ±13%) 실패라 스킵 목록에 wait. Kolibri-1·GLM-5.3-Flash 리팩은 기준 미달이라 적지 않음
 - **10-10** 신모델 자동 추가 ② — ① 런 성공·추가 0종(10-09 도 0종). tencent/Youtu-Parsing-Omni 는 처음 보는 구조(youtu_vita_text)·문서 파싱 전용으로 보여 스킵 목록에 wait 로 적음(클라우드에서 HF 접근이 막혀 카드는 직접 못 읽음). Kolibri-1·Naive-N0.5-Flash 는 기준 미달이라 적지 않음
 - **10-08** 신모델 자동 추가 ② — ① 런 성공·추가 0종. LiquidAI d1-3B·d1-omni-600M·d1-3B-w8a8 은 결정·분류 전용(대화용 아님)이라 스킵 목록에 skip 으로 적음. Kolibri-1·Naive-N0.5-Flash 는 다운로드 기준 미달이라 적지 않음
