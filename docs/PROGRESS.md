@@ -208,6 +208,7 @@
 
 ## 7. 이력 (최신이 위)
 
+- **10-15** MiniCPM-V 4.7 35B-A3B 자동 추정값을 모델 카드로 확인(10-13 에 클라우드가 못 읽은 것) — 생각 모드 default-on 맞음(채팅 템플릿이 `enable_thinking=false` 일 때만 빈 생각 블록, 아니면 `<think>` 로 시작. 공식 GGUF 에 든 템플릿도 같아 llama.cpp 기본 실행에서 켜짐 — 카드의 Instruct 예시는 모두 `enable_thinking=False` 를 넘긴다). 용도 chat·vision·최대 컨텍스트 262,144·Apache-2.0 맞음. 인기도만 1 → 2: 원본 저장소 30일 다운로드 4,157 은 로컬 실행을 거의 담지 못하고 공식 GGUF 저장소가 출시 8일 만에 46,970(같은 기준 3만↑ = 2, Granite 4.2 30B 37,885 → 2 와 같은 줄), 좋아요 597
 - **10-14** 신모델 자동 추가 ② — ① 런 성공·추가 0종(PR 없음, 요약 이슈 #100). LiquidAI/LFM2.5-24B-A2B 는 처음 보는 구조(lfm2_moe)라 보류돼 스킵 목록에 wait, 같은 계열 -Base 는 skip 으로 적음(클라우드에서 HF 접근이 막혀 카드는 직접 못 읽음). Kolibri-1·GLM-5.3-Flash 리팩은 기준 미달이라 적지 않음
 - **10-13** 신모델 자동 추가 ② — PR #99 로 openbmb/MiniCPM-V-4.7-35B-A3B 추가(qwen3_5_moe_text·MoE 256E top-8, 생각 모드 default-on·용도 chat,vision 은 자동 추정 유지 — 클라우드에서 HF 접근이 막혀 카드는 직접 못 읽음, 템플릿 근거 그대로). 표시 이름을 제작사 표기 "MiniCPM-V 4.7 35B-A3B"로 바로잡음. openbmb/MiniCPM-V-4.7-1B 는 manual.test(MoE bpw ±13%) 실패라 스킵 목록에 wait. Kolibri-1·GLM-5.3-Flash 리팩은 기준 미달이라 적지 않음
 - **10-10** 신모델 자동 추가 ② — ① 런 성공·추가 0종(10-09 도 0종). tencent/Youtu-Parsing-Omni 는 처음 보는 구조(youtu_vita_text)·문서 파싱 전용으로 보여 스킵 목록에 wait 로 적음(클라우드에서 HF 접근이 막혀 카드는 직접 못 읽음). Kolibri-1·Naive-N0.5-Flash 는 기준 미달이라 적지 않음
