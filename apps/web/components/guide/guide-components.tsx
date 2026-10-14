@@ -13,6 +13,7 @@ import { catalog, findGpu, findModel } from '@/lib/catalog';
 import { getCombo } from '@/lib/combos';
 import { formatCtx, formatGB, formatInt, formatParams, formatUSD } from '@/lib/format';
 import {
+  EXPECT_MODES,
   GUIDE_COMPONENTS,
   MEMORY_KINDS,
   NUM_KINDS,
@@ -763,20 +764,70 @@ export function ComboLink({ model: modelId, gpu: gpuId, children }: { model: str
 
 /**
  * 산문 주장 고정 (D43) — 렌더하지 않는다. 콤보 헤드라인(기준 판정·fit)이 산문과 어긋나면 빌드 실패:
- * 주간 data-sync 로 판정이 바뀌면 PR 이 빨개지고 문장을 고친다
+ * 주간 data-sync 로 판정이 바뀌면 PR 이 빨개지고 문장을 고친다.
+ * 10-14 D74 — 주장의 조건도 고정한다: `quant`(기준 대신 그 양자화 행) · `ram`(dGPU = 시스템 RAM 계단 `ramSteps`, 통합·CPU =
+ * 메모리 옵션 `configCombos` — 없으면 페이지 구성) · `ctx`/`kv`(콤보 ctx 표의 칸 — 표시 양자화 기준이라 `quant` 를 주면 같아야 한다,
+ * `ram` 과 함께 쓰지 않는다) · `mode`(실행 방식). "IQ4_XS 면 GPU 에 전부", "RAM 64GB 면 전문가를 RAM 에", "32k 도 GPU 에" 같은 문장용
  */
-export function Expect({ model, gpu, verdict, fits }: { model: string; gpu: string; verdict?: string; fits?: string }) {
+export function Expect({
+  model,
+  gpu,
+  verdict,
+  fits,
+  quant,
+  mode,
+  ram,
+  ctx,
+  kv,
+}: {
+  model: string;
+  gpu: string;
+  verdict?: string;
+  fits?: string;
+  quant?: string;
+  mode?: string;
+  ram?: string;
+  ctx?: string;
+  kv?: string;
+}) {
   const page = needCombo(model, gpu, 'Expect');
-  const actual: Verdict = page.combo.baseline.result.verdict;
-  if (verdict !== undefined && verdict !== actual) {
-    throw new Error(`guide Expect: ${model} × ${gpu} verdict is ${actual}, prose expects ${verdict}`);
+  const at = `${model} × ${gpu}${quant ? ` ${quant}` : ''}${ram ? ` @${ram}GB` : ''}${ctx ? ` ctx ${ctx}${kv ? `/${kv}` : ''}` : ''}`;
+  let actual: { verdict: Verdict; fits: boolean; mode: string };
+  if (ctx !== undefined) {
+    if (ram !== undefined) throw new Error(`guide Expect: ${at} — ctx and ram cannot be combined`);
+    if (quant !== undefined && quant !== page.q.quant) throw new Error(`guide Expect: ${at} — the ctx table is for ${page.q.quant}`);
+    const cell = page.matrix.rows.flat().find((c) => c.ctx === Number(ctx) && c.kvQuant === (kv ?? 'f16'));
+    if (!cell) throw new Error(`guide Expect: ${at} has no ctx table cell`);
+    actual = { verdict: cell.verdict, fits: cell.fits, mode: cell.mode };
+  } else {
+    if (kv !== undefined) throw new Error(`guide Expect: ${at} — kv needs ctx`);
+    let combo: ComboAssessment = page.combo;
+    if (ram !== undefined) {
+      const ramGB = Number(ram);
+      const found =
+        page.gpu.kind === 'dgpu' ? page.ramSteps.find((s) => s.ramGB === ramGB)?.combo : page.configCombos.find((c) => c.ramGB === ramGB);
+      if (!found) throw new Error(`guide Expect: ${at} — no ${ram} GB configuration`);
+      combo = found;
+    }
+    const q = quant === undefined ? combo.baseline : combo.perQuant.find((row) => row.quant === quant);
+    if (!q) throw new Error(`guide Expect: ${at} — no such quant`);
+    actual = { verdict: q.result.verdict, fits: q.fits, mode: q.result.mode };
   }
-  if (fits !== undefined && String(page.combo.baseline.fits) !== fits) {
-    throw new Error(`guide Expect: ${model} × ${gpu} fits=${page.combo.baseline.fits}, prose expects ${fits}`);
+  if (verdict !== undefined && verdict !== actual.verdict) {
+    throw new Error(`guide Expect: ${at} verdict is ${actual.verdict}, prose expects ${verdict}`);
+  }
+  if (fits !== undefined && String(actual.fits) !== fits) {
+    throw new Error(`guide Expect: ${at} fits=${actual.fits}, prose expects ${fits}`);
+  }
+  if (mode !== undefined) {
+    if (!(EXPECT_MODES as readonly string[]).includes(mode)) throw new Error(`guide Expect: unknown mode "${mode}"`);
+    // 미탑재(no-fit)는 실행 방식이 없다 — 모드 주장은 들어가는 구성에만
+    if (!actual.fits || actual.mode !== mode) {
+      throw new Error(`guide Expect: ${at} mode is ${actual.fits ? actual.mode : 'none (no fit)'}, prose expects ${mode}`);
+    }
   }
   return null;
 }
-
 
 export const GUIDE_MDX_COMPONENTS = {
   ComboGrid,

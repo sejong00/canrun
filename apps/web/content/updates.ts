@@ -10,6 +10,7 @@
 export type SiteUpdate = { readonly id: string; readonly date: string };
 
 export const SITE_UPDATES = [
+  { id: 'hub-intros', date: '2026-10-14' },
   { id: 'calculator-examples', date: '2026-10-14' },
   { id: 'daily-new-models', date: '2026-10-06' },
   { id: 'calculator-sort', date: '2026-10-06' },

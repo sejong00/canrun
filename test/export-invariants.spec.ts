@@ -18,6 +18,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { GUIDES, GUIDE_SLUGS, type GuideSlug } from '../apps/web/content/guides';
+import { GPU_INTRO_IDS, MODEL_INTRO_IDS } from '../apps/web/content/hubs';
 import { SITE_UPDATES, latestSiteUpdate } from '../apps/web/content/updates';
 import { ADSENSE_CLIENT } from '../apps/web/lib/site';
 import { CF_PAGES_REDIRECT_LINE_LIMIT } from '../scripts/build-redirects';
@@ -274,6 +275,28 @@ describe('hub pages exist for every catalog record (결정 D1 — 허브 전체 
       expect(urls.has(`/model/${id}`), `/model/${id}`).toBe(true);
       expect(urls.has(`/ko/model/${id}`), `/ko/model/${id}`).toBe(true);
     }
+  });
+});
+
+describe('hub intros (10-14 D74 — 손으로 쓴 소개글은 레지스트리 허브에만)', () => {
+  it('exactly the registered GPU and model hubs render an intro in both locales: 2–3 paragraphs citing data, no block inside <p>', () => {
+    const expected = [...GPU_INTRO_IDS.map((id) => `/gpu/${id}`), ...MODEL_INTRO_IDS.map((id) => `/model/${id}`)].sort();
+    const seen: Record<'en' | 'ko', string[]> = { en: [], ko: [] };
+    const hubs = pages.filter(isHub);
+    expect(hubs.length).toBeGreaterThan(0);
+    for (const page of hubs) {
+      const path = stripLocale(page.urlPath);
+      const { hubIntroParagraphs, hubIntroData, blockInParagraph } = page.markers;
+      expect(blockInParagraph, `${page.file} block inside <p> (hydration mismatch)`).toBe(0);
+      if (hubIntroParagraphs === 0) continue;
+      seen[page.locale].push(path);
+      expect(hubIntroParagraphs, `${page.file} intro paragraphs`).toBeGreaterThanOrEqual(2);
+      expect(hubIntroParagraphs, `${page.file} intro paragraphs`).toBeLessThanOrEqual(3);
+      expect(hubIntroData, `${page.file} intro cites no data component`).toBeGreaterThan(0);
+    }
+    // 소개가 없는 허브는 지금과 같게 렌더된다 — 레지스트리 밖 허브에 [data-hub-intro] 가 생기면 여기서 걸린다
+    expect(seen.en.sort(), 'en hubs with an intro').toEqual(expected);
+    expect(seen.ko.sort(), 'ko hubs with an intro').toEqual(expected);
   });
 });
 

@@ -13,6 +13,7 @@ import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { GgufSourceBadge, LicenseBadge, Pill } from '@/components/badges';
 import { Breadcrumbs } from '@/components/breadcrumbs';
 import { Faq } from '@/components/faq';
+import { HubIntro } from '@/components/hub-intro';
 import {
   BenchTable,
   ComboCells,
@@ -27,6 +28,7 @@ import type { Locale } from '@/i18n/routing';
 import { catalog } from '@/lib/catalog';
 import { formatCtx, formatGB, formatInt, formatParams } from '@/lib/format';
 import { formatPrice, krwNote } from '@/lib/price';
+import { loadHubIntro } from '@/lib/hub-intros';
 import { getModelHub } from '@/lib/hubs';
 import type { QA } from '@/lib/jsonld';
 import { calculatorHref, comboHref, gpuHref, hfUrl, localeHref, modelHref } from '@/lib/links';
@@ -228,6 +230,8 @@ export default async function ModelHubPage({ params }: Props) {
   const hasUnsloth = hub.quants.some((q) => q.publisher.owner === 'unsloth');
   // 행렬 캡션도 FAQ 와 같은 조건으로 GPU 밖 몫을 설명한다(임베딩 공유 모델은 생략, MTP 모델은 MTP 까지)
   const matrixOffGpuKey = offGpuNoteKey(hub);
+  // 손으로 쓴 소개글(10-14 D74) — 레지스트리(content/hubs.ts)에 있는 허브만
+  const Intro = await loadHubIntro('model', model.id, locale);
 
   return (
     <PageShell locale={locale} href={href}>
@@ -258,6 +262,8 @@ export default async function ModelHubPage({ params }: Props) {
             ))}
           </div>
         </header>
+
+        {Intro && <HubIntro Body={Intro} title={t.hub('introTitle', { model: model.name })} />}
 
         <section aria-labelledby="facts-heading" className="flex flex-col gap-3">
           <h2 id="facts-heading" className="text-xl font-semibold tracking-tight">

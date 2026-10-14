@@ -20,7 +20,9 @@ export type PropKind =
   | 'bool'
   | 'numKind'
   | 'fact'
-  | 'memoryKind';
+  | 'memoryKind'
+  | 'mode'
+  | 'ram';
 
 export type ComponentSpec = {
   /** 표·블록 요소 — MDX 에서 자기 줄에만 (문단 안에 넣으면 `<p><div>` 하이드레이션 불일치) */
@@ -43,6 +45,10 @@ export type NumKind = (typeof NUM_KINDS)[number];
 /** ModelMemoryTable 의 메모리 종류 — dgpu(기본: 그래픽카드에 올라가는 가중치) · unified(맥: 파일 전체) */
 export const MEMORY_KINDS = ['dgpu', 'unified'] as const;
 export type MemoryKind = (typeof MEMORY_KINDS)[number];
+
+/** Expect mode — 엔진 실행 방식(`@canrun/engine` Mode). 산문이 "전문가를 RAM 에"·"GPU 에 전부" 같은 배치를 말할 때 고정한다 (10-14 D74) */
+export const EXPECT_MODES = ['full-gpu', 'cpu-moe', 'partial-offload', 'cpu-only'] as const;
+export type ExpectMode = (typeof EXPECT_MODES)[number];
 
 export const RUNTIME_FACT_IDS = ['ollama-default-ctx', 'ollama-kv-cache-type'] as const;
 export type RuntimeFactId = (typeof RUNTIME_FACT_IDS)[number];
@@ -79,10 +85,22 @@ export const GUIDE_COMPONENTS: Readonly<Record<string, ComponentSpec>> = {
   HubLink: { block: false, data: false, props: { gpu: opt('gpu'), model: opt('model') } },
   GuideLink: { block: false, data: false, props: { slug: req('slug') } },
   ComboLink: { block: false, data: false, props: { model: req('model'), gpu: req('gpu') } },
+  // quant = 기준 대신 그 양자화 행, ram = 메모리 용량(dGPU 는 시스템 RAM 계단, 통합·CPU 는 메모리 옵션), mode = 실행 방식,
+  // ctx·kv = 콤보 ctx 표(표시 양자화)의 그 칸 (10-14 D74)
   Expect: {
     block: false,
     data: false,
-    props: { model: req('model'), gpu: req('gpu'), verdict: opt('verdict'), fits: opt('bool') },
+    props: {
+      model: req('model'),
+      gpu: req('gpu'),
+      verdict: opt('verdict'),
+      fits: opt('bool'),
+      quant: opt('quant'),
+      mode: opt('mode'),
+      ram: opt('ram'),
+      ctx: opt('ctx'),
+      kv: opt('kv'),
+    },
   },
 };
 

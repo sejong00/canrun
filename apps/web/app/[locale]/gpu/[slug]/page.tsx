@@ -5,6 +5,7 @@ import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { Pill } from '@/components/badges';
 import { Breadcrumbs } from '@/components/breadcrumbs';
 import { Faq } from '@/components/faq';
+import { HubIntro } from '@/components/hub-intro';
 import {
   BenchTable,
   ComboCells,
@@ -18,6 +19,7 @@ import type { Locale } from '@/i18n/routing';
 import { catalog } from '@/lib/catalog';
 import { formatGB, formatInt } from '@/lib/format';
 import { formatPrice, krwNote } from '@/lib/price';
+import { loadHubIntro } from '@/lib/hub-intros';
 import { getGpuHub } from '@/lib/hubs';
 import type { QA } from '@/lib/jsonld';
 import { comboHref, gpuHref, localeHref, modelHref } from '@/lib/links';
@@ -250,6 +252,8 @@ export default async function GpuHubPage({ params }: Props) {
     (c) => c.display.fReason !== 'no-fit' && c.display.result.mode === 'partial-offload',
   );
   const korean = hub.rows.filter((row) => row.model.korean);
+  // 손으로 쓴 소개글(10-14 D74) — 레지스트리(content/hubs.ts)에 있는 허브만
+  const Intro = await loadHubIntro('gpu', gpu.id, locale);
 
   const assumption =
     gpu.kind === 'dgpu'
@@ -290,6 +294,8 @@ export default async function GpuHubPage({ params }: Props) {
           </div>
           <p className="text-muted-foreground">{assumption}</p>
         </header>
+
+        {Intro && <HubIntro Body={Intro} title={tSpec('introTitle', { gpu: name })} />}
 
         <section aria-labelledby="specs-heading" className="flex flex-col gap-3">
           <h2 id="specs-heading" className="text-xl font-semibold tracking-tight">

@@ -117,8 +117,11 @@ export type PageFacts = {
     ramToggle: boolean;
     /** 모델 허브 `a[data-calc-model-link]` href — 엔티티(`&amp;`) 디코딩 (계산기 모델 모드, 10-03 D65) */
     calcModelLink?: string;
-    /** 가이드 본문 안 `<p>` 속 블록 요소 수 (하이드레이션 불일치 원인 — 0 이어야 한다) */
+    /** 가이드 본문·허브 소개글 안 `<p>` 속 블록 요소 수 (하이드레이션 불일치 원인 — 0 이어야 한다) */
     blockInParagraph: number;
+    /** 허브 소개글 `[data-hub-intro]` (10-14 D74) — 문단 `<p>` 수(없으면 0)·소개 안 `[data-guide-data]` 수 */
+    hubIntroParagraphs: number;
+    hubIntroData: number;
   };
   /** `a[data-related-guide]` href (콤보 → published 가이드, D44) */
   relatedGuideHrefs: string[];
@@ -537,6 +540,7 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
   const datalist = html.match(/<datalist\b[^>]*>([\s\S]*?)<\/datalist>/)?.[1] ?? '';
   const datalistOptionCount = (datalist.match(/<option\b/g) ?? []).length;
   const guideBody = elementsWithAttr(noScript, 'data-guide-body')[0]?.inner ?? '';
+  const hubIntro = elementsWithAttr(noScript, 'data-hub-intro')[0]?.inner ?? '';
   const markers: PageFacts['markers'] = {
     calculator: elementsWithAttr(noScript, 'data-calculator').length > 0,
     calcForm: elementsWithAttr(noScript, 'data-calc-form').length > 0,
@@ -553,7 +557,9 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
     guidesEmpty: elementsWithAttr(noScript, 'data-guides-empty').length > 0,
     ramToggle: elementsWithAttr(noScript, 'data-ram-toggle').length > 0,
     ...(calcModelLink === undefined ? {} : { calcModelLink }),
-    blockInParagraph: blockInParagraphCount(guideBody),
+    blockInParagraph: blockInParagraphCount(guideBody) + blockInParagraphCount(hubIntro),
+    hubIntroParagraphs: (hubIntro.match(/<p[\s>]/g) ?? []).length,
+    hubIntroData: elementsWithAttr(hubIntro, 'data-guide-data').length,
   };
   // 가이드 본문의 문장 단위 — 규칙 3 검사 대상(임계값 범례 `[data-threshold]` 는 밴드 없는 정책 문장이라 제외)
   const thresholdTexts = new Set(
@@ -562,6 +568,8 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
   const guideTexts = collectElements(guideBody, UNIT_TAGS)
     .map((u) => elementText(u.inner))
     .filter((text) => !thresholdTexts.has(text));
+  // 허브 소개글 문단도 규칙 3 검사 대상 (10-14 D74 — 산문 숫자는 데이터 컴포넌트뿐이지만 렌더 결과로 한 번 더)
+  const hubIntroTexts = collectElements(hubIntro, UNIT_TAGS).map((u) => elementText(u.inner));
   const scriptSrcs = [...html.matchAll(/<script\b([^>]*)\bsrc="([^"]+)"([^>]*)>/g)]
     .filter((m) => !/\bnomodule\b/i.test(`${m[1]} ${m[3]}`))
     .map((m) => m[2]!);
@@ -626,6 +634,7 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
     liveSummary ?? '',
     ...ramStepTexts,
     ...guideTexts,
+    ...hubIntroTexts,
     ...altCardTexts,
     ...ddTexts,
   ].filter((text) => text !== '');

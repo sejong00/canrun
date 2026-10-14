@@ -9,69 +9,18 @@ import { comboKey, indexableCombos } from '@canrun/data/client';
 import { describe, expect, it } from 'vitest';
 import { loadSeed } from '../../../packages/data/test/seed';
 import { GUIDES, GUIDE_SLUGS, type GuideLocale } from '../content/guides';
-import { GUIDE_COMPONENTS, MEMORY_KINDS, NUM_KINDS, RUNTIME_FACT_IDS, splitList, type PropKind } from '../lib/guide-components';
+import { GUIDE_COMPONENTS } from '../lib/guide-components';
+import { catalogIds, componentProblems, componentUsages, syntaxProblems } from './mdx-scan';
 import { HANGUL, outsideCode as stripCode, proseProblems } from './prose-rules';
 
 const root = resolve(__dirname, '..');
 const seed = loadSeed();
-const gpuIds = new Set(seed.gpus.map((g) => g.id));
-const modelIds = new Set(seed.models.map((m) => m.id));
-const quantIds = new Set<string>(seed.quantDefs.map((q) => q.id));
+const gpuIds = catalogIds.gpus;
+const modelIds = catalogIds.models;
 const LOCALES: readonly GuideLocale[] = ['en', 'ko'];
 
 const mdxPath = (locale: GuideLocale, slug: string) => join(root, 'content', locale, 'guides', `${slug}.mdx`);
 const readMdx = (locale: GuideLocale, slug: string) => readFileSync(mdxPath(locale, slug), 'utf8');
-
-type Usage = { name: string; props: Record<string, string>; line: number; raw: string };
-
-/** `<Name a="b" c="d" />` 사용 목록 — prop 은 문자열 리터럴만 허용(식 `{…}` 은 스캔에서 따로 거부) */
-function componentUsages(src: string): Usage[] {
-  const out: Usage[] = [];
-  const lines = src.split('\n');
-  lines.forEach((text, i) => {
-    for (const m of text.matchAll(/<([A-Z][A-Za-z]*)\b([^>]*?)\/?>/g)) {
-      const props: Record<string, string> = {};
-      for (const p of m[2]!.matchAll(/([a-zA-Z]+)="([^"]*)"/g)) props[p[1]!] = p[2]!;
-      out.push({ name: m[1]!, props, line: i + 1, raw: m[0] });
-    }
-  });
-  return out;
-}
-
-function validProp(kind: PropKind, value: string): boolean {
-  switch (kind) {
-    case 'gpu':
-      return gpuIds.has(value);
-    case 'model':
-      return modelIds.has(value);
-    case 'gpuList':
-      return splitList(value).length > 0 && splitList(value).every((id) => gpuIds.has(id));
-    case 'modelList':
-      return splitList(value).length > 0 && splitList(value).every((id) => modelIds.has(id));
-    case 'grid':
-      return GUIDE_SLUGS.some((slug) => value in GUIDES[slug].grids);
-    case 'slug':
-      return (GUIDE_SLUGS as readonly string[]).includes(value);
-    case 'quant':
-      return quantIds.has(value);
-    case 'ctx':
-      return /^\d+$/.test(value) && Number(value) >= 1024;
-    case 'ctxList':
-      return splitList(value).every((c) => /^\d+$/.test(c) && Number(c) >= 1024);
-    case 'kv':
-      return ['f16', 'q8_0', 'q4_0'].includes(value);
-    case 'verdict':
-      return ['S', 'A', 'B', 'F'].includes(value);
-    case 'bool':
-      return value === 'true' || value === 'false';
-    case 'numKind':
-      return (NUM_KINDS as readonly string[]).includes(value);
-    case 'fact':
-      return (RUNTIME_FACT_IDS as readonly string[]).includes(value);
-    case 'memoryKind':
-      return (MEMORY_KINDS as readonly string[]).includes(value);
-  }
-}
 
 describe('MDX toolchain pin (D38)', () => {
   it('installed @next/mdx is exactly the installed next version', () => {
@@ -133,42 +82,14 @@ describe('guide MDX bodies (D38·D43)', () => {
     for (const locale of LOCALES) {
       it(`${locale}/${slug}: allowed syntax, known components with valid ids, no numbers or assertive words in prose`, () => {
         const src = readMdx(locale, slug);
-        const problems: string[] = [];
-        const lines = src.split('\n');
-        lines.forEach((line, i) => {
-          const at = `${locale}/${slug}.mdx:${i + 1}`;
-          if (/^#\s/.test(line)) problems.push(`${at} "#" heading (h1 belongs to the page template)`);
-          if (/^\s*\|.*\|\s*$/.test(line)) problems.push(`${at} pipe table (no GFM — use a data component)`);
-          if (/<table\b/i.test(line)) problems.push(`${at} raw <table>`);
-          if (/^\s*(?:import|export)\s/.test(line)) problems.push(`${at} import/export`);
-          if (/\]\(\//.test(line) || /href="\//.test(line)) problems.push(`${at} internal link literal (use HubLink/GuideLink/ComboLink)`);
-          if (/<!--/.test(line)) problems.push(`${at} HTML comment (not valid MDX)`);
-        });
-        if (/^---\s*$/m.test(src.split('\n')[0] ?? '')) problems.push(`${locale}/${slug}.mdx frontmatter`);
+        const where = `${locale}/${slug}.mdx`;
+        const problems: string[] = syntaxProblems(src, where);
         // 식 `{…}` 금지 — 코드 스팬(백틱) 밖에서
         const outsideCode = stripCode(src);
-        if (/[{}]/.test(outsideCode)) problems.push(`${locale}/${slug}.mdx has { } outside code (MDX expression)`);
+        if (/[{}]/.test(outsideCode)) problems.push(`${where} has { } outside code (MDX expression)`);
 
         const usages = componentUsages(src);
-        for (const u of usages) {
-          const spec = GUIDE_COMPONENTS[u.name];
-          const at = `${locale}/${slug}.mdx:${u.line} <${u.name}>`;
-          if (!spec) {
-            problems.push(`${at} unknown component`);
-            continue;
-          }
-          for (const [prop, { kind, required }] of Object.entries(spec.props)) {
-            const value = u.props[prop];
-            if (value === undefined) {
-              if (required) problems.push(`${at} missing ${prop}`);
-              continue;
-            }
-            if (!validProp(kind, value)) problems.push(`${at} invalid ${prop}="${value}"`);
-          }
-          for (const prop of Object.keys(u.props)) if (!(prop in spec.props)) problems.push(`${at} unknown prop ${prop}`);
-          // 블록 컴포넌트는 자기 줄에만 (문단 속이면 <p><div> → 하이드레이션 불일치)
-          if (spec.block && lines[u.line - 1]!.trim() !== u.raw.trim()) problems.push(`${at} block component must be alone on its line`);
-        }
+        problems.push(...componentProblems(src, where));
         if (!usages.some((u) => GUIDE_COMPONENTS[u.name]?.data)) problems.push(`${locale}/${slug}.mdx cites no own data (AC — D42)`);
 
         // 산문 검사: 코드·컴포넌트 태그·링크 URL 을 뺀 텍스트

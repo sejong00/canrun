@@ -1,0 +1,5 @@
+Qwen3 14B는 8GB 카드와 12GB 카드가 갈리는 모델입니다. Q4_K_M으로 8k 컨텍스트를 쓰면 <Num kind="needGB" model="qwen3-14b" />가 필요합니다. 12GB 카드에는 전부 올라가지만, 8GB 카드에서는 일부가 시스템 RAM으로 넘어가 느리게 돌아갑니다<Expect model="qwen3-14b" gpu="rtx-4060" verdict="B" mode="partial-offload" />. 더 작은 IQ4_XS 파일도 8GB에는 다 들어가지 않습니다<Expect model="qwen3-14b" gpu="rtx-4060" quant="IQ4_XS" mode="partial-offload" />. 자세한 숫자는 <ComboLink model="qwen3-14b" gpu="rtx-4060" /> 페이지에 있습니다.
+
+기본으로 생각한 뒤에 답하는 모델이라 CanRun은 속도 기준을 1.5배 엄격하게 잡습니다. 그래서 12GB 카드끼리는 카드 속도가 판정을 가릅니다. <HubLink gpu="rtx-4070" />에서는 쾌적하게, 더 느린 <HubLink gpu="rtx-3060-12gb" />에서는 똑같이 전부 올라가도 원활하게 돌아갑니다<Expect model="qwen3-14b" gpu="rtx-4070" verdict="S" mode="full-gpu" /><Expect model="qwen3-14b" gpu="rtx-3060-12gb" verdict="A" mode="full-gpu" />. [Qwen3-14B 모델 카드](https://huggingface.co/Qwen/Qwen3-14B)에 나온 방법으로 생각 모드를 끄면 한 단계 위일 수 있습니다.
+
+<HubLink gpu="rtx-5060-ti-16gb" /> 같은 16GB 카드라면 최대 컨텍스트 32k까지 GPU에 전부 올라갑니다<Expect model="qwen3-14b" gpu="rtx-5060-ti-16gb" ctx="32768" mode="full-gpu" />. 맥에서는 24GB <HubLink gpu="apple-m4-pro" />가 원활하게 돌립니다<Expect model="qwen3-14b" gpu="apple-m4-pro" ram="24" verdict="A" mode="full-gpu" />.

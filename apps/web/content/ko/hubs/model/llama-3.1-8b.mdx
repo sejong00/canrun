@@ -1,0 +1,5 @@
+Llama 3.1 8B는 작은 모델입니다. Q4_K_M으로 8k 컨텍스트를 쓰면 <Num kind="needGB" model="llama-3.1-8b" />가 필요해서 <HubLink gpu="rtx-4060" /> 같은 8GB 카드에도 전부 올라가고 쾌적하게 돌아갑니다<Expect model="llama-3.1-8b" gpu="rtx-4060" verdict="S" mode="full-gpu" />. 공개 벤치마크 결과는 아래 표에 있고, 실행 명령은 <ComboLink model="llama-3.1-8b" gpu="rtx-4060" /> 페이지에 있습니다.
+
+생각 모드가 없어서 바로 답을 시작하고, CanRun도 생각 모드 모델에 쓰는 엄격한 속도 기준을 적용하지 않습니다. 그래서 느린 하드웨어에서는 같은 크기의 생각 모드 모델보다 한 단계 높게 나오기도 합니다. 16GB <HubLink gpu="apple-m4" />에서 이 모델은 원활하게, <HubLink model="qwen3-8b" />는 느리게 돌아갑니다<Expect model="llama-3.1-8b" gpu="apple-m4" ram="16" verdict="A" /><Expect model="qwen3-8b" gpu="apple-m4" ram="16" verdict="B" />. 그래픽카드 없이 DDR5 듀얼채널 PC에서도 느리지만 돌아갑니다<Expect model="llama-3.1-8b" gpu="cpu-ddr5-5600-2ch" verdict="B" mode="cpu-only" />.
+
+컨텍스트는 128k까지 지원하지만 그만큼 KV 캐시가 커집니다. f16 KV 캐시로 128k를 다 쓰면 <Num kind="needGB" model="llama-3.1-8b" ctx="131072" />가 필요해 24GB 카드의 여유 메모리와 비슷합니다. KV 캐시 양자화나 컨텍스트를 줄이는 방법은 <GuideLink slug="kv-cache-context">KV 캐시 가이드</GuideLink>에 정리해 두었습니다. 라이선스는 Apache-2.0이 아니라 Meta의 Llama 3.1 라이선스이고, 위 라이선스 배지에서 모델 카드로 갈 수 있습니다.

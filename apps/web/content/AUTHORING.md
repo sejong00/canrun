@@ -1,6 +1,6 @@
 # 가이드 집필 규칙 (P1-4 — 사람·AI 공통)
 
-가이드 본문은 `content/{en,ko}/guides/<slug>.mdx`, 메타(제목·설명·상태·날짜·그리드)는 `content/guides.ts`.
+가이드 본문은 `content/{en,ko}/guides/<slug>.mdx`, 메타(제목·설명·상태·날짜·그리드)는 `content/guides.ts`. 허브 소개글(§10)·업데이트 소식(§9)도 같은 규칙을 따른다.
 결정 근거: `docs/PROGRESS.md` §4 D37~D46. 자동 검사: `apps/web/test/guides.test.ts`(MDX 스캔)·`test/export-invariants.spec.ts`(렌더 결과).
 
 ## 1. 같은 페이지, 따로 쓴 두 언어
@@ -52,7 +52,7 @@
 
 ## 6. 데이터 확인 도구
 `cd apps/web && npx tsx scripts/guide-brief.ts guide <slug>` (그리드 셀 전부) · `combo <model> <gpu>` (quant·ctx·명령) · `gpu <id>` · `model <id>` · `kv`. 컴포넌트와 같은 조립이라 여기 값이 곧 페이지 값이다.
-검사: `pnpm exec vitest run apps/web/test/guides.test.ts` (MDX 스캔·짝 동등성·배치 1 커버리지).
+검사: `pnpm exec vitest run apps/web/test/guides.test.ts` (MDX 스캔·짝 동등성·배치 1 커버리지). `<Expect>` 만 빌드 없이 확인: `cd apps/web && npx tsx scripts/check-expect.ts [파일 이름 앞부분]`(가이드·허브 소개글 전부 — 빌드와 같은 함수).
 
 ## 7. 감수와 게시
 초안(`status: 'draft'`)은 noindex·미링크로 배포된다(URL 로만 열림). **게시(`published`) 전환은 사람이 채팅으로 승인한 슬러그만** — `reviewedAt`·`datePublished`·`dateModified` 갱신과 함께(D40).
@@ -76,3 +76,12 @@
 - 사용자가 느낄 변화만 쓴다(새 기능·계산 보정·표시 변경·개인정보처리방침). 리팩터링·운영 자동화 내부·검색엔진용 변경은 쓰지 않는다. 모델 추가도 쓰지 않는다 — `<CatalogAdditions />` 가 `data/models.json` 의 `addedAt` 으로 목록을 그린다.
 - 판정 예시는 커밋 기록에 남은 변화만, 과거형으로("그때 Runs well 에서 Runs great 으로 바뀌었다") — 데이터가 나중에 바뀌어도 거짓이 되지 않게. ko 는 판정 이름을 따옴표로 감싼 라벨로만 쓴다('원활'에서 '쾌적'으로 바뀌었습니다). fit 예시("두 장에 다 들어간다")도 같다 — 페이지 MDX 에는 가이드의 `<Expect>` 가 없어 데이터가 바뀌어도 빌드가 알려 주지 않으니, 그때 엔진으로 확인한 결과를 컨텍스트 조건과 함께 과거형으로 쓴다("그때 8k 컨텍스트에서는 다 들어갔다").
 - 산문 숫자 규칙(§2)은 여기도 같다: tok/s·소수 GB·가격 금지(가이드와 같은 검사 `apps/web/test/prose-rules.ts`). 내부 링크는 `<SiteLink to="/…">` — 대상은 정적 페이지·계산기·카탈로그에 있는 모델/GPU 허브만(테스트가 id 를 확인한다).
+
+## 10. 허브 소개글 (`content/{en,ko}/hubs/{gpu,model}/<id>.mdx` — 10-14 D74)
+- 대상은 레지스트리 `content/hubs.ts` 의 GPU 10·모델 10(고른 기준은 파일 주석과 PROGRESS §4 D74). 레지스트리에 없는 허브는 소개 없이 지금처럼 그린다. 하나 늘리려면 레지스트리 + `lib/hub-intros.ts` 로더 맵 + en·ko MDX 세 곳(유닛 테스트가 대칭을 본다).
+- 허브 머리말 아래에 템플릿이 h2(`GpuHub.introTitle`·`ModelHub.introTitle`)를 붙인다. 본문은 **제목·목록 없이 문단 2~3개**, en 220단어·ko 공백 뺀 600자 이하(`apps/web/test/hub-intros.test.ts`).
+- 가이드 §1~§4 규칙이 그대로다: 숫자는 컴포넌트, 판정·fit·실행 방식을 말한 절 바로 뒤에 `<Expect>`(파일마다 1개 이상, `<Num>`·`<Price>` 도 1개 이상). 표 같은 블록 컴포넌트는 쓰지 않는다 — 허브가 이미 표를 그린다. 자기 허브로 가는 `HubLink` 는 금지(테스트), 자기 카드·모델은 평문이나 "이 카드/this card".
+- `<Expect>` 조건 prop(D74): `quant`(기준 대신 그 양자화 행) · `ram`(dGPU = 시스템 RAM 계단 16·32·64·96·128, 통합 메모리·CPU = 메모리 옵션) · `ctx`·`kv`(콤보 ctx 표의 칸 — 표시 양자화 기준, `ram` 과 같이 못 쓴다) · `mode`(`full-gpu`·`cpu-moe`·`partial-offload`·`cpu-only`). "IQ4_XS 면 GPU 에 전부", "RAM 64GB 면 전문가를 RAM 에", "32k 도 GPU 에" 같은 문장은 조건까지 고정한다. 통합 메모리 칩을 `ram` 없이 쓰면 "가장 좋은 판정이 나는 가장 작은 메모리" 구성이라, 용량을 말하는 문장에는 `ram` 을 꼭 붙인다.
+- 쓸 내용은 표만 봐서는 모르는 것: 메모리 경계(어디서 갈리는지), 어떤 양자화 파일이 들어가는지, MoE 전문가 RAM 배치, 생각 모드 1.5배 기준 때문에 한 단계 낮게 나오는 경우, 노트북용·8GB판처럼 이름이 비슷한 다른 하드웨어. 허브 FAQ·요약이 이미 말하는 숫자(판정 개수, 전부 올라가는 가장 큰 모델)는 되풀이하지 않는다. 판매 문구·과장 금지(§2 단정 금지 그대로).
+- 데이터 밖 사실은 1차 출처 링크(모델 카드·제조사 사양 페이지). `<Expect>` 로 고정되지 않는 문장 — 예: rtx-5090 소개의 "아래 표의 공개 벤치마크가 추정보다 낮다", "24GB 카드의 여유와 비슷하다" — 은 그 데이터가 바뀔 때 직접 다시 확인한다.
+- ko 조사: 컴포넌트가 그리는 이름 뒤 조사는 렌더된 이름의 끝소리로 고른다(“GeForce RTX 4060과”, “Apple M4 Pro가”, “GeForce RTX 4060 Laptop은”). `ComboLink` 는 ko 에서 “{gpu}에서 {model}” 이라 “… 페이지에 있습니다”처럼 뒤에 명사를 붙인다.
