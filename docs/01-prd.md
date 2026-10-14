@@ -96,7 +96,7 @@
 | 페이지 | 라우트 | 생성 방식 | 1차 수량(×2 언어) |
 |---|---|---|---|
 | 홈(=간이 계산기) | `/` | 정적 — no-JS GET 폼(`?gpu=` → `/calculator`) + 인기 GPU 링크(P1-3 D25) | 1 |
-| 계산기 | `/calculator` | 정적 SSR(폼·FAQ·범례) + 클라이언트 아일랜드(카탈로그·번역은 props — P1-3 D27), **index**(D24) | 1 |
+| 계산기 | `/calculator` | 정적 SSR(폼·많이 쓰는 하드웨어 예시·결과 읽는 법·범례·FAQ — PROGRESS §4 D73) + 클라이언트 아일랜드(카탈로그·번역은 props — P1-3 D27), **index**(D24) | 1 |
 | GPU 허브 | `/gpu/{slug}` | SSG from JSON | 카탈로그 전체 (현 54 — CPU 프로필 포함) |
 | 모델 허브 | `/model/{slug}` | SSG | 카탈로그 전체 (현 29) |
 | 콤보 | `/can-i-run/{model}/on/{gpu}` | SSG | 카탈로그 전 조합(현 1,566 = GPU 54 × 모델 29) 생성 — 인덱싱은 `data/publish.json` 배치 게이트(`04` §3, P1-2) |

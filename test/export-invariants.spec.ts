@@ -749,7 +749,7 @@ describe('boilerplate ratio (결정 D16 — ≥50% 페이지에 나타나는 문
 // ---------------------------------------------------------------------------
 
 describe('calculator page (P1-3 D24·D29)', () => {
-  it('exists in both locales, indexable, 2-level breadcrumb, form SSR markup and zero result cards / combo links in static HTML', () => {
+  it('exists in both locales, indexable, 2-level breadcrumb, form SSR markup and zero result cards in static HTML', () => {
     const calcs = requireCalculators();
     expect(calcs.map((p) => p.urlPath).sort()).toEqual(['/calculator', '/ko/calculator']);
     for (const page of calcs) {
@@ -761,10 +761,33 @@ describe('calculator page (P1-3 D24·D29)', () => {
       expect(page.markers.inputList, `${page.file} input[list]`).toBe(true);
       expect(page.datalistOptionCount, `${page.file} datalist options`).toBeGreaterThanOrEqual(gpus.length);
       expect(page.markers.resultCards, `${page.file} static result cards`).toBe(0);
-      expect(page.links.map((l) => l.href).filter((h) => comboOf(h)), `${page.file} static combo links`).toEqual([]);
       expect(page.formActions, `${page.file} form action`).toContain(localePath(page.locale, '/calculator'));
       const crumbs = page.jsonLd.find((b) => b['@type'] === 'BreadcrumbList')!;
       expect((crumbs.itemListElement as unknown[]).length, page.file).toBe(2);
+    }
+  });
+
+  it('server-rendered starting points (10-14 D73): six catalog setups; model links go to indexable combos or model hubs, and they are the only static combo links', () => {
+    for (const page of requireCalculators()) {
+      expect(page.startGpuIds, `${page.file} [data-start-gpu]`).toHaveLength(6);
+      expect(new Set(page.startGpuIds).size, page.file).toBe(page.startGpuIds.length);
+      for (const id of page.startGpuIds) expect(gpus.some((g) => g.id === id), `${page.file} ${id}`).toBe(true);
+      expect(page.startPickHrefs.length, `${page.file} a[data-start-pick]`).toBeGreaterThanOrEqual(page.startGpuIds.length);
+      for (const href of page.startPickHrefs) {
+        const combo = comboOf(href);
+        if (combo) {
+          expect(href, page.file).toBe(comboPath(page.locale, combo.modelId, combo.gpuId));
+          expect(page.startGpuIds, `${page.file} ${href}`).toContain(combo.gpuId);
+          expect(hrefIndexable(href), `${page.file} ${href} must be an indexable combo`).toBe(true);
+        } else {
+          const modelId = href.slice(localePath(page.locale, '/model/').length);
+          expect(href, page.file).toBe(hubPath(page.locale, 'model', modelId));
+          expect(models.some((m) => m.id === modelId), `${page.file} ${href}`).toBe(true);
+        }
+      }
+      for (const href of page.links.map((l) => l.href).filter((h) => comboOf(h))) {
+        expect(page.startPickHrefs, `${page.file} static combo link ${href} outside the starting points`).toContain(href);
+      }
     }
   });
 });

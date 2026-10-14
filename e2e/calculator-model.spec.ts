@@ -7,18 +7,10 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { collectProblems, LOCALES, localePath, mockHf, open, RANGE_RE, repoRoot } from './helpers';
+import { CLS_OBSERVER, collectProblems, LOCALES, localePath, mockHf, open, RANGE_RE, repoRoot } from './helpers';
 
 const GPU_COUNT = (JSON.parse(readFileSync(resolve(repoRoot, 'data/gpus.json'), 'utf8')) as unknown[]).length;
 const MODEL = 'qwen3-14b';
-
-/** 누적 레이아웃 이동(입력 직후 제외) — 로드 전에 심는다 */
-const CLS_OBSERVER = `
-  window.__cls = 0;
-  new PerformanceObserver((list) => {
-    for (const e of list.getEntries()) if (!e.hadRecentInput) window.__cls += e.value;
-  }).observe({ type: 'layout-shift', buffered: true });
-`;
 
 /** 행마다 속성 하나 (locator API 만 — DOM 타입 없이) */
 async function attrs(page: Page, selector: string, name: string): Promise<Array<string | null>> {

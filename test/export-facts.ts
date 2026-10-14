@@ -65,6 +65,9 @@ export type PageFacts = {
   adjacentHrefs: string[];
   /** `a[data-combo-link]` href (허브의 "상세" 링크) */
   comboLinkHrefs: string[];
+  /** 계산기 서버 렌더 예시(10-14 D73): `[data-start-gpu]` 하드웨어 id(문서 순서) · `a[data-start-pick]` 모델 링크 href(공개 콤보 또는 모델 허브) */
+  startGpuIds: string[];
+  startPickHrefs: string[];
   /** `figure[data-snippet]` 의 `pre code` 텍스트 */
   snippets: Array<{ kind: string; text: string }>;
   /** `[data-no-run]` — 어떤 구성으로도 실행 명령을 만들 수 없는 콤보(미탑재 + RAM 힌트 없음) */
@@ -508,6 +511,7 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
   const links: PageFacts['links'] = [];
   const adjacentHrefs: string[] = [];
   const comboLinkHrefs: string[] = [];
+  const startPickHrefs: string[] = [];
   let navCalculator: string | undefined;
   let openCalculator: string | undefined;
   let navGuides: string | undefined;
@@ -521,6 +525,7 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
     links.push({ href, localeSwitch: hasAttr(tag, 'data-locale-switch') });
     if (hasAttr(tag, 'data-adjacent')) adjacentHrefs.push(href);
     if (hasAttr(tag, 'data-combo-link')) comboLinkHrefs.push(href);
+    if (hasAttr(tag, 'data-start-pick')) startPickHrefs.push(href);
     if (hasAttr(tag, 'data-nav-calculator')) navCalculator = href;
     if (hasAttr(tag, 'data-open-calculator')) openCalculator = href;
     if (hasAttr(tag, 'data-nav-guides')) navGuides = href;
@@ -650,6 +655,8 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
     ...(verdictSentence === undefined ? {} : { verdictSentence }),
     adjacentHrefs,
     comboLinkHrefs,
+    startGpuIds: elementsWithAttr(noScript, 'data-start-gpu').map((e) => attrValue(e.openTag, 'data-start-gpu') ?? ''),
+    startPickHrefs,
     snippets,
     noRun,
     ramSteps,

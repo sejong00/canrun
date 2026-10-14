@@ -270,6 +270,28 @@
     "hfTryManual": "You can also enter the model's numbers below.",
     "manualGpuTitle": "Which GPUs can run your custom model?"
   },
+  "CalculatorStatic": {
+    "startTitle": "What runs on popular hardware",
+    "startIntro": "For six common setups, this is the model the calculator lists first in each size class. You get the same card by picking that hardware above and turning on only that size filter.",
+    "startAssume": "Graphics cards are checked as the only GPU, also driving the display, with {ram} GB of DDR5-5600 system RAM on Windows. Every setup uses {ctx} context and an f16 KV cache, the same as our GPU pages.",
+    "memDgpu": "{vram} GB VRAM · {ram} GB RAM",
+    "memUnified": "{mem} GB unified memory · {os}",
+    "startGood": "{good, plural, one {# of {total} models runs great or well.} other {# of {total} models run great or well.}}",
+    "startNone": "{models, plural, =1 {the only model this size} other {all # models this size}}",
+    "startLowerQuant": "{count, plural, one {# of them runs with a lower quant.} other {# of them run with a lower quant.}}",
+    "startOpen": "See all {total} models on the {gpu}",
+    "readTitle": "How to read the results",
+    "readIntro": "Pick your GPU, Mac chip or CPU above, or enter its specs by hand. Every model in the catalog then gets a card, starting with the largest models that run great or well on it.",
+    "readVerdict": "Judged on the Q4_K_M file. A model without one is judged on its closest file (MXFP4 for gpt-oss). The four levels are listed below.",
+    "readQuant": "The GGUF file to download. It's the file the verdict is based on, unless that one won't run. Then the card switches to the file that runs best.",
+    "readSpeed": "How fast the answer is written, in tokens per second. It comes as a range with a confidence label, and the FAQ below explains the labels.",
+    "readMemory": "How much of the GPU's memory the model and its context take. When part of the model stays in system RAM, that amount is shown as well.",
+    "readMode": "Where the model sits: entirely on the GPU (in unified memory on a Mac), split between the GPU and system RAM (partial offload), with only the MoE experts in system RAM, or on the CPU alone.",
+    "readMaxCtx": "The longest context that keeps the same verdict and the same placement.",
+    "readDetails": "The page for that model on that GPU, with every quant, a context-length table and the commands for Ollama and llama.cpp.",
+    "readDefaults": "The calculator starts from the same conditions as the examples above. Macs and other unified-memory machines start at their largest memory option. Change anything that differs from your machine.",
+    "readModelMode": "Choosing hardware instead? Switch to “{mode}” to see which GPUs run a model, including the cheapest ones by street price that run it great or well."
+  },
   "Guides": {
     "indexMetaTitle": "Local LLM guides: VRAM, quantization, context length and Macs",
     "indexMetaDescription": "Practical guides to running LLMs on your own hardware, built on CanRun data: how much memory models need, which quant to download, and what context length costs.",

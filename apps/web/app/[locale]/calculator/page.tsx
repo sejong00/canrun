@@ -2,11 +2,11 @@ import { ENGINE_SPEC_VERSION } from '@canrun/engine';
 import type { Metadata } from 'next';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { Breadcrumbs } from '@/components/breadcrumbs';
+import { CalcReadingGuide, CalcStartingPoints } from '@/components/calc-static';
 import { Faq } from '@/components/faq';
 import { CalculatorIsland } from '@/components/islands/calculator-island';
 import { JsonLd } from '@/components/json-ld';
 import { PageShell } from '@/components/page-shell';
-import { VerdictLegend } from '@/components/verdict';
 import type { Locale } from '@/i18n/routing';
 import { getCatalogLite } from '@/lib/calc-catalog';
 import { catalog } from '@/lib/catalog';
@@ -91,7 +91,9 @@ export default async function CalculatorPage({ params }: Props) {
           </p>
         </noscript>
 
-        <VerdictLegend />
+        {/* 서버 렌더 결과 예시·읽는 법 (10-14 D73) — JS 없이도·크롤러에게도 보이는 내용. 결과 영역 아래라 결과가 그려져도 위 내용은 움직이지 않는다 */}
+        <CalcStartingPoints locale={locale} />
+        <CalcReadingGuide />
         <Faq items={faq} />
         <p className="rounded-lg border border-border p-4 text-sm text-muted-foreground">{tCommon('estimateNotice')}</p>
       </article>

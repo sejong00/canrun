@@ -5,7 +5,7 @@
  * 브라우저 측 코드는 전부 문자열형 evaluate/addInitScript — 루트 tsconfig 에 DOM lib 이 없다.
  */
 import { expect, test, type Page } from '@playwright/test';
-import { clickThrough, collectProblems, LOCALES, localePath, open, RANGE_RE } from './helpers';
+import { clickThrough, CLS_OBSERVER, collectProblems, LOCALES, localePath, open, RANGE_RE } from './helpers';
 
 const CALC = '/calculator';
 
@@ -496,6 +496,68 @@ for (const locale of LOCALES) {
       await expect(input).toHaveAttribute('aria-activedescendant', /.+/);
       await input.press('Enter');
       await expect(page.locator('[data-result-card]').first()).toBeVisible();
+    });
+
+    test('example results match the live calculator, the deep link does not shift the page, and "see all" opens that hardware (D73)', async ({ page }) => {
+      const problems = collectProblems(page);
+      await page.addInitScript(CLS_OBSERVER);
+      await open(page, `${path}?gpu=rtx-4060`);
+      await expect(page.locator('[data-results] [data-result-card]').first()).toBeVisible();
+      // 서버 예시는 결과 영역 아래 — 결과가 하이드레이션 뒤에 그려져도 화면 안 내용이 움직이지 않는다
+      expect((await page.evaluate('window.__cls')) as number, 'layout shift after the ?gpu= deep link').toBeLessThanOrEqual(0.1);
+
+      // 크기 구간마다 서버 예시 = 그 크기 필터 하나만 켠 계산기의 맨 위 카드 (모델·판정)
+      const rows = page.locator('[data-start-gpu="rtx-4060"] [data-start-bucket]');
+      const expected: Array<{ bucket: string; model: string | null; verdict: string | null }> = [];
+      for (const row of await rows.all()) {
+        const pick = row.locator('[data-start-model]');
+        const none = (await pick.count()) === 0;
+        expected.push({
+          bucket: (await row.getAttribute('data-start-bucket')) ?? '',
+          model: none ? null : await pick.getAttribute('data-start-model'),
+          verdict: none ? 'F' : await pick.locator('[data-verdict]').first().getAttribute('data-verdict'),
+        });
+      }
+      expect(expected.length).toBeGreaterThanOrEqual(3);
+      for (const { bucket, model, verdict } of expected) {
+        await open(page, `${path}?gpu=rtx-4060&size=${bucket}`);
+        const top = page.locator('[data-results] [data-result-card]').first();
+        await expect(top.locator('[data-verdict]').first(), bucket).toHaveAttribute('data-verdict', verdict!);
+        if (model) await expect(top, bucket).toHaveAttribute('data-model-id', model);
+      }
+
+      // "모델 N개 모두 보기" → 같은 하드웨어로 계산기 (통합 메모리는 기본 용량 그대로)
+      await open(page, path);
+      await page.locator('[data-start-gpu="apple-m4-pro"] a[data-start-calc]').click();
+      await page.waitForLoadState('networkidle');
+      await expect(page.locator('[data-results] [data-result-card]').first()).toBeVisible();
+      expect(new URL(page.url()).search).toBe('?gpu=apple-m4-pro');
+      expect(problems).toEqual([]);
+    });
+  });
+
+  test.describe(`${locale} calculator without JavaScript (D73)`, () => {
+    test.use({ javaScriptEnabled: false });
+
+    test('the server HTML already shows example results with bands and labels, and how to read them', async ({ page }) => {
+      const problems = collectProblems(page);
+      const response = await open(page, path);
+      expect(response?.status()).toBe(200);
+      await expect(page.locator('[data-starting-points] [data-start-gpu]')).toHaveCount(6);
+      // 규칙 3: 예시 속도마다 범위 + 신뢰 라벨
+      const speeds = page.locator('[data-starting-points] [data-speed]');
+      expect(await speeds.count()).toBeGreaterThan(10);
+      for (const speed of await speeds.all()) {
+        expect((await speed.textContent()) ?? '').toMatch(RANGE_RE);
+        await expect(speed.locator('[data-confidence]')).toHaveCount(1);
+      }
+      await expect(page.locator('[data-calc-guide] [data-read-fields] dt')).toHaveCount(7);
+      await expect(page.locator('[data-calc-guide] [data-verdict]')).toHaveCount(4);
+      // 모델 링크 = 공개 콤보 또는 모델 허브 — JS 없이 눌러서 열린다
+      const target = await clickThrough(page, page.locator('[data-starting-points] a[data-start-pick]').first());
+      expect(target).toMatch(/\/(can-i-run\/[^/]+\/on\/[^/]+|model\/[^/]+)$/);
+      // JS 를 끄면 브라우저가 스크립트 요청을 'csp' 로 막는다 — 그 밖의 실패 요청·4xx 는 없어야 한다
+      expect(problems.filter((p) => !/^requestfailed: GET \S+\.js — csp$/.test(p))).toEqual([]);
     });
   });
 

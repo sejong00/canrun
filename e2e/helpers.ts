@@ -147,6 +147,14 @@ export function breadcrumbItems(blocks: readonly unknown[]): Record<string, unkn
 /** 규칙 3 — 속도 문장은 "a–b" 범위를 동반한다 */
 export const RANGE_RE = /\d[\d.,]*\s*[–-]\s*\d[\d.,]*/;
 
+/** 누적 레이아웃 이동(입력 직후 제외) — `page.addInitScript` 로 로드 전에 심고 `window.__cls` 를 읽는다 (계산기 딥링크 — D65·D73) */
+export const CLS_OBSERVER = `
+  window.__cls = 0;
+  new PerformanceObserver((list) => {
+    for (const e of list.getEntries()) if (!e.hadRecentInput) window.__cls += e.value;
+  }).observe({ type: 'layout-shift', buffered: true });
+`;
+
 /** `_next/static/chunks` 요청 수 — 지연 청크·프리페치 회귀 감시 */
 export function trackChunkRequests(page: Page): () => number {
   let count = 0;
