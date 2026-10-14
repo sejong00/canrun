@@ -3,7 +3,7 @@
  *
  * - 날짜는 여기에만 둔다. 문장은 로캘별 MDX `content/{en,ko}/pages/updates.mdx` 의 `<Update id="…">` 블록에 따로 쓴다
  *   (두 언어 모두 이 목록의 id 를 이 순서로 한 번씩 — `apps/web/test/updates.test.ts`).
- * - 날짜 = 그 변경이 사이트에 반영된 날(main 푸시 = 배포, `docs/PROGRESS.md` §7). 최신이 위.
+ * - 날짜 = 그 변경이 사이트에 반영된 날의 **UTC 날짜**(main 푸시 = 배포 — Deploy 런 시각, 카탈로그 `addedAt` 과 같은 기준). KST 자정~09시 푸시는 전날이다. 최신이 위.
  * - 사용자가 느낄 변화만 적는다(새 기능·계산 보정·데이터 표시·개인정보처리방침). 리팩터링·운영 자동화 내부·검색엔진용 변경은 넣지 않는다.
  * - 모델 추가는 여기 적지 않는다 — 페이지 아래 목록이 `data/models.json` 의 `addedAt` 으로 그린다.
  */
@@ -25,6 +25,7 @@ export const SITE_UPDATES = [
   { id: 'hf-models', date: '2026-10-01' },
   { id: 'moe-expert-placement', date: '2026-10-01' },
   { id: 'moe-speed', date: '2026-09-30' },
+  { id: 'gemma4-kv', date: '2026-09-30' },
   { id: 'launch', date: '2026-09-30' },
 ] as const satisfies readonly SiteUpdate[];
 

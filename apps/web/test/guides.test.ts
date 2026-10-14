@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest';
 import { loadSeed } from '../../../packages/data/test/seed';
 import { GUIDES, GUIDE_SLUGS, type GuideLocale } from '../content/guides';
 import { GUIDE_COMPONENTS, MEMORY_KINDS, NUM_KINDS, RUNTIME_FACT_IDS, splitList, type PropKind } from '../lib/guide-components';
+import { HANGUL, outsideCode as stripCode, proseProblems } from './prose-rules';
 
 const root = resolve(__dirname, '..');
 const seed = loadSeed();
@@ -17,7 +18,6 @@ const gpuIds = new Set(seed.gpus.map((g) => g.id));
 const modelIds = new Set(seed.models.map((m) => m.id));
 const quantIds = new Set<string>(seed.quantDefs.map((q) => q.id));
 const LOCALES: readonly GuideLocale[] = ['en', 'ko'];
-const HANGUL = /[ㄱ-ㆎ가-힣]/;
 
 const mdxPath = (locale: GuideLocale, slug: string) => join(root, 'content', locale, 'guides', `${slug}.mdx`);
 const readMdx = (locale: GuideLocale, slug: string) => readFileSync(mdxPath(locale, slug), 'utf8');
@@ -72,17 +72,6 @@ function validProp(kind: PropKind, value: string): boolean {
       return (MEMORY_KINDS as readonly string[]).includes(value);
   }
 }
-
-/** 산문(코드 스팬·컴포넌트 태그를 뺀 텍스트)에 쓰면 안 되는 것 — D43 숫자는 컴포넌트만, 규칙 2·3 */
-const PROSE_BANS: ReadonlyArray<[RegExp, string]> = [
-  [/\d[\d.,]*\s*(?:tok\/s|t\/s|tokens?\/s|토큰\/초)/i, 'speed number in prose (use a data component)'],
-  [/\d+\.\d+\s*GB/i, 'decimal GB in prose (use <Num>)'],
-  [/\d\s*GiB/i, 'GiB threshold in prose (tool behaviour goes through <RuntimeFact>; memory is decimal GB)'],
-  [/\$\s?\d|₩\s?\d|\d[\d,]*\s?원(?![가-힣])/, 'price in prose (use <Price>)'],
-  [/\b(?:guaranteed|definitely|will run|runs perfectly|no problem|best GPU|fastest|future-proof)\b/i, 'assertive wording'],
-  [/무조건|확실히|완벽하게|문제없이|최고의|끝판왕|사세요/, 'assertive wording (ko)'],
-  [/(?:쾌적|원활|겨우 가능|불가)(?:입니다|이고|이며|이라|이지만)|(?:쾌적|원활|겨우 가능|불가) 판정을|판정(?:은|이) (?:쾌적|원활|겨우 가능|불가)/, 'verdict name used as a predicate (ko) — write "쾌적하게 돌아갑니다" (AUTHORING §1)'],
-];
 
 describe('MDX toolchain pin (D38)', () => {
   it('installed @next/mdx is exactly the installed next version', () => {
@@ -157,7 +146,7 @@ describe('guide MDX bodies (D38·D43)', () => {
         });
         if (/^---\s*$/m.test(src.split('\n')[0] ?? '')) problems.push(`${locale}/${slug}.mdx frontmatter`);
         // 식 `{…}` 금지 — 코드 스팬(백틱) 밖에서
-        const outsideCode = src.replace(/```[\s\S]*?```/g, '').replace(/`[^`\n]*`/g, '');
+        const outsideCode = stripCode(src);
         if (/[{}]/.test(outsideCode)) problems.push(`${locale}/${slug}.mdx has { } outside code (MDX expression)`);
 
         const usages = componentUsages(src);
@@ -184,10 +173,7 @@ describe('guide MDX bodies (D38·D43)', () => {
 
         // 산문 검사: 코드·컴포넌트 태그·링크 URL 을 뺀 텍스트
         const prose = outsideCode.replace(/<[A-Z][^>]*\/?>/g, ' ').replace(/\]\([^)]*\)/g, ']');
-        for (const [re, why] of PROSE_BANS) {
-          const m = re.exec(prose);
-          if (m) problems.push(`${locale}/${slug}.mdx: ${why} — "${prose.slice(Math.max(0, m.index - 20), m.index + m[0].length + 10).trim()}"`);
-        }
+        problems.push(...proseProblems(prose, `${locale}/${slug}.mdx`));
         if (locale === 'en' && HANGUL.test(prose)) problems.push(`en/${slug}.mdx contains Hangul`);
         expect(problems).toEqual([]);
       });

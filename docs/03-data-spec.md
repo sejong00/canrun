@@ -31,7 +31,7 @@ Model { id, family, name, hfId, paramsB, activeParamsB?,   // moe ⇒ activePara
      category:('chat'|'coding'|'reasoning'|'vision')[] (min 1),
      korean?:boolean, popularity:1..5, hfDownloads30d?, hfDownloadsAsOf?, releasedAt, addedAt, note?, sources[] }
      // addedAt (10-14 D72): CanRun 카탈로그에 들어온 날(실제 있는 날짜 YYYY-MM-DD, 필수, releasedAt 이상 — zod; data/meta.json dataUpdated 이하 — 시드 테스트).
-     //   add-model(신모델 자동 추가 ① 포함)이 추가한 날(UTC)로 채운다. 10-14 이전 44종은 models.json 에 그 id 가 처음 들어간 커밋 날짜로 백필.
+     //   add-model(신모델 자동 추가 ① 포함)이 추가한 날(UTC)로 채운다 — ① 이 연 PR 을 다음 날 이후 머지하면 ② 가 머지하는 날로 고친다(PROGRESS §3). 10-14 이전 44종은 models.json 에 그 id 가 처음 들어간 커밋 날짜로 백필.
      //   출처는 저장소 이력 자체라 sources 에 따로 적지 않는다. "업데이트 소식" 페이지(/updates)가 날짜별로 묶어 보인다. lite 카탈로그 키 아님
      // hfDownloads30d·hfDownloadsAsOf (10-06 D68): 원본 저장소(hfId)의 Hugging Face 최근 30일 다운로드 수(정수)와 그 기준일 — `https://huggingface.co/api/models/<hfId>` 의 downloads
      //   (게이트 저장소도 메타데이터는 토큰 없이 읽힌다). GGUF 저장소 다운로드는 들어 있지 않다. 둘 다 있거나 둘 다 없음, 값이 있으면 sources 에 HF 모델 URL 필수(zod refine —

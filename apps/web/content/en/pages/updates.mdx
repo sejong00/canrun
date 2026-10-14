@@ -6,7 +6,7 @@ CanRun changes often. New models arrive, the calculator gains features, and now 
 
 ### We look for new models every day
 
-Every day we check Hugging Face for open models released in the last two weeks. A model goes into the catalog when it comes from a major publisher or is already widely downloaded, uses a design our calculation supports, and has a Q4_K_M GGUF file. Whether it has a thinking mode is estimated from its chat template, and each addition is reviewed before it goes live. <SiteLink to="/model/minicpm-v-4.7-35b-a3b">MiniCPM-V 4.7 35B-A3B</SiteLink> was the first model added this way. Models with a design we can't calculate yet wait until llama.cpp and our calculation support them.
+Every day we check Hugging Face for open models released in the last two weeks. A model goes into the catalog when it comes from a major publisher or is already widely downloaded, uses a design our calculation supports, and has a Q4_K_M GGUF file. Whether it has a thinking mode is estimated from its chat template and model card, and every addition has to pass our data checks, tests and a full build before it goes live. <SiteLink to="/model/minicpm-v-4.7-35b-a3b">MiniCPM-V 4.7 35B-A3B</SiteLink> was the first model added this way. We add models with a design we can't calculate yet once llama.cpp and our calculation support them.
 
 </Update>
 
@@ -20,7 +20,7 @@ After you pick a GPU, the calculator used to list models by verdict and then spe
 
 <Update id="visitor-statistics">
 
-### Privacy policy: visitor statistics
+### Cookie-free visitor statistics
 
 We started using Cloudflare Web Analytics to see which pages people read and where visitors come from. It sets no cookies, and we only see totals. The <SiteLink to="/privacy">privacy policy</SiteLink> lists exactly what your browser sends.
 
@@ -62,7 +62,7 @@ When a model doesn't fit entirely on the graphics card, the verdict depends on h
 
 ### Graphics card memory counts only what goes on the card
 
-llama.cpp keeps a model's input embedding table in system RAM. It also leaves out the multi-token prediction (MTP) block some newer models carry unless you turn MTP on. We used to count both against graphics card memory. Now we read their sizes from each GGUF file's header and leave them out. Some models now fit on the card with longer contexts, and a few verdicts went up: HyperCLOVA X SEED Think 14B on the GeForce RTX 2080 Ti, for example, moved from Runs well to Runs great. On a Mac, the whole file still counts.
+llama.cpp keeps a model's input embedding table in system RAM. It also leaves out the multi-token prediction (MTP) block some newer models carry unless you turn MTP on. We used to count both against graphics card memory; now we read their sizes from each GGUF file's header and leave them out. Some models now fit on the card with longer contexts, and a few verdicts went up: HyperCLOVA X SEED Think 14B on the GeForce RTX 2080 Ti, for example, moved from Runs well to Runs great. On a Mac, the whole file still counts.
 
 </Update>
 
@@ -78,7 +78,7 @@ Some newer models mix ordinary attention layers with Mamba2, short convolution o
 
 ### Stricter speed thresholds for every model with a thinking mode
 
-A model that thinks before it answers makes you wait for many more tokens, so its speed thresholds are 1.5 times higher. This used to apply only to models we had tagged as reasoning models. Now it follows each model's official card and chat template: every model with a thinking mode gets the higher thresholds, including models where you can switch thinking off. Models without one, such as Phi-4, use the normal thresholds. Some verdicts dropped a level as a result. Qwen3 14B on the GeForce RTX 3060 12GB, for example, went from Runs great to Runs well.
+A model that thinks before it answers makes you wait for many more tokens, so its speed thresholds are 1.5 times higher. This used to apply only to models we had tagged as reasoning models. Now it follows each model's official card and chat template: every model with a thinking mode gets the higher thresholds, including models where you can switch thinking off, while models without one, such as Phi-4, keep the normal thresholds. Some verdicts dropped a level as a result: Qwen3 14B on the GeForce RTX 3060 12GB, for example, went from Runs great to Runs well.
 
 </Update>
 
@@ -86,7 +86,7 @@ A model that thinks before it answers makes you wait for many more tokens, so it
 
 ### Won prices on the Korean pages
 
-The Korean pages now show an amount in Korean won next to each US dollar price. It is a plain conversion at the European Central Bank reference rate, updated weekly, so it can differ from what a card actually costs in Korea. The English pages show dollars only.
+On the Korean GPU, model and model-and-GPU pages and in the Korean calculator, US dollar prices now come with an amount in Korean won. It is a plain conversion at the European Central Bank reference rate, updated weekly, so it can differ from what a card actually costs in Korea. Guides and the English pages show dollars only.
 
 </Update>
 
@@ -94,7 +94,7 @@ The Korean pages now show an amount in Korean won next to each US dollar price. 
 
 ### Two to four of the same GPU
 
-A "Number of GPUs" setting in the calculator covers two to four identical cards. Memory adds up across the cards, but generation doesn't get faster, because the cards take turns on each token. In our calculation, for example, two GeForce RTX 3090 cards hold Llama 3.3 70B at Q4_K_M entirely in graphics memory. It is a beta, so results are labeled theoretical, and GPU, model and model-and-GPU pages still assume one card.
+A "Number of GPUs" setting in the calculator covers two to four identical cards, and memory adds up across them. With llama.cpp's default layer split the cards take turns on each token, so our calculation doesn't make generation faster. When the setting arrived, our calculation at 8k context fit Llama 3.3 70B at Q4_K_M entirely on two GeForce RTX 3090 cards, while at 16k part of it spilled into system RAM. Multi-card results aren't matched to public benchmarks, so they are labeled theoretical (±30%). GPU, model and model-and-GPU pages still assume one card.
 
 </Update>
 
@@ -110,7 +110,7 @@ Paste a Hugging Face model link or id, such as Qwen/Qwen3-4B, under "A model tha
 
 ### MoE models: experts on the GPU when there is room
 
-When a mixture-of-experts (MoE) model is too big for the graphics card, llama.cpp can keep its expert weights in system RAM. We now put as many experts on the GPU as fit and only the rest in RAM. That is the same direction current llama.cpp and Ollama take on their own, and the `--n-cpu-moe` value in our commands follows the same split. The expert sizes come from each GGUF file's header. gpt-oss-20b on 8GB to 12GB cards such as the GeForce RTX 4060, for example, moved from Runs slowly to Runs well. These results are still labeled theoretical (±30%).
+When a mixture-of-experts (MoE) model is too big for the graphics card, llama.cpp can keep its expert weights in system RAM. We now put as many experts on the GPU as fit and only the rest in RAM, the same direction current llama.cpp and Ollama take on their own. The `--n-cpu-moe` value in our commands follows the same split, using expert sizes read from each GGUF file's header. gpt-oss-20b on 8GB to 12GB cards such as the GeForce RTX 4060, for example, moved from Runs slowly to Runs well. These results are still labeled theoretical (±30%).
 
 </Update>
 
@@ -122,11 +122,19 @@ For MoE models with their experts in system RAM, our speed estimates had been ab
 
 </Update>
 
+<Update id="gemma4-kv">
+
+### Gemma 4 KV cache sizes corrected
+
+We had been sizing the KV cache of Gemma 4 12B four times too large, and that of Gemma 4 26B-A4B twice too large. In these models the layers that attend to the whole context have their own KV head count and head size in the configuration file, and we had used the values of the sliding-window layers instead. With the right values their KV cache shrank to a quarter and a half of the old size, so both models need less memory at long contexts.
+
+</Update>
+
 <Update id="launch">
 
 ### CanRun opens at canrunllm.com
 
-The site opened with the calculator, a page for every GPU, every model and every model-and-GPU pair, and six guides.
+The site opened with the calculator, a page for every GPU, every model and every model-and-GPU pair, and six guides. Every page was available in English and Korean from the first day.
 
 </Update>
 

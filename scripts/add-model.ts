@@ -225,7 +225,8 @@ export function parseArgs(argv: readonly string[]): Args {
 
 /**
  * 레코드의 두 날짜 — 출시일 = HF `createdAt`(없으면 오늘), 카탈로그 추가일 = 오늘(UTC, 10-14 D72 "업데이트 소식").
- * 키 순서는 releasedAt → addedAt. 신모델 자동 추가 ①도 planAddition 을 거치므로 같은 값이 들어간다
+ * 키 순서는 releasedAt → addedAt. 신모델 자동 추가 ①도 planAddition 을 거치므로 같은 값(① 이 PR 을 연 날)이 들어간다 —
+ * ② 가 그 PR 을 다음 날 이후 머지하면 머지하는 날로 고친다(docs/PROGRESS.md §3, 사이트에 들어온 날이 되게)
  */
 export function catalogDates(createdAt: string | undefined, today: string): { releasedAt: string; addedAt: string } {
   return { releasedAt: (createdAt ?? today).slice(0, 10), addedAt: today };
