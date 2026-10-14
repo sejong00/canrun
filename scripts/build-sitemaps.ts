@@ -3,7 +3,8 @@
  *
  * - 분할(docs/04 §3): sitemap.xml(인덱스) → pages · gpus · models · guides(published 만) · combos-en/-ko(`indexableCombos()` 만 —
  *   공개 콤보가 0 이면 파일·인덱스 항목을 만들지 않는다). URL 마다 en/ko/x-default `xhtml:link` 대체 링크(HTML hreflang 과 같은 규칙).
- * - lastmod: 가이드 = 레지스트리 dateModified, 업데이트 소식 = max(dataUpdated, 최신 항목 날짜 — content/updates.ts), 나머지 = `data/meta.json` dataUpdated
+ * - lastmod: 가이드 = 레지스트리 dateModified, 업데이트 소식 = max(dataUpdated, 최신 항목 날짜 — content/updates.ts),
+ *   소개글이 붙은 GPU·모델 허브 = max(dataUpdated, content/hubs.ts HUB_INTROS_UPDATED), 나머지 = `data/meta.json` dataUpdated
  *   — 빌드 시각을 쓰지 않는다(D21 결정론).
  * - robots.txt: 전부 허용(네이버 Yeti 포함) + Sitemap 줄. `/can-i-run/` 를 막지 않는다(막으면 noindex 를 못 읽는다 — PROGRESS §5).
  * - RSS 2.0: `rss.xml`(en)·`ko/rss.xml`(ko) — published 가이드, 게시일 최신순. 업데이트 소식은 넣지 않는다(채널이 가이드 피드이고,
@@ -14,6 +15,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { indexableCombos, parseGpus, parseMeta, parseModels, parsePublish } from '../packages/data/src/index';
 import { GUIDES, GUIDE_SLUGS } from '../apps/web/content/guides';
+import { GPU_INTRO_IDS, HUB_INTROS_UPDATED, MODEL_INTRO_IDS } from '../apps/web/content/hubs';
 import { STATIC_PAGE_SLUGS } from '../apps/web/content/pages';
 import { latestSiteUpdate } from '../apps/web/content/updates';
 import { ADSENSE_CLIENT, SITE_URL } from '../apps/web/lib/site';
@@ -86,10 +88,13 @@ export function buildSitemaps(repoRoot: string, outDir: string): string[] {
   ];
   add('sitemap-pages.xml', pages, urlset(both(pages)));
 
-  const gpuEntries = gpus.map((g) => ({ path: `/gpu/${g.id}`, lastmod: dataUpdated }));
+  // 손으로 쓴 소개글이 붙은 허브(10-14 D74)는 소개글을 고친 날과 데이터 기준일 중 늦은 날
+  const introLastmod = maxDate([dataUpdated, HUB_INTROS_UPDATED]);
+  const hubLastmod = (ids: readonly string[], id: string) => (ids.includes(id) ? introLastmod : dataUpdated);
+  const gpuEntries = gpus.map((g) => ({ path: `/gpu/${g.id}`, lastmod: hubLastmod(GPU_INTRO_IDS, g.id) }));
   add('sitemap-gpus.xml', gpuEntries, urlset(both(gpuEntries)));
 
-  const modelEntries = models.map((m) => ({ path: `/model/${m.id}`, lastmod: dataUpdated }));
+  const modelEntries = models.map((m) => ({ path: `/model/${m.id}`, lastmod: hubLastmod(MODEL_INTRO_IDS, m.id) }));
   add('sitemap-models.xml', modelEntries, urlset(both(modelEntries)));
 
   const guideEntries = published.map((slug) => ({ path: `/guides/${slug}`, lastmod: GUIDES[slug].dateModified }));

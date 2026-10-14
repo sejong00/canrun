@@ -7,6 +7,12 @@
  *   모델 = `data/models.json` `popularity` 5 인 9종 + HF 30일 다운로드 1위(gemma-4-26b-a4b, 10-06 기준).
  * - 순서 = 위 기준의 순서(표시에는 쓰지 않는다).
  */
+
+/**
+ * 소개글을 마지막으로 고친 날 — 사이트맵 lastmod(레지스트리 허브 = 이 날과 데이터 기준일 중 늦은 날, `scripts/build-sitemaps.ts`).
+ * 소개글(en·ko)을 고친 커밋에서 함께 바꾼다. 날짜 기준은 `content/updates.ts` 와 같다: 배포(main 푸시)되는 날의 UTC 날짜 — KST 자정~09시 푸시는 전날.
+ */
+export const HUB_INTROS_UPDATED = '2026-10-14';
 export const GPU_INTRO_IDS = [
   'rtx-4060',
   'rtx-3060-12gb',

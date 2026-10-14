@@ -22,7 +22,8 @@ export type PropKind =
   | 'fact'
   | 'memoryKind'
   | 'mode'
-  | 'ram';
+  | 'ram'
+  | 'confidence';
 
 export type ComponentSpec = {
   /** 표·블록 요소 — MDX 에서 자기 줄에만 (문단 안에 넣으면 `<p><div>` 하이드레이션 불일치) */
@@ -49,6 +50,9 @@ export type MemoryKind = (typeof MEMORY_KINDS)[number];
 /** Expect mode — 엔진 실행 방식(`@canrun/engine` Mode). 산문이 "전문가를 RAM 에"·"GPU 에 전부" 같은 배치를 말할 때 고정한다 (10-14 D74) */
 export const EXPECT_MODES = ['full-gpu', 'cpu-moe', 'partial-offload', 'cpu-only'] as const;
 export type ExpectMode = (typeof EXPECT_MODES)[number];
+
+/** Expect confidence — 엔진 신뢰 라벨. "공개 벤치마크가 표에 있다", "이론 추정이다"처럼 라벨을 말하는 문장을 고정한다 (10-14 D74 리뷰) */
+export const EXPECT_CONFIDENCES = ['measured', 'calibrated', 'theoretical'] as const;
 
 export const RUNTIME_FACT_IDS = ['ollama-default-ctx', 'ollama-kv-cache-type'] as const;
 export type RuntimeFactId = (typeof RUNTIME_FACT_IDS)[number];
@@ -100,6 +104,7 @@ export const GUIDE_COMPONENTS: Readonly<Record<string, ComponentSpec>> = {
       ram: opt('ram'),
       ctx: opt('ctx'),
       kv: opt('kv'),
+      confidence: opt('confidence'),
     },
   },
 };

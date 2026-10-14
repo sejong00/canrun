@@ -1,6 +1,6 @@
 /**
  * 손으로 쓴 MDX 의 `<Expect>` 를 빌드 없이 확인한다 (10-14 D74, 개발 도구) — 가이드(`content/{en,ko}/guides`)와
- * 허브 소개글(`content/{en,ko}/hubs/{gpu,model}`). 빌드가 렌더하는 것과 같은 `Expect` 함수를 그대로 부르므로 여기서 통과하면
+ * 허브 소개글(`content/{en,ko}/hubs/{gpu,model}`). 빌드의 `<Expect>` 컴포넌트와 같은 대조 함수(`lib/expect-claim.ts` checkExpect)를 부르므로 여기서 통과하면
  * 빌드에서도 통과한다(전체 빌드는 몇 분 걸린다). 다른 규칙(산문 숫자·컴포넌트 prop)은 유닛 테스트 몫.
  *
  *   cd apps/web && npx tsx scripts/check-expect.ts            # 전부
@@ -8,7 +8,7 @@
  */
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { Expect } from '@/components/guide/guide-components';
+import { checkExpect, type ExpectClaim } from '@/lib/expect-claim';
 
 const DIRS = ['guides', 'hubs/gpu', 'hubs/model'];
 const prefix = process.argv[2] ?? '';
@@ -24,7 +24,7 @@ for (const locale of ['en', 'ko']) {
         const props = Object.fromEntries([...m[1]!.matchAll(/([a-zA-Z]+)="([^"]*)"/g)].map((p) => [p[1]!, p[2]!]));
         checked += 1;
         try {
-          Expect(props as Parameters<typeof Expect>[0]);
+          checkExpect(props as ExpectClaim);
         } catch (error) {
           failures.push(`${locale}/${sub}/${file}: ${(error as Error).message}`);
         }

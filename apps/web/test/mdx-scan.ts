@@ -3,7 +3,7 @@
  * 같은 명세(`lib/guide-components.ts`)로 컴포넌트·prop·블록 위치·문법 금지 항목을 본다. 테스트 파일이 아니라 vitest include(`*.test.ts`) 밖이다.
  */
 import { GUIDES, GUIDE_SLUGS } from '../content/guides';
-import { EXPECT_MODES, GUIDE_COMPONENTS, MEMORY_KINDS, NUM_KINDS, RUNTIME_FACT_IDS, splitList, type PropKind } from '../lib/guide-components';
+import { EXPECT_CONFIDENCES, EXPECT_MODES, GUIDE_COMPONENTS, MEMORY_KINDS, NUM_KINDS, RUNTIME_FACT_IDS, splitList, type PropKind } from '../lib/guide-components';
 import { loadSeed } from '../../../packages/data/test/seed';
 
 export type Usage = { name: string; props: Record<string, string>; line: number; raw: string };
@@ -65,6 +65,8 @@ export function validProp(kind: PropKind, value: string): boolean {
       return (EXPECT_MODES as readonly string[]).includes(value);
     case 'ram':
       return /^[1-9]\d*$/.test(value);
+    case 'confidence':
+      return (EXPECT_CONFIDENCES as readonly string[]).includes(value);
   }
 }
 

@@ -18,7 +18,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { GUIDES, GUIDE_SLUGS, type GuideSlug } from '../apps/web/content/guides';
-import { GPU_INTRO_IDS, MODEL_INTRO_IDS } from '../apps/web/content/hubs';
+import { GPU_INTRO_IDS, HUB_INTROS_UPDATED, MODEL_INTRO_IDS } from '../apps/web/content/hubs';
 import { SITE_UPDATES, latestSiteUpdate } from '../apps/web/content/updates';
 import { ADSENSE_CLIENT } from '../apps/web/lib/site';
 import { CF_PAGES_REDIRECT_LINE_LIMIT } from '../scripts/build-redirects';
@@ -297,6 +297,22 @@ describe('hub intros (10-14 D74 — 손으로 쓴 소개글은 레지스트리 �
     // 소개가 없는 허브는 지금과 같게 렌더된다 — 레지스트리 밖 허브에 [data-hub-intro] 가 생기면 여기서 걸린다
     expect(seen.en.sort(), 'en hubs with an intro').toEqual(expected);
     expect(seen.ko.sort(), 'ko hubs with an intro').toEqual(expected);
+  });
+
+  it('sitemap lastmod of a hub with an intro is the later of the data date and the intro date; other hubs keep the data date', () => {
+    const dataUpdated = readJson<{ dataUpdated: string }>('data/meta.json').dataUpdated;
+    const introDate = dataUpdated > HUB_INTROS_UPDATED ? dataUpdated : HUB_INTROS_UPDATED;
+    const withIntro = new Set([...GPU_INTRO_IDS.map((id) => `/gpu/${id}`), ...MODEL_INTRO_IDS.map((id) => `/model/${id}`)]);
+    let checked = 0;
+    for (const file of ['sitemap-gpus.xml', 'sitemap-models.xml']) {
+      const xml = readFileSync(join(outDir, file), 'utf8');
+      for (const m of xml.matchAll(/<url><loc>([^<]+)<\/loc><lastmod>([^<]+)<\/lastmod>/g)) {
+        const path = urlToPath(m[1]!).replace(/^\/ko(?=\/)/, '');
+        expect(m[2], `${file} ${m[1]} lastmod`).toBe(withIntro.has(path) ? introDate : dataUpdated);
+        checked += 1;
+      }
+    }
+    expect(checked, 'hub sitemap entries').toBeGreaterThan(withIntro.size * 2);
   });
 });
 
