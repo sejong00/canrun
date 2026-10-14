@@ -1,0 +1,169 @@
+For local LLMs, choose the memory size first and the card second: VRAM decides which models fit, and memory bandwidth mostly sets the speed once they do. At an 8k context, Llama 3.1 8B Runs great on every card in this guide, down to the 8GB RTX 4060 and RTX 5060.<Expect model="llama-3.1-8b" gpu="rtx-4060" verdict="S" /><Expect model="llama-3.1-8b" gpu="rtx-5060" verdict="S" /><Expect model="llama-3.1-8b" gpu="rtx-5060-ti-8gb" verdict="S" /><Expect model="llama-3.1-8b" gpu="rtx-3060-12gb" verdict="S" /><Expect model="llama-3.1-8b" gpu="arc-b580" verdict="S" /><Expect model="llama-3.1-8b" gpu="rtx-5070" verdict="S" /><Expect model="llama-3.1-8b" gpu="rx-9060-xt-16gb" verdict="S" /><Expect model="llama-3.1-8b" gpu="rtx-5060-ti-16gb" verdict="S" /><Expect model="llama-3.1-8b" gpu="rx-9070-xt" verdict="S" /><Expect model="llama-3.1-8b" gpu="rtx-5070-ti" verdict="S" /><Expect model="llama-3.1-8b" gpu="rtx-5080" verdict="S" /><Expect model="llama-3.1-8b" gpu="rtx-3090" verdict="S" /><Expect model="llama-3.1-8b" gpu="rtx-4090" verdict="S" /><Expect model="llama-3.1-8b" gpu="rtx-5090" verdict="S" /> 12GB adds Gemma 3 12B and Qwen3 14B on the GPU alone,<Expect model="gemma-3-12b" gpu="rtx-3060-12gb" mode="full-gpu" verdict="S" /><Expect model="qwen3-14b" gpu="rtx-3060-12gb" mode="full-gpu" verdict="A" /> 16GB adds gpt-oss-20b,<Expect model="gpt-oss-20b" gpu="rtx-5060-ti-16gb" mode="full-gpu" verdict="S" /> and 24GB adds dense models around 30B such as Qwen3.8 27B and Gemma 4 31B.<Expect model="qwen3.8-27b" gpu="rtx-3090" mode="full-gpu" verdict="S" /><Expect model="gemma-4-31b" gpu="rtx-3090" mode="full-gpu" verdict="S" /> What we recommend is a memory size, not a product. The prices below show what each size costs in our data, and the tables show what it runs.
+
+## What each memory size costs
+
+The list groups the graphics cards in our catalog that have a price by how much memory they carry.
+
+- 8GB: the <HubLink gpu="rtx-5060" /> at <Price gpu="rtx-5060" />, the <HubLink gpu="rtx-5060-ti-8gb" /> at <Price gpu="rtx-5060-ti-8gb" />, and the <HubLink gpu="rtx-4060" />, for which we only have the launch MSRP: <Price gpu="rtx-4060" />.
+- 12GB: the <HubLink gpu="rtx-3060-12gb" /> at <Price gpu="rtx-3060-12gb" />, the <HubLink gpu="arc-b580" /> at <Price gpu="arc-b580" /> and the <HubLink gpu="rtx-5070" /> at <Price gpu="rtx-5070" />.
+- 16GB: the <HubLink gpu="rx-9060-xt-16gb" /> at <Price gpu="rx-9060-xt-16gb" />, the <HubLink gpu="rtx-5060-ti-16gb" /> at <Price gpu="rtx-5060-ti-16gb" />, the <HubLink gpu="rx-9070-xt" /> at <Price gpu="rx-9070-xt" />, the <HubLink gpu="rtx-5070-ti" /> at <Price gpu="rtx-5070-ti" /> and the <HubLink gpu="rtx-5080" /> at <Price gpu="rtx-5080" />.
+- 24GB: the <HubLink gpu="rtx-3090" /> at <Price gpu="rtx-3090" /> and the <HubLink gpu="rtx-4090" /> at <Price gpu="rtx-4090" />.
+- 32GB: the <HubLink gpu="rtx-5090" /> at <Price gpu="rtx-5090" />.
+
+The table counts, for each of these cards, how many models in CanRun's catalog get each verdict at an 8k context, and names the largest model that fits on the GPU alone. New models join the catalog often, so read it for the pattern rather than the exact counts.
+
+<GpuTierSummary gpus="rtx-4060,rtx-5060,rtx-3060-12gb,arc-b580,rtx-5070,rx-9060-xt-16gb,rtx-5060-ti-16gb,rx-9070-xt,rtx-5070-ti,rtx-5080,rtx-3090,rtx-4090,rtx-5090" />
+
+Two patterns run through the table. Between memory sizes, models move from partial offload (part of the weights in system RAM) onto the GPU alone. Within one memory size, CanRun's calculation fits exactly the same models on every card, because fit depends only on the memory a card can use; a more expensive card changes a verdict only when a model's speed sits close to a verdict line. That is why Qwen3.8 27B and Gemma 4 31B are rated Runs slowly even on the RTX 5080<Expect model="qwen3.8-27b" gpu="rtx-5080" mode="partial-offload" verdict="B" /><Expect model="gemma-4-31b" gpu="rtx-5080" mode="partial-offload" verdict="B" /> and Runs great on the RTX 3090,<Expect model="qwen3.8-27b" gpu="rtx-3090" verdict="S" /><Expect model="gemma-4-31b" gpu="rtx-3090" verdict="S" /> a card our price data listed lower when this guide was written.
+
+### Reading the prices
+
+A street price always comes with the date we recorded it. It is a snapshot from public price trackers (the Sources section names them), not today's price, and all prices are in US dollars. When we have no street price, the card shows its launch MSRP instead, as the RTX 4060 does; a launch MSRP is not what a card sells for today.
+
+The RTX 3090 launched in 2020. Its price comes from a price-history page that tracks both new and used RTX 3090 cards, and our record does not say which kind the figure is. If you buy one used, the card's condition and warranty are for you to check.
+
+Every model page, such as the one for <HubLink model="qwen3.8-27b" />, lists the cheapest GPUs by street price that run it great or well. The calculator's "Find GPUs for a model" mode also has a budget filter, which counts only cards with a known street price.
+
+## Six popular models across the price range
+
+The grid follows six popular models on eight cards. The rows are ordered by street price as our data listed it when this guide was written, lowest first. Every verdict assumes an 8k context, an f16 KV cache, 32GB of DDR5 system RAM and Windows. Each cell shows an estimated speed band and a confidence label.
+
+<ComboGrid grid="budget" />
+
+### From 8GB to 12GB: 14B dense models
+
+Qwen3 14B is the first model in the grid where memory splits the cards. At Q4_K_M, the usual 4-bit quant, it needs <Num kind="needGB" model="qwen3-14b" /> at 8k, more than the <Num kind="usableGB" gpu="rtx-5060" /> an 8GB card can use, so on the RTX 5060 part of it runs from system RAM and it Runs slowly.<Expect model="qwen3-14b" gpu="rtx-5060" mode="partial-offload" verdict="B" /> On the 12GB RTX 3060 it fits with less than a gigabyte to spare and Runs well;<Expect model="qwen3-14b" gpu="rtx-3060-12gb" mode="full-gpu" verdict="A" /> check `ollama ps` after loading it. On the 12GB RTX 5070, whose memory is faster, it Runs great.<Expect model="qwen3-14b" gpu="rtx-5070" verdict="S" /> Qwen3 14B can think before it answers, which costs many more tokens per answer, so CanRun holds it to 1.5× stricter speed thresholds. The RTX 5070 clears them and the RTX 3060 12GB does not.
+
+### From 12GB to 16GB: gpt-oss-20b on the GPU alone
+
+gpt-oss-20b is a mixture-of-experts (MoE) model: each layer holds many expert blocks, and only a few run for each token. It needs <Num kind="needGB" model="gpt-oss-20b" /> at 8k, more than a 12GB card can use. On the RTX 3060 12GB and the RTX 5070, CanRun's calculation keeps the expert weights that do not fit in system RAM, and both cells read Runs well as theoretical estimates.<Expect model="gpt-oss-20b" gpu="rtx-3060-12gb" mode="cpu-moe" verdict="A" confidence="theoretical" /><Expect model="gpt-oss-20b" gpu="rtx-5070" mode="cpu-moe" verdict="A" confidence="theoretical" /> Every 16GB card in the grid holds it fully on the GPU, where it Runs great,<Expect model="gpt-oss-20b" gpu="rx-9060-xt-16gb" mode="full-gpu" verdict="S" /><Expect model="gpt-oss-20b" gpu="rtx-5060-ti-16gb" mode="full-gpu" verdict="S" /><Expect model="gpt-oss-20b" gpu="rtx-5070-ti" mode="full-gpu" verdict="S" /> in line with its model card, which says it runs within 16GB of memory.
+
+The RTX 5070 shows the trade-off between speed and memory. It has faster memory than the RTX 5060 Ti 16GB (<Num kind="bandwidth" gpu="rtx-5070" /> against <Num kind="bandwidth" gpu="rtx-5060-ti-16gb" />) and our price data listed it higher when this guide was written, yet it is the card that has to split gpt-oss-20b. Our page for <ComboLink model="gpt-oss-20b" gpu="rtx-5070" /> shows how the split looks.
+
+### From 16GB to 24GB: dense models around 30B
+
+The dense Qwen3.8 27B Runs slowly on every 16GB card in the grid, with part of it in system RAM;<Expect model="qwen3.8-27b" gpu="rx-9060-xt-16gb" mode="partial-offload" verdict="B" /><Expect model="qwen3.8-27b" gpu="rtx-5060-ti-16gb" mode="partial-offload" verdict="B" /><Expect model="qwen3.8-27b" gpu="rtx-5070-ti" mode="partial-offload" verdict="B" /> on the 24GB RTX 3090 it fits with room to spare and Runs great.<Expect model="qwen3.8-27b" gpu="rtx-3090" mode="full-gpu" verdict="S" /> The section on a new 16GB card or a 24GB RTX 3090 looks at it closely.
+
+<HubLink model="qwen3.5-35b-a3b" /> is another MoE model, one that uses about 3B of its parameters per token. On every card up to 16GB in the grid, it Runs well with part of its experts in system RAM, a theoretical estimate.<Expect model="qwen3.5-35b-a3b" gpu="rtx-3060-12gb" mode="cpu-moe" verdict="A" confidence="theoretical" /><Expect model="qwen3.5-35b-a3b" gpu="rtx-5060" mode="cpu-moe" verdict="A" confidence="theoretical" /><Expect model="qwen3.5-35b-a3b" gpu="rx-9060-xt-16gb" mode="cpu-moe" verdict="A" confidence="theoretical" /><Expect model="qwen3.5-35b-a3b" gpu="rtx-5060-ti-16gb" mode="cpu-moe" verdict="A" confidence="theoretical" /><Expect model="qwen3.5-35b-a3b" gpu="rtx-5070" mode="cpu-moe" verdict="A" confidence="theoretical" /><Expect model="qwen3.5-35b-a3b" gpu="rtx-5070-ti" mode="cpu-moe" verdict="A" confidence="theoretical" /> On the RTX 3090 it needs <Num kind="needGB" model="qwen3.5-35b-a3b" /> against <Num kind="usableGB" gpu="rtx-3090" /> usable, so it fits fully with a little over a gigabyte to spare and Runs great;<Expect model="qwen3.5-35b-a3b" gpu="rtx-3090" mode="full-gpu" verdict="S" /> with that margin, confirm 100% GPU in `ollama ps`.
+
+### 32GB: the same verdicts, more room
+
+For these six models, the RTX 5090 gets the same 8k verdicts as the RTX 3090.<Expect model="llama-3.1-8b" gpu="rtx-3090" verdict="S" /><Expect model="qwen3-14b" gpu="rtx-3090" verdict="S" /><Expect model="gpt-oss-20b" gpu="rtx-3090" verdict="S" /><Expect model="qwen3.8-27b" gpu="rtx-3090" verdict="S" /><Expect model="qwen3.5-35b-a3b" gpu="rtx-3090" verdict="S" /><Expect model="gpt-oss-120b" gpu="rtx-3090" verdict="F" /><Expect model="llama-3.1-8b" gpu="rtx-5090" verdict="S" /><Expect model="qwen3-14b" gpu="rtx-5090" verdict="S" /><Expect model="gpt-oss-20b" gpu="rtx-5090" verdict="S" /><Expect model="qwen3.8-27b" gpu="rtx-5090" verdict="S" /><Expect model="qwen3.5-35b-a3b" gpu="rtx-5090" verdict="S" /><Expect model="gpt-oss-120b" gpu="rtx-5090" verdict="F" /> Its extra memory goes to longer context. gpt-oss-120b fits on no card in the grid with 32GB of system RAM;<Expect model="gpt-oss-120b" gpu="rtx-5090" fits="false" /><Expect model="gpt-oss-120b" gpu="rtx-3060-12gb" fits="false" /> the line under its badges gives the RAM size at which it would run.
+
+## Capacity or speed: the RTX 3060 12GB against 8GB cards
+
+The <HubLink gpu="rtx-3060-12gb" /> launched in 2021 and the <HubLink gpu="rtx-5060" /> in 2025, yet our price data listed the older card lower when this guide was written. The <HubLink gpu="rtx-4060" /> sits between them in age and has only a launch MSRP in our data. The older card has more memory: the 12GB card can use <Num kind="usableGB" gpu="rtx-3060-12gb" />, each 8GB card <Num kind="usableGB" gpu="rtx-4060" />.
+
+That gap decides the 12B and 14B dense models. Gemma 3 12B Runs great on the RTX 3060 12GB<Expect model="gemma-3-12b" gpu="rtx-3060-12gb" verdict="S" /> but Runs slowly on the RTX 4060 and the RTX 5060, where part of it sits in system RAM.<Expect model="gemma-3-12b" gpu="rtx-4060" mode="partial-offload" verdict="B" /><Expect model="gemma-3-12b" gpu="rtx-5060" mode="partial-offload" verdict="B" /> Qwen3 14B Runs well on the 12GB card and Runs slowly on both 8GB cards.<Expect model="qwen3-14b" gpu="rtx-3060-12gb" verdict="A" /><Expect model="qwen3-14b" gpu="rtx-4060" verdict="B" /><Expect model="qwen3-14b" gpu="rtx-5060" verdict="B" /> Gemma 4 12B needs <Num kind="needGB" model="gemma-4-12b" />, more than an 8GB card can use; with at least 90% of it still on the GPU, it Runs well on both 8GB cards<Expect model="gemma-4-12b" gpu="rtx-4060" mode="partial-offload" verdict="A" /><Expect model="gemma-4-12b" gpu="rtx-5060" mode="partial-offload" verdict="A" /> and Runs great on the RTX 3060 12GB.<Expect model="gemma-4-12b" gpu="rtx-3060-12gb" mode="full-gpu" verdict="S" />
+
+For a model that fits, speed follows memory bandwidth. The RTX 3060 12GB has <Num kind="bandwidth" gpu="rtx-3060-12gb" />, the RTX 4060 <Num kind="bandwidth" gpu="rtx-4060" /> and the RTX 5060 <Num kind="bandwidth" gpu="rtx-5060" />. Public benchmarks of Llama 3.1 8B put the older RTX 3060 12GB ahead of the RTX 4060.<Expect model="llama-3.1-8b" gpu="rtx-3060-12gb" confidence="measured" verdict="S" /><Expect model="llama-3.1-8b" gpu="rtx-4060" confidence="measured" verdict="S" /> Both come from LocalScore, a Mozilla Builders benchmark project, at a 4k context; they are not CanRun runs.
+
+<Measured model="llama-3.1-8b" gpu="rtx-3060-12gb" />
+
+<Measured model="llama-3.1-8b" gpu="rtx-4060" />
+
+The RTX 5060's faster memory does show with MoE models that keep experts in system RAM: Gemma 4 26B-A4B Runs slowly on the RTX 4060 but Runs well on the RTX 5060, both theoretical estimates.<Expect model="gemma-4-26b-a4b" gpu="rtx-4060" mode="cpu-moe" verdict="B" confidence="theoretical" /><Expect model="gemma-4-26b-a4b" gpu="rtx-5060" mode="cpu-moe" verdict="A" confidence="theoretical" /> If 12B and 14B dense models are on your list, though, aim for 12GB or more.
+
+NVIDIA's specifications list the RTX 3060 in two memory versions, 12GB on a 192-bit bus and 8GB on a 128-bit bus. The 8GB version is not the card in these tables, so check the memory on the box. The RTX 5060 Ti has the same trap, with 8GB and 16GB versions in the list above.
+
+## A new 16GB card or a 24GB RTX 3090
+
+This is the choice between the <HubLink gpu="rtx-5060-ti-16gb" /> at <Price gpu="rtx-5060-ti-16gb" /> and the <HubLink gpu="rtx-3090" /> at <Price gpu="rtx-3090" />, which may be a used price, as the section on prices explains.
+
+Up to gpt-oss-20b, the two cards get the same verdicts. gpt-oss-20b Runs great on both, and both cells are public benchmarks from llama.cpp's gpt-oss guide thread;<Expect model="gpt-oss-20b" gpu="rtx-5060-ti-16gb" verdict="S" confidence="measured" /><Expect model="gpt-oss-20b" gpu="rtx-3090" verdict="S" confidence="measured" /> Qwen3 14B Runs great on both too.<Expect model="qwen3-14b" gpu="rtx-5060-ti-16gb" verdict="S" /><Expect model="qwen3-14b" gpu="rtx-3090" verdict="S" /> The RTX 3090 is faster per token, with <Num kind="bandwidth" gpu="rtx-3090" /> of bandwidth against <Num kind="bandwidth" gpu="rtx-5060-ti-16gb" />, but for these models both cards are past the line for Runs great.
+
+The difference is dense models around 30B. Qwen3.8 27B needs <Num kind="needGB" model="qwen3.8-27b" /> at 8k, against <Num kind="usableGB" gpu="rtx-5060-ti-16gb" /> usable on the 16GB card. The bar shows where the rest goes:
+
+<MemoryBreakdown model="qwen3.8-27b" gpu="rtx-5060-ti-16gb" />
+
+The part that does not fit runs from system RAM at system RAM speed, so Qwen3.8 27B Runs slowly on the 16GB card<Expect model="qwen3.8-27b" gpu="rtx-5060-ti-16gb" verdict="B" /> and Runs great on the RTX 3090.<Expect model="qwen3.8-27b" gpu="rtx-3090" verdict="S" /> Gemma 4 31B splits the same way.<Expect model="gemma-4-31b" gpu="rtx-5060-ti-16gb" verdict="B" /><Expect model="gemma-4-31b" gpu="rtx-3090" verdict="S" /> A faster 16GB card does not change this: on the RTX 5070 Ti and the RTX 5080, Qwen3.8 27B also Runs slowly,<Expect model="qwen3.8-27b" gpu="rtx-5070-ti" verdict="B" /><Expect model="qwen3.8-27b" gpu="rtx-5080" verdict="B" /> because they have the same memory to work with.
+
+On a 16GB card, a smaller quant narrows the gap. The ladder shows each quant of Qwen3.8 27B on the RTX 5060 Ti 16GB; every cell is calibrated.
+
+<QuantLadder model="qwen3.8-27b" gpu="rtx-5060-ti-16gb" />
+
+IQ4_XS sits in the same Good balance quality group as Q4_K_M. It still leaves a little of the model in system RAM, but with at least 90% on the GPU it Runs well.<Expect model="qwen3.8-27b" gpu="rtx-5060-ti-16gb" quant="IQ4_XS" mode="partial-offload" verdict="A" /> Q2_K fits fully on the GPU,<Expect model="qwen3.8-27b" gpu="rtx-5060-ti-16gb" quant="Q2_K" mode="full-gpu" fits="true" /> but it belongs to the Heavy loss group; <GuideLink slug="gguf-quantization" /> explains the groups.
+
+24GB also leaves room for context. Ollama sets its default from the memory it finds: <RuntimeFact id="ollama-default-ctx" />. A 24GB card therefore starts at 32k, and in CanRun's calculation Qwen3.8 27B still fits fully on the RTX 3090 there.<Expect model="qwen3.8-27b" gpu="rtx-3090" ctx="32768" mode="full-gpu" fits="true" /> With an f16 KV cache it stays on the GPU up to 64k, where it needs <Num kind="needGB" model="qwen3.8-27b" ctx="65536" />.<Expect model="qwen3.8-27b" gpu="rtx-3090" ctx="65536" mode="full-gpu" fits="true" /> At 128k an f16 cache no longer fits; the table shows what a q8_0 or q4_0 cache changes, and every cell is calibrated.
+
+<CtxTable model="qwen3.8-27b" gpu="rtx-3090" />
+
+The two cards also differ in power. NVIDIA's reference specifications list the RTX 3090 at 350 W of graphics card power with a 750 W system power supply, and the RTX 5060 Ti at 180 W with a 600 W supply. Partner cards can differ, so check your power supply and case before choosing the larger card.
+
+## Same memory at different prices
+
+Among the 16GB cards in our data, memory bandwidth runs from <Num kind="bandwidth" gpu="rx-9060-xt-16gb" /> on the RX 9060 XT 16GB and <Num kind="bandwidth" gpu="rtx-5060-ti-16gb" /> on the RTX 5060 Ti 16GB to <Num kind="bandwidth" gpu="rx-9070-xt" /> on the RX 9070 XT, <Num kind="bandwidth" gpu="rtx-5070-ti" /> on the RTX 5070 Ti and <Num kind="bandwidth" gpu="rtx-5080" /> on the RTX 5080. Each of them can use <Num kind="usableGB" gpu="rtx-5080" />, so they fit the same models.
+
+Speed changes the verdict only for models near a line. Qwen3 14B, with its stricter thinking-mode thresholds, Runs well on the RX 9060 XT 16GB<Expect model="qwen3-14b" gpu="rx-9060-xt-16gb" verdict="A" /> and Runs great on the RTX 5060 Ti 16GB, the RX 9070 XT and the RTX 5070 Ti.<Expect model="qwen3-14b" gpu="rtx-5060-ti-16gb" verdict="S" /><Expect model="qwen3-14b" gpu="rx-9070-xt" verdict="S" /><Expect model="qwen3-14b" gpu="rtx-5070-ti" verdict="S" /> For a model that does not fit, a faster card does little: Qwen3.8 27B still Runs slowly on the RTX 5080.<Expect model="qwen3.8-27b" gpu="rtx-5080" verdict="B" />
+
+### AMD and Intel cards
+
+The same rule holds across brands. The <HubLink gpu="rx-9060-xt-16gb" /> and the <HubLink gpu="rx-9070-xt" /> fit what the other 16GB cards fit, so gpt-oss-20b Runs great on both.<Expect model="gpt-oss-20b" gpu="rx-9060-xt-16gb" verdict="S" /><Expect model="gpt-oss-20b" gpu="rx-9070-xt" verdict="S" /> The <HubLink gpu="arc-b580" /> fits what the other 12GB cards fit, and Qwen3 14B Runs well on it, as on the <HubLink gpu="rtx-3060-12gb" />.<Expect model="qwen3-14b" gpu="arc-b580" verdict="A" confidence="calibrated" /><Expect model="qwen3-14b" gpu="rtx-3060-12gb" verdict="A" />
+
+CanRun's speed estimates for AMD cards carry the same ±12% band as NVIDIA cards for dense models fully on the GPU; for Intel Arc the band is ±20%. Software support is the bigger difference. Ollama's GPU documentation lists the RX 9070 XT and the RX 9060 XT among the Radeon cards it supports through ROCm on Linux, but not in its Windows ROCm list. For other cards, the same page says Ollama adds support through Vulkan, which is on by default (checked October 2026). llama.cpp's Vulkan benchmark thread has public results for the RX 9070 XT and the Arc B580.
+
+## Upgrading a PC you already have: system RAM and MoE models
+
+If you already own a card, more system RAM can open up MoE models before a new GPU does. CanRun's calculation keeps as many experts as fit in VRAM and the rest in system RAM, and reads only the experts each token uses at RAM speed. llama.cpp's `--n-cpu-moe` makes this split, and current llama.cpp and Ollama versions make it on their own; <GuideLink slug="vram-requirements" /> explains the mechanics, and <GuideLink slug="moe-cpu-offload" /> works through the RAM each card needs.
+
+With 32GB of system RAM, Qwen3.5 35B-A3B Runs well even on the 8GB RTX 5060, as a theoretical estimate.<Expect model="qwen3.5-35b-a3b" gpu="rtx-5060" mode="cpu-moe" verdict="A" confidence="theoretical" /> With 16GB of RAM it does not fit on that card.<Expect model="qwen3.5-35b-a3b" gpu="rtx-5060" ram="16" fits="false" /> The RTX 5060 Ti 16GB holds more of the model in VRAM, so in CanRun's calculation it still Runs well with 16GB of RAM, again a theoretical estimate.<Expect model="qwen3.5-35b-a3b" gpu="rtx-5060-ti-16gb" ram="16" mode="cpu-moe" verdict="A" />
+
+gpt-oss-120b is where RAM decides. Its file is <Num kind="fileGB" model="gpt-oss-120b" />, so with 32GB of RAM it fits on no card in the grid.<Expect model="gpt-oss-120b" gpu="rtx-3090" ram="32" fits="false" /> With 64GB, CanRun's calculation fits it on every card in the grid from 12GB up.<Expect model="gpt-oss-120b" gpu="rtx-3060-12gb" ram="64" fits="true" /><Expect model="gpt-oss-120b" gpu="rx-9060-xt-16gb" ram="64" fits="true" /><Expect model="gpt-oss-120b" gpu="rtx-5060-ti-16gb" ram="64" fits="true" /><Expect model="gpt-oss-120b" gpu="rtx-5070" ram="64" fits="true" /><Expect model="gpt-oss-120b" gpu="rtx-5070-ti" ram="64" fits="true" /><Expect model="gpt-oss-120b" gpu="rtx-3090" ram="64" fits="true" /><Expect model="gpt-oss-120b" gpu="rtx-5090" ram="64" fits="true" /> The verdict there is the same Runs slowly on the RTX 3060 12GB as on the RTX 3090, a theoretical estimate in both cases.<Expect model="gpt-oss-120b" gpu="rtx-3060-12gb" ram="64" mode="cpu-moe" verdict="B" /><Expect model="gpt-oss-120b" gpu="rtx-3090" ram="64" mode="cpu-moe" verdict="B" /><Expect model="gpt-oss-120b" gpu="rx-9060-xt-16gb" ram="64" verdict="B" /><Expect model="gpt-oss-120b" gpu="rtx-5060-ti-16gb" ram="64" verdict="B" /><Expect model="gpt-oss-120b" gpu="rtx-5070" ram="64" verdict="B" /><Expect model="gpt-oss-120b" gpu="rtx-5070-ti" ram="64" verdict="B" /> Of the cards in the grid, only the RTX 5090 reaches Runs well with 64GB, also theoretical.<Expect model="gpt-oss-120b" gpu="rtx-5090" ram="64" mode="cpu-moe" verdict="A" /> The 8GB RTX 5060 needs 96GB,<Expect model="gpt-oss-120b" gpu="rtx-5060" ram="64" fits="false" /> and there it Runs slowly, again a theoretical estimate.<Expect model="gpt-oss-120b" gpu="rtx-5060" ram="96" mode="cpu-moe" verdict="B" />
+
+So if gpt-oss-120b is the goal, count your system RAM before you price a new card. RAM speed counts as well: CanRun assumes dual-channel DDR5-5600, and slower RAM reads the experts more slowly.
+
+Treat these MoE speeds as theoretical estimates (±30%): against 35 public benchmarks on NVIDIA cards this part of the calculation was off by about 10% on average, but by close to 40% in some setups.
+
+### Where to go next
+
+- <GuideLink slug="vram-requirements" />: the memory formula and every VRAM tier in detail.
+- <GuideLink slug="gguf-quantization" />: what IQ4_XS, Q4_K_M and Q8_0 cost and what they keep.
+- <GuideLink slug="kv-cache-context" />: why a longer context needs more memory.
+- <GuideLink slug="ollama-context-length" />: Ollama's default context and how to change it.
+- Card pages such as the <HubLink gpu="rtx-3060-12gb" />, the <HubLink gpu="rtx-5060-ti-16gb" /> and the <HubLink gpu="rtx-3090" /> list every model on each card.
+
+## How sure are these numbers?
+
+Memory figures come by formula from real GGUF file sizes and each model's published configuration, so they carry no error band. Prices are the least stable numbers here: street prices change, and ours are a dated snapshot.
+
+Speeds are estimates with a band and a label. Measured means a public benchmark for that card, model and quant. Calibrated means ±12% for dense models fully on an NVIDIA or AMD card, and ±20% for MoE models, partial offload and other hardware such as Intel Arc. Theoretical means ±30%, for setups whose real speed varies widely, such as MoE experts in system RAM.
+
+All verdicts assume Windows with the card driving the display, 32GB of DDR5-5600 dual-channel system RAM, an 8k context, an f16 KV cache, one model and one request at a time. Ollama and llama.cpp make their own memory estimates, so a model that fits with little margin here can end up partly in system RAM; the PROCESSOR column of `ollama ps` shows what happened.
+
+Models with a thinking mode face 1.5× stricter speed thresholds, which the legend below does not show. In this guide that covers gpt-oss-20b and gpt-oss-120b, which always think, and Qwen3 14B, Qwen3.8 27B, Qwen3.5 35B-A3B and Gemma 4, which can switch thinking on and off. Llama 3.1 8B and Gemma 3 12B have no thinking mode. The thresholds:
+
+<Threshold />
+
+## FAQ
+
+### Which matters more for a local LLM GPU, VRAM or speed?
+
+VRAM, up to the point where the models you want fit. The RTX 5070 has faster memory than the RTX 5060 Ti 16GB, yet gpt-oss-20b runs fully on the GPU only on the 16GB card.<Expect model="gpt-oss-20b" gpu="rtx-5060-ti-16gb" mode="full-gpu" verdict="S" /><Expect model="gpt-oss-20b" gpu="rtx-5070" mode="cpu-moe" /> Once a model fits, speed takes over: Qwen3 14B fits on both the RX 9060 XT 16GB and the RTX 5060 Ti 16GB, but Runs well on the first and Runs great on the second.<Expect model="qwen3-14b" gpu="rx-9060-xt-16gb" verdict="A" /><Expect model="qwen3-14b" gpu="rtx-5060-ti-16gb" verdict="S" />
+
+### Is 16GB enough, or should I aim for 24GB?
+
+16GB is enough if your models stop at gpt-oss-20b and 14B dense models; aim for 24GB if you want dense models around 30B on the GPU alone. gpt-oss-20b Runs great on the RTX 5060 Ti 16GB.<Expect model="gpt-oss-20b" gpu="rtx-5060-ti-16gb" verdict="S" /> Qwen3.8 27B needs <Num kind="needGB" model="qwen3.8-27b" />, so it Runs slowly on 16GB cards<Expect model="qwen3.8-27b" gpu="rtx-5060-ti-16gb" verdict="B" /><Expect model="qwen3.8-27b" gpu="rx-9070-xt" verdict="B" /><Expect model="qwen3.8-27b" gpu="rtx-4060-ti-16gb" verdict="B" /> and Runs great on the 24GB RTX 3090;<Expect model="qwen3.8-27b" gpu="rtx-3090" verdict="S" /> on a 16GB card, IQ4_XS brings it up to Runs well.<Expect model="qwen3.8-27b" gpu="rtx-5060-ti-16gb" quant="IQ4_XS" verdict="A" />
+
+### Can a cheap GPU with plenty of system RAM run large models?
+
+MoE models, often yes; large dense models, only slowly. With 32GB of RAM, Qwen3.5 35B-A3B Runs well on the 8GB RTX 5060, a theoretical estimate,<Expect model="qwen3.5-35b-a3b" gpu="rtx-5060" verdict="A" confidence="theoretical" /> but the dense Qwen3.8 27B Runs slowly there, with much of it in system RAM.<Expect model="qwen3.8-27b" gpu="rtx-5060" mode="partial-offload" verdict="B" /> For gpt-oss-120b, CanRun's calculation needs 64GB of RAM on a 12GB or larger card<Expect model="gpt-oss-120b" gpu="rtx-3060-12gb" ram="64" fits="true" /><Expect model="gpt-oss-120b" gpu="rtx-3060-12gb" ram="32" fits="false" /> and 96GB on an 8GB card.<Expect model="gpt-oss-120b" gpu="rtx-4060" ram="64" fits="false" /><Expect model="gpt-oss-120b" gpu="rtx-4060" ram="96" fits="true" /> Check what your runtime did with `ollama ps` or the llama.cpp log.
+
+### Do AMD and Intel cards run the same models as NVIDIA cards?
+
+At the same memory size, they fit the same models in CanRun's calculation; speed and software setup differ. gpt-oss-20b Runs great on the RX 9060 XT 16GB, as on the RTX 5060 Ti 16GB,<Expect model="gpt-oss-20b" gpu="rx-9060-xt-16gb" verdict="S" /><Expect model="gpt-oss-20b" gpu="rtx-5060-ti-16gb" verdict="S" /> and Qwen3 14B Runs well on the Arc B580, as on the RTX 3060 12GB.<Expect model="qwen3-14b" gpu="arc-b580" verdict="A" /><Expect model="qwen3-14b" gpu="rtx-3060-12gb" verdict="A" /> Before buying, check that your runtime supports the card on your OS.
+
+## Sources
+
+- [NVIDIA: GeForce RTX 3060 family specifications](https://www.nvidia.com/en-us/geforce/graphics-cards/30-series/rtx-3060-3060ti/): the RTX 3060 in 12GB (192-bit) and 8GB (128-bit) memory versions.
+- [NVIDIA: GeForce RTX 3090 and 3090 Ti specifications](https://www.nvidia.com/en-us/geforce/graphics-cards/30-series/rtx-3090-3090ti/): 24GB, graphics card power and required system power for the reference design.
+- [NVIDIA: GeForce RTX 5060 family specifications](https://www.nvidia.com/en-us/geforce/graphics-cards/50-series/rtx-5060-family/): RTX 5060 Ti memory options, total graphics power and required system power for the reference design.
+- [Ollama docs: hardware support](https://docs.ollama.com/gpu): Radeon cards supported through ROCm on Windows and on Linux, and Vulkan support on by default.
+- [Ollama docs: context length](https://docs.ollama.com/context-length): the default context by GPU memory.
+- [Ollama FAQ](https://docs.ollama.com/faq): the PROCESSOR column of `ollama ps`.
+- [llama.cpp: server README](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md): `--n-cpu-moe N`, which keeps the MoE weights of the first N layers on the CPU.
+- [gpt-oss-20b model card](https://huggingface.co/openai/gpt-oss-20b): total and active parameters, runs within 16GB of memory.
+- [Qwen3.5-35B-A3B model card](https://huggingface.co/Qwen/Qwen3.5-35B-A3B): total and activated parameters.
+- [llama.cpp: guide to running gpt-oss](https://github.com/ggml-org/llama.cpp/discussions/15396): llama-bench results on RTX cards, the source of the measured gpt-oss-20b cells.
+- [llama.cpp: Vulkan performance thread](https://github.com/ggml-org/llama.cpp/discussions/10879): public llama-bench results for Radeon and Arc cards through the Vulkan backend.
+- [LocalScore: GeForce RTX 3060](https://www.localscore.ai/accelerator/43) and [LocalScore: GeForce RTX 4060](https://www.localscore.ai/accelerator/137): the measured Llama 3.1 8B results.
+- Street prices in our GPU data: the [MLQ.ai GPU price tracker](https://mlq.ai/news/gpu-price-tracker-rtx-5090-tops-4200) for the RTX 50 series, [Tom's Hardware GPU coverage](https://www.tomshardware.com/pc-components/gpus) for the RTX 3060 12GB and the Radeon and Arc cards, and Best Value GPU's new and used price histories for the [RTX 3090](https://www.bestvaluegpu.com/history/new-and-used-rtx-3090-price-history) and the [RTX 4090](https://www.bestvaluegpu.com/history/new-and-used-rtx-4090-price-history).

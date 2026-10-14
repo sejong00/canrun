@@ -1,0 +1,155 @@
+When a local model is slow and your CPU is doing the work, first find out where the model was loaded: run `ollama ps` and read the PROCESSOR column, or check LM Studio's GPU offload setting. A CPU/GPU split means the model did not fit in VRAM, so compare its memory need with what your card can use and shrink the context, the KV cache and the quant, in that order. If `ollama ps` reads 100% CPU for a model that fits, the runtime never found your GPU, and the fix is a driver or backend setting rather than memory.
+
+## First, check where the model loaded
+
+`ollama ps` lists the models Ollama has in memory. According to the Ollama FAQ, PROCESSOR reads `100% GPU` when a model sits entirely in VRAM, `100% CPU` when it sits entirely in system memory, and a pair such as `48%/52% CPU/GPU` when it is split between the two. The same row shows CONTEXT, the context length Ollama allocated. Run it while the model is still loaded, because Ollama unloads idle models after a while (`OLLAMA_KEEP_ALIVE` sets how long).
+
+Ollama also keeps a server log: on Windows it is `server.log` in `%LOCALAPPDATA%\Ollama`, on macOS `~/.ollama/logs/server.log`, and on Linux with systemd you read it with `journalctl -u ollama`. Since version 0.30, Ollama runs GGUF models with llama.cpp's server and passes its messages into that log. When llama.cpp loads a model it prints a line of the form `offloaded N/M layers to GPU`. M is one more than the model's layer count, because the output layer is counted too.
+
+LM Studio shows the GPU offload setting in its load panel, next to an estimate of the memory the load will take. Since version 0.3.27 that estimate also accounts for the context length and flash attention, and LM Studio warns before a load that is likely to run out of memory. Anything below the maximum offload means some layers run on the CPU.
+
+On Windows, Task Manager's Performance tab shows two memory figures for each GPU: Dedicated GPU memory, the card's own VRAM, and Shared GPU memory, system RAM the GPU can borrow. Its GPU graphs show four engines picked by default, so the engine doing the work can be out of view; click an engine name to switch. `nvidia-smi` reports total memory use on NVIDIA cards, but on Windows it cannot show memory per process in the default WDDM driver mode.
+
+What you see points to one of three cases:
+
+- **A CPU/GPU split:** the model, its context or both did not fit. Read the next two sections.
+- **100% CPU for a model that should fit:** the GPU was not found or not used. Skip to the section on drivers and backends.
+- **100% GPU, but slow, with shared GPU memory climbing:** the driver is most likely borrowing system RAM without telling you. The out-of-memory section covers this.
+
+## The model did not fit: compare the need with usable memory
+
+On a graphics card a model needs room for three things: the weights that go on the card, the KV cache (the memory that holds the conversation so far) and a compute buffer, the runtime's working memory, which comes to about half a gigabyte at 8k in CanRun's calculation. Compare that total with what the card can use, not the number on the box. A card that also drives a Windows display gives part of its VRAM to the desktop. Each part is explained in <GuideLink slug="vram-requirements" />.
+
+Take <ComboLink model="gemma-3-12b" gpu="rtx-4060" />. At Q4_K_M, a 4-bit quant, and an 8k context with an f16 KV cache, Gemma 3 12B needs <Num kind="needGB" model="gemma-3-12b" />. An 8GB RTX 4060 can use <Num kind="usableGB" gpu="rtx-4060" />. The KV cache and the buffer stay on the GPU, so the weights that no longer fit go to system RAM, as the second bar shows.
+
+<MemoryBreakdown model="gemma-3-12b" gpu="rtx-4060" />
+
+The overflow looks small next to the whole model, yet in CanRun's calculation less than nine-tenths of the weights stay on the GPU, and Gemma 3 12B Runs slowly on this card (a calibrated estimate).<Expect model="gemma-3-12b" gpu="rtx-4060" verdict="B" mode="partial-offload" confidence="calibrated" /> Every new token reads all of the weights once. The RTX 4060 reads its own memory at <Num kind="bandwidth" gpu="rtx-4060" />, while dual-channel DDR5-5600, the system RAM our tables assume, manages <Num kind="bandwidth" gpu="cpu-ddr5-5600-2ch" />. The layers in system RAM are read at that slower rate, and they hold back the whole token. For that reason CanRun rates a dense model with less than nine-tenths of its weights on the GPU no higher than Runs slowly. The thresholds are listed near the end of this guide.
+
+A split in `ollama ps` is therefore not an error. The model works, only more slowly, and the fix is to make the need smaller than the card's usable memory.
+
+## What to shrink first: context, KV cache, quant, then MoE experts
+
+Try these in order. The first two cost little or nothing in output quality, the third costs a little, and the fourth only applies to mixture-of-experts (MoE) models.
+
+### Context length
+
+The KV cache grows with the context, so the same model can fit at one length and spill at the next. <ComboLink model="qwen3-14b" gpu="rtx-3060-12gb" /> shows it. At 8k with an f16 KV cache, Qwen3 14B needs <Num kind="needGB" model="qwen3-14b" />, which fits in the <Num kind="usableGB" gpu="rtx-3060-12gb" /> this card can use with less than a gigabyte to spare. It Runs well there.<Expect model="qwen3-14b" gpu="rtx-3060-12gb" verdict="A" mode="full-gpu" /> At 16k the need rises to <Num kind="needGB" model="qwen3-14b" ctx="16384" />, over the line, and part of the weights move to system RAM.<Expect model="qwen3-14b" gpu="rtx-3060-12gb" ctx="16384" fits="true" mode="partial-offload" />
+
+<RuntimeFact id="ollama-default-ctx" />. A 12GB card therefore starts at 4k, and the split appears once you raise the context yourself or a client app asks for a longer one. Pick the longest context whose need stays under the card's usable memory. Where to set it is covered in <GuideLink slug="ollama-context-length" />.
+
+<CtxTable model="qwen3-14b" gpu="rtx-3060-12gb" />
+
+### KV cache type
+
+<RuntimeFact id="ollama-kv-cache-type" />. A q8_0 KV cache takes a little over half the space of f16, and the Ollama FAQ describes its precision loss as very small. On the RTX 3060 12GB, Qwen3 14B at 16k with q8_0 needs <Num kind="needGB" model="qwen3-14b" ctx="16384" kv="q8_0" /> and fits again.<Expect model="qwen3-14b" gpu="rtx-3060-12gb" ctx="16384" kv="q8_0" fits="true" mode="full-gpu" /> At 32k, q8_0 is not enough (<Num kind="needGB" model="qwen3-14b" ctx="32768" kv="q8_0" />).<Expect model="qwen3-14b" gpu="rtx-3060-12gb" ctx="32768" kv="q8_0" fits="true" mode="partial-offload" /> q4_0 brings it down to <Num kind="needGB" model="qwen3-14b" ctx="32768" kv="q4_0" />, inside the limit with little margin, so check `ollama ps` after loading.<Expect model="qwen3-14b" gpu="rtx-3060-12gb" ctx="32768" kv="q4_0" fits="true" mode="full-gpu" /> In llama.cpp the same switch is `--cache-type-k` and `--cache-type-v`. What each type saves is covered in <GuideLink slug="kv-cache-context" />.
+
+### A smaller quant
+
+When the weights alone are too big, a shorter context cannot fix it. Gemma 3 12B on the RTX 4060 still spills at 4k with an f16 KV cache (the context table on its combo page shows every length).<Expect model="gemma-3-12b" gpu="rtx-4060" ctx="4096" fits="true" mode="partial-offload" /> Dropping from Q4_K_M to IQ4_XS shrinks the weights. The model is still slightly too big, but more than nine-tenths of the weights now stay on the GPU, and it Runs well.<Expect model="gemma-3-12b" gpu="rtx-4060" quant="IQ4_XS" verdict="A" mode="partial-offload" /> Only Q2_K, a Heavy loss quant, fits fully on this card.<Expect model="gemma-3-12b" gpu="rtx-4060" quant="Q2_K" fits="true" mode="full-gpu" />
+
+<QuantLadder model="gemma-3-12b" gpu="rtx-4060" />
+
+For this pair, then, the realistic choice is IQ4_XS with a small spill, or a smaller model. The quality cost of each level is compared in <GuideLink slug="gguf-quantization" />.
+
+### MoE models: experts in system RAM
+
+A mixture-of-experts model has a better way to split than moving whole layers. Only a few experts work on each token, so the attention and shared weights can stay on the GPU while the expert weights that do not fit sit in system RAM. gpt-oss-20b needs <Num kind="needGB" model="gpt-oss-20b" />, more than the RTX 3060 12GB can use. With part of its experts in RAM it Runs well in CanRun's calculation, a theoretical estimate (±30%).<Expect model="gpt-oss-20b" gpu="rtx-3060-12gb" verdict="A" mode="cpu-moe" confidence="theoretical" />
+
+In llama.cpp, `--n-cpu-moe N` keeps the expert weights of the first N layers on the CPU, and its fit option, on by default, adjusts placement settings you leave unset to fit the memory on each device. Recent Ollama versions leave the GPU layer count to llama.cpp unless you set `num_gpu`. Expect `ollama ps` to show a CPU/GPU split for a model like this; for an MoE model that is the intended arrangement, not a fault. <GuideLink slug="moe-cpu-offload" /> covers how much system RAM each card needs for the larger MoE models.
+
+## The GPU is not used at all: drivers, CUDA, ROCm and Vulkan
+
+If `ollama ps` reads 100% CPU for a model that should fit, memory is not the problem. Llama 3.1 8B at Q4_K_M needs <Num kind="needGB" model="llama-3.1-8b" /> at 8k, against <Num kind="usableGB" gpu="rtx-4060" /> on an RTX 4060, so in CanRun's calculation it sits fully on the GPU.<Expect model="llama-3.1-8b" gpu="rtx-4060" fits="true" mode="full-gpu" /> If it lands on the CPU instead, the runtime did not find or could not use the card.
+
+Start with the server log. When the server starts, Ollama writes one `inference compute` line for each GPU it found, with the library it will use (such as CUDA, ROCm or Vulkan), the card's name and its total and available memory. If the only such line reads `library=cpu`, no GPU was detected. Quitting Ollama and starting `ollama serve` with `OLLAMA_DEBUG=1` adds more detail about discovery; in PowerShell that is `$env:OLLAMA_DEBUG="1"; ollama serve`.
+
+The usual suspects, by vendor:
+
+- **NVIDIA:** Ollama's hardware page lists the compute capability and driver version it needs. If your driver is older, update it from NVIDIA. On Linux, Ollama can fall back to the CPU after suspend and resume; its documentation suggests reloading the `nvidia_uvm` module.
+- **AMD on Windows:** Ollama's ROCm support on Windows covers the Radeon RX 7600 to 7900 range and the Radeon PRO W7500 to W7900. Other Radeon cards, such as the <HubLink gpu="rx-9070-xt" />, are not on that list. Ollama reaches more GPUs through Vulkan, which it enables by default when the backend is installed, and its Windows page names Vulkan as the fallback for RX 6000 cards whose driver does not expose ROCm.
+- **AMD on Linux:** Ollama needs the ROCm v7 driver, and the account running Ollama usually needs to be in the `render` or `video` group. For cards ROCm does not support, `HSA_OVERRIDE_GFX_VERSION` can map the card to a close supported target, on Linux only.
+- **Intel Arc:** cards such as the <HubLink gpu="arc-b580" /> go through Vulkan as well. On Linux, install Intel's GPU driver packages first; Ollama's hardware page links Intel's instructions.
+
+Some settings hide the GPU on purpose. Ollama's hardware page says an invalid ID such as `-1` in `CUDA_VISIBLE_DEVICES` or `ROCR_VISIBLE_DEVICES` forces the CPU. `OLLAMA_VULKAN=0` turns Vulkan off, and `num_gpu` set to 0 in a Modelfile or a request keeps every layer on the CPU. Look for leftovers in your environment variables and Modelfiles. On laptops with both integrated and discrete graphics, `GGML_VK_VISIBLE_DEVICES` picks which Vulkan device Ollama uses.
+
+LM Studio ships several builds of llama.cpp: CPU-only, CUDA, Vulkan, ROCm and Metal. Press Ctrl+Shift+R (Cmd+Shift+R on a Mac) to open the runtimes tab and make sure a GPU build is selected. Its hardware settings (Ctrl+Shift+H) have a switch for each GPU, and a GPU that is switched off there is not used.
+
+Other programs count too. Ollama's scheduler and llama.cpp's fit both plan around the VRAM that is free when the model loads. A game, a browser using hardware acceleration or a second model already in memory leaves less of it, so the same model can load fully one day and split the next. `ollama ps` shows every model Ollama has loaded, and `ollama stop` followed by a model name unloads one.
+
+## LM Studio GPU offload: how many layers to set
+
+LM Studio's GPU offload setting decides how many of the model's layers go to the GPU. Its command-line tool takes the same setting as a fraction: `lms load` with `--gpu 0.5` puts half the layers on the GPU, `--gpu max` puts all of them there and `--gpu off` none. Left unset, LM Studio chooses for itself. `lms load --estimate-only` prints the memory estimate without loading the model, taking `--gpu` and `--context-length` into account.
+
+When the model fits, set the offload to the maximum. Every layer left on the CPU slows down each token, so a partial setting buys nothing if the whole model fits. When LM Studio warns at the maximum, you can work out a starting value the way CanRun picks the `-ngl` value in the llama.cpp commands on its combo pages:
+
+1. Take the memory your card can use and subtract the KV cache for the context you want, plus about half a gigabyte for the compute buffer.
+2. Divide what is left by the size of the model file. The result is the share of layers that fits.
+3. Multiply by the model's layer count and round down.
+
+For <ComboLink model="qwen3-14b" gpu="rtx-4060" />, the Q4_K_M file is <Num kind="fileGB" model="qwen3-14b" /> and Qwen3 14B has <Num kind="layers" model="qwen3-14b" /> layers. At 8k with an f16 KV cache the KV cache takes <Num kind="kvGB" model="qwen3-14b" />, and the card can use <Num kind="usableGB" gpu="rtx-4060" />. About three-fifths of the layers fit, which is the value that combo page puts after `-ngl`. Set the slider there and let LM Studio's estimate confirm it; if it still warns, go down a layer or two. With that much of the model on the CPU, Qwen3 14B Runs slowly on this card.<Expect model="qwen3-14b" gpu="rtx-4060" verdict="B" mode="partial-offload" />
+
+Two more settings matter. "Limit Model Offload to Dedicated GPU Memory" keeps the weights out of shared GPU memory, which LM Studio's release notes say can slow things down a lot; context buffers can still land there. In version 0.3.14, where it appeared, it worked with CUDA only. For MoE models, lowering the layer count is the wrong tool. "Force Model Expert Weights onto CPU", added in 0.3.23 and built on the same mechanism as llama.cpp's `--n-cpu-moe`, moves expert weights to system RAM instead. As the release notes describe it, the switch moves all of them, while CanRun's MoE estimate keeps the experts that fit on the GPU, so our speed band does not describe that setting.
+
+## When you get a CUDA out of memory error
+
+An out-of-memory error means the runtime asked for more VRAM than was free. Pairs with little headroom are the ones at risk. Qwen3 14B at 8k fits on the RTX 3060 12GB with less than a gigabyte to spare (see the context table above), so a game or browser that takes some VRAM can push the same load over the edge. Fix it in this order:
+
+1. **Free VRAM.** Close games and other GPU-heavy programs, and unload models you are not using with `ollama stop`.
+2. **Shorten the context or switch the KV cache to q8_0**, as in the sections above.
+3. **Put fewer layers on the GPU.** Inside `ollama run`, `/set parameter num_gpu 20` sets how many layers go to the GPU (pick your own number); over the API it is `num_gpu` under `options`. In LM Studio, move the offload slider down. In llama.cpp, lower `-ngl`, or raise `--fit-target`, the margin its automatic fit leaves free on each device. Recent Ollama versions list the same setting as `LLAMA_ARG_FIT_TARGET` in `ollama serve --help`.
+4. **Use a smaller quant.**
+
+On Windows, an NVIDIA card may not raise the error at all. NVIDIA's drivers let programs borrow system RAM as shared GPU memory when VRAM runs short, so the program keeps running but slows sharply, and the tool can still report the model as fully on the GPU. To turn this off for one program, open NVIDIA Control Panel, go to Manage 3D settings, then Program Settings, add the program's executable and set "CUDA - Sysmem Fallback Policy" to "Prefer No Sysmem Fallback". NVIDIA warns that the program may then crash when it runs out of memory, so do this only if you would rather see an error than a silent slowdown.
+
+## How sure are these numbers?
+
+The memory figures (weights, KV cache, compute buffer) are calculated from real GGUF file sizes and headers and each model's published configuration. The speeds are estimates with a band and a confidence label. Calibrated means ±12% for dense models fully on an NVIDIA or AMD card and ±20% for partial offload, MoE models and other hardware. Theoretical means ±30%, and it applies here to gpt-oss-20b with its experts in system RAM. The context and quant tables show each cell's label.
+
+CanRun's calculation is not the runtime's own plan. Ollama, LM Studio and llama.cpp make their own memory estimates and keep their own margins: llama.cpp's automatic fit leaves a margin free on each device by default. A pair that fits with little headroom in our tables can therefore come out split in Ollama. On your machine, `ollama ps` and LM Studio's estimate are the ground truth. Our tables assume Windows with the card driving the display, 32GB of DDR5 system RAM, one model loaded and one request at a time.
+
+Verdict names in the text refer to an 8k context with an f16 KV cache unless a sentence says otherwise. The thresholds:
+
+<Threshold />
+
+## FAQ
+
+### Why does `ollama ps` show 100% CPU on my NVIDIA card?
+
+Ollama did not detect a usable GPU, or a setting hides it. Look for the `inference compute` lines in the server log: `library=cpu` means no GPU was found. Update the driver if it is older than Ollama's hardware page lists, and check for `CUDA_VISIBLE_DEVICES` or `num_gpu` set to 0 left over in your settings. If the model's need is well under your card's usable memory, memory is not the cause.
+
+### Is a CPU/GPU split in `ollama ps` a problem?
+
+Only for speed. The model works, but the part in system RAM is read at system-memory speed, about a third of an RTX 4060's bandwidth with dual-channel DDR5-5600. For a dense model with less than nine-tenths of its weights on the GPU, CanRun's verdict is Runs slowly at best. For an MoE model with its experts in system RAM, a split is expected.
+
+### How many GPU layers should I set in LM Studio?
+
+All of them, if the model fits in your card's usable memory. If it does not, subtract the KV cache and about half a gigabyte of compute buffer from usable memory, divide by the model file size, multiply by the layer count and round down. For a dense model that does not fit, each CanRun combo page prints that value after `-ngl` in its llama.cpp command. For MoE models, keep every layer on the GPU and move expert weights to RAM instead.
+
+### Does Ollama use AMD Radeon GPUs on Windows?
+
+Yes, through ROCm for the cards on Ollama's Windows list (the Radeon RX 7600 to 7900 range and Radeon PRO W7500 to W7900) and through Vulkan for many others. Vulkan is enabled by default when its backend is installed. The `inference compute` line in the server log shows which library Ollama picked for your card.
+
+## Sources
+
+- [Ollama FAQ](https://docs.ollama.com/faq): the PROCESSOR column of `ollama ps`, `OLLAMA_KEEP_ALIVE`, unloading with `ollama stop`, KV cache quantization.
+- [Ollama docs: hardware support](https://docs.ollama.com/gpu): NVIDIA compute capability and drivers, AMD ROCm lists for Windows and Linux, `HSA_OVERRIDE_GFX_VERSION`, Vulkan on by default, `CUDA_VISIBLE_DEVICES`, `ROCR_VISIBLE_DEVICES` and `GGML_VK_VISIBLE_DEVICES`, the Linux suspend and resume fix.
+- [Ollama docs: Windows](https://docs.ollama.com/windows): log locations, Vulkan as the fallback for RX 6000 cards, choosing the discrete GPU on mixed systems.
+- [Ollama docs: troubleshooting](https://docs.ollama.com/troubleshooting): server logs on each OS, `OLLAMA_DEBUG`, AMD group membership on Linux.
+- [Ollama 0.30 release notes](https://github.com/ollama/ollama/releases/tag/v0.30.0): models now run on llama.cpp.
+- [Ollama source: discover/types.go](https://github.com/ollama/ollama/blob/main/discover/types.go): the `inference compute` log line and its fields.
+- [Ollama source: llm/llama_server.go](https://github.com/ollama/ollama/blob/main/llm/llama_server.go): GGUF models run through llama-server, `num_gpu` passed as `-ngl`, layer count left to llama.cpp by default.
+- [Ollama source: cmd/interactive.go](https://github.com/ollama/ollama/blob/main/cmd/interactive.go): `/set parameter num_gpu`.
+- [Ollama source: envconfig/config.go](https://github.com/ollama/ollama/blob/main/envconfig/config.go): `OLLAMA_VULKAN`, `LLAMA_ARG_FIT_TARGET`.
+- [Ollama source: server/sched.go](https://github.com/ollama/ollama/blob/main/server/sched.go): planning around free GPU memory at load time.
+- [llama.cpp server README](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md): `-ngl`, `--fit`, `--fit-target`, `--n-cpu-moe`, `--cache-type-k` and `--cache-type-v`.
+- [llama.cpp source: src/llama-model.cpp](https://github.com/ggml-org/llama.cpp/blob/master/src/llama-model.cpp): the `offloaded N/M layers to GPU` log line, which counts the output layer.
+- [LM Studio docs: lms load](https://lmstudio.ai/docs/cli/load): `--gpu` values, the automatic default, `--estimate-only`.
+- [LM Studio docs](https://lmstudio.ai/docs/app): managing runtimes with Ctrl+Shift+R.
+- [LM Studio 0.3.9 release notes](https://lmstudio.ai/blog/lmstudio-v0.3.9): the CPU-only, CUDA, Vulkan, ROCm and Metal llama.cpp builds.
+- [LM Studio 0.3.14 release notes](https://lmstudio.ai/blog/lmstudio-v0.3.14): per-GPU switches, Limit Model Offload to Dedicated GPU Memory, shared GPU memory slowing things down.
+- [LM Studio 0.3.23 release notes](https://lmstudio.ai/blog/lmstudio-v0.3.23): Force Model Expert Weights onto CPU.
+- [LM Studio 0.3.27 release notes](https://lmstudio.ai/blog/lmstudio-v0.3.27): memory estimates in the load panel, out-of-memory warnings.
+- [NVIDIA support: System Memory Fallback](https://nvidia.custhelp.com/app/answers/detail/a_id/5490): the shared memory fallback and the CUDA - Sysmem Fallback Policy setting.
+- [Microsoft DirectX blog: GPUs in the Task Manager](https://devblogs.microsoft.com/directx/gpus-in-the-task-manager/): dedicated and shared GPU memory, choosing which engine a graph shows.
+- [NVIDIA docs: nvidia-smi](https://docs.nvidia.com/deploy/nvidia-smi/index.html): memory and process reporting, and the WDDM limit on per-process memory.

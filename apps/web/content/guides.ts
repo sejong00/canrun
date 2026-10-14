@@ -36,6 +36,11 @@ export const GUIDE_SLUGS = [
   'korean-open-llms',
   'mac-local-llm',
   'kv-cache-context',
+  // 10-15 D75: 배치 1 새 가이드 초안 4편 — 사용자 감수 대기(draft = noindex·미링크)
+  'gpu-by-budget',
+  'moe-cpu-offload',
+  'local-coding-agents',
+  'gpu-offload-check',
 ] as const;
 
 export type GuideSlug = (typeof GUIDE_SLUGS)[number];
@@ -45,6 +50,9 @@ const BATCH1_MODELS = ['llama-3.1-8b', 'gemma-3-12b', 'qwen3-14b', 'gpt-oss-20b'
 
 /** 09-30 사용자가 채팅으로 6편 모두 게시 승인 (D40) */
 const PUBLISHED = { status: 'published', reviewedAt: '2026-09-30', datePublished: '2026-09-30', dateModified: '2026-09-30', author: 'CanRun' } as const;
+
+/** 10-15 D75 배치 1 초안 — 게시 전환은 사용자가 슬러그별로 승인한 뒤(D40, reviewedAt·날짜 갱신과 함께) */
+const DRAFT_1015 = { status: 'draft', datePublished: '2026-10-15', dateModified: '2026-10-15', author: 'CanRun' } as const;
 
 export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
   'vram-requirements': {
@@ -181,6 +189,88 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
         title: 'KV 캐시와 컨텍스트 길이 — 컨텍스트를 늘리면 VRAM이 얼마나 더 필요할까',
         description:
           '컨텍스트가 길어지면 왜 메모리가 더 드는지, 모델마다 KV 캐시가 토큰당 얼마나 차지하는지 정리했습니다. KV 캐시를 q8_0·q4_0으로 양자화하면 얼마나 줄어드는지도 다룹니다.',
+      },
+    },
+  },
+  'gpu-by-budget': {
+    ...DRAFT_1015,
+    grids: {
+      // 가격대별 카드 8종(이 글을 쓸 때 data/gpus.json 실거래가 낮은 순 — 본문이 "when this guide was written"으로 이 순서를 밝힌다.
+      // 가격을 고치면 본문의 가격 순서 문장 4곳과 이 행 순서를 다시 확인한다) × 인기 모델 6
+      budget: {
+        gpus: ['rtx-3060-12gb', 'rtx-5060', 'rx-9060-xt-16gb', 'rtx-5060-ti-16gb', 'rtx-5070', 'rtx-5070-ti', 'rtx-3090', 'rtx-5090'],
+        models: ['llama-3.1-8b', 'qwen3-14b', 'gpt-oss-20b', 'qwen3.8-27b', 'qwen3.5-35b-a3b', 'gpt-oss-120b'],
+      },
+    },
+    related: ['vram-requirements', 'gguf-quantization', 'kv-cache-context'],
+    locales: {
+      en: {
+        // 10-15 사용자 결정: 제목에 "Recommended"/"추천" 허용(AUTHORING §2 예외 — 본문은 메모리 기준 데이터로 답하고 제품 구매를 권하지 않는다)
+        title: 'Recommended GPUs for local LLMs in 2026: what each budget runs',
+        description:
+          'Which local LLMs each GPU memory size runs, 8GB to 32GB, with dated street prices: 12GB vs 8GB cards, a new 16GB card vs a 24GB RTX 3090, and when system RAM helps.',
+      },
+      ko: {
+        title: '로컬 LLM 그래픽카드 추천 — 예산별로 돌릴 수 있는 모델 (2026)',
+        description:
+          '그래픽카드 VRAM 용량별로 돌아가는 로컬 LLM과 실거래가를 정리했습니다. 12GB와 8GB 카드, 신품 16GB와 24GB RTX 3090을 데이터로 비교하고, 시스템 RAM이 도움이 되는 경우도 다룹니다.',
+      },
+    },
+  },
+  'moe-cpu-offload': {
+    ...DRAFT_1015,
+    grids: {
+      moe: {
+        gpus: ['rtx-4060', 'rtx-3060-12gb', 'rtx-5060-ti-16gb', 'rtx-3090', 'rtx-5090'],
+        models: ['gpt-oss-20b', 'gemma-4-26b-a4b', 'qwen3-30b-a3b-2507', 'qwen3.6-35b-a3b', 'gpt-oss-120b', 'qwen3.5-122b-a10b'],
+      },
+    },
+    related: ['vram-requirements', 'kv-cache-context', 'gguf-quantization'],
+    locales: {
+      en: {
+        title: 'Running MoE models bigger than your GPU: gpt-oss-120b with system RAM',
+        description:
+          'How much system RAM gpt-oss-120b and other MoE models need on 8–32 GB cards, how llama.cpp and Ollama keep experts in RAM, and why RAM speed sets the pace.',
+      },
+      ko: {
+        title: '그래픽카드보다 큰 MoE 모델 돌리기 — gpt-oss-120b와 시스템 RAM',
+        description:
+          'gpt-oss-120b 같은 MoE 모델을 8~32GB 그래픽카드로 돌릴 때 필요한 시스템 RAM을 카드별로 정리했습니다. 전문가를 RAM에 두는 llama.cpp·Ollama 설정과 RAM 속도의 영향도 다룹니다.',
+      },
+    },
+  },
+  'local-coding-agents': {
+    ...DRAFT_1015,
+    // ComboGrid 는 8k 고정이라 쓰지 않는다 — 32k·64k·128k 는 CtxTable 로
+    grids: {},
+    related: ['ollama-context-length', 'kv-cache-context', 'vram-requirements'],
+    locales: {
+      en: {
+        title: 'Local models for OpenClaw and coding agents: context length and VRAM',
+        description:
+          'How much context OpenClaw and coding agents need on a local model, which coding models hold 64k on 16GB and 24GB GPUs, and why replies can start slowly.',
+      },
+      ko: {
+        title: 'OpenClaw·OpenCode를 로컬 모델로 — 에이전트에 필요한 컨텍스트와 VRAM',
+        description:
+          'OpenClaw·OpenCode 같은 에이전트를 로컬 모델로 쓸 때 필요한 컨텍스트와, 16GB·24GB 그래픽카드에서 32k·64k가 들어가는 코딩 모델을 정리했습니다. 답이 늦게 시작되는 이유도 다룹니다.',
+      },
+    },
+  },
+  'gpu-offload-check': {
+    ...DRAFT_1015,
+    grids: {},
+    related: ['ollama-context-length', 'kv-cache-context', 'gguf-quantization'],
+    locales: {
+      en: {
+        title: 'Ollama or LM Studio not using your GPU? Check the split and fix the offload',
+        description:
+          'Find out where Ollama or LM Studio loaded your model, why it splits between CPU and GPU or ignores the GPU, and what to shrink or fix first.',
+      },
+      ko: {
+        title: 'Ollama·LM Studio가 GPU를 안 쓸 때 — 100% GPU 확인과 오프로드 설정',
+        description:
+          'Ollama·LM Studio가 모델을 GPU와 CPU에 어떻게 나눠 올렸는지 확인하는 법을 정리했습니다. GPU를 아예 못 잡을 때 볼 드라이버·백엔드 설정과 줄이는 순서도 다룹니다.',
       },
     },
   },

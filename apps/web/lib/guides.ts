@@ -40,6 +40,22 @@ const LOADERS: Readonly<Record<GuideSlug, Readonly<Record<Locale, () => Promise<
     en: () => import('@/content/en/guides/kv-cache-context.mdx') as Promise<GuideModule>,
     ko: () => import('@/content/ko/guides/kv-cache-context.mdx') as Promise<GuideModule>,
   },
+  'gpu-by-budget': {
+    en: () => import('@/content/en/guides/gpu-by-budget.mdx') as Promise<GuideModule>,
+    ko: () => import('@/content/ko/guides/gpu-by-budget.mdx') as Promise<GuideModule>,
+  },
+  'moe-cpu-offload': {
+    en: () => import('@/content/en/guides/moe-cpu-offload.mdx') as Promise<GuideModule>,
+    ko: () => import('@/content/ko/guides/moe-cpu-offload.mdx') as Promise<GuideModule>,
+  },
+  'local-coding-agents': {
+    en: () => import('@/content/en/guides/local-coding-agents.mdx') as Promise<GuideModule>,
+    ko: () => import('@/content/ko/guides/local-coding-agents.mdx') as Promise<GuideModule>,
+  },
+  'gpu-offload-check': {
+    en: () => import('@/content/en/guides/gpu-offload-check.mdx') as Promise<GuideModule>,
+    ko: () => import('@/content/ko/guides/gpu-offload-check.mdx') as Promise<GuideModule>,
+  },
 };
 
 export function isGuideSlug(slug: string): slug is GuideSlug {

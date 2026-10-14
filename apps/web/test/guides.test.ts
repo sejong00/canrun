@@ -75,6 +75,26 @@ describe('guide registry ↔ MDX files ↔ loader map', () => {
       }
     }
   });
+
+  it('titles and descriptions: no prose bans or "best"; "추천"/"Recommended" only in user-approved titles (AUTHORING §2, 10-15 D75)', () => {
+    // 제목 예외는 사용자가 채팅으로 승인한 슬러그만 — 늘리려면 승인 기록(PROGRESS §4)과 함께 여기에 더한다
+    const RECOMMEND_TITLE_APPROVED: readonly string[] = ['gpu-by-budget'];
+    const problems: string[] = [];
+    for (const slug of GUIDE_SLUGS) {
+      for (const locale of LOCALES) {
+        const { title, description } = GUIDES[slug].locales[locale];
+        for (const [what, text] of [['title', title], ['description', description]] as const) {
+          problems.push(...proseProblems(text, `${locale}/${slug} ${what}`));
+          if (/\bbest\b|최고/i.test(text)) problems.push(`${locale}/${slug} ${what}: "best/최고" is banned in titles and descriptions too`);
+        }
+        if (/추천|recommend/i.test(title) && !RECOMMEND_TITLE_APPROVED.includes(slug)) {
+          problems.push(`${locale}/${slug} title: "추천/Recommended" needs user approval (AUTHORING §2 title exception)`);
+        }
+        if (/추천|recommend/i.test(description)) problems.push(`${locale}/${slug} description: the 추천/Recommended exception covers titles only`);
+      }
+    }
+    expect(problems).toEqual([]);
+  });
 });
 
 describe('guide MDX bodies (D38·D43)', () => {

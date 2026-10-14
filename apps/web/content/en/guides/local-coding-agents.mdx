@@ -1,0 +1,191 @@
+Agents such as OpenClaw, and coding tools such as OpenCode and Claude Code, send far longer prompts than a chat, and Ollama's documentation asks for at least 64k tokens of context when they run on a local model. At that length the KV cache, the memory that holds the context, often decides whether a model stays on the GPU. On a 24GB RTX 3090, Qwen3.8 27B keeps 64k fully on the GPU with the default f16 KV cache.<Expect model="qwen3.8-27b" gpu="rtx-3090" ctx="65536" fits="true" mode="full-gpu" /> Qwen3.6 35B-A3B needs <Num kind="needGB" model="qwen3.6-35b-a3b" ctx="65536" /> there, just over the <Num kind="usableGB" gpu="rtx-3090" /> the card can use, so in CanRun's calculation some of its experts move to system RAM;<Expect model="qwen3.6-35b-a3b" gpu="rtx-3090" ctx="65536" fits="true" mode="cpu-moe" /> a q8_0 KV cache brings it back onto the GPU.<Expect model="qwen3.6-35b-a3b" gpu="rtx-3090" ctx="65536" kv="q8_0" fits="true" mode="full-gpu" /> Once a model fits, the other thing to watch is prompt processing: every turn, the model reads everything the agent sends before it writes a word.
+
+## Why agents need a much longer context than chat
+
+An agent turn carries far more than a chat message: the agent's instructions, a description of every tool it may call, the conversation so far, the files it opened, the output of the commands it ran, and room for the reply, all in the context at once. OpenClaw's page on local models asks you to leave room for all of that, and warns that a model which handles a short prompt can still fail a full agent turn.
+
+Ollama's context-length page says agents, web search and coding tools should get at least 64k tokens, and its integration pages repeat it for OpenCode, OpenClaw and Claude Code. Ollama documents a one-line setup for each (`ollama launch opencode`, `ollama launch openclaw`, `ollama launch claude`), but with a local model the context is still yours to set.
+
+The runtime's own default is much smaller on most cards. <RuntimeFact id="ollama-default-ctx" />. A 16GB card therefore starts at 4k unless something sets the length, and a full window makes Ollama drop the oldest messages without an error (see <GuideLink slug="ollama-context-length" />). OpenClaw sends a context length with its requests to Ollama's native API, which its documentation says is normally capped at 32k for local models it discovers. OpenCode's Ollama example goes through Ollama's OpenAI-compatible endpoint, and Ollama's OpenCode page tells you to set the window yourself, so set it on the Ollama side.
+
+Thinking models spend the same window on their reasoning. Qwen3.6 35B-A3B and Qwen3.8 27B think by default, according to their model cards, and the Qwen3.6 card advises at least 128k of context to preserve its thinking. Every token in the window adds to the KV cache: with an f16 cache, 64k adds <Num kind="kvGB" model="qwen3-30b-a3b-2507" ctx="65536" /> to Qwen3 30B-A3B (2507) but only <Num kind="kvGB" model="qwen3.6-35b-a3b" ctx="65536" /> to Qwen3.6 35B-A3B.
+
+## Which coding models fit at 32k and 64k on 16GB and 24GB cards
+
+The table adds up the graphics card memory each model needs at 64k with an f16 KV cache: the weights at CanRun's baseline quant (Q4_K_M, a 4-bit quant; MXFP4 for gpt-oss-20b), the KV cache, and a compute buffer, the runtime's working memory. Compare each total with what your card can use: in CanRun's calculation, with Windows using the card for the display, that is <Num kind="usableGB" gpu="rtx-5060-ti-16gb" /> on a 16GB card, <Num kind="usableGB" gpu="rtx-3090" /> on a 24GB card and <Num kind="usableGB" gpu="rtx-5090" /> on a 32GB card.
+
+<ModelMemoryTable models="qwen3.5-9b,gpt-oss-20b,mistral-small-3.2-24b,gemma-4-26b-a4b,qwen3.8-27b,qwen3-30b-a3b-2507,nemotron-3.5-lightning-30b-a3b,qwen3.6-35b-a3b" ctx="65536" />
+
+The totals do not follow the file sizes. Qwen3 30B-A3B (2507) has a smaller file than Qwen3.6 35B-A3B (<Num kind="fileGB" model="qwen3-30b-a3b-2507" /> against <Num kind="fileGB" model="qwen3.6-35b-a3b" />), yet at 64k it needs <Num kind="needGB" model="qwen3-30b-a3b-2507" ctx="65536" /> against <Num kind="needGB" model="qwen3.6-35b-a3b" ctx="65536" />, because every one of its layers keeps a KV cache. Verdict names in this guide's text refer to 8k with an f16 KV cache; for longer contexts, the tables give a verdict for every length and KV cache type.
+
+### 24GB: RTX 3090 and RTX 4090
+
+<HubLink model="qwen3.6-35b-a3b" /> is a mixture-of-experts (MoE) model that uses only a small part of its weights for each token. At the 8k baseline it needs <Num kind="needGB" model="qwen3.6-35b-a3b" /> and Runs great on the RTX 3090.<Expect model="qwen3.6-35b-a3b" gpu="rtx-3090" verdict="S" /> At 32k with an f16 KV cache it still stays fully on the GPU.<Expect model="qwen3.6-35b-a3b" gpu="rtx-3090" ctx="32768" fits="true" mode="full-gpu" /> At 64k it needs <Num kind="needGB" model="qwen3.6-35b-a3b" ctx="65536" />, a little over what the card can use. CanRun then keeps as many expert layers on the GPU as fit, moves the rest to system RAM, and labels the speed a theoretical estimate (±30%).<Expect model="qwen3.6-35b-a3b" gpu="rtx-3090" ctx="65536" fits="true" mode="cpu-moe" confidence="theoretical" /> A q8_0 KV cache, which stores the cache in 8 bits, brings 64k down to <Num kind="needGB" model="qwen3.6-35b-a3b" ctx="65536" kv="q8_0" />. That is back on the GPU with little margin, so check `ollama ps` after loading.<Expect model="qwen3.6-35b-a3b" gpu="rtx-3090" ctx="65536" kv="q8_0" fits="true" mode="full-gpu" />
+
+<CtxTable model="qwen3.6-35b-a3b" gpu="rtx-3090" />
+
+The 128k rows matter for this model, since its card advises at least 128k to keep its thinking intact. On a 24GB card that length leaves some experts in system RAM even with a q4_0 KV cache, and the table marks those cells as theoretical estimates.<Expect model="qwen3.6-35b-a3b" gpu="rtx-3090" ctx="131072" kv="q4_0" fits="true" mode="cpu-moe" confidence="theoretical" /> The RTX 4090 can use the same amount of memory, so the fit results match; at 64k with q8_0 it also keeps the model on the GPU.<Expect model="qwen3.6-35b-a3b" gpu="rtx-4090" ctx="65536" kv="q8_0" fits="true" mode="full-gpu" />
+
+<HubLink model="qwen3.8-27b" /> is a dense model, so it reads all of its weights for every token, but only one of its layers in four keeps a KV cache. At the 8k baseline it Runs great on the RTX 3090.<Expect model="qwen3.8-27b" gpu="rtx-3090" verdict="S" /> At 64k with an f16 KV cache it needs <Num kind="needGB" model="qwen3.8-27b" ctx="65536" />, which leaves more than a gigabyte free.<Expect model="qwen3.8-27b" gpu="rtx-3090" ctx="65536" fits="true" mode="full-gpu" /> At 128k with f16 it needs <Num kind="needGB" model="qwen3.8-27b" ctx="131072" />, so part of the weights move to system RAM (partial offload).<Expect model="qwen3.8-27b" gpu="rtx-3090" ctx="131072" fits="true" mode="partial-offload" /> With q8_0 it needs <Num kind="needGB" model="qwen3.8-27b" ctx="131072" kv="q8_0" /> and stays on the GPU with little margin.<Expect model="qwen3.8-27b" gpu="rtx-3090" ctx="131072" kv="q8_0" fits="true" mode="full-gpu" />
+
+<CtxTable model="qwen3.8-27b" gpu="rtx-3090" />
+
+Side by side, the two tables show the trade-off. Qwen3.6 35B-A3B reads only its active experts for each token, so its generation estimates are several times those of Qwen3.8 27B, while Qwen3.8 27B holds 64k on the GPU without changing the KV cache type.
+
+Other models on the 24GB tier:
+
+- <HubLink model="gemma-4-26b-a4b" /> needs <Num kind="needGB" model="gemma-4-26b-a4b" ctx="65536" /> at 64k with f16 and stays on the GPU.<Expect model="gemma-4-26b-a4b" gpu="rtx-3090" ctx="65536" fits="true" mode="full-gpu" />
+- Qwen3 30B-A3B (2507) and <HubLink model="mistral-small-3.2-24b" /> both Run great at the 8k baseline,<Expect model="qwen3-30b-a3b-2507" gpu="rtx-3090" verdict="S" /><Expect model="mistral-small-3.2-24b" gpu="rtx-3090" verdict="S" /> but at 64k with f16 they need <Num kind="needGB" model="qwen3-30b-a3b-2507" ctx="65536" /> and <Num kind="needGB" model="mistral-small-3.2-24b" ctx="65536" />. In CanRun's calculation Qwen3 30B-A3B then moves some experts to system RAM,<Expect model="qwen3-30b-a3b-2507" gpu="rtx-3090" ctx="65536" fits="true" mode="cpu-moe" /> and the dense Mistral Small 3.2 24B part of its weights.<Expect model="mistral-small-3.2-24b" gpu="rtx-3090" ctx="65536" fits="true" mode="partial-offload" /> A q8_0 KV cache keeps both on the GPU at 64k, at <Num kind="needGB" model="qwen3-30b-a3b-2507" ctx="65536" kv="q8_0" /> (little margin) and <Num kind="needGB" model="mistral-small-3.2-24b" ctx="65536" kv="q8_0" />.<Expect model="qwen3-30b-a3b-2507" gpu="rtx-3090" ctx="65536" kv="q8_0" fits="true" mode="full-gpu" /><Expect model="mistral-small-3.2-24b" gpu="rtx-3090" ctx="65536" kv="q8_0" fits="true" mode="full-gpu" /> Our page for <ComboLink model="qwen3-30b-a3b-2507" gpu="rtx-3090" /> has the full context table.
+- <HubLink model="nemotron-3.5-lightning-30b-a3b" /> needs <Num kind="needGB" model="nemotron-3.5-lightning-30b-a3b" /> even at 8k, more than a 24GB card can use, so some of its experts sit in system RAM at every length, and it Runs well as a theoretical estimate.<Expect model="nemotron-3.5-lightning-30b-a3b" gpu="rtx-3090" verdict="A" mode="cpu-moe" confidence="theoretical" /> Its KV cache is so small that 64k adds little: the total is <Num kind="needGB" model="nemotron-3.5-lightning-30b-a3b" ctx="65536" />.
+
+### 16GB: RTX 5060 Ti 16GB
+
+On the <HubLink gpu="rtx-5060-ti-16gb" />, gpt-oss-20b Runs great at the 8k baseline, and that cell is a public benchmark rather than an estimate.<Expect model="gpt-oss-20b" gpu="rtx-5060-ti-16gb" verdict="S" confidence="measured" /> At 64k with an f16 KV cache it needs <Num kind="needGB" model="gpt-oss-20b" ctx="65536" />, still inside the <Num kind="usableGB" gpu="rtx-5060-ti-16gb" /> this card can use.<Expect model="gpt-oss-20b" gpu="rtx-5060-ti-16gb" ctx="65536" fits="true" mode="full-gpu" /> At 128k with f16 it needs <Num kind="needGB" model="gpt-oss-20b" ctx="131072" />, so some experts move to system RAM, a theoretical estimate.<Expect model="gpt-oss-20b" gpu="rtx-5060-ti-16gb" ctx="131072" fits="true" mode="cpu-moe" confidence="theoretical" /> With q8_0 it needs <Num kind="needGB" model="gpt-oss-20b" ctx="131072" kv="q8_0" /> and stays on the GPU with little margin.<Expect model="gpt-oss-20b" gpu="rtx-5060-ti-16gb" ctx="131072" kv="q8_0" fits="true" mode="full-gpu" /> The model handles at most <Num kind="maxContext" model="gpt-oss-20b" />. It always thinks before it answers, and its model card lists function calling among its agentic capabilities.
+
+<CtxTable model="gpt-oss-20b" gpu="rtx-5060-ti-16gb" />
+
+Qwen3.6 35B-A3B needs <Num kind="needGB" model="qwen3.6-35b-a3b" /> even at 8k, more than this card can use, so its experts sit partly in system RAM at every length. At the 8k baseline it Runs well, a theoretical estimate.<Expect model="qwen3.6-35b-a3b" gpu="rtx-5060-ti-16gb" verdict="A" mode="cpu-moe" confidence="theoretical" /> Its small KV cache keeps the total at <Num kind="needGB" model="qwen3.6-35b-a3b" ctx="65536" /> at 64k, close to the 8k figure, so a longer context costs it little extra memory. The <HubLink model="qwen3.6-35b-a3b" /> page compares other cards.
+
+Qwen3.8 27B does not fit even at 8k, where it needs <Num kind="needGB" model="qwen3.8-27b" />. Part of its weights run from system RAM, and because a dense model reads every weight for every token, it Runs slowly.<Expect model="qwen3.8-27b" gpu="rtx-5060-ti-16gb" verdict="B" mode="partial-offload" />
+
+<HubLink model="qwen3.5-9b" />, built like Qwen3.8 27B with one KV layer in four, is small enough to stay on the GPU at agent lengths. It needs <Num kind="needGB" model="qwen3.5-9b" ctx="65536" /> at 64k with f16. That fits on this card<Expect model="qwen3.5-9b" gpu="rtx-5060-ti-16gb" ctx="65536" fits="true" mode="full-gpu" /> and on a 12GB RTX 3060 12GB as well.<Expect model="qwen3.5-9b" gpu="rtx-3060-12gb" ctx="65536" fits="true" mode="full-gpu" /> How well it handles agent work is a separate question these tables do not answer.
+
+### 8GB and 32GB cards
+
+On an 8GB card such as the <HubLink gpu="rtx-4060" />, even Qwen3.5 9B is tight at 64k. With f16, part of it moves to system RAM.<Expect model="qwen3.5-9b" gpu="rtx-4060" ctx="65536" fits="true" mode="partial-offload" /> With q8_0 it needs <Num kind="needGB" model="qwen3.5-9b" ctx="65536" kv="q8_0" /> against <Num kind="usableGB" gpu="rtx-4060" /> usable, so in CanRun's calculation it stays on the GPU with almost nothing to spare.<Expect model="qwen3.5-9b" gpu="rtx-4060" ctx="65536" kv="q8_0" fits="true" mode="full-gpu" /> Check `ollama ps` before you rely on it.
+
+A 32GB card such as the <HubLink gpu="rtx-5090" /> reaches the length the Qwen3.6 model card asks for. At 128k with an f16 KV cache, Qwen3.6 35B-A3B needs <Num kind="needGB" model="qwen3.6-35b-a3b" ctx="131072" /> and stays fully on the GPU in CanRun's calculation.<Expect model="qwen3.6-35b-a3b" gpu="rtx-5090" ctx="131072" fits="true" mode="full-gpu" /> Qwen3.8 27B also stays on the GPU at 128k with f16, at <Num kind="needGB" model="qwen3.8-27b" ctx="131072" />.<Expect model="qwen3.8-27b" gpu="rtx-5090" ctx="131072" fits="true" mode="full-gpu" />
+
+## Why a small KV cache per token matters more than file size
+
+The KV cache stores a key and a value for every token in every layer that attends to the whole context. The cost per token is fixed by the model's design, so the cache grows in step with the context. The table lists that cost and what it comes to at 32k, 64k and 128k with f16.
+
+<KvPerTokenTable models="mistral-small-3.2-24b,qwen3-30b-a3b-2507,qwen3.8-27b,qwen3.5-9b,gpt-oss-20b,gemma-4-26b-a4b,qwen3.6-35b-a3b,nemotron-3.5-lightning-30b-a3b" ctxs="32768,65536,131072" />
+
+The gap comes from how many layers keep a cache, not from the parameter count.
+
+- **Full attention on every layer.** Mistral Small 3.2 24B has 40 such layers with eight KV heads each and no sliding window, per its configuration; Qwen3 30B-A3B (2507) has 48 with four KV heads, per its model card.
+- **Hybrid linear attention.** The Qwen3.6 35B-A3B and Qwen3.8 27B model cards describe repeating blocks of three Gated DeltaNet layers followed by one Gated Attention layer. The linear layers carry a fixed-size state, so only one layer in four grows with the context. Qwen3.5 9B uses the same layout.
+- **Sliding windows.** gpt-oss-20b alternates sliding-window layers, which keep only a short stretch of recent tokens, with full-attention layers. In Gemma 4 26B-A4B's configuration, 25 of its 30 layers use a 1024-token sliding window.
+- **Mostly Mamba.** In Nemotron 3.5 Lightning 30B-A3B's configuration, only 6 of its 52 layers are attention layers; the rest are Mamba and MoE layers, which keep no per-token cache.
+
+At 64k with f16, Mistral Small 3.2 24B carries <Num kind="kvGB" model="mistral-small-3.2-24b" ctx="65536" /> of KV cache, while Qwen3.6 35B-A3B carries <Num kind="kvGB" model="qwen3.6-35b-a3b" ctx="65536" />. Between two models that fit at 8k, the one with the smaller cache per token is more likely to still fit at 64k. For sliding-window and hybrid models CanRun counts only the layers whose cache grows; it leaves out the fixed part (the short windows and the linear layers' state), so those figures run slightly low. <GuideLink slug="kv-cache-context" /> covers the mechanics.
+
+## Waiting time: the model reads the prompt before it writes
+
+A local model has two speeds: prompt processing, how fast it reads what it is sent, and generation, how fast it writes the reply. CanRun's verdicts and speed bands are generation estimates. In an agent the prompt is long: the first turn of a session carries the agent's instructions and every tool description, and later turns can add a whole file or a long command output. The model reads all of it before the first word of the reply appears.
+
+Reading goes much faster per token than writing, because the GPU takes the prompt many tokens at a time and writes the reply one token after another. In llama.cpp's scoreboard for NVIDIA cards, the prompt rate (pp512) is many times the generation rate (tg128), and the public gpt-oss-20b run listed on the <HubLink gpu="rtx-5060-ti-16gb" /> page shows the same pattern. CanRun estimates prompt speed from a card's FP16 compute and generation speed from its memory bandwidth. Prompt estimates are rough (±40%), and combo pages show them only when the whole model runs on the GPU; with experts or layers in system RAM, CanRun gives none.
+
+Runtimes do not reread what has not changed. llama-server reuses the KV cache from the previous request for the part at the start that matches, so only the part that differs is processed (`cache_prompt`, on by default). Ollama's API reports `prompt_eval_duration` as the time spent on the uncached prompt tokens. In a session where the agent only adds to the end, each turn mostly reads what was just added. When something near the start of the prompt changes, everything after that point is read again.
+
+To see your own numbers, divide `prompt_eval_count` by `prompt_eval_duration` (in nanoseconds) in Ollama's API response; `load_duration` shows how long loading took. llama-server adds the same timings with `timings_per_token`.
+
+A reply that never comes may be a model that is still loading. OpenClaw's page on local models names a cold start as a common cause of what looks like a hang, and points to two timeouts for slow servers: `models.providers.<id>.timeoutSeconds` for the provider and `agents.defaults.timeoutSeconds` for the run. Ollama unloads a model after five minutes by default; its FAQ explains how `OLLAMA_KEEP_ALIVE` changes that. And if `ollama ps` shows a CPU/GPU split under PROCESSOR, every turn runs at the slower speed of the offloaded rows in the tables.
+
+## Setting the context: Ollama, llama.cpp, OpenClaw and OpenCode
+
+These settings change often, so treat each tool's documentation (under Sources) as the reference; below are the parts that decide memory.
+
+### Ollama
+
+Set the server-wide context, then restart Ollama. On Windows, quit Ollama from its taskbar icon first, then in PowerShell:
+
+```powershell
+$env:OLLAMA_CONTEXT_LENGTH="65536"; ollama serve
+```
+
+On macOS or Linux the same line is `OLLAMA_CONTEXT_LENGTH=65536 ollama serve`. For a permanent setting, use the context slider in the Ollama app or an account environment variable, as described in <GuideLink slug="ollama-context-length" />. Load the model and run `ollama ps`: CONTEXT should show the length you set, and PROCESSOR should read 100% GPU.
+
+If the context table puts f16 over the line and q8_0 under it, quantize the KV cache. <RuntimeFact id="ollama-kv-cache-type" />. In PowerShell:
+
+```powershell
+$env:OLLAMA_CONTEXT_LENGTH="65536"; $env:OLLAMA_FLASH_ATTENTION="1"; $env:OLLAMA_KV_CACHE_TYPE="q8_0"; ollama serve
+```
+
+### llama.cpp (llama-server)
+
+The same line works in PowerShell, macOS and Linux:
+
+```powershell
+llama-server -m model.gguf -c 65536 -ctk q8_0 -ctv q8_0 -fa on
+```
+
+Set `-c` yourself. Left unset, llama-server starts from the model's own maximum (<Num kind="maxContext" model="qwen3.6-35b-a3b" /> for Qwen3.6 35B-A3B), and when memory runs short its automatic fitting (`--fit`, on by default) lowers the context first, down to a 4k floor set by `--fit-ctx`, before it moves any weights. The agent then gets far less context than it expects. With `-c` set, the context stays as given and `--fit` moves weights to system RAM instead, experts first for MoE models. The startup log shows the context it settled on. Leave out `-ctk` and `-ctv` to keep f16. Chat templates (`--jinja`), which the README names as what OpenAI-style tool calls need, are on by default.
+
+### OpenClaw
+
+Point OpenClaw at Ollama's native address, `http://localhost:11434`, without `/v1`. Its documentation warns that the OpenAI-compatible `/v1` URL breaks tool calling, and that models may then write tool calls out as plain text. For local models it discovers itself, OpenClaw normally sends 32k; to use 64k, its advanced Ollama page describes the per-model `contextTokens` and `params.num_ctx` settings. Its managed llama.cpp setup uses a 64k context in its curated recipes.
+
+### OpenCode
+
+OpenCode's documentation connects Ollama and llama-server as OpenAI-compatible providers, with a `baseURL` that ends in `/v1`. Give each local model a `limit.context` equal to the context the server really has, so OpenCode knows how much room is left. Its documentation also suggests raising Ollama's `num_ctx` when tool calls do not work.
+
+Every combo page prints Ollama and llama.cpp commands that follow the context and KV cache type you pick in its table; our page for <ComboLink model="gpt-oss-20b" gpu="rtx-5060-ti-16gb" /> is an example.
+
+Where to go next:
+
+- <GuideLink slug="ollama-context-length" />: Ollama's default context, how it drops old messages, and every way to set the length.
+- <GuideLink slug="kv-cache-context" />: how the KV cache grows and what q8_0 and q4_0 save.
+- <GuideLink slug="vram-requirements" />: which models fit on each memory tier at 8k.
+
+## How sure are these numbers?
+
+The memory figures are calculated by formula from real GGUF file sizes, each file's header and each model's published configuration, so they carry no error band. The speeds are estimates with a band and a confidence label. Calibrated means ±12% for dense models fully on an NVIDIA or AMD card and ±20% for MoE models, partial offload and other hardware. Theoretical means ±30%, used where real speeds vary widely, such as MoE experts kept in system RAM. In this guide's three context tables, the cells with experts in system RAM are theoretical, gpt-oss-20b's 8k f16 cell on the RTX 5060 Ti 16GB is measured, and the rest are calibrated. Prompt-processing estimates on combo pages are rougher still, at ±40%.
+
+That measured point is one public llama-bench run at a 2k context from llama.cpp's gpt-oss guide thread, not a CanRun run. It appears below next to CanRun's own 8k estimate band.
+
+<Measured model="gpt-oss-20b" gpu="rtx-5060-ti-16gb" />
+
+Each row of a context table assumes the context is filled to that length; an agent session grows into it. The tables assume Windows with the card driving the display, 32GB of DDR5 system RAM, one model loaded and one request slot. Ollama's FAQ notes that memory scales with `OLLAMA_NUM_PARALLEL` times the context length, so parallel requests need more than the tables show. Ollama and llama.cpp make their own memory estimates, and llama.cpp's automatic fitting keeps some VRAM free on each card, so a model that only just fits here can end up partly in system RAM. On your PC, the PROCESSOR column of `ollama ps` or the llama.cpp startup log is the ground truth.
+
+Models with a thinking mode face 1.5× stricter speed thresholds, which the legend below does not show, because thinking costs many more tokens per answer. Among the models in this guide, gpt-oss-20b always thinks; Qwen3.6 35B-A3B, Qwen3.8 27B, Qwen3.5 9B, Gemma 4 26B-A4B and Nemotron 3.5 Lightning 30B-A3B have a thinking mode; Qwen3 30B-A3B (2507) and Mistral Small 3.2 24B have none. CanRun does not rate how well a model codes or calls tools. The thresholds:
+
+<Threshold />
+
+## FAQ
+
+### How much context does a local coding agent need?
+
+At least 64k tokens, by Ollama's documentation for agents and coding tools. OpenClaw itself normally sends 32k for the Ollama models it discovers, and the Qwen3.6 35B-A3B model card advises 128k or more for its thinking. Choose the longest context that still keeps the whole model on the GPU: at 64k with an f16 KV cache, Qwen3.8 27B needs <Num kind="needGB" model="qwen3.8-27b" ctx="65536" /> and gpt-oss-20b needs <Num kind="needGB" model="gpt-oss-20b" ctx="65536" />. A 24GB card can use <Num kind="usableGB" gpu="rtx-3090" /> and a 16GB card <Num kind="usableGB" gpu="rtx-5060-ti-16gb" />.
+
+### Why does my local agent take so long to start answering, or time out?
+
+Usually because the model is reading a long prompt or still loading. Compare `prompt_eval_duration` and `load_duration` in Ollama's API response, keep the model loaded with `OLLAMA_KEEP_ALIVE`, and raise the agent's timeout (OpenClaw documents `timeoutSeconds` settings). If `ollama ps` shows a CPU/GPU split, lower the context or use a q8_0 KV cache until it reads 100% GPU.
+
+### Does a q8_0 KV cache hurt coding quality?
+
+The Ollama FAQ calls the precision loss of q8_0 very small: it uses about half the memory of f16, while q4_0 uses about a quarter with a small-to-medium loss. CanRun does not measure output quality. A memory-based rule: use q8_0 when f16 does not fit the context you need, and q4_0 only when q8_0 still spills. On a 24GB card, q8_0 is what keeps Qwen3.6 35B-A3B on the GPU at 64k.<Expect model="qwen3.6-35b-a3b" gpu="rtx-3090" ctx="65536" kv="q8_0" fits="true" mode="full-gpu" />
+
+### Why does the agent print tool calls as text instead of running them?
+
+The connection, the context or the model can each cause it. OpenClaw's documentation says that pointing it at Ollama's OpenAI-compatible `/v1` URL breaks tool calling and that models may then write the call as plain text; use the native address instead. OpenCode's documentation suggests raising Ollama's `num_ctx` when tool calls fail. The model has to support tool calls too: the Qwen3.6 35B-A3B and Qwen3 30B-A3B (2507) model cards describe tool calling, and the gpt-oss-20b card lists function calling.
+
+### Can I check a coding model that is not in CanRun's list?
+
+Yes. Paste its Hugging Face id into the calculator, set the context to 64k, and it runs the same memory calculation for your card. Results for loaded models are theoretical estimates (±30%). The calculator cannot tell whether such a model has a thinking mode, so it does not apply the stricter thresholds for thinking models.
+
+## Sources
+
+- [Ollama docs: context length](https://docs.ollama.com/context-length): at least 64k for agents, web search and coding tools, the VRAM-based default tiers, `ollama ps`, and the advice to avoid CPU offload.
+- [Ollama docs: OpenCode integration](https://docs.ollama.com/integrations/opencode): `ollama launch opencode`, OpenCode requiring a context of 64k or more, and setting a 64k+ window for local models.
+- [Ollama docs: OpenClaw integration](https://docs.ollama.com/integrations/openclaw): `ollama launch openclaw` and the recommendation of at least 64k with local models.
+- [Ollama docs: Claude Code integration](https://docs.ollama.com/integrations/claude-code): `ollama launch claude` and setting a 64k+ window for local models.
+- [Ollama FAQ](https://docs.ollama.com/faq): keeping models loaded (five minutes by default, `OLLAMA_KEEP_ALIVE`), KV cache quantization with its precision notes, and memory scaling with `OLLAMA_NUM_PARALLEL`.
+- [Ollama API docs: usage](https://docs.ollama.com/api/usage): `prompt_eval_count`, `prompt_eval_duration` (uncached prompt tokens), `load_duration`, timings in nanoseconds.
+- [OpenClaw docs: Ollama](https://docs.openclaw.ai/providers/ollama): the native API and the warning that the `/v1` URL breaks tool calling.
+- [OpenClaw docs: Ollama advanced configuration](https://docs.openclaw.ai/providers/ollama/advanced): the 32k cap for discovered local models, `contextTokens`, `params.num_ctx`, and `num_ctx` in OpenAI-compatible mode.
+- [OpenClaw docs: local models](https://docs.openclaw.ai/gateway/local-models): leaving room for the prompt, tools, history and output, 64k curated llama.cpp recipes, timeouts and cold starts.
+- [OpenCode docs: providers](https://opencode.ai/docs/providers/): Ollama and llama-server as OpenAI-compatible providers, `limit.context`, and the `num_ctx` tip for tool calls.
+- [llama.cpp server README](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md): `-c` (0 loads the model's own length), `--fit` and `--fit-ctx`, `-ctk`/`-ctv`, `-fa`, `--jinja` and tool calls, `cache_prompt`, `timings_per_token`.
+- [llama.cpp PR #16653: automatic fitting](https://github.com/ggml-org/llama.cpp/pull/16653): `--fit` lowers an unset context before moving weights, and keeps MoE dense weights on the GPU first.
+- [llama.cpp discussion #15013: performance on NVIDIA CUDA](https://github.com/ggml-org/llama.cpp/discussions/15013): pp512 and tg128 results for NVIDIA cards.
+- [llama.cpp: guide to running gpt-oss](https://github.com/ggml-org/llama.cpp/discussions/15396): the measured gpt-oss-20b point on the RTX 5060 Ti 16GB.
+- [Qwen3.6-35B-A3B model card](https://huggingface.co/Qwen/Qwen3.6-35B-A3B): hybrid layout, experts, native context, the 128k advice for thinking, thinking on by default, tool calling.
+- [Qwen3.8-27B model card](https://huggingface.co/Qwen/Qwen3.8-27B): hybrid layout, KV heads, native context, thinking on by default.
+- [Qwen3.5-9B model card](https://huggingface.co/Qwen/Qwen3.5-9B): the same hybrid layout of Gated DeltaNet and Gated Attention layers.
+- [Qwen3-30B-A3B-Instruct-2507 model card](https://huggingface.co/Qwen/Qwen3-30B-A3B-Instruct-2507): 48 layers, four KV heads, non-thinking only, tool calling.
+- [Mistral Small 3.2 24B configuration](https://huggingface.co/mistralai/Mistral-Small-3.2-24B-Instruct-2506/blob/main/config.json): 40 layers, eight KV heads, no sliding window.
+- [gpt-oss-20b model card](https://huggingface.co/openai/gpt-oss-20b) and [configuration](https://huggingface.co/openai/gpt-oss-20b/blob/main/config.json): function calling, alternating sliding-window and full-attention layers.
+- [Gemma 4 26B-A4B configuration](https://huggingface.co/google/gemma-4-26B-A4B-it/blob/main/config.json): 25 sliding-window and 5 full-attention layers, 1024-token window.
+- [Nemotron 3.5 Lightning 30B-A3B configuration](https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16/blob/main/config.json): 6 attention layers among 52, the rest Mamba and MoE.
