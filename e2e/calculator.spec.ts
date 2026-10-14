@@ -551,7 +551,10 @@ for (const locale of LOCALES) {
         expect((await speed.textContent()) ?? '').toMatch(RANGE_RE);
         await expect(speed.locator('[data-confidence]')).toHaveCount(1);
       }
+      // 하드웨어마다 달라지는 줄 — GPU 에 전부 올라가는 가장 큰 모델 (D73 리뷰 반영)
+      await expect(page.locator('[data-starting-points] [data-start-gpu] [data-start-largest]')).toHaveCount(6);
       await expect(page.locator('[data-calc-guide] [data-read-fields] dt')).toHaveCount(7);
+      await expect(page.locator('[data-calc-guide] [data-read-modes] li')).toHaveCount(5);
       await expect(page.locator('[data-calc-guide] [data-verdict]')).toHaveCount(4);
       // 모델 링크 = 공개 콤보 또는 모델 허브 — JS 없이 눌러서 열린다
       const target = await clickThrough(page, page.locator('[data-starting-points] a[data-start-pick]').first());

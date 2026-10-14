@@ -44,7 +44,9 @@ export default async function CalculatorPage({ params }: Props) {
   const href = calculatorHref();
   const url = absoluteUrl(localeHref(locale, href));
   const description = t('metaDescription', { total: catalog.models.length });
-  const faq = [1, 2, 3].map((i) => ({ question: t(`faq${i}Q`), answer: t(`faq${i}A`) }));
+  // FAQ 2(여러 GPU)는 폼 라벨을 그대로 인용한다 — 라벨이 바뀌어도 답이 어긋나지 않게
+  const faqArgs = { count: t('gpuCountLabel'), add: t('addGpu') };
+  const faq = [1, 2, 3].map((i) => ({ question: t(`faq${i}Q`), answer: t(`faq${i}A`, faqArgs) }));
   const popular = catalog.gpus.filter((g) => g.popular).slice(0, 6);
 
   return (

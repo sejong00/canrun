@@ -1,13 +1,16 @@
 /**
  * 계산기 첫 화면 결과 예시 (10-14 PROGRESS §4 D73) — 서버 HTML 에 싣는 "많이 쓰는 하드웨어" 예시가 실제 계산기 결과와 어긋나지 않는다:
  * 크기 구간마다 고른 모델 = 계산기에서 그 하드웨어를 고르고 크기 필터를 그 구간 하나만 켰을 때 맨 위 카드(판정·양자화·속도 밴드·라벨·실행 방식),
- * 요약 수·평가 구성 = 계산기 기본 상태의 결과. 콤보 링크는 공개(index) 콤보만.
+ * 요약 수·평가 구성 = 계산기 기본 상태의 결과. 콤보 링크는 공개(index) 콤보만. 하드웨어마다 달라지는 줄(GPU 에 전부 올라가는 가장 큰 모델,
+ * 불가 구간의 RAM 힌트)은 허브 FAQ·계산기 카드와 같은 값이다(D73 리뷰 반영).
  */
+import { HUB_POLICY, verdictRank } from '@canrun/data';
 import { describe, expect, it } from 'vitest';
 import { getCatalogLite } from '../lib/calc-catalog';
 import { assembleResults } from '../lib/calc/run';
-import { defaultState, SIZE_BUCKETS, sizeBucket, type CalcState } from '../lib/calc/state';
+import { DDR_PROFILE, defaultState, SIZE_BUCKETS, sizeBucket, type CalcState } from '../lib/calc/state';
 import { catalog } from '../lib/catalog';
+import { getGpuHub } from '../lib/hubs';
 import { isComboIndexable } from '../lib/publish';
 import { STARTING_POINT_GPU_IDS, startingPoint, startingPoints } from '../lib/starting-points';
 
@@ -68,6 +71,63 @@ describe('calculator starting points (D73)', () => {
       expect(point.good, gpuId).toBe(run.counts.S + run.counts.A);
       expect(point.ramGB, gpuId).toBe(run.hardware.ramGB);
       expect(point.os, gpuId).toBe(run.hardware.os);
+    }
+  });
+
+  it('the largest model that fits entirely on the GPU is the GPU hub answer, and no bigger model fits there (D73 review)', () => {
+    for (const gpuId of STARTING_POINT_GPU_IDS) {
+      const point = startingPoint(gpuId);
+      const hub = getGpuHub(gpuId)!;
+      const largest = point.largest!;
+      expect(largest, gpuId).toBeDefined();
+      expect(largest.model.id, gpuId).toBe(hub.faq.largestFullGpu!.combo.modelId);
+      expect(largest.q.result.mode, gpuId).toBe('full-gpu');
+      expect(largest.q.result.verdict, gpuId).not.toBe('F');
+      expect(largest.q.tier, gpuId).not.toBe('desperate');
+      expect(largest.comboIndexable, gpuId).toBe(isComboIndexable(gpuId, largest.model.id));
+      for (const row of hub.rows.filter((r) => r.model.paramsB > largest.model.paramsB)) {
+        const fits = row.combos[hub.primaryIndex]!.perQuant.some(
+          (q) => q.result.mode === 'full-gpu' && q.result.verdict !== 'F' && q.tier !== 'desperate',
+        );
+        expect(fits, `${gpuId}: ${row.model.id} is bigger and also fits on the GPU`).toBe(false);
+      }
+    }
+  });
+
+  it('a size class that cannot run names the RAM hint the calculator card shows, at the smallest RAM in that class (D73 review)', () => {
+    let hints = 0;
+    for (const gpuId of STARTING_POINT_GPU_IDS) {
+      for (const pick of startingPoint(gpuId).picks) {
+        if (pick.kind !== 'none') continue;
+        const cards = assembleResults(lite, withGpu(gpuId, { size: [pick.bucket] }))!.cards;
+        const hinted = cards.filter((c) => c.combo.ramHint);
+        const where = `${gpuId}/${pick.bucket}`;
+        if (!pick.ramHint) {
+          expect(hinted, where).toEqual([]);
+          continue;
+        }
+        hints += 1;
+        const card = cards.find((c) => c.model.id === pick.ramHint!.model.id)!;
+        expect(card.combo.ramHint?.ramGB, where).toBe(pick.ramHint.ramGB);
+        expect(card.combo.ramHint?.verdict, where).toBe(pick.ramHint.verdict);
+        expect(verdictRank(pick.ramHint.verdict), where).toBeGreaterThan(verdictRank('F'));
+        expect(Math.min(...hinted.map((c) => c.combo.ramHint!.ramGB)), where).toBe(pick.ramHint.ramGB);
+      }
+    }
+    // 그래픽카드 넷의 50B 이상 구간이 지금 모두 불가 — 힌트가 하나도 없으면 이 검사가 빈 검사가 된다
+    expect(hints).toBeGreaterThan(0);
+  });
+
+  it('the fixed wording matches the hub policy: DDR5-5600 system RAM and the baseline quant fallback named for gpt-oss', () => {
+    // CalculatorStatic.startAssume 은 "DDR5-5600" 을, readVerdict 는 "(gpt-oss → 두 번째 기준 양자화)" 를 문장으로 적는다
+    expect(HUB_POLICY.dgpuRamProfileId).toBe(DDR_PROFILE['ddr5-5600']);
+    expect(HUB_POLICY.baselineOrder.length).toBeGreaterThanOrEqual(2);
+    const gptOss = catalog.models.filter((m) => m.id.startsWith('gpt-oss'));
+    expect(gptOss.length).toBeGreaterThan(0);
+    const hub = getGpuHub('rtx-3090')!;
+    for (const model of gptOss) {
+      const row = hub.rows.find((r) => r.model.id === model.id)!;
+      expect(row.combos[hub.primaryIndex]!.baseline.quant, model.id).toBe(HUB_POLICY.baselineOrder[1]);
     }
   });
 });
