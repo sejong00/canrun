@@ -66,6 +66,8 @@ export default async function LocaleLayout({ children, params }: Props) {
         return tFooter('about');
       case 'methodology':
         return tFooter('methodology');
+      case 'updates':
+        return tFooter('updates');
       case 'privacy':
         return tFooter('privacy');
       case 'contact':

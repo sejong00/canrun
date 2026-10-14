@@ -46,6 +46,7 @@ canrun/
 │  ├─ app/[locale]/(pages…)     # 라우트는 01-prd §5
 │  ├─ components/  lib/  messages/{en,ko}.json   # components/islands/ = 클라이언트 아일랜드, lib/calc/ = 계산기 순수 로직 (P1-3, §5)
 │  └─ content/{en,ko}/guides/*.mdx  # + content/guides.ts 레지스트리·AUTHORING.md (P1-4 D38)
+│     content/{en,ko}/pages/*.mdx   # 정적 페이지 본문 — 레지스트리 content/pages.ts (P1-5 D47), 업데이트 소식 항목 날짜는 content/updates.ts (10-14 D72)
 ├─ scripts/
 │  ├─ sync-models.ts  new-model-alert.ts  build-sitemaps.ts(postbuild 4단계 — P1-5 D49)  make-og.ts(기본 공유 카드 1회 생성 — D50)
 │  └─ parse-bench.ts            # llama-bench 파서 (P2 제출과 공용 — 미리 엔진 옆에)

@@ -119,6 +119,9 @@ export type PageFacts = {
   };
   /** `a[data-related-guide]` href (콤보 → published 가이드, D44) */
   relatedGuideHrefs: string[];
+  /** 업데이트 소식(10-14 D72): `[data-update]` 항목 id(문서 순서) · `a[data-added-model]` 카탈로그 추가 목록의 모델 허브 href */
+  updateIds: string[];
+  addedModelHrefs: string[];
   /** `<script src>` 중 nomodule 이 아닌 것 (초기 모듈 스크립트 집합 — D34 예산 게이트) */
   scriptSrcs: string[];
   /** `<link rel="preload|modulepreload">` 가 가리키는 스크립트 */
@@ -510,6 +513,7 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
   let navGuides: string | undefined;
   let calcModelLink: string | undefined;
   const relatedGuideHrefs: string[] = [];
+  const addedModelHrefs: string[] = [];
   for (const m of html.matchAll(/<a\b[^>]*>/g)) {
     const tag = m[0];
     const href = tag.match(HREF_RE)?.[1];
@@ -522,6 +526,7 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
     if (hasAttr(tag, 'data-nav-guides')) navGuides = href;
     if (hasAttr(tag, 'data-calc-model-link')) calcModelLink = decodeEntities(href);
     if (hasAttr(tag, 'data-related-guide')) relatedGuideHrefs.push(href);
+    if (hasAttr(tag, 'data-added-model')) addedModelHrefs.push(href);
   }
   const formActions = [...html.matchAll(/<form\b[^>]*\baction="([^"]*)"/g)].map((m) => decodeEntities(m[1]!));
   const datalist = html.match(/<datalist\b[^>]*>([\s\S]*?)<\/datalist>/)?.[1] ?? '';
@@ -658,6 +663,8 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
     formActions,
     datalistOptionCount,
     relatedGuideHrefs,
+    updateIds: elementsWithAttr(noScript, 'data-update').map((e) => attrValue(e.openTag, 'data-update') ?? ''),
+    addedModelHrefs,
     markers,
     scriptSrcs,
     preloadSrcs,

@@ -1,0 +1,144 @@
+CanRun changes often. New models arrive, the calculator gains features, and now and then we find part of the calculation was wrong and fix it. This page lists the changes you would notice, newest first, followed by the date each model joined the catalog. How the calculation works today is explained on <SiteLink to="/methodology">How we calculate</SiteLink>.
+
+## Changes to the site
+
+<Update id="daily-new-models">
+
+### We look for new models every day
+
+Every day we check Hugging Face for open models released in the last two weeks. A model goes into the catalog when it comes from a major publisher or is already widely downloaded, uses a design our calculation supports, and has a Q4_K_M GGUF file. Whether it has a thinking mode is estimated from its chat template, and each addition is reviewed before it goes live. <SiteLink to="/model/minicpm-v-4.7-35b-a3b">MiniCPM-V 4.7 35B-A3B</SiteLink> was the first model added this way. Models with a design we can't calculate yet wait until llama.cpp and our calculation support them.
+
+</Update>
+
+<Update id="calculator-sort">
+
+### Three new ways to sort calculator results
+
+After you pick a GPU, the calculator used to list models by verdict and then speed, so the smallest models always came first. The new default, Recommended, starts with the models that run great or well, puts larger size groups first and, within a group, the more popular model first. Most popular uses a five-level score we give each model. Most downloaded uses the original model's Hugging Face downloads over the last 30 days, which don't include GGUF downloads. The old order is still available as "Verdict, then speed".
+
+</Update>
+
+<Update id="visitor-statistics">
+
+### Privacy policy: visitor statistics
+
+We started using Cloudflare Web Analytics to see which pages people read and where visitors come from. It sets no cookies, and we only see totals. The <SiteLink to="/privacy">privacy policy</SiteLink> lists exactly what your browser sends.
+
+</Update>
+
+<Update id="model-to-gpu">
+
+### Pick a model, see which GPUs run it
+
+The calculator now works in both directions. Choose "Find GPUs for a model", pick a model, and you get every GPU, Mac and CPU setup in the catalog with its verdict, speed range and price. You can filter by type, budget and minimum verdict, and your own setup stays pinned at the top. Every model page links straight to this view.
+
+</Update>
+
+<Update id="mixed-gpus">
+
+### Mix different graphics cards
+
+"Add a different GPU" combines desktop cards from the same maker, up to four in total, such as an RTX 3090 with an RTX 3060 12GB. Memory adds up across the cards, but each token passes through them one after another, so the slower card holds the whole run back. If the model would fit on the faster card alone, the result tells you. Results for mixed cards are always labeled theoretical (±30%).
+
+</Update>
+
+<Update id="manual-model">
+
+### Calculate a model from its numbers
+
+For a model you can't load from Hugging Face, you can type the numbers from its model card or config.json: total parameters, layers, KV heads and head dimension, plus active parameters and expert counts for MoE models. The file size is estimated from the parameter count, so these results are labeled theoretical. The calculation stays in your browser, and nothing is requested from Hugging Face.
+
+</Update>
+
+<Update id="combo-ram">
+
+### System RAM on model-and-GPU pages
+
+When a model doesn't fit entirely on the graphics card, the verdict depends on how much system RAM you have. Those pages now list the verdict for 16GB to 128GB of RAM. Pick an amount and the verdict sentence and the llama.cpp and Ollama commands change to match. Pages where RAM makes no difference say so instead. If you come from the calculator, the page keeps the RAM you chose there.
+
+</Update>
+
+<Update id="gpu-weights">
+
+### Graphics card memory counts only what goes on the card
+
+llama.cpp keeps a model's input embedding table in system RAM. It also leaves out the multi-token prediction (MTP) block some newer models carry unless you turn MTP on. We used to count both against graphics card memory. Now we read their sizes from each GGUF file's header and leave them out. Some models now fit on the card with longer contexts, and a few verdicts went up: HyperCLOVA X SEED Think 14B on the GeForce RTX 2080 Ti, for example, moved from Runs well to Runs great. On a Mac, the whole file still counts.
+
+</Update>
+
+<Update id="hybrid-models">
+
+### Models with Mamba and other hybrid layers
+
+Some newer models mix ordinary attention layers with Mamba2, short convolution or KDA layers. Those layers keep a small state of fixed size instead of a KV cache that grows with the context. The calculation now handles them, for models in our list and for models loaded from a Hugging Face link. Nemotron 3.5 Lightning 30B-A3B, LFM2.5 2.6B and the two Ling-3.0 models joined the catalog the same day.
+
+</Update>
+
+<Update id="thinking-mode">
+
+### Stricter speed thresholds for every model with a thinking mode
+
+A model that thinks before it answers makes you wait for many more tokens, so its speed thresholds are 1.5 times higher. This used to apply only to models we had tagged as reasoning models. Now it follows each model's official card and chat template: every model with a thinking mode gets the higher thresholds, including models where you can switch thinking off. Models without one, such as Phi-4, use the normal thresholds. Some verdicts dropped a level as a result. Qwen3 14B on the GeForce RTX 3060 12GB, for example, went from Runs great to Runs well.
+
+</Update>
+
+<Update id="krw-prices">
+
+### Won prices on the Korean pages
+
+The Korean pages now show an amount in Korean won next to each US dollar price. It is a plain conversion at the European Central Bank reference rate, updated weekly, so it can differ from what a card actually costs in Korea. The English pages show dollars only.
+
+</Update>
+
+<Update id="multi-gpu">
+
+### Two to four of the same GPU
+
+A "Number of GPUs" setting in the calculator covers two to four identical cards. Memory adds up across the cards, but generation doesn't get faster, because the cards take turns on each token. In our calculation, for example, two GeForce RTX 3090 cards hold Llama 3.3 70B at Q4_K_M entirely in graphics memory. It is a beta, so results are labeled theoretical, and GPU, model and model-and-GPU pages still assume one card.
+
+</Update>
+
+<Update id="hf-models">
+
+### Models that aren't in our list
+
+Paste a Hugging Face model link or id, such as Qwen/Qwen3-4B, under "A model that isn't listed", and the calculator runs the same calculation for it. Your browser reads the model's configuration and file list from Hugging Face directly. For some models, MoE models among them, it also reads the start of a GGUF file to measure its parts. If the model is already in our list, you are pointed to its card instead. Loaded models are labeled theoretical (±30%).
+
+</Update>
+
+<Update id="moe-expert-placement">
+
+### MoE models: experts on the GPU when there is room
+
+When a mixture-of-experts (MoE) model is too big for the graphics card, llama.cpp can keep its expert weights in system RAM. We now put as many experts on the GPU as fit and only the rest in RAM. That is the same direction current llama.cpp and Ollama take on their own, and the `--n-cpu-moe` value in our commands follows the same split. The expert sizes come from each GGUF file's header. gpt-oss-20b on 8GB to 12GB cards such as the GeForce RTX 4060, for example, moved from Runs slowly to Runs well. These results are still labeled theoretical (±30%).
+
+</Update>
+
+<Update id="moe-speed">
+
+### MoE speed estimates corrected
+
+For MoE models with their experts in system RAM, our speed estimates had been about two and a half times too low. The old formula read the shared weights at system RAM speed as well. Now only the experts each token is routed to are read from RAM, and the new estimate was checked against public benchmarks. Common setups such as Qwen3 30B-A3B on 8GB to 16GB cards moved from Runs slowly to Runs well.
+
+</Update>
+
+<Update id="launch">
+
+### CanRun opens at canrunllm.com
+
+The site opened with the calculator, a page for every GPU, every model and every model-and-GPU pair, and six guides.
+
+</Update>
+
+## How the data stays current
+
+- Every week, model data is compared with Hugging Face: the file size of each quant, each model's configuration and its download count. Changes are checked before they go live.
+- Every day, we look for new models, as described above.
+- The exchange rate behind the won amounts on the Korean pages is updated weekly.
+- Every page shows its data date at the bottom. It is currently <DataUpdated />.
+
+## Models added to the catalog
+
+Each model below links to its own page, with the memory it needs by quant and context and the GPUs that can run it. The date is when the model joined CanRun, not when it was released. The earliest dates are from before the site opened to the public, while the catalog was first being put together.
+
+<CatalogAdditions />

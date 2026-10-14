@@ -223,6 +223,14 @@ export function parseArgs(argv: readonly string[]): Args {
   return a;
 }
 
+/**
+ * 레코드의 두 날짜 — 출시일 = HF `createdAt`(없으면 오늘), 카탈로그 추가일 = 오늘(UTC, 10-14 D72 "업데이트 소식").
+ * 키 순서는 releasedAt → addedAt. 신모델 자동 추가 ①도 planAddition 을 거치므로 같은 값이 들어간다
+ */
+export function catalogDates(createdAt: string | undefined, today: string): { releasedAt: string; addedAt: string } {
+  return { releasedAt: (createdAt ?? today).slice(0, 10), addedAt: today };
+}
+
 /** 카탈로그 원본 레코드 — 키 순서 보존을 위해 zod 파싱본이 아닌 raw JSON.parse 결과를 고쳐 직렬화한다 */
 export type CatalogRaw = { rawModels: Record<string, unknown>[]; rawQuants: Record<string, unknown>[] };
 
@@ -350,7 +358,8 @@ export async function planAddition(
     popularity,
     // 원본 저장소 최근 30일 다운로드 수와 기준일(D68 — 계산기 "다운로드 많은 순", 이후 sync-models 가 매주 갱신). 값이 없으면 필드 없이
     ...downloadsFields(info.downloads, today),
-    releasedAt: (info.createdAt ?? today).slice(0, 10),
+    // 출시일과 카탈로그 추가일(D72 — 업데이트 소식 페이지가 날짜별로 묶는다)
+    ...catalogDates(info.createdAt, today),
     note: `add-model 생성(${today}). releasedAt = HF createdAt${mirror ? `. gated — arch 는 ${mirror} 미러 config` : ''}`,
     // MoE 는 experts/topK 의 출처로 config.json 을 명시 (게이트면 미러 config)
     sources: [hfUrl(hfId), ...(mirror ? [configUrl(mirror)] : arch.moe ? [configUrl(hfId)] : [])],

@@ -804,6 +804,7 @@
     "nav": "Site information",
     "about": "About",
     "methodology": "How we calculate",
+    "updates": "Updates",
     "privacy": "Privacy",
     "contact": "Contact",
     "dataUpdated": "Data updated: {date}"
@@ -813,10 +814,16 @@
     "aboutDescription": "CanRun tells you which local LLMs your GPU, Mac or PC can run, at which quant, and roughly how fast, with every estimate shown as a range.",
     "methodologyTitle": "How CanRun calculates: verdicts, speed estimates and error ranges",
     "methodologyDescription": "How CanRun works out memory needs, speed ranges and verdicts, how accurate the estimates have been against public benchmarks, and where they fall short.",
+    "updatesTitle": "Updates: new models, features and fixes",
+    "updatesDescription": "What has changed on CanRun, newest first: new calculator features, corrections to how we estimate memory and speed, and the date each model joined the catalog.",
     "privacyTitle": "Privacy policy",
     "privacyDescription": "What CanRun collects (nothing personal), how the calculator runs in your browser, and what our hosting provider logs.",
     "contactTitle": "Contact",
     "contactDescription": "How to reach CanRun: report a wrong number, ask for a model or GPU to be added, or send feedback by email."
+  },
+  "Updates": {
+    "catalogTotal": "{count, plural, one {# model is} other {# models are}} in the catalog now. The newest additions come first.",
+    "addedCount": "{count, plural, one {# model added} other {# models added}}"
   },
   "OgCard": {
     "gpuSubtitle": "Which local LLMs run on this GPU",

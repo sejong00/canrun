@@ -5,6 +5,7 @@ import { getTranslations } from 'next-intl/server';
 import { Breadcrumbs } from '@/components/breadcrumbs';
 import { Threshold } from '@/components/guide/guide-components';
 import { PageShell } from '@/components/page-shell';
+import { CatalogAdditions, Update } from '@/components/updates';
 import type { StaticPageSlug } from '@/content/pages';
 import type { Locale } from '@/i18n/routing';
 import { DATA_UPDATED } from '@/lib/data-meta';
@@ -23,6 +24,8 @@ function pageText(t: PagesT, slug: StaticPageSlug): { title: string; description
       return { title: t('aboutTitle'), description: t('aboutDescription') };
     case 'methodology':
       return { title: t('methodologyTitle'), description: t('methodologyDescription') };
+    case 'updates':
+      return { title: t('updatesTitle'), description: t('updatesDescription') };
     case 'privacy':
       return { title: t('privacyTitle'), description: t('privacyDescription') };
     case 'contact':
@@ -53,11 +56,12 @@ function SiteLink({ to, children }: { to: string; children: ReactNode }) {
   return <a href={localeHref(locale, to)}>{children}</a>;
 }
 
-const PAGE_MDX_COMPONENTS = { Threshold, ContactEmail, DataUpdated, SiteLink };
+/** 업데이트 소식(10-14 D72)의 `Update`·`CatalogAdditions` 도 같은 맵 — 다른 정적 페이지 MDX 는 쓰지 않는다 */
+const PAGE_MDX_COMPONENTS = { Threshold, ContactEmail, DataUpdated, SiteLink, Update, CatalogAdditions };
 
 /**
- * 정적 페이지 (P1-5 — 소개·계산 방법·개인정보처리방침·문의). 본문 = 로캘별 MDX(`content/{en,ko}/pages`), 클라이언트 JS 0.
- * 라우트 폴더 4개가 이 컴포넌트를 공유한다(동적 세그먼트를 두면 다른 최상위 경로와 겹친다).
+ * 정적 페이지 (P1-5 — 소개·계산 방법·개인정보처리방침·문의, 10-14 업데이트 소식 D72). 본문 = 로캘별 MDX(`content/{en,ko}/pages`), 클라이언트 JS 0.
+ * 라우트 폴더 5개가 이 컴포넌트를 공유한다(동적 세그먼트를 두면 다른 최상위 경로와 겹친다).
  */
 export async function StaticPage({ locale, slug }: { locale: Locale; slug: StaticPageSlug }) {
   const t = await getTranslations({ locale, namespace: 'Pages' });

@@ -204,6 +204,7 @@ const fullModel = (over: Record<string, unknown> = {}): Record<string, unknown> 
   category: ['chat'],
   popularity: 3,
   releasedAt: '2025-01-01',
+  addedAt: '2026-08-16',
   sources: ['https://huggingface.co/org/test-8b'],
   ...over,
 });

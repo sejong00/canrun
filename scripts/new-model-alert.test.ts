@@ -39,6 +39,7 @@ const seedModels = parseModels([
     category: ['chat'],
     popularity: 5,
     releasedAt: '2024-07-23',
+    addedAt: '2026-08-16',
     sources: ['https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct'],
   },
 ]);

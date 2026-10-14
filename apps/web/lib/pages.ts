@@ -15,6 +15,10 @@ const LOADERS: Readonly<Record<StaticPageSlug, Readonly<Record<Locale, () => Pro
     en: () => import('@/content/en/pages/methodology.mdx') as Promise<PageModule>,
     ko: () => import('@/content/ko/pages/methodology.mdx') as Promise<PageModule>,
   },
+  updates: {
+    en: () => import('@/content/en/pages/updates.mdx') as Promise<PageModule>,
+    ko: () => import('@/content/ko/pages/updates.mdx') as Promise<PageModule>,
+  },
   privacy: {
     en: () => import('@/content/en/pages/privacy.mdx') as Promise<PageModule>,
     ko: () => import('@/content/ko/pages/privacy.mdx') as Promise<PageModule>,

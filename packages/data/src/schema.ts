@@ -21,6 +21,14 @@ const sources = z.array(z.string().url()).min(1);
 /** ISO 날짜 (YYYY-MM-DD) */
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
+/** 실제로 있는 날짜만 (2026-02-30 같은 값 거부) — 형식은 isoDate 와 같다 */
+export function isCalendarDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+const calendarDate = z.string().refine(isCalendarDate, 'must be a real date in YYYY-MM-DD form');
+
 const slug = z.string().regex(/^[a-z0-9][a-z0-9.-]*$/);
 
 export const EffClassSchema = z.enum([
@@ -161,6 +169,12 @@ export const ModelSchema = z
     hfDownloads30d: z.number().int().nonnegative().optional(),
     hfDownloadsAsOf: isoDate.optional(),
     releasedAt: isoDate,
+    /**
+     * CanRun 카탈로그에 들어온 날(UTC 날짜, 10-14 D72) — "업데이트 소식" 페이지가 날짜별로 묶어 보인다(출시일 releasedAt 과 다르다).
+     * `add-model`(신모델 자동 추가 ① 포함)이 추가한 날로 채운다. 10-14 이전 44종은 data/models.json 에 그 id 가 처음 들어간 커밋 날짜로 채웠다.
+     * 출처는 저장소 이력 자체라 sources 에 따로 적지 않는다. releasedAt 보다 이를 수 없다(아래 refine)
+     */
+    addedAt: calendarDate,
     /** 추정·재확인 플래그 등 데이터 출처 주의사항 (P0-4 sync 가 해소) */
     note: z.string().optional(),
     sources,
@@ -177,6 +191,9 @@ export const ModelSchema = z
     }
     if ((model.hfDownloads30d === undefined) !== (model.hfDownloadsAsOf === undefined)) {
       ctx.addIssue({ code: 'custom', message: `${model.id}: hfDownloads30d and hfDownloadsAsOf must be set together` });
+    }
+    if (model.addedAt < model.releasedAt) {
+      ctx.addIssue({ code: 'custom', message: `${model.id}: addedAt ${model.addedAt} is before releasedAt ${model.releasedAt}` });
     }
     if (model.hfDownloads30d !== undefined && !model.sources.includes(`https://huggingface.co/${model.hfId}`)) {
       ctx.addIssue({

@@ -4,6 +4,7 @@ import type { ModelQuantRecord } from '../packages/data/src/index';
 import type { TreeEntry } from './hf-common';
 import {
   activeFromName,
+  catalogDates,
   classifyArch,
   displayName,
   downloadsFields,
@@ -122,6 +123,12 @@ describe('GGUF repo choice and quant rows', () => {
   it('records the 30-day download count and its date with the model (D68), or neither', () => {
     expect(downloadsFields(6104298, '2026-10-06')).toEqual({ hfDownloads30d: 6104298, hfDownloadsAsOf: '2026-10-06' });
     expect(downloadsFields(undefined, '2026-10-06')).toEqual({});
+  });
+
+  it('dates the record: released = HF createdAt, added to the catalog = today (10-14 D72)', () => {
+    expect(catalogDates('2026-10-07T03:12:44.000Z', '2026-10-13')).toEqual({ releasedAt: '2026-10-07', addedAt: '2026-10-13' });
+    expect(Object.keys(catalogDates(undefined, '2026-10-13'))).toEqual(['releasedAt', 'addedAt']);
+    expect(catalogDates(undefined, '2026-10-13')).toEqual({ releasedAt: '2026-10-13', addedAt: '2026-10-13' });
   });
 
   it('parses CLI args', () => {

@@ -3,9 +3,11 @@
  *
  * - 분할(docs/04 §3): sitemap.xml(인덱스) → pages · gpus · models · guides(published 만) · combos-en/-ko(`indexableCombos()` 만 —
  *   공개 콤보가 0 이면 파일·인덱스 항목을 만들지 않는다). URL 마다 en/ko/x-default `xhtml:link` 대체 링크(HTML hreflang 과 같은 규칙).
- * - lastmod: 가이드 = 레지스트리 dateModified, 나머지 = `data/meta.json` dataUpdated — 빌드 시각을 쓰지 않는다(D21 결정론).
+ * - lastmod: 가이드 = 레지스트리 dateModified, 업데이트 소식 = max(dataUpdated, 최신 항목 날짜 — content/updates.ts), 나머지 = `data/meta.json` dataUpdated
+ *   — 빌드 시각을 쓰지 않는다(D21 결정론).
  * - robots.txt: 전부 허용(네이버 Yeti 포함) + Sitemap 줄. `/can-i-run/` 를 막지 않는다(막으면 noindex 를 못 읽는다 — PROGRESS §5).
- * - RSS 2.0: `rss.xml`(en)·`ko/rss.xml`(ko) — published 가이드, 게시일 최신순.
+ * - RSS 2.0: `rss.xml`(en)·`ko/rss.xml`(ko) — published 가이드, 게시일 최신순. 업데이트 소식은 넣지 않는다(채널이 가이드 피드이고,
+ *   항목마다 페이지가 따로 없어 item link 가 캐노니컬이 아니게 된다 — D72).
  * 정답 검사: test/export-invariants.spec.ts — 사이트맵 URL 집합 = noindex 아닌 HTML 페이지의 캐노니컬 전체.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -13,6 +15,7 @@ import { join } from 'node:path';
 import { indexableCombos, parseGpus, parseMeta, parseModels, parsePublish } from '../packages/data/src/index';
 import { GUIDES, GUIDE_SLUGS } from '../apps/web/content/guides';
 import { STATIC_PAGE_SLUGS } from '../apps/web/content/pages';
+import { latestSiteUpdate } from '../apps/web/content/updates';
 import { ADSENSE_CLIENT, SITE_URL } from '../apps/web/lib/site';
 
 /** 페이지 캐노니컬과 바이트 동일 — Next 메타데이터는 루트를 슬래시 없이 낸다(`https://…pages.dev`) */
@@ -78,7 +81,8 @@ export function buildSitemaps(repoRoot: string, outDir: string): string[] {
     { path: '/', lastmod: dataUpdated },
     { path: '/calculator', lastmod: dataUpdated },
     ...(published.length > 0 ? [{ path: '/guides', lastmod: maxDate(published.map((s) => GUIDES[s].dateModified)) }] : []),
-    ...STATIC_PAGE_SLUGS.map((slug) => ({ path: `/${slug}`, lastmod: dataUpdated })),
+    // 업데이트 소식(10-14 D72)은 손으로 쓴 항목이 데이터 없이 늘 수 있다 — 최신 항목 날짜와 데이터 기준일 중 늦은 날
+    ...STATIC_PAGE_SLUGS.map((slug) => ({ path: `/${slug}`, lastmod: slug === 'updates' ? maxDate([dataUpdated, latestSiteUpdate()]) : dataUpdated })),
   ];
   add('sitemap-pages.xml', pages, urlset(both(pages)));
 

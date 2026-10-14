@@ -1,7 +1,7 @@
 /** 스키마 게이트 — CLAUDE.md 규칙 2 를 zod 가 강제하는지 확인. */
 import { describe, expect, it } from 'vitest';
-import { GpuSchema, ModelQuantSchema, ModelSchema } from '../src/schema';
-import { loadSeed } from './seed';
+import { GpuSchema, isCalendarDate, ModelQuantSchema, ModelSchema } from '../src/schema';
+import { loadSeed, readSeedJson } from './seed';
 
 const validGpu = {
   id: 'rtx-4060',
@@ -25,6 +25,14 @@ describe('seed files parse (AC: zod 검증 통과)', () => {
     const seed = loadSeed();
     expect(seed.gpus.length).toBeGreaterThan(0);
     expect(seed.models.length).toBeGreaterThan(0);
+  });
+
+  // 카탈로그 추가일(10-14 D72)은 데이터를 고친 날이라 데이터 기준일을 넘을 수 없다 — add-model 이 둘을 같은 날로 쓴다
+  it('no model was added to the catalog after the data date (data/meta.json)', () => {
+    const { dataUpdated } = readSeedJson('meta.json') as { dataUpdated: string };
+    for (const model of loadSeed().models) {
+      expect(model.addedAt <= dataUpdated, `${model.id} addedAt ${model.addedAt} > dataUpdated ${dataUpdated}`).toBe(true);
+    }
   });
 });
 
@@ -72,10 +80,38 @@ describe('structural refinements', () => {
       category: ['chat'],
       popularity: 3,
       releasedAt: '2026-01-01',
+      addedAt: '2026-01-02',
       sources: ['https://example.com/model'],
     };
     expect(ModelSchema.safeParse(model).success).toBe(false);
     expect(ModelSchema.safeParse({ ...model, activeParamsB: 3 }).success).toBe(true);
+  });
+
+  it('addedAt: required, a real date, not before releasedAt (10-14 D72)', () => {
+    const model = {
+      id: 'test-dense',
+      family: 'test',
+      name: 'Test',
+      hfId: 'test/test',
+      paramsB: 8,
+      arch: { layers: 32, kvHeads: 8, headDim: 128, attnType: 'full', kvBytesPerTokenF16: 131072 },
+      maxContext: 32768,
+      license: 'Apache-2.0',
+      moe: false,
+      category: ['chat'],
+      popularity: 3,
+      releasedAt: '2026-10-07',
+      addedAt: '2026-10-13',
+      sources: ['https://example.com/model'],
+    };
+    expect(ModelSchema.safeParse(model).success).toBe(true);
+    expect(ModelSchema.safeParse({ ...model, addedAt: '2026-10-07' }).success).toBe(true);
+    expect(ModelSchema.safeParse({ ...model, addedAt: undefined }).success).toBe(false);
+    expect(ModelSchema.safeParse({ ...model, addedAt: '2026-02-30' }).success).toBe(false);
+    expect(ModelSchema.safeParse({ ...model, addedAt: '2026-10-13T00:00:00Z' }).success).toBe(false);
+    expect(ModelSchema.safeParse({ ...model, addedAt: '2026-10-06' }).success).toBe(false);
+    expect(isCalendarDate('2028-02-29')).toBe(true);
+    expect(isCalendarDate('2026-13-01')).toBe(false);
   });
 
   it('arch.experts/topK: integers, set together, topK < experts (10-01)', () => {
@@ -93,6 +129,7 @@ describe('structural refinements', () => {
       category: ['chat'],
       popularity: 3,
       releasedAt: '2026-01-01',
+      addedAt: '2026-01-02',
       sources: ['https://example.com/model'],
     };
     expect(ModelSchema.safeParse(model).success).toBe(true);
@@ -155,6 +192,7 @@ describe('attnOverrides (docs/03 §5.1 수동 필드 우선)', () => {
     category: ['chat'],
     popularity: 3,
     releasedAt: '2026-01-01',
+    addedAt: '2026-01-02',
     sources: ['https://example.com/model'],
   };
   const override = {

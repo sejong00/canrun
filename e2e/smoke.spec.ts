@@ -67,6 +67,8 @@ const PAGES: readonly PageSpec[] = [
   { name: 'guide', path: '/guides/ollama-context-length', structured: false, combo: false },
   { name: 'guides index', path: '/guides', structured: false, combo: false },
   { name: 'methodology', path: '/methodology', structured: false, combo: false },
+  // 10-14 D72 — 업데이트 소식(레지스트리 항목 + 카탈로그 추가 목록, 클라이언트 JS 0)
+  { name: 'updates', path: '/updates', structured: false, combo: false },
 ];
 
 for (const locale of LOCALES) {

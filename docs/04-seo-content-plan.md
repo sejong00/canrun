@@ -22,10 +22,12 @@
 /can-i-run/qwen3-14b/on/rtx-4060   콤보 (T2 직격)
 /guides/{slug}         에디토리얼 (T1/T3)
 /methodology           방법론·오차 공개 (E-E-A-T + 백링크 유인)
+/updates               업데이트 소식: 바뀐 기능·고친 계산(손으로 쓴 en/ko 항목) + 모델별 카탈로그 추가 날짜 (10-14 D72 — 관리되는 사이트 신호)
 /ko/...                동일 트리
 ```
 - 내부링크 규칙(스팸 방어 필수): 콤보 페이지는 항상 ①GPU 허브 ②모델 허브 ③관련 가이드 1개 ④인접 콤보 4개(같은 GPU 다른 모델 2, 같은 모델 다른 GPU 2)에서 링크 받도록 템플릿화 — 고아 페이지 0. ③의 구현(P1-4 D44): 가이드의 `<ComboGrid>`(레지스트리 그리드가 커버리지 단일 출처)가 공개 콤보로만 링크하고, 콤보는 자기를 커버하는 published 가이드로 `a[data-related-guide]` 역링크. export 테스트가 "indexable 콤보마다 published 가이드 인바운드 ≥1"을 강제(currentBatch 0 에선 공회전 단언).
 - 정규화: 대체 GPU 표기(4060 Ti 16GB 등) alias → canonical 슬러그 301/캐노니컬. **콤보 URL엔 alias 301을 만들지 않는다**(`_redirects` 정적 룰 2,000줄 한도 — `05` §3; 1,566쌍 × 2언어 × 별칭이 한도를 넘는다) — 콤보는 캐노니컬 태그만(P1-2, PROGRESS §4 09-29).
+- **정적 페이지**(`apps/web/content/pages.ts` 레지스트리 — 소개·계산 방법·업데이트 소식·개인정보처리방침·문의)는 전부 index, 모든 페이지 푸터에서 링크(고아 0), 사이트맵 pages 에 들어간다. `/updates` 의 lastmod = max(데이터 기준일, 최신 항목 날짜 — `content/updates.ts`). 업데이트 소식은 RSS(가이드 피드)에 넣지 않는다(항목마다 캐노니컬 페이지가 없다 — PROGRESS §4 D72).
 - **계산기는 index**(P1-3 D24): 캐노니컬 `/calculator`·`/ko/calculator`(쿼리 무시 — 공유 URL `?gpu=…`는 상태만 실어 나르고 캐노니컬은 청결). 인바운드 = 전 페이지 헤더 nav + 홈 GET 폼·인기 GPU 링크 + 모델 허브 GPU 표 위 `a[data-calc-model-link]`(`?mode=model&m={id}` — 계산기 모델 모드, 10-03 D65)(고아 0, export 테스트 강제 — 모델 허브 링크 href 도 고정). 정적 HTML은 폼·FAQ·범례만이라 결과 문장은 색인 콘텐츠가 아니다.
 
 ## 3. 인덱싱 단계 계획 (게이트 통과 전 다음 배치 금지)

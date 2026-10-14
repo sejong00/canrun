@@ -11,7 +11,7 @@ const lite = toCatalogLite(seed);
 // hfId 는 10-01(D57)부터 브라우저로 간다 — 계산기 "목록에 없는 모델"이 HF 주소가 카탈로그 모델이면 그 카드로 안내 (공개 식별자, 문서 필드 아님)
 // msrpUSD 는 10-03(D65)부터 브라우저로 간다 — 계산기 모델 모드의 GPU 행이 모델 허브 표처럼 "출시가"를 보인다 (공개 가격, 순위·예산에는 안 씀)
 // hfDownloads30d·hfDownloadsAsOf 는 10-06(D68)부터 브라우저로 간다 — 계산기 "다운로드 많은 순" 정렬·카드 줄 (HF 공개 수치와 기준일)
-const FORBIDDEN_KEYS = ['sources', 'note', 'attnOverrides', 'releasedAt', 'launchYear', 'streetKRW', 'sourceUrl', 'hardwareDesc', 'backend'];
+const FORBIDDEN_KEYS = ['sources', 'note', 'attnOverrides', 'releasedAt', 'addedAt', 'launchYear', 'streetKRW', 'sourceUrl', 'hardwareDesc', 'backend'];
 
 function keysDeep(value: unknown, out = new Set<string>()): Set<string> {
   if (Array.isArray(value)) value.forEach((v) => keysDeep(v, out));

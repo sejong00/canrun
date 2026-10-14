@@ -18,6 +18,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { GUIDES, GUIDE_SLUGS, type GuideSlug } from '../apps/web/content/guides';
+import { SITE_UPDATES, latestSiteUpdate } from '../apps/web/content/updates';
 import { ADSENSE_CLIENT } from '../apps/web/lib/site';
 import { CF_PAGES_REDIRECT_LINE_LIMIT } from '../scripts/build-redirects';
 import {
@@ -949,6 +950,34 @@ describe('export file hygiene (결정 D18 — RSC 페이로드 프루닝 · CF P
       .map((f) => f.rel)
       .filter((rel) => !rel.endsWith('.html') && !rel.startsWith('_next/static/') && !ROOT_FILE_ALLOWLIST.test(rel));
     expect(stray.slice(0, 20), `${stray.length} unexpected non-HTML file(s)`).toEqual([]);
+  });
+});
+
+describe('updates page (10-14 D72 — /updates)', () => {
+  it('both locales are indexable, show every registry entry in order and link every catalog model hub once', () => {
+    const map = byUrl();
+    for (const locale of ['en', 'ko'] as const) {
+      const page = map.get(localePath(locale, '/updates'));
+      expect(page, `${locale} /updates`).toBeDefined();
+      expect(page!.kind, `${page!.file} kind`).toBe('static');
+      expect(page!.robotsNoindex, `${page!.file} noindex`).toBe(false);
+      expect(page!.updateIds, `${page!.file} [data-update]`).toEqual(SITE_UPDATES.map((u) => u.id));
+      expect([...page!.addedModelHrefs].sort(), `${page!.file} a[data-added-model]`).toEqual(
+        models.map((m) => localePath(locale, `/model/${m.id}`)).sort(),
+      );
+    }
+  });
+
+  it('its sitemap lastmod is the later of the data date and the newest entry', () => {
+    const xml = readFileSync(join(outDir, 'sitemap-pages.xml'), 'utf8');
+    const dataUpdated = readJson<{ dataUpdated: string }>('data/meta.json').dataUpdated;
+    const expected = dataUpdated > latestSiteUpdate() ? dataUpdated : latestSiteUpdate();
+    for (const locale of ['en', 'ko'] as const) {
+      const entry = [...xml.matchAll(/<url><loc>([^<]+)<\/loc><lastmod>([^<]+)<\/lastmod>/g)].find(
+        (m) => urlToPath(m[1]!) === localePath(locale, '/updates'),
+      );
+      expect(entry?.[2], `${locale} /updates lastmod`).toBe(expected);
+    }
   });
 });
 
