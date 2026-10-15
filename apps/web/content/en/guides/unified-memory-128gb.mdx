@@ -16,7 +16,7 @@ The next table counts how every catalog model fares on each memory configuration
 
 The four 128GB rows have the same usable memory, so the models that do not fit are the same on each. Beyond that, the chips with more bandwidth have more models that run great. The DGX Spark has only slightly more bandwidth than the Strix Halo but clearly more such models, because CanRun's efficiency factor for it is higher (see "How sure are these numbers?").
 
-In the Mac Studio (2025), only the M4 Max with the 40-core GPU comes with 128GB. Apple's current spec page lists the M3 Ultra from 96GB up to 256GB, with no 128GB option, so the table's 512GB row is a configuration that page no longer lists. The M2 Ultra in the 2023 Mac Studio came with 64GB, 128GB or 192GB. Apple also offers the M5 Max with the 40-core GPU and 128GB in the MacBook Pro, where gpt-oss-120b also runs great in CanRun's estimate.<Expect model="gpt-oss-120b" gpu="apple-m5-max-40c" ram="128" verdict="S" mode="full-gpu" />
+In the Mac Studio (2025), only the M4 Max with the 40-core GPU comes with 128GB; the M3 Ultra has no 128GB option. Apple launched the M3 Ultra in March 2025 with 96GB, configurable up to 512GB, but its current spec page lists 96GB up to 256GB. The table's 512GB row is for machines bought with that option before Apple dropped it. The M2 Ultra in the 2023 Mac Studio came with 64GB, 128GB or 192GB. Apple also offers the M5 Max with the 40-core GPU and 128GB in the MacBook Pro, where gpt-oss-120b also runs great in CanRun's estimate.<Expect model="gpt-oss-120b" gpu="apple-m5-max-40c" ram="128" verdict="S" mode="full-gpu" />
 
 ## How much of the 128GB the GPU can use
 
@@ -149,7 +149,8 @@ Yes, in CanRun's calculation. At 128k with an f16 KV cache it needs <Num kind="n
 - [AMD ROCm docs: RDNA3.5 system optimization](https://rocm.docs.amd.com/en/latest/reference/system-optimization/rdna3-5.html): the kernel's GTT limit at about half of system RAM by default, the small BIOS reservation, and `amd-ttm`, whose figures are in binary gigabytes.
 - [NVIDIA DGX Spark user guide: hardware](https://docs.nvidia.com/dgx/dgx-spark/hardware.html): 128GB of unified system memory and its bandwidth.
 - [NVIDIA DGX Spark user guide: known issues](https://docs.nvidia.com/dgx/dgx-spark/known-issues.html): `nvidia-smi` showing total memory use as Not Supported while still listing per-process GPU memory, and free memory reported below what can be allocated.
-- [Apple: Mac Studio (2025) tech specs](https://support.apple.com/en-us/122211): M4 Max and M3 Ultra memory options and bandwidth.
+- [Apple: Mac Studio (2025) tech specs](https://support.apple.com/en-us/122211): the current M4 Max and M3 Ultra memory options (the M3 Ultra up to 256GB) and bandwidth.
+- [Apple newsroom: Mac Studio with M4 Max and M3 Ultra](https://www.apple.com/newsroom/2025/03/apple-unveils-new-mac-studio-the-most-powerful-mac-ever/): the M3 Ultra configurable up to 512GB at launch in March 2025.
 - [Apple: Mac Studio (2023) tech specs](https://support.apple.com/en-us/111835): M2 Ultra memory options and bandwidth.
 - [Apple: MacBook Pro 16-inch (M5 Pro or M5 Max) tech specs](https://support.apple.com/en-us/126319): the M5 Max with the 40-core GPU and 128GB.
 - [gpt-oss-120b model card](https://huggingface.co/openai/gpt-oss-120b): total and active parameters.

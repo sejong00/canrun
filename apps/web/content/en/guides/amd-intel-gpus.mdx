@@ -76,11 +76,11 @@ LM Studio ships its llama.cpp engine as separate runtimes for the CPU, CUDA, Vul
 
 ### Which backend is faster?
 
-CanRun does not model the backend; its dense-model efficiency figures for Radeon and Arc cards come from public llama-bench results run through Vulkan. llama.cpp's own scoreboards give a rough answer for Llama 2 7B: on the RX 9070 XT, Vulkan generated about a third faster than ROCm, and on the RX 7900 XTX about a tenth faster, while prompt speed was about the same on both cards. The runs come from different builds and machines, so measure your own card: load the same GGUF with each build and compare the `eval time` line that llama-server prints after each reply. For which figures to compare, see <GuideLink slug="tokens-per-second" />. The one ROCm result for a catalog model in CanRun's data, gpt-oss-20b on the RX 7900 XT, is shown under "How sure are these numbers?".
+CanRun does not model the backend; its dense-model efficiency figures for Radeon and Arc cards come from public llama-bench results run through Vulkan. llama.cpp's own scoreboards give a rough answer for Llama 2 7B: on the RX 9070 XT, Vulkan generated about 30% faster than ROCm, and on the RX 7900 XTX about a tenth faster, while prompt speed was about the same on both cards. The runs come from different builds and machines, so measure your own card: load the same GGUF with each build and compare the `eval time` line that llama-server prints after each reply. For which figures to compare, see <GuideLink slug="tokens-per-second" />. The one ROCm result for a catalog model in CanRun's data, gpt-oss-20b on the RX 7900 XT, is shown under "How sure are these numbers?".
 
 ## Same VRAM, different speed: RX 9070 XT vs RTX 5070 Ti, RX 7900 XTX vs RTX 3090
 
-Once a model fits, generation speed follows memory bandwidth, because every new token reads the active weights and the KV cache from VRAM. CanRun multiplies each card's bandwidth by an efficiency figure per vendor, fitted to public llama-bench results. The figure for Radeon cards is about a tenth higher than for NVIDIA cards; the one for Intel Arc is about a sixth lower.
+Once a model fits, generation speed follows memory bandwidth, because every new token reads the active weights and the KV cache from VRAM. CanRun multiplies each card's bandwidth by an efficiency figure per vendor, fitted to public llama-bench results. The figure for Radeon cards is nearly a tenth higher than for NVIDIA cards; the one for Intel Arc is about a sixth lower.
 
 ### RX 9070 XT and RTX 5070 Ti
 
@@ -164,7 +164,7 @@ Start with whatever your tool supports for your card, then measure if speed matt
 
 ### Is a Radeon card faster than an NVIDIA card with the same memory bandwidth?
 
-Slightly, for generation, in CanRun's calculation: its efficiency figure for Radeon cards is about a tenth higher, so Qwen3 32B Runs great on the RX 7900 XTX and Runs well on the RTX 3090, two estimates on either side of the thinking-mode line.<Expect model="qwen3-32b" gpu="rx-7900-xtx" verdict="S" /><Expect model="qwen3-32b" gpu="rtx-3090" verdict="A" /> In public Llama 2 7B results, the RX 7900 XTX generated about a sixth faster than the RTX 3090 but read prompts more than a quarter slower.
+Slightly, for generation, in CanRun's calculation: its efficiency figure for Radeon cards is nearly a tenth higher, so Qwen3 32B Runs great on the RX 7900 XTX and Runs well on the RTX 3090, two estimates on either side of the thinking-mode line.<Expect model="qwen3-32b" gpu="rx-7900-xtx" verdict="S" /><Expect model="qwen3-32b" gpu="rtx-3090" verdict="A" /> In public Llama 2 7B results, the RX 7900 XTX generated about a sixth faster than the RTX 3090 but read prompts more than a quarter slower.
 
 ### Is 12GB enough for 14B models on an Arc or Radeon card?
 

@@ -91,12 +91,12 @@ export const CPU_OS_RESERVE_GB = 4;
  * moe 미검증 클래스(intel-arc)는 undefined → dense 값 사용 + theoretical 처리.
  */
 // source: https://github.com/ggml-org/llama.cpp/discussions/15013 · https://github.com/ggml-org/llama.cpp/discussions/15396 · https://www.localscore.ai · https://www.hardware-corner.net/gpu-ranking-local-llm/ — 실측 70여 점 도출 (docs/02 §3.2, research/hardware.md §6)
-// source(amd, 10-15 D79): https://github.com/ggml-org/llama.cpp/discussions/10879 Vulkan 스코어보드 no-FA 표 — 7900 XTX(b10868, https://github.com/ggml-org/llama.cpp/discussions/10879#discussioncomment-18386832)·9070 XT·9070·7800 XT 4점이 같은 식에서 0.72~0.83 → 최대 오차를 가장 작게 하는 값(minimax) 0.77. 7900 XTX 가 옛 b6957 값(191.3)이었을 때는 0.78
+// source(amd, 10-15 D79·D80): https://github.com/ggml-org/llama.cpp/discussions/10879 Vulkan 스코어보드 no-FA 4점, 값은 제출 댓글 fa 0 줄 — 7900 XTX b10868 182.63(https://github.com/ggml-org/llama.cpp/discussions/10879#discussioncomment-18386832)·9070 XT b7825 131.54(https://github.com/ggml-org/llama.cpp/discussions/10879#discussioncomment-15594467)·9070 b6188 119.71(https://github.com/ggml-org/llama.cpp/discussions/10879#discussioncomment-14129066)·7800 XT b7875 118.27(https://github.com/ggml-org/llama.cpp/discussions/10879#discussioncomment-15642964)이 같은 식에서 0.72~0.79 → 최대 오차를 가장 작게 하는 값(minimax) 0.76. D79 의 0.77 은 표가 9070 XT 의 FA 켬 줄(137.11)을 no-FA 칸에 넣은 값으로 구했었다(0.72~0.83)
 // source(dgx-spark, 10-15 D79): https://github.com/ggml-org/llama.cpp/blob/3795cc1e89e16fbc145f8a5457ea30abd86e0d1d/benches/dgx-spark/dgx-spark.md (b7941 llama-bench, 깊이 0·8192) — dense 2모델 0.72~0.89, MoE 3모델 0.60~0.83 → 각 점이 ±20% 밴드 안에 드는 범위에서 dense 0.78·MoE 0.68 (옛 0.4 는 출처와 맞지 않던 tg 35 한 점에 맞춘 값)
 // source(cpu moe): https://www.hardware-corner.net/guides/qwen3-hardware-requirements/ ("Dual-channel DDR5 5600 MHz · Qwen3 Q4 · 18–20" — 컨텍스트·CPU·백엔드 미기재라 10-15 D79 에 실측 레코드에서 뺐다, 값은 유지). 같은 쪽의 조건이 밝혀진 근거는 CPU_MOE_RAM_EFF 0.5(전문가를 RAM 에서 읽는 효율) — 0.43 은 그보다 낮은 보수값
 export const EFF: Readonly<Record<EffClass, { dense: number; moe?: number }>> = Object.freeze({
   nvidia: { dense: 0.7, moe: 0.45 }, // 0.62~0.80, 대역폭 클수록↓ (5090은 0.62, 3060은 0.80 → effOverride)
-  amd: { dense: 0.77, moe: 0.5 },
+  amd: { dense: 0.76, moe: 0.5 }, // Vulkan no-FA 4점 minimax — 10-15 D80
   'intel-arc': { dense: 0.59 }, // MoE 미검증 (B580 실측)
   apple: { dense: 0.6, moe: 0.3 },
   'apple-ultra': { dense: 0.44, moe: 0.29 }, // 800GB/s급 비포화

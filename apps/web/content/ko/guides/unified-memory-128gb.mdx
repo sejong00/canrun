@@ -16,7 +16,7 @@ Llama 3.3 70B와 gpt-oss-120b는 세 기기 모두 GPU 몫 안에 들어갑니�
 
 표에서 128GB 구성은 스트릭스 헤일로·DGX Spark·M4 Max·M2 Ultra의 네 줄입니다. 네 줄은 GPU가 쓸 수 있는 메모리가 같아서, 들어가지 않는 모델도 같습니다. 나머지는 대역폭이 큰 칩일수록 쾌적하게 돌아가는 모델이 많습니다. DGX Spark는 대역폭이 스트릭스 헤일로보다 조금 클 뿐인데 쾌적하게 돌아가는 모델은 눈에 띄게 많습니다. CanRun이 DGX Spark에 더 높은 효율 계수를 쓰기 때문입니다(‘이 숫자는 얼마나 확실한가’ 참고).
 
-맥 스튜디오(2025)에서 128GB 구성이 있는 칩은 40코어 GPU M4 Max뿐입니다. 애플의 현재 사양 페이지를 보면 M3 Ultra는 96GB에서 시작해 256GB까지 올릴 수 있고, 128GB 구성은 없습니다. 표의 512GB 줄은 이 페이지에 더는 나오지 않는 구성입니다. 2023년 맥 스튜디오의 M2 Ultra는 64GB·128GB·192GB 구성이었습니다. 애플은 40코어 GPU M5 Max에 128GB를 단 MacBook Pro도 판매합니다. CanRun 추정으로는 이 기기에서도 gpt-oss-120b가 쾌적하게 돌아갑니다<Expect model="gpt-oss-120b" gpu="apple-m5-max-40c" ram="128" verdict="S" mode="full-gpu" />.
+맥 스튜디오(2025)에서 128GB 구성이 있는 칩은 40코어 GPU M4 Max뿐이고, M3 Ultra에는 128GB 구성이 없습니다. 애플은 2025년 3월 M3 Ultra를 96GB부터 512GB까지 고를 수 있게 내놓았습니다. 하지만 지금 사양 페이지에는 96GB부터 256GB까지만 나옵니다. 표의 512GB 줄은 이 구성이 빠지기 전에 512GB로 산 기기에 해당합니다. 2023년 맥 스튜디오의 M2 Ultra는 64GB·128GB·192GB 구성이었습니다. 애플은 40코어 GPU M5 Max에 128GB를 단 MacBook Pro도 판매합니다. CanRun 추정으로는 이 기기에서도 gpt-oss-120b가 쾌적하게 돌아갑니다<Expect model="gpt-oss-120b" gpu="apple-m5-max-40c" ram="128" verdict="S" mode="full-gpu" />.
 
 ## 128GB 가운데 GPU가 쓸 수 있는 양
 
@@ -157,7 +157,8 @@ CanRun 계산으로는 돌릴 수 있습니다. 128k 컨텍스트를 f16 KV 캐�
 - [AMD ROCm 문서: RDNA3.5 시스템 최적화](https://rocm.docs.amd.com/en/latest/reference/system-optimization/rdna3-5.html): 커널의 기본 GTT 한도(시스템 RAM의 약 절반), BIOS 예약을 작게 두는 설정, 1024 기준 GB로 표시하는 `amd-ttm`
 - [NVIDIA DGX Spark 사용자 가이드: 하드웨어](https://docs.nvidia.com/dgx/dgx-spark/hardware.html): 128GB 통합 시스템 메모리와 대역폭
 - [NVIDIA DGX Spark 사용자 가이드: 알려진 문제](https://docs.nvidia.com/dgx/dgx-spark/known-issues.html): `nvidia-smi`의 전체 메모리 사용량 Not Supported 표시와 프로세스별 GPU 메모리 표시, 할당 가능량보다 적게 나오는 남은 메모리
-- [Apple: 맥 스튜디오(2025) 기술 사양](https://support.apple.com/en-us/122211): M4 Max·M3 Ultra의 메모리 구성과 대역폭
+- [Apple: 맥 스튜디오(2025) 기술 사양](https://support.apple.com/en-us/122211): 지금 고를 수 있는 M4 Max·M3 Ultra의 메모리 구성(M3 Ultra는 256GB까지)과 대역폭
+- [Apple 뉴스룸: M4 Max·M3 Ultra 맥 스튜디오 발표](https://www.apple.com/newsroom/2025/03/apple-unveils-new-mac-studio-the-most-powerful-mac-ever/): 2025년 3월 출시 때 M3 Ultra를 512GB까지 구성할 수 있었다는 발표
 - [Apple: 맥 스튜디오(2023) 기술 사양](https://support.apple.com/en-us/111835): M2 Ultra의 메모리 구성과 대역폭
 - [Apple: MacBook Pro 16형(M5 Pro 또는 M5 Max) 기술 사양](https://support.apple.com/en-us/126319): 40코어 GPU M5 Max의 128GB 구성
 - [gpt-oss-120b 모델 카드](https://huggingface.co/openai/gpt-oss-120b): 전체·활성 파라미터 수

@@ -180,8 +180,8 @@ KV = KiB/tok(f16). 파일 크기 = 실측 GGUF(decimal GB), 출처 repo 명기.
 | M4 Max 40c | L2-7B Q4_0 | 짧음 | 886 | 83.1 | llama.cpp #4167 |
 | M3 Ultra | gpt-oss-20b | 2k | 2,816 | 115.5 | #15396 |
 | M3 Max 128GB | L3.3-70B Q4_K_M | — | — | 9.8 | Ollama 실측 블로그 |
-| Strix Halo | gpt-oss-120b MXFP4 | 2k | 707 | 50.2 | quozul.dev ROCm7 |
-| DGX Spark | gpt-oss-120b | 2k | 1,717 | ~35 | llama.cpp #16578 |
+| Strix Halo | gpt-oss-120b MXFP4 | 짧음 | 707 | 50.2 | quozul.dev ROCm 7.0.2 (10-15 D80 — pp512/tg128) |
+| DGX Spark | gpt-oss-120b | 2k | 2,444 | 58.7 | llama.cpp 개발진 결과 파일 b7941 (10-15 D79 — 옛 1,717/~35 는 출처와 맞지 않았다) |
 | 2×RTX 3090 | L3-70B Q4_K_M | — | ~85 | 14~16 | compute-market |
 | CPU DDR5-5600 | Mistral-7B Q4_K_M | — | — | 11.2 | llamafile #450 |
 | CPU DDR5-5600 | Qwen3-30B-A3B Q4 | — | — | 18~20 | hardware-corner |

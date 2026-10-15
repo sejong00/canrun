@@ -161,7 +161,8 @@ export const SPEED_CASES: readonly SpeedCase[] = [
   // MoE — 밴드 ±20%
   { label: '4090 gpt-oss-20b MoE', hw: dgpu(24, 1008, 'nvidia'), mq: GPT_OSS_20B, ctx: 2048, measuredTg: 225.2, band: 0.2 },
   { label: '5060Ti gpt-oss-20b MoE', hw: dgpu(16, 448, 'nvidia'), mq: GPT_OSS_20B, ctx: 2048, measuredTg: 111.6, band: 0.2 },
-  { label: 'StrixHalo gpt-oss-120b MoE', hw: { ...unified(128, 256, 'strix', 0.54), os: 'linux' }, mq: GPT_OSS_120B, ctx: 2048, measuredTg: 50.2, band: 0.2 },
+  // quozul.dev llama-bench 기본 pp512/tg128 (ROCm 7.0.2, mmap 끔) — 10-15 D80 에 ctx 2048 → 512 (출처와 맞춤)
+  { label: 'StrixHalo gpt-oss-120b MoE', hw: { ...unified(128, 256, 'strix', 0.54), os: 'linux' }, mq: GPT_OSS_120B, ctx: 512, measuredTg: 50.2, band: 0.2 },
 ];
 
 // ---------- 4) 판정 새너티 (verify_engine.py §4 + docs/02 §8 시드) ----------
@@ -441,9 +442,10 @@ export const HETERO_GPU_CASES: readonly HeteroGpuCase[] = [
 // ---------- 8) 클래스 계수 재보정 (10-15 D79): AMD Vulkan 스코어보드 · DGX Spark 개발진 결과 파일 ----------
 export type SourcedSpeedCase = SpeedCase & { source: string };
 
-const VULKAN_BOARD = 'https://github.com/ggml-org/llama.cpp/discussions/10879';
+// Vulkan 스코어보드(토론 #10879) no-FA 표 — 값은 각 제출 댓글의 fa 0 줄(10-15 D80 에 댓글로 고정)
+const VULKAN_COMMENT = 'https://github.com/ggml-org/llama.cpp/discussions/10879#discussioncomment-';
 // 7900 XTX 는 표의 현재 값(b10868, 2026-09-10 제출) — 옛 b6957 값 191.3 은 표에서 바뀌었다
-const VULKAN_7900XTX = 'https://github.com/ggml-org/llama.cpp/discussions/10879#discussioncomment-18386832';
+const VULKAN_7900XTX = `${VULKAN_COMMENT}18386832`;
 const SPARK_RESULTS = 'https://github.com/ggml-org/llama.cpp/blob/3795cc1e89e16fbc145f8a5457ea30abd86e0d1d/benches/dgx-spark/dgx-spark.md';
 const SPARK: Hardware = { ...unified(128, 273, 'dgx-spark'), os: 'linux' };
 const GIB = 1.073741824;
@@ -460,9 +462,10 @@ const GEMMA3_4B_Q40: ModelQuant = { ...dense(2.35 * GIB, 20, 3.88), attnType: 's
  */
 export const RECAL_1015_CASES: readonly SourcedSpeedCase[] = [
   { label: 'RX 7900 XTX L2-7B Q4_0 Vulkan (b10868)', hw: dgpu(24, 960, 'amd'), mq: L2_7B, ctx: 512, measuredTg: 182.63, band: 0.12, source: VULKAN_7900XTX },
-  { label: 'RX 9070 XT L2-7B Q4_0 Vulkan', hw: dgpu(16, 645, 'amd'), mq: L2_7B, ctx: 512, measuredTg: 137.11, band: 0.12, source: VULKAN_BOARD },
-  { label: 'RX 9070 L2-7B Q4_0 Vulkan', hw: dgpu(16, 645, 'amd'), mq: L2_7B, ctx: 512, measuredTg: 119.71, band: 0.12, source: VULKAN_BOARD },
-  { label: 'RX 7800 XT L2-7B Q4_0 Vulkan', hw: dgpu(16, 624, 'amd'), mq: L2_7B, ctx: 512, measuredTg: 118.27, band: 0.12, source: VULKAN_BOARD },
+  // 9070 XT: 제출(-fa 1,0)의 fa 0 줄. 표는 fa 1 줄 137.11 을 no-FA 칸에 넣었다(D80)
+  { label: 'RX 9070 XT L2-7B Q4_0 Vulkan (b7825)', hw: dgpu(16, 645, 'amd'), mq: L2_7B, ctx: 512, measuredTg: 131.54, band: 0.12, source: `${VULKAN_COMMENT}15594467` },
+  { label: 'RX 9070 L2-7B Q4_0 Vulkan (b6188)', hw: dgpu(16, 645, 'amd'), mq: L2_7B, ctx: 512, measuredTg: 119.71, band: 0.12, source: `${VULKAN_COMMENT}14129066` },
+  { label: 'RX 7800 XT L2-7B Q4_0 Vulkan (b7875)', hw: dgpu(16, 624, 'amd'), mq: L2_7B, ctx: 512, measuredTg: 118.27, band: 0.12, source: `${VULKAN_COMMENT}15642964` },
   { label: 'DGX Spark gpt-oss-120b tg32 d0', hw: SPARK, mq: GPT_OSS_120B, ctx: 2048, measuredTg: 58.72, band: 0.2, source: SPARK_RESULTS },
   { label: 'DGX Spark gpt-oss-120b tg32 d8192', hw: SPARK, mq: GPT_OSS_120B, ctx: 8192, measuredTg: 52.87, band: 0.2, source: SPARK_RESULTS },
   { label: 'DGX Spark gpt-oss-20b tg32 d0', hw: SPARK, mq: GPT_OSS_20B, ctx: 2048, measuredTg: 83.43, band: 0.2, source: SPARK_RESULTS },
