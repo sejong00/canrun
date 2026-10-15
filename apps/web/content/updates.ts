@@ -11,6 +11,7 @@ export type SiteUpdate = { readonly id: string; readonly date: string };
 
 export const SITE_UPDATES = [
   { id: 'm5-ultra', date: '2026-10-15' },
+  { id: 'new-guides', date: '2026-10-15' },
   { id: 'apple-dense-speed', date: '2026-10-15' },
   { id: 'hub-intros', date: '2026-10-14' },
   { id: 'calculator-examples', date: '2026-10-14' },
