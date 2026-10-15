@@ -1,4 +1,4 @@
-로컬 LLM이 답을 쓰는 속도는 주로 메모리 대역폭과, 모델이 VRAM에 다 들어가는지로 정해집니다. 8GB인 RTX 4060에는 Llama 3.1 8B가 다 들어가 쾌적하게 돌아가고, 공개 벤치마크 결과도 있습니다<Expect model="llama-3.1-8b" gpu="rtx-4060" verdict="S" confidence="measured" />. Qwen3 14B는 다 들어가지 않아 일부가 시스템 RAM에서 돌고, 겨우 돌아갑니다(보정된 추정)<Expect model="qwen3-14b" gpu="rtx-4060" verdict="B" mode="partial-offload" confidence="calibrated" />. 입력을 읽는 속도는 따로 있는데, 이쪽은 GPU 연산 성능에 달려 있습니다.
+로컬 LLM이 답을 쓰는 속도는 주로 메모리 대역폭과, 모델이 VRAM에 다 들어가는지로 정해집니다. 8GB인 RTX 4060에는 Llama 3.1 8B가 다 들어가 쾌적하게 돌아가고, 공개 벤치마크 결과도 있습니다<Expect model="llama-3.1-8b" gpu="rtx-4060" verdict="S" confidence="measured" />. Qwen3 14B는 다 들어가지 않아 일부를 시스템 RAM에 두어야 해서 겨우 돌아갑니다(보정된 추정)<Expect model="qwen3-14b" gpu="rtx-4060" verdict="B" mode="partial-offload" confidence="calibrated" />. 입력을 읽는 속도는 따로 있는데, 이쪽은 GPU 연산 성능에 달려 있습니다.
 
 ## 초당 몇 토큰이면 쓸 만한가 — CanRun 판정 기준
 
@@ -12,31 +12,31 @@
 
 생각(thinking) 모드가 있는 모델은 기준선이 1.5배 높습니다. 답하기 전에 추론 과정을 먼저 쓰기 때문에, 답 하나에 기다리는 토큰이 훨씬 많습니다. gpt-oss처럼 늘 생각하는 모델과, 생각 모드를 켜고 끌 수 있는 모델이 모두 해당합니다. Qwen3 14B는 켜고 끌 수 있고, 기본으로 켜져 있습니다. RTX 3060 12GB에서 Qwen3 14B는 원활하게 돌아갑니다<Expect model="qwen3-14b" gpu="rtx-3060-12gb" verdict="A" />. 생각 모드가 없는 14B 모델 <HubLink model="phi-4" />는 예상 속도가 비슷한데도 쾌적하게 돌아갑니다<Expect model="phi-4" gpu="rtx-3060-12gb" verdict="S" />. 생각 모드를 끄는 법과 켜 둘 때 드는 비용은 ‘<GuideLink slug="thinking-models" />’ 가이드에서 다룹니다.
 
-토큰은 단어를 잘게 나눈 조각입니다. 같은 문장도 모델의 토크나이저와 언어에 따라 토큰 수가 다릅니다. 그래서 tok/s가 같아도 화면에 글이 나오는 속도는 모델마다 다를 수 있습니다. 한국어로 대화할 때도 마찬가지입니다.
+토큰은 단어를 잘게 나눈 조각입니다. 토큰 하나에 담기는 글자 수는 모델의 토크나이저와 언어에 따라 다릅니다. 그래서 tok/s가 같아도 한국어 답이 화면에 나오는 속도는 모델마다 다를 수 있습니다.
 
 ## 생성 속도를 정하는 것 — 메모리 대역폭과 토큰당 읽는 양
 
-토큰 하나를 쓰려면 GPU가 그 토큰에 쓰는 가중치를 모두 한 번 읽습니다. 지금까지의 대화를 담은 KV 캐시도 함께 읽습니다. 메모리 대역폭은 그래픽카드가 VRAM에서 1초에 읽을 수 있는 양입니다. 이 값이 토큰을 얼마나 자주 만들 수 있는지를 제한합니다.
+토큰 하나를 쓰려면 GPU가 그 토큰에 쓰는 가중치를 모두 한 번 읽습니다. 지금까지의 대화를 담은 KV 캐시도 함께 읽습니다. 메모리 대역폭은 그래픽카드가 VRAM에서 1초에 읽을 수 있는 양입니다. 이 값이 클수록 토큰을 빨리 만들 수 있습니다.
 
-CanRun은 대역폭에 효율 계수를 곱하고, 토큰 하나에 읽는 바이트로 나눠 생성 속도를 추정합니다. NVIDIA 카드에서 dense 모델을 GPU에만 올리면, 효율 계수는 표기 대역폭의 10분의 7 정도입니다. 이 계수는 하드웨어 종류마다 다르고, 공개 벤치마크에 맞춰 정했습니다.
+CanRun은 대역폭에 효율 계수를 곱하고, 토큰 하나에 읽는 바이트로 나눠 생성 속도를 추정합니다. NVIDIA 카드에 dense 모델을 전부 올리면 표기 대역폭의 10분의 7 정도를 실제로 쓴다고 봅니다. 이 계수는 하드웨어 종류마다 다르고, 공개 벤치마크에 맞춰 정했습니다.
 
-이 나눗셈에서 어림셈이 나옵니다. 대역폭이 두 배면 예상 속도도 대략 두 배가 됩니다. 토큰당 읽는 양이 두 배면 속도는 절반이 됩니다. 대역폭은 카드마다 차이가 큽니다. RTX 4060은 <Num kind="bandwidth" gpu="rtx-4060" />, RTX 5090은 <Num kind="bandwidth" gpu="rtx-5090" />입니다.
+그래서 이렇게 어림할 수 있습니다. 대역폭이 두 배면 예상 속도도 대략 두 배가 됩니다. 토큰당 읽는 양이 두 배면 속도는 절반이 됩니다. 대역폭은 카드마다 차이가 큽니다. RTX 4060은 <Num kind="bandwidth" gpu="rtx-4060" />, RTX 5090은 <Num kind="bandwidth" gpu="rtx-5090" />입니다.
 
 dense 모델은 토큰마다 GPU에 올라간 가중치를 거의 전부 읽습니다. 아래 표는 이 글의 비교표에 나오는 네 모델을 기본 양자화로 받았을 때 그래픽카드에 필요한 메모리입니다.
 
 <ModelMemoryTable models="llama-3.1-8b,qwen3-14b,gemma-3-27b,qwen3-30b-a3b-2507" />
 
-파라미터 열을 보면 <HubLink model="qwen3-30b-a3b-2507" />만 다릅니다. 이 모델은 MoE(전문가 혼합) 모델입니다. 라우터가 토큰마다 전문가 몇 개만 골라 쓰므로, 토큰 하나에 쓰는 파라미터는 전체의 10분의 1 정도입니다. 표에는 전체 파라미터와 활성 파라미터가 함께 나옵니다. 그래서 파일 크기에 비해 토큰당 읽는 양이 훨씬 적습니다. 다만 라우터가 어느 전문가를 고를지 모르니, 파일 전체가 메모리에 들어가야 합니다.
+파라미터 열을 보면 <HubLink model="qwen3-30b-a3b-2507" />만 다릅니다. 이 모델은 MoE(전문가 혼합) 모델입니다. 라우터가 토큰마다 전문가 몇 개만 골라 쓰므로, 토큰 하나에 쓰는 파라미터는 전체의 10분의 1 정도입니다(표의 전체·활성 파라미터 참고). 그래서 파일 크기에 비해 토큰당 읽는 양이 훨씬 적습니다. 다만 라우터가 어느 전문가를 고를지 모르니, 파일 전체가 메모리에 들어가야 합니다.
 
-양자화도 같은 원리입니다. Qwen3 14B는 Q8_0 파일이 <Num kind="fileGB" model="qwen3-14b" quant="Q8_0" />, Q4_K_M 파일이 <Num kind="fileGB" model="qwen3-14b" />입니다. 둘 다 들어가는 24GB 카드에서 CanRun은 Q8_0의 속도를 Q4_K_M의 5분의 3 정도로 추정합니다. 작은 양자화는 메모리를 덜 쓰고 더 빠르지만, 품질이 조금 떨어집니다. 단계별 비교는 ‘<GuideLink slug="gguf-quantization" />’ 가이드에 있습니다.
+양자화도 같은 원리입니다. Qwen3 14B는 Q8_0 파일이 <Num kind="fileGB" model="qwen3-14b" quant="Q8_0" />, Q4_K_M 파일이 <Num kind="fileGB" model="qwen3-14b" />입니다. 둘 다 들어가는 24GB 카드에서 CanRun은 Q8_0의 속도를 Q4_K_M의 5분의 3 정도로 추정합니다. 작은 양자화는 메모리를 덜 쓰고 더 빠르지만, 품질은 그만큼 떨어집니다. 단계별 비교는 ‘<GuideLink slug="gguf-quantization" />’ 가이드에 있습니다.
 
 ### 대화가 길어지면 느려지는 이유
 
-새 토큰을 만들 때마다 KV 캐시 전체도 읽습니다. KV 캐시는 대화가 길어질수록 커집니다. CanRun의 속도는 컨텍스트가 그 길이까지 찼다고 보고 계산한 값입니다. 이 계산대로라면 막 시작한 대화는 8k 추정보다 빠르고, 긴 대화는 더 느립니다. 아래 표는 <ComboLink model="qwen3-30b-a3b-2507" gpu="rtx-3090" />을 돌릴 때의 결과입니다. MoE 모델이라 이 효과가 더 크게 나타납니다.
+새 토큰을 만들 때마다 KV 캐시 전체도 읽습니다. KV 캐시는 대화가 길어질수록 커집니다. CanRun의 속도는 컨텍스트가 표에 적힌 길이만큼 찼다고 보고 계산한 값이고, 판정은 8k 기준입니다. 이 계산대로라면 막 시작한 대화는 8k 추정보다 빠르고, 긴 대화는 더 느립니다. 아래 표는 <ComboLink model="qwen3-30b-a3b-2507" gpu="rtx-3090" />을 돌릴 때의 결과입니다. MoE 모델이라 이 효과가 더 크게 나타납니다.
 
 <CtxTable model="qwen3-30b-a3b-2507" gpu="rtx-3090" />
 
-f16 KV 캐시로 32k를 쓰면 예상 속도가 8k의 절반을 조금 넘습니다. 이 모델은 토큰마다 가중치의 10분의 1 정도만 읽습니다. 그래서 읽는 양 가운데 KV 캐시가 차지하는 몫이 큽니다. Llama 3.1 8B 같은 dense 모델은 읽는 양 대부분이 가중치라서, 같은 구간에서 덜 떨어집니다. 32k에서는 <Num kind="needGB" model="qwen3-30b-a3b-2507" ctx="32768" />가 필요해, 이 카드의 사용 가능 메모리 <Num kind="usableGB" gpu="rtx-3090" /> 안에 아직 들어갑니다<Expect model="qwen3-30b-a3b-2507" gpu="rtx-3090" ctx="32768" fits="true" mode="full-gpu" />. 64k에서는 <Num kind="needGB" model="qwen3-30b-a3b-2507" ctx="65536" />가 필요합니다. CanRun 계산으로는 전문가 일부가 시스템 RAM으로 가서 더 느려지고, 이 결과는 이론 추정입니다<Expect model="qwen3-30b-a3b-2507" gpu="rtx-3090" ctx="65536" fits="true" mode="cpu-moe" confidence="theoretical" />.
+f16 KV 캐시로 32k를 쓰면 예상 속도가 8k의 절반을 조금 넘습니다. 이 모델은 토큰마다 가중치의 10분의 1 정도만 읽습니다. 그래서 읽는 양 가운데 KV 캐시가 차지하는 몫이 큽니다. Llama 3.1 8B 같은 dense 모델은 8k에서는 읽는 양 대부분이 가중치라 같은 구간에서 덜 떨어집니다. CanRun 계산으로는 3분의 1 정도 느려집니다. 32k에서는 <Num kind="needGB" model="qwen3-30b-a3b-2507" ctx="32768" />가 필요해, 이 카드의 사용 가능 메모리 <Num kind="usableGB" gpu="rtx-3090" /> 안에 아직 들어갑니다<Expect model="qwen3-30b-a3b-2507" gpu="rtx-3090" ctx="32768" fits="true" mode="full-gpu" />. 64k에서는 <Num kind="needGB" model="qwen3-30b-a3b-2507" ctx="65536" />가 필요합니다. CanRun 계산으로는 전문가 일부가 시스템 RAM으로 가서 더 느려집니다(이론 추정)<Expect model="qwen3-30b-a3b-2507" gpu="rtx-3090" ctx="65536" fits="true" mode="cpu-moe" confidence="theoretical" />.
 
 q8_0·q4_0 열이 더 빠르게 나오는 것은 줄어든 KV 캐시만큼 읽는 양을 줄여 계산했기 때문입니다. 이 부분은 공개 벤치마크로 확인하지 못했습니다. 그래서 두 열은 주로 메모리를 볼 때 쓰는 편이 좋습니다. 얼마나 줄어드는지는 ‘<GuideLink slug="kv-cache-context" />’ 가이드에서 설명합니다.
 
@@ -48,41 +48,41 @@ q8_0·q4_0 열이 더 빠르게 나오는 것은 줄어든 KV 캐시만큼 읽�
 
 ### 다 들어가면 대역폭 순서대로
 
-Llama 3.1 8B는 표의 모든 그래픽카드에 다 들어가고, 어느 카드에서나 쾌적하게 돌아갑니다<Expect model="llama-3.1-8b" gpu="rtx-4060" verdict="S" /><Expect model="llama-3.1-8b" gpu="rtx-4060-ti-16gb" verdict="S" /><Expect model="llama-3.1-8b" gpu="rtx-3060-12gb" verdict="S" /><Expect model="llama-3.1-8b" gpu="rtx-5060-ti-16gb" verdict="S" /><Expect model="llama-3.1-8b" gpu="rtx-5070" verdict="S" /><Expect model="llama-3.1-8b" gpu="rtx-3090" verdict="S" /><Expect model="llama-3.1-8b" gpu="rtx-5090" verdict="S" />. CanRun 추정은 아래 행으로 갈수록, 즉 대역폭이 클수록 높아집니다. RTX 4060 행의 첫 숫자가 RTX 4060 Ti 16GB 행보다 높은 것은 그 칸에 공개 벤치마크 결과가 있어서입니다. 아래 줄의 CanRun 추정끼리 비교하면 RTX 4060 쪽이 더 낮습니다.
+Llama 3.1 8B는 표의 모든 그래픽카드에 다 들어가고, 어느 카드에서나 쾌적하게 돌아갑니다<Expect model="llama-3.1-8b" gpu="rtx-4060" verdict="S" /><Expect model="llama-3.1-8b" gpu="rtx-4060-ti-16gb" verdict="S" /><Expect model="llama-3.1-8b" gpu="rtx-3060-12gb" verdict="S" /><Expect model="llama-3.1-8b" gpu="rtx-5060-ti-16gb" verdict="S" /><Expect model="llama-3.1-8b" gpu="rtx-5070" verdict="S" /><Expect model="llama-3.1-8b" gpu="rtx-3090" verdict="S" /><Expect model="llama-3.1-8b" gpu="rtx-5090" verdict="S" />. CanRun 추정은 아래 행으로 갈수록, 즉 대역폭이 클수록 높아집니다. RTX 4060 행의 첫 숫자가 RTX 4060 Ti 16GB 행보다 높은 것은 그 칸에 공개 벤치마크 결과가 있어서입니다. 이 결과는 4k 컨텍스트에서 잰 값이라 8k 추정보다 높게 나옵니다. RTX 4060 칸 아래 줄의 CanRun 추정은 RTX 4060 Ti 16GB보다 낮습니다.
 
 모델이 이미 다 들어간다면 메모리 용량은 속도를 바꾸지 않습니다. <HubLink gpu="rtx-4060-ti-16gb" />와 <HubLink gpu="rtx-5060-ti-16gb" />는 둘 다 16GB입니다. 하지만 대역폭은 새 카드가 <Num kind="bandwidth" gpu="rtx-5060-ti-16gb" />, 이전 카드가 <Num kind="bandwidth" gpu="rtx-4060-ti-16gb" />입니다. Qwen3 14B는 이전 카드에서 원활하게 돌아갑니다<Expect model="qwen3-14b" gpu="rtx-4060-ti-16gb" verdict="A" mode="full-gpu" />. 새 카드에서는 쾌적하게 돌아갑니다<Expect model="qwen3-14b" gpu="rtx-5060-ti-16gb" verdict="S" mode="full-gpu" />.
 
-오래된 RTX 3060 12GB는 RTX 4060 Ti 16GB보다 메모리가 작지만, 대역폭은 더 큽니다(<Num kind="bandwidth" gpu="rtx-3060-12gb" />). 그래서 CanRun은 Llama 3.1 8B와 Qwen3 14B를 RTX 3060 12GB에서 더 빠르게 추정합니다. 그래도 메모리가 더 필요한 모델에서는 16GB가 유리합니다. gpt-oss-20b는 RTX 4060 Ti 16GB에서 GPU에 전부 올라가 쾌적하게 돌아갑니다<Expect model="gpt-oss-20b" gpu="rtx-4060-ti-16gb" verdict="S" mode="full-gpu" />. RTX 3060 12GB에서는 전문가 일부를 시스템 RAM에 두고 원활하게 돌아가며, 이 결과는 이론 추정입니다<Expect model="gpt-oss-20b" gpu="rtx-3060-12gb" verdict="A" mode="cpu-moe" confidence="theoretical" />.
+오래된 RTX 3060 12GB는 RTX 4060 Ti 16GB보다 메모리가 작지만, 대역폭은 더 큽니다(<Num kind="bandwidth" gpu="rtx-3060-12gb" />). 그래서 CanRun은 Llama 3.1 8B와 Qwen3 14B를 RTX 3060 12GB에서 더 빠르게 추정합니다. 그래도 메모리가 더 필요한 모델에서는 16GB가 유리합니다. gpt-oss-20b는 RTX 4060 Ti 16GB에서 GPU에 전부 올라가 쾌적하게 돌아갑니다<Expect model="gpt-oss-20b" gpu="rtx-4060-ti-16gb" verdict="S" mode="full-gpu" />. RTX 3060 12GB에서는 전문가 일부를 시스템 RAM에 두고 원활하게 돌아갑니다(이론 추정)<Expect model="gpt-oss-20b" gpu="rtx-3060-12gb" verdict="A" mode="cpu-moe" confidence="theoretical" />.
 
 ### 다 안 들어가면 대역폭이 순서를 정하지 못한다
 
-<HubLink model="gemma-3-27b" />는 8k에서 <Num kind="needGB" model="gemma-3-27b" />가 필요합니다. 16GB 카드가 쓸 수 있는 메모리보다 많습니다. 표에서 16GB 이하인 카드 다섯 장에서는 일부가 시스템 RAM에서 돌고, 겨우 돌아갑니다<Expect model="gemma-3-27b" gpu="rtx-4060" verdict="B" mode="partial-offload" /><Expect model="gemma-3-27b" gpu="rtx-4060-ti-16gb" verdict="B" mode="partial-offload" /><Expect model="gemma-3-27b" gpu="rtx-3060-12gb" verdict="B" mode="partial-offload" /><Expect model="gemma-3-27b" gpu="rtx-5060-ti-16gb" verdict="B" mode="partial-offload" /><Expect model="gemma-3-27b" gpu="rtx-5070" verdict="B" mode="partial-offload" />. 이때는 속도 순서가 대역폭을 따르지 않습니다. RTX 5070은 대역폭이 두 16GB 카드보다 큽니다(<Num kind="bandwidth" gpu="rtx-5070" />). 그런데도 예상 속도는 두 카드보다 낮습니다. 메모리가 12GB라서 GPU에 올리는 몫이 더 작기 때문입니다. RTX 3090에서는 모델이 다 들어가 쾌적하게 돌아갑니다<Expect model="gemma-3-27b" gpu="rtx-3090" verdict="S" mode="full-gpu" />.
+<HubLink model="gemma-3-27b" />는 8k에서 <Num kind="needGB" model="gemma-3-27b" />가 필요합니다. 16GB 카드가 쓸 수 있는 메모리보다 많습니다. 표에서 16GB 이하인 카드 다섯 장에서는 일부를 시스템 RAM에 두어야 해서 겨우 돌아갑니다<Expect model="gemma-3-27b" gpu="rtx-4060" verdict="B" mode="partial-offload" /><Expect model="gemma-3-27b" gpu="rtx-4060-ti-16gb" verdict="B" mode="partial-offload" /><Expect model="gemma-3-27b" gpu="rtx-3060-12gb" verdict="B" mode="partial-offload" /><Expect model="gemma-3-27b" gpu="rtx-5060-ti-16gb" verdict="B" mode="partial-offload" /><Expect model="gemma-3-27b" gpu="rtx-5070" verdict="B" mode="partial-offload" />. 이때는 속도 순서가 대역폭을 따르지 않습니다. RTX 5070은 대역폭이 두 16GB 카드보다 큽니다(<Num kind="bandwidth" gpu="rtx-5070" />). 그런데도 예상 속도는 두 카드보다 낮습니다. 메모리가 12GB라서 GPU에 올리는 몫이 더 작기 때문입니다. RTX 3090에서는 모델이 다 들어가 쾌적하게 돌아갑니다<Expect model="gemma-3-27b" gpu="rtx-3090" verdict="S" mode="full-gpu" />.
 
-Qwen3 30B-A3B는 MoE 모델의 경우를 보여 줍니다. 16GB 이하 카드에서 CanRun은 들어가지 않는 전문가를 시스템 RAM에 둡니다. 토큰마다 RAM에서는 필요한 전문가 몇 개만 읽습니다. 그래서 이 다섯 카드에서 모두 원활하게 돌아가며, 모두 이론 추정입니다<Expect model="qwen3-30b-a3b-2507" gpu="rtx-4060" verdict="A" mode="cpu-moe" confidence="theoretical" /><Expect model="qwen3-30b-a3b-2507" gpu="rtx-4060-ti-16gb" verdict="A" mode="cpu-moe" confidence="theoretical" /><Expect model="qwen3-30b-a3b-2507" gpu="rtx-3060-12gb" verdict="A" mode="cpu-moe" confidence="theoretical" /><Expect model="qwen3-30b-a3b-2507" gpu="rtx-5060-ti-16gb" verdict="A" mode="cpu-moe" confidence="theoretical" /><Expect model="qwen3-30b-a3b-2507" gpu="rtx-5070" verdict="A" mode="cpu-moe" confidence="theoretical" />. RTX 3090에서는 GPU에 다 들어가 쾌적하게 돌아갑니다<Expect model="qwen3-30b-a3b-2507" gpu="rtx-3090" verdict="S" mode="full-gpu" />. 파일이 Qwen3 14B의 두 배쯤인데도, CanRun은 이 카드에서 더 빠르게 추정합니다. 다만 읽는 양의 차이만큼 빨라지지는 않습니다. CanRun이 공개 벤치마크에 맞춰 MoE 모델에 더 낮은 효율 계수를 쓰기 때문입니다. RTX 5090에서는 CanRun이 작은 MoE 모델에 두는 상한에 걸립니다. 이렇게 빠른 구간에서는 대역폭보다 토큰마다 드는 부가 처리 시간이 속도를 정하기 때문입니다.
+MoE 모델인 Qwen3 30B-A3B는 사정이 다릅니다. 16GB 이하 카드에서는 들어가지 않는 전문가를 시스템 RAM에 둔다고 보고 계산합니다. 토큰마다 RAM에서는 필요한 전문가 몇 개만 읽습니다. 그래서 이 다섯 카드에서 모두 원활하게 돌아갑니다(모두 이론 추정)<Expect model="qwen3-30b-a3b-2507" gpu="rtx-4060" verdict="A" mode="cpu-moe" confidence="theoretical" /><Expect model="qwen3-30b-a3b-2507" gpu="rtx-4060-ti-16gb" verdict="A" mode="cpu-moe" confidence="theoretical" /><Expect model="qwen3-30b-a3b-2507" gpu="rtx-3060-12gb" verdict="A" mode="cpu-moe" confidence="theoretical" /><Expect model="qwen3-30b-a3b-2507" gpu="rtx-5060-ti-16gb" verdict="A" mode="cpu-moe" confidence="theoretical" /><Expect model="qwen3-30b-a3b-2507" gpu="rtx-5070" verdict="A" mode="cpu-moe" confidence="theoretical" />. RTX 3090에서는 GPU에 다 들어가 쾌적하게 돌아갑니다<Expect model="qwen3-30b-a3b-2507" gpu="rtx-3090" verdict="S" mode="full-gpu" />. 파일은 Qwen3 14B의 두 배쯤이지만, CanRun은 이 카드에서 Qwen3 14B보다 빠르다고 추정합니다. 다만 읽는 양의 차이만큼 빨라지지는 않습니다. CanRun이 공개 벤치마크에 맞춰 MoE 모델에 더 낮은 효율 계수를 쓰기 때문입니다. RTX 5090에서는 CanRun이 작은 MoE 모델에 두는 상한에 걸립니다. 이렇게 빠른 구간에서는 대역폭보다 토큰마다 드는 부가 처리 시간이 속도를 정하기 때문입니다.
 
-그래픽카드 없이 CPU만 쓰는 구성은 속도와 상관없이 판정에 상한이 있습니다. Llama 3.1 8B도 겨우 돌아갑니다<Expect model="llama-3.1-8b" gpu="cpu-ddr5-5600-2ch" verdict="B" mode="cpu-only" />. CPU 행의 Qwen3 30B-A3B는 공개 벤치마크 결과가 있지만, 같은 이유로 겨우 돌아가는 것으로 나옵니다<Expect model="qwen3-30b-a3b-2507" gpu="cpu-ddr5-5600-2ch" verdict="B" mode="cpu-only" confidence="measured" />. VRAM 용량별로 어떤 모델이 들어가는지는 ‘<GuideLink slug="vram-requirements" />’ 가이드에 정리했습니다.
+CPU 행에서 Llama 3.1 8B는 예상 속도가 두 번째 기준선에 못 미쳐 겨우 돌아갑니다<Expect model="llama-3.1-8b" gpu="cpu-ddr5-5600-2ch" verdict="B" mode="cpu-only" />. 그래픽카드 없이 CPU만 쓰는 구성은 속도가 빨라도 판정에 상한이 있습니다. Qwen3 30B-A3B는 공개 벤치마크 속도가 그 선을 넘는데도 겨우 돌아가는 것으로 나옵니다<Expect model="qwen3-30b-a3b-2507" gpu="cpu-ddr5-5600-2ch" verdict="B" mode="cpu-only" confidence="measured" />. VRAM 용량별로 어떤 모델이 들어가는지는 ‘<GuideLink slug="vram-requirements" />’ 가이드에 정리했습니다.
 
-## 조금만 넘쳐도 크게 느려지는 이유
+## 일부만 RAM으로 가도 크게 느려지는 이유
 
 모델이 다 들어가지 않으면 런타임은 남는 층을 시스템 RAM에 둡니다. 토큰마다 이 층들도 거쳐야 합니다. CanRun이 가정하는 DDR5-5600 듀얼채널 RAM의 대역폭은 <Num kind="bandwidth" gpu="cpu-ddr5-5600-2ch" />입니다. RTX 4060의 <Num kind="bandwidth" gpu="rtx-4060" />에 비하면 3분의 1 정도입니다. 게다가 CanRun은 이 부분에서 RAM 대역폭의 절반 정도만 쓴다고 봅니다. 그래픽카드는 10분의 7 정도로 봅니다. RAM 쪽에 걸리는 시간이 GPU 쪽 시간에 더해지므로, 느린 쪽이 전체 속도를 정합니다.
 
-대역폭이 거의 같은 두 카드에서 Qwen3 14B를 비교하면 이 차이가 잘 보입니다. RTX 4060 Ti 16GB에는 다 들어가 원활하게 돌아갑니다<Expect model="qwen3-14b" gpu="rtx-4060-ti-16gb" verdict="A" mode="full-gpu" />. 8GB인 RTX 4060에서는 <Num kind="needGB" model="qwen3-14b" />가 필요한데, 사용 가능 메모리는 <Num kind="usableGB" gpu="rtx-4060" />입니다. 그래서 가중치의 5분의 2 정도가 시스템 RAM으로 갑니다. 이 카드에서는 겨우 돌아갑니다(보정된 추정)<Expect model="qwen3-14b" gpu="rtx-4060" verdict="B" mode="partial-offload" confidence="calibrated" />. CanRun 계산으로는 이 RAM 몫이 토큰 하나에 드는 시간의 4분의 3 정도를 차지합니다. 아래 표는 <ComboLink model="qwen3-14b" gpu="rtx-4060" />를 양자화별로 돌렸을 때의 결과입니다. RAM에 남는 양에 따라 속도가 달라집니다.
+Qwen3 14B는 RTX 4060 Ti 16GB에 다 들어가 원활하게 돌아갑니다<Expect model="qwen3-14b" gpu="rtx-4060-ti-16gb" verdict="A" mode="full-gpu" />. 대역폭이 거의 같은 8GB RTX 4060에서는 <Num kind="needGB" model="qwen3-14b" />가 필요한데, 사용 가능 메모리는 <Num kind="usableGB" gpu="rtx-4060" />입니다. 그래서 가중치의 5분의 2 정도가 시스템 RAM으로 갑니다. 이 카드에서는 겨우 돌아갑니다(보정된 추정)<Expect model="qwen3-14b" gpu="rtx-4060" verdict="B" mode="partial-offload" confidence="calibrated" />. CanRun 계산으로는 이 RAM 몫이 토큰 하나에 드는 시간의 4분의 3 정도를 차지합니다. 아래 표는 <ComboLink model="qwen3-14b" gpu="rtx-4060" />를 양자화별로 돌렸을 때의 결과입니다. RAM에 남는 양에 따라 속도가 달라집니다.
 
 <QuantLadder model="qwen3-14b" gpu="rtx-4060" />
 
-Q8_0은 RAM에 남는 양이 가장 많아 가장 느립니다. IQ4_XS는 GPU에 조금 더 올라가지만 여전히 겨우 돌아갑니다<Expect model="qwen3-14b" gpu="rtx-4060" quant="IQ4_XS" verdict="B" mode="partial-offload" />. Q2_K는 거의 다 들어가서, 네 단계 가운데 유일하게 원활하게 돌아갑니다<Expect model="qwen3-14b" gpu="rtx-4060" quant="Q2_K" verdict="A" mode="partial-offload" />. 하지만 Q2_K는 품질 등급이 ‘손실 큼’입니다. dense 모델의 가중치가 GPU에 10분의 9 미만으로 올라가는 경우도 있습니다. 이때 CanRun은 예상 속도와 관계없이 많아야 겨우 돌아가는 것으로 판정합니다.
+Q8_0은 RAM에 남는 양이 가장 많아 가장 느립니다. IQ4_XS는 GPU에 조금 더 올라가지만 여전히 겨우 돌아갑니다<Expect model="qwen3-14b" gpu="rtx-4060" quant="IQ4_XS" verdict="B" mode="partial-offload" />. Q2_K는 거의 다 들어가서, 네 단계 가운데 Q2_K만 원활하게 돌아갑니다<Expect model="qwen3-14b" gpu="rtx-4060" quant="Q2_K" verdict="A" mode="partial-offload" />. 하지만 Q2_K는 품질 등급이 ‘손실 큼’입니다. CanRun은 dense 모델의 가중치가 GPU에 10분의 9도 안 올라가면, 예상 속도가 높아도 겨우 돌아가는 것으로 판정합니다.
 
-MoE 모델은 덜 느려집니다. 토큰마다 시스템 RAM에서 고른 전문가만 읽기 때문입니다. 그래서 Qwen3 30B-A3B는 RTX 4060에서도 원활하게 돌아가며, 이 결과는 이론 추정입니다<Expect model="qwen3-30b-a3b-2507" gpu="rtx-4060" verdict="A" mode="cpu-moe" confidence="theoretical" />. 이 구성은 ‘<GuideLink slug="moe-cpu-offload" />’ 가이드에서 다룹니다. 런타임이 모델을 어디에 올렸는지 확인하는 법과 무엇부터 줄일지는 ‘<GuideLink slug="gpu-offload-check" />’ 가이드에 있습니다.
+MoE 모델은 덜 느려집니다. 토큰마다 시스템 RAM에서 고른 전문가만 읽기 때문입니다. 그래서 Qwen3 30B-A3B는 RTX 4060에서도 원활하게 돌아갑니다(이론 추정)<Expect model="qwen3-30b-a3b-2507" gpu="rtx-4060" verdict="A" mode="cpu-moe" confidence="theoretical" />. 이 구성은 ‘<GuideLink slug="moe-cpu-offload" />’ 가이드에서 다룹니다. 런타임이 모델을 어디에 올렸는지 확인하는 법과 무엇부터 줄일지는 ‘<GuideLink slug="gpu-offload-check" />’ 가이드에 있습니다.
 
 ## 프롬프트 처리 속도 — 첫 글자가 늦게 나오는 이유
 
-모델은 답을 쓰기 전에 프롬프트 전체를 읽습니다. 시스템 프롬프트와 이전 대화, 새 메시지가 모두 들어갑니다. 이 토큰들은 여러 개를 한꺼번에 묶어 처리합니다. 그래서 이 단계는 메모리 대역폭보다 GPU 연산 성능에 막힙니다. 답을 쓸 때는 토큰을 하나씩 차례로 만들기 때문에 메모리를 기다립니다.
+모델은 답을 쓰기 전에 프롬프트 전체를 읽습니다. 시스템 프롬프트와 이전 대화, 새 메시지가 모두 들어갑니다. 모델은 이 토큰들을 여러 개씩 묶어 한꺼번에 처리합니다. 그래서 이 단계의 속도는 메모리 대역폭보다 GPU 연산 성능이 정합니다. 답을 쓸 때는 토큰을 하나씩 만들기 때문에 메모리 대역폭이 속도를 정합니다.
 
 llama.cpp의 NVIDIA 카드 공개 성능 모음을 보면 이 차이가 드러납니다. 이 모음은 llama-bench로 Llama 2 7B Q4_0을 잰 결과입니다. RTX 4090은 RTX 3090보다 대역폭이 조금 클 뿐입니다(<Num kind="bandwidth" gpu="rtx-4090" />, <Num kind="bandwidth" gpu="rtx-3090" />). 이 모음에서 두 카드의 생성 속도 차이는 5분의 1이 안 됩니다. 반면 프롬프트 처리는 RTX 4090이 두 배 넘게 빠릅니다. RTX 3060(12GB)은 RTX 4060 Ti(8GB)보다 생성이 5분의 1 가까이 빠릅니다. 프롬프트 처리는 반대로 RTX 4060 Ti가 1.5배 정도 빠릅니다.
 
 첫 글자까지 기다리는 시간은 대략 새로 읽을 토큰 수를 프롬프트 처리 속도로 나눈 값입니다. 모델이 아직 메모리에 없으면 불러오는 시간도 더해집니다. 채팅에서는 이 시간이 짧습니다. 런타임이 이미 처리한 앞부분을 다시 쓰기 때문입니다. Ollama는 다시 쓴 토큰 수를 `prompt eval cached`로 보여 줍니다. llama-server에서는 `cache_n`입니다. 긴 문서를 붙여 넣거나 에이전트를 쓰면 이 시간이 길어집니다. 에이전트는 지시문과 도구 설명만으로도 프롬프트가 깁니다. 이 경우는 ‘<GuideLink slug="local-coding-agents" />’ 가이드에서 다룹니다.
 
-CanRun 조합 페이지에는 프롬프트 처리 속도도 대략적 추정(±40%)으로 나옵니다. 카드의 FP16 연산 성능으로 계산하고, 모델이 GPU에 다 올라갈 때만 보여 줍니다. 7B 모델에 맞춘 값이라, 같은 카드에서는 모든 모델에 같은 값이 나옵니다. 그래서 더 큰 dense 모델은 실제로 이보다 느리게 읽습니다.
+CanRun 조합 페이지에는 프롬프트 처리 속도도 대략적 추정(±40%)으로 나옵니다. 모델이 GPU에 다 올라갈 때만 보여 줍니다. 카드의 연산 성능(FP16)만으로 계산하므로, 같은 카드에서는 어느 모델이든 같은 값이 나옵니다. 7B 모델에 맞춘 값이라 더 큰 dense 모델은 실제로 이보다 느리게 읽습니다.
 
 ## 내 PC에서 속도 재는 법
 
@@ -100,17 +100,17 @@ ollama run llama3.1:8b --verbose
 - `prompt eval rate`는 프롬프트 처리 속도입니다. 실제로 새로 처리한 토큰만 셉니다. 다시 쓴 토큰 수는 `prompt eval cached`에 나옵니다.
 - `load duration`은 모델을 불러오는 데 걸린 시간입니다. `total duration`에는 들어가지만, 두 속도에는 들어가지 않습니다.
 
-답이 아주 짧으면 값이 들쭉날쭉하니, 몇 문단짜리 답을 요청해서 잽니다. 모델이 올라가 있는 동안 다른 창에서 `ollama ps`를 실행해 PROCESSOR 열도 봅니다. `100% GPU` 대신 CPU/GPU 비율이 나오면, 속도가 낮은 것은 그 분할 때문입니다. 위 컨텍스트 표에서 본 것처럼, 대화가 길어질수록 값은 조금씩 내려갑니다.
+답이 아주 짧으면 값이 들쭉날쭉하니, 몇 문단짜리 답을 요청해서 잽니다. 모델이 올라가 있는 동안 다른 창에서 `ollama ps`를 실행해 PROCESSOR 열도 봅니다. CanRun이 GPU에 전부 올라간다고 한 모델이면 PROCESSOR가 `100% GPU`여야 합니다. 이때 CPU/GPU 비율이 나오면 속도가 낮은 원인은 대개 그 분할입니다. 전문가를 RAM에 두는 MoE 모델이라면 분할이 정상입니다. 위 컨텍스트 표에서 본 것처럼, 대화가 길어질수록 값은 조금씩 내려갑니다.
 
 ### llama.cpp — llama-bench와 llama-server
 
 llama-bench는 llama.cpp에 들어 있는 성능 측정 도구입니다. 기본 설정에서는 프롬프트 512토큰을 읽고(`pp512`) 128토큰을 생성합니다(`tg128`). 각각 다섯 번 재서 평균을 냅니다. 이 기본 테스트는 빈 컨텍스트에서 시작합니다. 그래서 대부분의 모델에서 `tg128`이 CanRun의 8k 추정보다 높게 나옵니다. `-d` 옵션을 쓰면 KV 캐시를 먼저 채운 뒤 잽니다. `-d 0,8192`로 실행하면 빈 컨텍스트 결과와 함께 `@ d8192`가 붙은 행이 나옵니다. CanRun 기준에 가장 가까운 것은 이 행입니다. Windows에서는 llama.cpp 폴더에서 PowerShell로 실행합니다.
 
 ```powershell
-.\llama-bench.exe -hf unsloth/Qwen3-14B-GGUF:Q4_K_M -d 0,8192
+.\llama-bench.exe -hf bartowski/Meta-Llama-3.1-8B-Instruct-GGUF:Q4_K_M -d 0,8192
 ```
 
-macOS·Linux에서는 `.\`와 `.exe`를 빼고 실행합니다. 내려받아 둔 GGUF 파일을 쓰려면 `-hf` 대신 `-m`에 파일 경로를 줍니다. llama-bench는 토큰화와 샘플링 시간을 빼고 잽니다. 그래서 실제로 쓸 때는 조금 더 느릴 수 있습니다.
+macOS·Linux에서는 `.\`와 `.exe`를 빼고 실행합니다. 내려받아 둔 GGUF 파일을 쓰려면 `-hf` 대신 `-m`에 파일 경로를 줍니다. llama-bench는 기본으로 모든 층을 GPU에 올립니다. VRAM보다 큰 모델은 `-ngl`로 층 수를 줄이거나 `-fitt`에 MiB 단위 여유를 줘서 맞추게 하고, MoE 모델은 `-ncmoe`를 씁니다. llama-bench는 토큰화와 샘플링 시간을 빼고 잽니다. 그래서 실제로 쓸 때는 조금 더 느릴 수 있습니다.
 
 llama-server는 응답마다 `timings` 항목을 붙여 줍니다. `predicted_per_second`가 생성 속도이고, `prompt_per_second`가 프롬프트 처리 속도입니다. `cache_n`은 캐시에서 다시 쓴 프롬프트 토큰 수입니다.
 
@@ -120,13 +120,13 @@ LM Studio의 REST API(`POST /api/v1/chat`)는 응답에 `stats` 항목을 붙입
 
 ### CanRun 숫자와 비교할 때
 
-비교하기 전에 조건부터 맞춥니다. 먼저 양자화가 같아야 합니다. Q4_K_XL 파일은 Q4_K_M과 다른 파일입니다. 컨텍스트 깊이도 맞춥니다. CanRun 판정은 8k 기준입니다. 백엔드(CUDA, ROCm, Vulkan, Metal)도 같아야 하고, 그래픽카드에 다른 모델이 올라가 있지 않아야 합니다. 노트북 GPU는 전력과 발열 제한 때문에 이름이 같은 데스크톱 카드보다 느릴 수 있습니다. 내가 잰 값이 CanRun 표의 범위보다 한참 낮다면 `ollama ps`로 CPU/GPU 분할부터 확인합니다. 속도를 가장 많이 깎는 원인이 이것이기 때문입니다.
+비교하기 전에 조건부터 맞춥니다. 먼저 양자화가 같아야 합니다. Q4_K_XL은 Q4_K_M과 크기가 달라 속도도 다릅니다. 컨텍스트 깊이도 맞춥니다. CanRun 판정은 8k 기준입니다. 백엔드(CUDA, ROCm, Vulkan, Metal)도 같아야 하고, 그래픽카드에 다른 모델이 올라가 있지 않아야 합니다. 노트북 GPU는 이름이 같은 데스크톱 카드와 다른 칩인 경우가 많고, 메모리와 대역폭도 작습니다. 예를 들어 <HubLink gpu="rtx-4090-laptop" />의 대역폭은 <Num kind="bandwidth" gpu="rtx-4090-laptop" />입니다. 그러니 노트북용(Laptop) 항목과 비교하세요. 전력과 발열 제한 때문에 더 느려질 수도 있습니다. 내가 잰 값이 CanRun 표의 범위보다 한참 낮다면 `ollama ps`로 CPU/GPU 분할부터 확인합니다. 속도를 가장 많이 깎는 원인이 이것이기 때문입니다.
 
 ## 이 숫자는 얼마나 확실한가
 
-CanRun의 속도는 모두 오차 범위와 신뢰 라벨을 붙인 추정치입니다. ‘실측’ 라벨은 같은 카드·모델·양자화의 공개 벤치마크 결과가 있다는 뜻입니다. 이때는 그 결과를 먼저 보여 주고, CanRun 추정을 옆에 붙입니다. 보정된 추정의 오차 범위는 NVIDIA·AMD 카드에서 dense 모델을 GPU에만 올릴 때 ±12%입니다. MoE 모델, 부분 오프로드, 그 밖의 하드웨어에서는 ±20%입니다. 이론 추정은 ±30%이고, MoE 전문가를 시스템 RAM에 두는 경우처럼 실제 속도의 편차가 큰 구성에 붙습니다. 기준 벤치마크 12개와 비교하면, 속도 공식의 평균 오차는 6.3%이고 최대 오차는 17.1%입니다.
+CanRun의 속도는 모두 오차 범위와 신뢰 라벨을 붙인 추정치입니다. ‘실측’ 라벨은 같은 카드·모델·양자화의 공개 벤치마크 결과가 있다는 뜻입니다. 이때는 그 결과를 먼저 보여 주고, CanRun 추정을 옆에 붙입니다. 보정된 추정의 오차 범위는 NVIDIA·AMD 카드에서 dense 모델을 GPU에만 올릴 때 ±12%입니다. MoE 모델, 부분 오프로드, 그 밖의 하드웨어에서는 ±20%입니다. 이론 추정은 ±30%이고, MoE 전문가를 시스템 RAM에 두는 경우처럼 실제 속도의 편차가 큰 구성에 붙습니다. 기준 벤치마크 12개와 비교하면, 속도 공식의 평균 오차는 6.3%이고 최대 오차는 17.1%입니다. 이 12건 밖의 공개 결과는 더 크게 빗나가기도 합니다. 아래 RTX 4090 결과는 CanRun 범위보다 낮습니다.
 
-하드웨어 종류마다 효율 계수를 하나씩만 쓰는 것은 단순화입니다. CanRun이 계수를 맞출 때 쓴 공개 결과를 보면, 느린 카드일수록 표기 대역폭에 더 가깝게 나왔습니다. LocalScore가 공개한 Llama 3.1 8B 결과 두 건이 이를 보여 줍니다. 둘 다 4k 컨텍스트에서 잰 값입니다. RTX 4090의 대역폭은 RTX 4060의 네 배 가까이 되지만, 결과는 2.5배가 안 됩니다. RTX 4060 결과는 CanRun 범위보다 높고, RTX 4090 결과는 범위보다 낮습니다. 어느 쪽이든 Llama 3.1 8B는 두 카드에서 모두 쾌적하게 돌아갑니다<Expect model="llama-3.1-8b" gpu="rtx-4060" verdict="S" confidence="measured" /><Expect model="llama-3.1-8b" gpu="rtx-4090" verdict="S" confidence="measured" />.
+CanRun은 하드웨어 종류마다 효율 계수를 하나씩만 씁니다. 실제보다 단순하게 본 것입니다. CanRun이 계수를 맞출 때 쓴 공개 결과를 보면, 느린 카드일수록 표기 대역폭에 더 가깝게 나왔습니다. LocalScore가 공개한 Llama 3.1 8B 결과 두 건이 이를 보여 줍니다. 둘 다 4k 컨텍스트에서 잰 값입니다. RTX 4090의 대역폭은 RTX 4060의 네 배 가까이 되지만, 결과는 2.5배가 안 됩니다. RTX 4090 결과는 컨텍스트가 짧은 점을 감안해도 CanRun 범위보다 낮습니다. 어느 쪽이든 Llama 3.1 8B는 두 카드에서 모두 쾌적하게 돌아갑니다<Expect model="llama-3.1-8b" gpu="rtx-4060" verdict="S" confidence="measured" /><Expect model="llama-3.1-8b" gpu="rtx-4090" verdict="S" confidence="measured" />.
 
 <Measured model="llama-3.1-8b" gpu="rtx-4060" />
 
@@ -140,15 +140,15 @@ CanRun의 속도는 모두 오차 범위와 신뢰 라벨을 붙인 추정치입
 
 ### 로컬 LLM은 초당 몇 토큰이면 쓸 만한가요?
 
-채팅이라면 CanRun 범례의 가장 위 기준선을 넘을 때 글이 읽는 속도보다 빨리 나옵니다. 그보다 느려도 두 번째 선만 넘으면 따라 읽으며 쓸 만합니다. 생각 모드가 있는 모델은 추론을 먼저 쓰므로 기준선이 1.5배 높습니다. 에이전트나 긴 문서 작업에서는 프롬프트 처리 속도도 생성 속도만큼 중요합니다. 8GB인 RTX 4060에서 Llama 3.1 8B는 가장 위 선을 넘어 쾌적하게 돌아갑니다<Expect model="llama-3.1-8b" gpu="rtx-4060" verdict="S" />.
+채팅이라면 CanRun의 가장 위 기준선을 넘을 때 글이 읽는 속도보다 빨리 나옵니다. 기준선 숫자는 첫 절의 범례에 있습니다. 그보다 느려도 두 번째 선만 넘으면 따라 읽으며 쓸 만합니다. 생각 모드가 있는 모델은 추론을 먼저 쓰므로 기준선이 1.5배 높습니다. 에이전트나 긴 문서 작업에서는 프롬프트 처리 속도도 생성 속도만큼 중요합니다. 8GB인 RTX 4060에서 Llama 3.1 8B는 가장 위 선을 넘어 쾌적하게 돌아갑니다<Expect model="llama-3.1-8b" gpu="rtx-4060" verdict="S" />.
 
 ### 인터넷에서 본 벤치마크보다 내 PC가 느린 이유는 무엇인가요?
 
-대부분 조건이 다르기 때문입니다. llama-bench의 기본 `tg128`을 비롯해 많은 공개 결과는 빈 컨텍스트에서 잽니다. 대화가 길어지면 토큰마다 더 큰 KV 캐시를 읽어야 합니다. 양자화나 백엔드가 다르거나, 노트북 전력 제한이 걸려도 느려집니다. 가장 크게 깎는 원인은 모델 일부가 시스템 RAM으로 넘친 경우입니다. 먼저 `ollama ps`의 PROCESSOR 열을 봅니다. 그다음 `ollama run --verbose`의 `eval rate`를 CanRun 표의 범위와 비교해 보세요.
+대부분 조건이 다르기 때문입니다. llama-bench의 기본 `tg128`을 비롯해 많은 공개 결과는 빈 컨텍스트에서 잽니다. 대화가 길어지면 토큰마다 더 큰 KV 캐시를 읽어야 합니다. 양자화나 백엔드가 다를 수도 있고, 노트북 GPU라면 이름이 같은 데스크톱 카드보다 작은 칩일 수 있습니다. 가장 크게 깎는 원인은 모델 일부가 시스템 RAM으로 넘친 경우입니다. 먼저 `ollama ps`의 PROCESSOR 열을 봅니다. 그다음 `ollama run --verbose`의 `eval rate`를 CanRun 표의 범위와 비교해 보세요.
 
 ### VRAM이 크면 모델이 더 빨리 돌아가나요?
 
-시스템 RAM으로 넘치던 모델이 VRAM에 다 들어가게 될 때만 빨라집니다. 이미 다 들어가는 모델은 대역폭이 속도를 정합니다. Qwen3 14B는 RTX 4060 Ti 16GB에서 원활하게 돌아갑니다<Expect model="qwen3-14b" gpu="rtx-4060-ti-16gb" verdict="A" />. RTX 5060 Ti 16GB에서는 쾌적하게 돌아갑니다<Expect model="qwen3-14b" gpu="rtx-5060-ti-16gb" verdict="S" />. 둘 다 16GB지만 대역폭이 다릅니다. 8GB인 RTX 4060에서는 같은 모델이 넘쳐서 겨우 돌아갑니다<Expect model="qwen3-14b" gpu="rtx-4060" verdict="B" />.
+시스템 RAM으로 넘치던 모델이 VRAM에 다 들어가게 될 때만 빨라집니다. 이미 다 들어가는 모델은 대역폭이 속도를 정합니다. Qwen3 14B는 RTX 4060 Ti 16GB에서 원활하게<Expect model="qwen3-14b" gpu="rtx-4060-ti-16gb" verdict="A" />, RTX 5060 Ti 16GB에서는 쾌적하게 돌아갑니다<Expect model="qwen3-14b" gpu="rtx-5060-ti-16gb" verdict="S" />. 두 카드는 둘 다 16GB지만 대역폭이 다릅니다.
 
 ### 답이 나오기 시작할 때까지 왜 오래 걸리나요?
 
@@ -162,7 +162,7 @@ CanRun의 속도는 모두 오차 범위와 신뢰 라벨을 붙인 추정치입
 
 - [Ollama 소스: api/types.go](https://github.com/ollama/ollama/blob/main/api/types.go): verbose 요약의 `eval rate`(생성 토큰 수 ÷ 생성 시간), `prompt eval rate`(캐시되지 않은 프롬프트 토큰 ÷ 처리 시간), `prompt eval cached`, `load duration`
 - [Ollama 소스: cmd/cmd.go](https://github.com/ollama/ollama/blob/main/cmd/cmd.go)와 [cmd/interactive.go](https://github.com/ollama/ollama/blob/main/cmd/interactive.go): `ollama run`의 `--verbose` 옵션과 `/set verbose` 명령
-- [llama.cpp: llama-bench README](https://github.com/ggml-org/llama.cpp/blob/master/tools/llama-bench/README.md): 기본 `pp512`·`tg128`, 반복 다섯 번, KV 캐시를 미리 채우는 `-d`, `-hf`·`-m`, 토큰화·샘플링 시간 제외
+- [llama.cpp: llama-bench README](https://github.com/ggml-org/llama.cpp/blob/master/tools/llama-bench/README.md): 기본 `pp512`·`tg128`, 반복 다섯 번, KV 캐시를 미리 채우는 `-d`, `-hf`·`-m`, `-ngl`(기본은 모든 층)·`-fitt`(기본 꺼짐)·`-ncmoe`, 토큰화·샘플링 시간 제외
 - [llama.cpp: server README](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md): 응답의 `timings` 항목(`predicted_per_second`, `prompt_per_second`, `cache_n`)
 - [llama.cpp 토론 #15013: NVIDIA CUDA 성능](https://github.com/ggml-org/llama.cpp/discussions/15013): RTX 4090·3090·3060·4060 Ti에서 Llama 2 7B Q4_0의 `pp512`·`tg128` 결과
 - [LM Studio 문서: 모델과 대화하기](https://lmstudio.ai/docs/developer/rest/chat): `POST /api/v1/chat` 응답의 `stats` 항목

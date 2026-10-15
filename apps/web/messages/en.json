@@ -315,11 +315,11 @@
     "rssDescription": "Guides to running local LLMs on your own PC or Mac."
   },
   "GuideData": {
-    "gridCaption": "Verdicts at 8k context with an f16 KV cache, assuming 32 GB of DDR5 system RAM and Windows on PCs (Macs: the unified memory size shown in the cell). Speeds are estimates with an error band and a confidence label.",
+    "gridCaption": "Verdicts at 8k context with an f16 KV cache, assuming 32 GB of DDR5 system RAM and Windows on PCs (unified-memory machines: the memory size shown in the cell). Speeds are estimates with an error band and a confidence label.",
     "tierCaption": "How many of our {total} catalog models each card runs, by verdict (8k context, f16 KV cache, 32 GB DDR5 system RAM)",
     "memoryCaption": "Memory a model needs at {ctx} context: file of the default quant + f16 KV cache + compute buffer",
     "memoryCaptionGpu": "Graphics card memory a model needs at {ctx} context: weights of the default quant loaded on the GPU + f16 KV cache + compute buffer",
-    "memoryNote": "On a graphics card the OS also keeps some VRAM (about 0.6 GB on a Windows display GPU); on a Mac the GPU can use about 70% of unified memory by default.",
+    "memoryNote": "On a graphics card the OS also keeps some VRAM (about 0.6 GB on a Windows display GPU); on unified memory CanRun counts about 70% as usable by the GPU (the real limit depends on the system, and the macOS default is higher).",
     "memoryNoteGpu": "On a graphics card the OS keeps some VRAM (about 0.6 GB on a Windows display GPU). llama.cpp keeps the input embedding table in system RAM and does not load an MTP block by default, so the weights here are a little smaller than the file; a Mac counts the whole file.",
     "kvCaption": "KV cache per model: bytes per token (from each model’s config) and f16 KV cache size by context length",
     "kvNote": "A dash means the context is longer than the model supports. q8_0 and q4_0 KV caches take about 54% and 29% of the f16 size.",

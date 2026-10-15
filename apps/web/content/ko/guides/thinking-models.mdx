@@ -1,44 +1,44 @@
-생각 모드를 켜도 모델에 필요한 메모리는 그대로입니다. 대신 답 하나에 쓰는 토큰이 늘어서, 같은 속도라도 답을 받기까지 더 오래 기다립니다. RTX 3060 12GB에는 Qwen3 14B와 Phi-4가 8k에서 둘 다 GPU에 전부 올라가고<Expect model="qwen3-14b" gpu="rtx-3060-12gb" fits="true" /><Expect model="phi-4" gpu="rtx-3060-12gb" fits="true" />, 추정 속도도 비슷합니다. 그런데 Qwen3 14B는 원활하게<Expect model="qwen3-14b" gpu="rtx-3060-12gb" verdict="A" />, Phi-4는 쾌적하게 돌아갑니다<Expect model="phi-4" gpu="rtx-3060-12gb" verdict="S" />. CanRun이 생각 모드가 있는 모델에는 속도 기준을 1.5배 엄격하게 잡기 때문입니다. Ollama에서는 `--think=false`나 `/set nothink`, API의 `"think": false`로 생각 모드를 끕니다. llama-server에서는 `--reasoning off`로 끕니다. gpt-oss는 끌 수 없고 추론 강도만 낮출 수 있으며, DeepSeek R1 distill 모델은 늘 생각합니다.
+생각 모드를 켜도 모델에 필요한 메모리는 그대로입니다. 대신 답 하나에 쓰는 토큰이 늘어서, 같은 속도라도 답을 받기까지 더 오래 기다립니다. RTX 3060 12GB에서는 Qwen3 14B와 Phi-4 모두 8k 컨텍스트로 GPU에 다 올라가고<Expect model="qwen3-14b" gpu="rtx-3060-12gb" fits="true" /><Expect model="phi-4" gpu="rtx-3060-12gb" fits="true" />, 추정 속도도 비슷합니다. 그런데 Qwen3 14B는 원활하게<Expect model="qwen3-14b" gpu="rtx-3060-12gb" verdict="A" />, Phi-4는 쾌적하게 돌아갑니다<Expect model="phi-4" gpu="rtx-3060-12gb" verdict="S" />. CanRun이 생각 모드가 있는 모델에는 속도 기준을 1.5배 엄격하게 잡기 때문입니다. 생각 모드는 Ollama에서 `--think=false`, llama-server에서 `--reasoning off`로 끕니다. gpt-oss는 끌 수 없고 추론 강도만 낮출 수 있습니다.
 
 ## 생각 모드가 있는 모델 — 늘 켜짐·기본 켜짐·기본 꺼짐
 
 요즘 오픈 모델은 답하기 전에 추론 과정을 먼저 쓰는 경우가 많습니다. 런타임은 이 부분을 답과 따로 보여 줍니다. Ollama 명령줄에서는 `Thinking...`과 `...done thinking.` 사이에 나옵니다. CanRun은 카탈로그의 모델마다 생각 모드가 있는지, 어떻게 켜고 끄는지를 기록해 둡니다. 근거는 모델 카드와 채팅 템플릿입니다. 채팅 템플릿은 대화를 모델이 읽는 프롬프트 형식으로 바꿔 주는 파일입니다. 모델은 다섯 갈래로 나뉩니다.
 
-- **늘 생각함**: gpt-oss-20b·gpt-oss-120b와 DeepSeek R1 distill 모델(Qwen 32B·Llama 8B)입니다. gpt-oss는 추론 강도를 low·medium·high 중에서 고를 수 있지만, 끄는 설정은 없습니다. 따로 정하지 않으면 채팅 템플릿이 medium을 씁니다. DeepSeek R1 distill 모델 카드는 오히려 답을 늘 `<think>` 태그로 시작하게 하라고 권합니다. 모델이 생각을 건너뛰면 답이 나빠지기 때문입니다.
+- **늘 생각하도록 만든 모델**: gpt-oss-20b·gpt-oss-120b, DeepSeek R1 distill 모델(Qwen 32B·Llama 8B), LFM2.5 2.6B입니다. gpt-oss는 추론 강도를 low·medium·high 중에서 고를 수 있지만, 끄는 설정은 없습니다. 따로 정하지 않으면 채팅 템플릿이 medium을 씁니다. DeepSeek R1 distill 모델 카드는 한발 더 나아가, 모든 답을 `<think>` 태그로 시작하게 하라고 권합니다. 모델이 생각을 건너뛰면 답이 나빠질 수 있기 때문입니다.
 - **기본으로 켜짐, 끌 수 있음**: Qwen3 8B·14B·32B, Qwen3.5·Qwen3.6·Qwen3.8 계열, EXAONE 4.5 33B 등입니다.
-- **기본으로 꺼짐, 켤 수 있음**: Gemma 4 계열과 EXAONE 4.0 32B입니다. Gemma 4는 시스템 프롬프트 맨 앞에 `<|think|>` 토큰이 있을 때 생각합니다. EXAONE 4.0은 템플릿에 `enable_thinking=True`가 들어가야 생각합니다.
+- **기본으로 꺼짐, 켤 수 있음**: Gemma 4 계열과 EXAONE 4.0(32B·1.2B)입니다. Gemma 4는 시스템 프롬프트 맨 앞에 `<|think|>` 토큰이 있을 때 생각합니다. EXAONE 4.0은 템플릿에 `enable_thinking=True`가 들어가야 생각합니다.
 - **모델이 스스로 정함**: HyperCLOVA X SEED Think 14B입니다. 모델 카드에 따르면 기본 설정에서는 추론할지 바로 답할지를 모델이 정합니다. CanRun 카탈로그는 MiniCPM5 모델도 이 갈래로 분류합니다.
 - **생각 모드 없음**: Llama 3.1 8B, Gemma 3, Phi-4, Qwen3 30B-A3B (2507)입니다. Qwen3 30B-A3B (2507)은 Instruct-2507 판입니다. 모델 카드에 비생각 모드만 지원한다고 적혀 있습니다. Phi-4는 카탈로그에서 추론(reasoning) 용도로 분류돼 있습니다. 하지만 모델 카드의 대화 형식에는 생각 블록이 없습니다. 용도 분류와 생각 모드는 별개입니다.
 
-생각 모드는 메모리에 영향을 주지 않습니다. 가중치와 토큰당 KV 캐시는 생각을 하든 안 하든 같습니다. 그래서 GPU에 들어가는지는 모델과 양자화, 컨텍스트로만 정해집니다. 8k에서 Qwen3 14B는 <Num kind="needGB" model="qwen3-14b" />, 생각 모드가 없는 Phi-4는 <Num kind="needGB" model="phi-4" />가 필요합니다. 32B급에서는 Qwen3 32B가 <Num kind="needGB" model="qwen3-32b" />, DeepSeek R1 Distill Qwen 32B가 <Num kind="needGB" model="deepseek-r1-distill-32b" />입니다. 모델 카드에 따르면 이 DeepSeek 모델은 Qwen2.5 32B를 바탕으로 만들었습니다. 생각 모드가 더 쓰는 것은 시간과 컨텍스트입니다. 컨텍스트 이야기는 아래에서 따로 다룹니다.
+생각 모드는 메모리에 영향을 주지 않습니다. 가중치와 토큰당 KV 캐시는 생각을 하든 안 하든 같습니다. 그래서 GPU에 들어가는지는 모델과 양자화, 컨텍스트로만 정해집니다. 8k에서 Qwen3 14B는 <Num kind="needGB" model="qwen3-14b" />, 생각 모드가 없는 Phi-4는 <Num kind="needGB" model="phi-4" />가 필요합니다. 32B급은 Qwen3 32B에 <Num kind="needGB" model="qwen3-32b" />, DeepSeek R1 Distill Qwen 32B에 <Num kind="needGB" model="deepseek-r1-distill-32b" />가 필요합니다. 모델 카드에 따르면 이 DeepSeek 모델은 Qwen2.5 32B를 바탕으로 만들었습니다. 생각 모드가 더 쓰는 것은 시간과 컨텍스트입니다. 컨텍스트 이야기는 아래에서 따로 다룹니다.
 
-조합 페이지와 모델 페이지는 이런 모델에 ‘생각 모드’ 표시를 붙입니다. 계산기에서 Hugging Face로 불러온 모델에는 일반 기준을 적용합니다. 파일만 봐서는 생각 모드가 있는지 알 수 없기 때문입니다. 모델 값을 직접 넣을 때는 모델 카드를 보고, 생각 모드가 있으면 ‘생각 모드가 있는 모델’에 체크하세요.
+조합 페이지는 이런 모델에 ‘생각 모드’ 표시를 붙이고, 모델 페이지는 표 아래에 안내를 붙입니다. 계산기에서 Hugging Face로 불러온 모델에는 일반 기준을 적용합니다. 파일만 봐서는 생각 모드가 있는지 알 수 없기 때문입니다. 모델 값을 직접 넣을 때는 모델 카드를 보고, 생각 모드가 있으면 ‘생각 모드가 있는 모델’에 체크하세요.
 
 ## CanRun 판정이 1.5배 엄격한 이유
 
 CanRun은 추정 생성 속도를 정해진 기준과 비교해 판정합니다. 기준표는 이 글 끝부분에 있습니다. 이 기준은 모델이 쓰는 토큰 대부분이 사용자가 읽을 답이라고 가정합니다. 생각 모드 모델은 추론을 먼저 쓰고, 답은 추론이 끝나야 시작합니다. 토큰 하나를 만드는 속도는 똑같습니다. 답보다 세 배 긴 추론을 쓰면 응답 전체에 네 배의 시간이 걸립니다. 그중 4분의 3은 답의 첫 글자가 나오기 전에 지나갑니다.
 
-얼마나 오래 생각할지는 질문과 모델, gpt-oss의 추론 강도 같은 설정에 따라 다릅니다. CanRun에는 이를 예측할 데이터가 없습니다. 그래서 토큰 수를 짐작하는 대신, 생각 모드가 있는 모델에는 속도 기준을 모두 1.5배로 올려 적용합니다. ‘쾌적’과 ‘원활’ 기준, ‘불가’ 하한이 모두 기준표 속도의 1.5배가 됩니다. 이 배수는 잰 값이 아니라 엔진 명세에 정해 둔 정책입니다.
+얼마나 오래 생각할지는 질문과 모델, gpt-oss의 추론 강도 같은 설정에 따라 다릅니다. CanRun에는 이를 예측할 데이터가 없습니다. 그래서 토큰 수를 짐작하는 대신, 생각 모드가 있는 모델에는 속도 기준을 모두 1.5배로 올려 적용합니다. ‘쾌적’과 ‘원활’ 기준, ‘불가’ 하한이 모두 기준표 속도의 1.5배가 됩니다. 이 배수는 잰 값이 아니라 엔진 명세에 정해 둔 정책입니다. 1.5배는 추론이 답의 절반 길이일 때에 해당합니다. 추론이 길면 실제로 기다리는 시간은 판정이 보여 주는 것보다 깁니다.
 
-기본으로 꺼진 모델에도 이 규칙을 적용합니다. 많이 쓰는 로컬 런타임 두 가지가 생각 모드를 기본으로 켜기 때문입니다. Ollama 소스를 보면, 생각 모드를 켜고 끌 수 있는 로컬 모델은 요청에 `think`가 없을 때 켜진 채로 돌아갑니다. Ollama 테스트 코드에도 Gemma 4가 그런 모델로 나옵니다. llama-server도 채팅 템플릿이 지원하면 생각 모드를 켭니다. `--reasoning off`로 띄울 때만 꺼집니다.
+기본으로 꺼진 모델에도 이 규칙을 적용합니다. 이 글에서 다루는 런타임인 Ollama와 llama-server가 생각 모드를 기본으로 켜기 때문입니다. Ollama 소스를 보면, 생각 모드를 켜고 끌 수 있는 로컬 모델은 요청에 `think`가 없을 때 켜진 채로 돌아갑니다. Ollama 테스트 코드에도 Gemma 4가 그런 모델로 나옵니다. llama-server도 채팅 템플릿이 지원하면 생각 모드를 켭니다. `--reasoning off`로 띄울 때만 꺼집니다.
 
 아래 표는 모델 6개가 NVIDIA 카드 5종에서 어떻게 돌아갈지 판정한 결과입니다. Phi-4와 Gemma 3 27B는 생각 모드가 없고, Qwen3 14B·32B는 기본으로 켜져 있습니다. Gemma 4 26B-A4B는 기본으로 꺼져 있고, gpt-oss-20b는 늘 생각합니다. 8k 컨텍스트, f16 KV 캐시, 시스템 RAM 32GB(DDR5), Windows를 가정했습니다.
 
 <ComboGrid grid="thinking" />
 
-<HubLink gpu="rtx-3060-12gb" />에서 Phi-4는 쾌적하게 돌아갑니다<Expect model="phi-4" gpu="rtx-3060-12gb" verdict="S" />. 추정 속도가 비슷한 Qwen3 14B는 원활하게 돌아갑니다<Expect model="qwen3-14b" gpu="rtx-3060-12gb" verdict="A" />. 일반 기준으로는 ‘쾌적’을 넘지만 1.5배 기준은 넘지 못합니다. Phi-4는 필요량 <Num kind="needGB" model="phi-4" />가 사용 가능 메모리 <Num kind="usableGB" gpu="rtx-3060-12gb" />에 아슬아슬하게 들어갑니다. `ollama ps`의 PROCESSOR 열이 `100% GPU`인지 확인하세요. 메모리 대역폭은 RTX 5060 Ti 16GB가 <Num kind="bandwidth" gpu="rtx-5060-ti-16gb" />, RTX 3060 12GB가 <Num kind="bandwidth" gpu="rtx-3060-12gb" />입니다. 더 빠른 <HubLink gpu="rtx-5060-ti-16gb" />에서는 Qwen3 14B도 엄격한 기준을 넘어 쾌적하게 돌아갑니다<Expect model="qwen3-14b" gpu="rtx-5060-ti-16gb" verdict="S" />.
+<HubLink gpu="rtx-3060-12gb" />에서 Phi-4는 쾌적하게 돌아갑니다<Expect model="phi-4" gpu="rtx-3060-12gb" verdict="S" />. 추정 속도가 비슷한 Qwen3 14B는 원활하게 돌아갑니다<Expect model="qwen3-14b" gpu="rtx-3060-12gb" verdict="A" />. 일반 기준이었다면 쾌적하게 돌아갈 속도지만, 1.5배 기준에는 못 미칩니다. Phi-4는 필요량 <Num kind="needGB" model="phi-4" />가 사용 가능 메모리 <Num kind="usableGB" gpu="rtx-3060-12gb" />에 아슬아슬하게 들어갑니다. `ollama ps`의 PROCESSOR 열이 `100% GPU`인지 확인하세요. 메모리 대역폭은 <HubLink gpu="rtx-5060-ti-16gb" />가 <Num kind="bandwidth" gpu="rtx-5060-ti-16gb" />, <HubLink gpu="rtx-3060-12gb" />가 <Num kind="bandwidth" gpu="rtx-3060-12gb" />입니다. <HubLink gpu="rtx-5060-ti-16gb" />에서는 Qwen3 14B의 추정 속도가 엄격한 기준을 살짝 넘어 쾌적하게 돌아갑니다<Expect model="qwen3-14b" gpu="rtx-5060-ti-16gb" verdict="S" />.
 
-<HubLink gpu="rtx-3090" />에서도 한 체급 위 모델로 같은 일이 생깁니다. Gemma 3 27B는 쾌적하게 돌아갑니다<Expect model="gemma-3-27b" gpu="rtx-3090" verdict="S" />. 더 큰 Qwen3 32B는 GPU에 들어가지만<Expect model="qwen3-32b" gpu="rtx-3090" fits="true" />, 엄격한 기준에 못 미쳐 원활하게 돌아갑니다<Expect model="qwen3-32b" gpu="rtx-3090" verdict="A" />. 표에 없는 DeepSeek R1 Distill Qwen 32B도 이 카드에서 원활하게 돌아갑니다<Expect model="deepseek-r1-distill-32b" gpu="rtx-3090" verdict="A" />. <HubLink gpu="rtx-4090" />에서는 Qwen3 32B가 쾌적하게 돌아갑니다<Expect model="qwen3-32b" gpu="rtx-4090" verdict="S" />.
+<HubLink gpu="rtx-3090" />에서도 한 체급 위 모델로 같은 일이 생깁니다. Gemma 3 27B는 쾌적하게 돌아갑니다<Expect model="gemma-3-27b" gpu="rtx-3090" verdict="S" />. 더 큰 Qwen3 32B는 GPU에 들어가지만<Expect model="qwen3-32b" gpu="rtx-3090" fits="true" />, 추정 속도가 엄격한 기준선 바로 아래라 원활하게 돌아갑니다<Expect model="qwen3-32b" gpu="rtx-3090" verdict="A" />. 표에 없는 DeepSeek R1 Distill Qwen 32B도 이 카드에서 원활하게 돌아갑니다<Expect model="deepseek-r1-distill-32b" gpu="rtx-3090" verdict="A" />. <HubLink gpu="rtx-4090" />은 추정이 10분의 1도 높지 않은데, 기준선을 살짝 넘어 Qwen3 32B가 쾌적하게 돌아갑니다<Expect model="qwen3-32b" gpu="rtx-4090" verdict="S" />. 이만큼 작은 차이는 두 카드의 성능 차이보다 기준선이 어디 있는지를 보여 줄 뿐입니다.
 
-한국 모델도 마찬가지입니다. EXAONE 4.0 32B는 생각 모드가 기본으로 꺼져 있어도 엄격한 기준을 적용받습니다. RTX 3090에서는 그 기준도 넘어 쾌적하게 돌아갑니다<Expect model="exaone-4.0-32b" gpu="rtx-3090" verdict="S" />. 생각할지를 스스로 정하는 HyperCLOVA X SEED Think 14B는 RTX 3060 12GB에서 원활하게 돌아갑니다<Expect model="hyperclovax-seed-think-14b" gpu="rtx-3060-12gb" verdict="A" confidence="theoretical" />. 이 조합의 속도는 이론 추정입니다. 한국 모델은 ‘<GuideLink slug="korean-open-llms" />’ 가이드에서 자세히 다룹니다.
+한국 모델에도 같은 기준이 적용됩니다. EXAONE 4.0 32B는 생각 모드가 기본으로 꺼져 있어도 엄격한 기준을 적용받습니다. RTX 3090에서는 그 기준도 넘어 쾌적하게 돌아갑니다<Expect model="exaone-4.0-32b" gpu="rtx-3090" verdict="S" />. 생각할지를 스스로 정하는 HyperCLOVA X SEED Think 14B는 RTX 3060 12GB에서 원활하게 돌아갑니다<Expect model="hyperclovax-seed-think-14b" gpu="rtx-3060-12gb" verdict="A" confidence="theoretical" />. 이 조합의 속도는 이론 추정입니다. 한국 모델은 ‘<GuideLink slug="korean-open-llms" />’ 가이드에서 자세히 다룹니다.
 
-<HubLink gpu="rtx-4060" /> 줄에서는 이 규칙이 낮은 사양에서 어떻게 작용하는지 보입니다. Gemma 4 26B-A4B는 자체 템플릿에서 생각 모드가 꺼져 있지만, CanRun은 엄격한 기준을 그대로 적용합니다. 8GB 카드라 전문가 일부를 시스템 RAM에 두는데, 이 구성은 ‘쾌적’ 기준 속도를 넘어야 ‘원활’이 됩니다. 생각 모드가 있으면 그 기준이 다시 1.5배가 됩니다. 추정 속도가 일반 기준은 넘지만 엄격한 기준은 넘지 못해 겨우 돌아갑니다<Expect model="gemma-4-26b-a4b" gpu="rtx-4060" verdict="B" mode="cpu-moe" confidence="theoretical" />. 이 조합의 속도는 이론 추정입니다.
+<HubLink gpu="rtx-4060" /> 줄을 보면 이 규칙이 낮은 사양에서 어떻게 작용하는지 알 수 있습니다. Gemma 4 26B-A4B는 자체 템플릿에서 생각 모드가 꺼져 있지만, CanRun은 엄격한 기준을 그대로 적용합니다. 8GB 카드라 전문가 일부를 시스템 RAM에 두는데, 이런 구성은 ‘쾌적’ 기준 속도를 넘어야 원활하게 돌아간다고 봅니다. 생각 모드가 있으면 그 기준이 다시 1.5배가 됩니다. 추정 속도가 일반 기준은 넘지만 엄격한 기준은 넘지 못해, CanRun은 겨우 돌아가는 쪽으로 판정합니다<Expect model="gemma-4-26b-a4b" gpu="rtx-4060" verdict="B" mode="cpu-moe" confidence="theoretical" />. 추정 속도 자체는 표에서 보듯 느리지 않고, 이 값은 이론 추정입니다.
 
 같은 카드에서 Qwen3 32B는 돌릴 수 없습니다<Expect model="qwen3-32b" gpu="rtx-4060" verdict="F" />. 가중치 대부분이 시스템 RAM에 있어서, 추정 속도가 일반 ‘불가’ 하한은 넘지만 1.5배 하한에는 못 미칩니다. 그래서 표의 칸은 손실 큼 등급인 Q2_K를 대신 제안하고, 이때는 겨우 돌아갑니다<Expect model="qwen3-32b" gpu="rtx-4060" quant="Q2_K" verdict="B" />. 생각 모드가 없는 Gemma 3 27B는 이 카드에서 겨우 돌아갑니다<Expect model="gemma-3-27b" gpu="rtx-4060" verdict="B" />.
 
 gpt-oss-20b는 늘 생각하지만 크기에 비해 빠릅니다. 전문가 일부를 시스템 RAM에 두는 RTX 4060과 RTX 3060 12GB에서도 원활하게 돌아갑니다<Expect model="gpt-oss-20b" gpu="rtx-4060" verdict="A" confidence="theoretical" /><Expect model="gpt-oss-20b" gpu="rtx-3060-12gb" verdict="A" confidence="theoretical" />. 두 조합 모두 이론 추정입니다. 16GB·24GB 카드에서는 GPU에 전부 올라가 쾌적하게 돌아갑니다. 이 칸들의 속도는 공개 벤치마크에서 실제로 잰 값입니다<Expect model="gpt-oss-20b" gpu="rtx-5060-ti-16gb" verdict="S" confidence="measured" /><Expect model="gpt-oss-20b" gpu="rtx-3090" verdict="S" confidence="measured" />.
 
-판정은 사용자 설정이 아니라 모델을 기준으로 합니다. 생각 모드를 꺼도 CanRun은 RTX 3060 12GB의 Qwen3 14B를 ‘원활’로 판정합니다. 그래서 조합 페이지에는 생각 모드를 끄고 쓰면 실제로는 한 단계 위일 수 있다는 안내가 붙어 있습니다. 생각 모드를 끈 Qwen3 14B는 같은 카드에서 Phi-4와 비슷한 빠르기로 답합니다. 실행 명령은 <ComboLink model="qwen3-14b" gpu="rtx-3060-12gb" /> 페이지에 있습니다.
+판정은 사용자 설정이 아니라 모델을 기준으로 합니다. 생각 모드를 꺼도 CanRun은 RTX 3060 12GB에서 Qwen3 14B가 원활하게 돌아간다고 판정합니다. 그래서 조합 페이지에는 생각 모드를 끄고 쓰면 실제로는 한 단계 위일 수 있다는 안내가 붙어 있습니다. CanRun 추정으로는 생각 모드를 끈 Qwen3 14B가 같은 카드에서 Phi-4와 비슷한 속도로 답합니다. 실행 명령은 <ComboLink model="qwen3-14b" gpu="rtx-3060-12gb" /> 페이지에 있습니다.
 
 ## 생각 모드 끄는 법 — Ollama·llama.cpp·모델별 방식
 
@@ -64,6 +64,8 @@ API로 쓸 때는 `/api/chat`이나 `/api/generate` 요청 본문에 `think`를 
 
 `think`를 빼면 모델의 기본값을 씁니다. `ollama show qwen3:14b`를 실행하면 Capabilities에 thinking이 나옵니다. 단계를 알려 주는 모델이면 고를 수 있는 값과 기본값도 함께 나옵니다. 그래도 기본값에 기대지 말고 `think`를 직접 정하는 편이 낫습니다. 생각 모드를 켜고 끌 수 있는 로컬 모델은, 요청에 따로 적지 않으면 Ollama가 켜 두기 때문입니다. Gemma 4도 마찬가지입니다.
 
+OpenAI 호환 엔드포인트(`/v1/chat/completions`)를 쓰는 앱은 `think`를 보내도 무시됩니다. 대신 `"reasoning_effort": "none"`을 보내세요. Python 라이브러리에서는 `chat()`에 `think=False`를 넘깁니다.
+
 gpt-oss는 Ollama에서도 끄는 값이 없습니다. Ollama가 gpt-oss에 허용하는 값은 `low`·`medium`·`high`뿐이고, 기본값은 medium입니다. 추론을 줄이려면 `ollama run gpt-oss:20b --think=low`로 실행합니다. API라면 `"think": "low"`를 보냅니다.
 
 ### llama.cpp
@@ -87,33 +89,33 @@ gpt-oss에는 `--reasoning-effort low`를 씁니다. 이 값은 채팅 템플릿
 
 ### 모델 자체의 스위치
 
-- **Qwen3 8B·14B·32B**: 사용자 메시지나 시스템 메시지 끝에 `/no_think`나 `/think`를 붙이면 턴마다 바뀝니다. 템플릿 스위치가 켜져 있을 때만 통합니다. `/no_think`를 써도 답에는 빈 생각 블록이 남습니다. `enable_thinking=False`는 완전히 끄는 스위치이고, 이때는 두 태그가 아무 효과가 없습니다.
+- **Qwen3 8B·14B·32B**: 사용자 메시지나 시스템 메시지 끝에 `/no_think`나 `/think`를 붙이면 턴마다 바뀝니다. 템플릿 스위치가 켜져 있을 때만 효과가 있습니다. `/no_think`를 써도 답에는 빈 생각 블록이 남습니다. `enable_thinking=False`는 완전히 끄는 스위치이고, 이때는 두 태그가 아무 효과가 없습니다.
 - **Qwen3.5·Qwen3.6**: 모델 카드에 따르면 이 태그를 공식 지원하지 않습니다. 런타임 스위치를 쓰세요.
 - **Gemma 4**: 시스템 프롬프트가 `<|think|>`로 시작할 때만 생각합니다. Ollama의 Gemma 4 렌더러는 생각 모드가 켜져 있으면 이 토큰을 넣습니다. 결국 런타임 스위치가 정합니다.
 - **EXAONE 4.0**: 템플릿에 `enable_thinking=True`가 들어가면 추론하고, 아니면 바로 답합니다.
-- **HyperCLOVA X SEED Think 14B**: 템플릿 인자 `force_reasoning`이나 `skip_reasoning`으로 정합니다. 메시지에 적어 넣는 대략적인 길이 제한도 모델 카드에 나옵니다.
+- **HyperCLOVA X SEED Think 14B**: 추론 여부는 템플릿 인자 `force_reasoning`이나 `skip_reasoning`으로 정할 수 있습니다. 메시지에 적어 넣는 대략적인 길이 제한도 모델 카드에 나옵니다.
 - **gpt-oss**: 시스템 프롬프트의 `Reasoning: low` 같은 줄에서 추론 강도를 읽습니다. Ollama와 llama.cpp는 위 옵션으로 이 줄을 대신 써 넣습니다.
-- **DeepSeek R1 distill 모델**: 끄는 스위치가 없습니다.
+- **DeepSeek R1 distill 모델**: 자체 스위치가 없습니다. Ollama의 deepseek-r1 템플릿은 `--think=false`면 빈 생각 블록을 넣어 추론을 건너뛰게 합니다. 모델 카드는 이렇게 건너뛰면 답이 나빠질 수 있다고 경고합니다.
 
-## 끄지 않고 빠르게 — 더 빠른 카드·양자화·작은 모델·MoE
+## 끄지 않고 빠르게 — KV 캐시·양자화·작은 모델·MoE
 
 생각 모드가 제값을 하는 작업도 있습니다. Qwen3 모델 카드는 복잡한 논리 추론과 수학, 코딩에는 생각 모드를 권합니다. 일반 대화에는 효율적인 비생각 모드를 권합니다. 생각 모드를 켠 채로 엄격한 기준을 넘으려면 속도를 올리는 평소 방법을 쓰면 됩니다. 어떤 방법이 통하는지는 데이터로 확인할 수 있습니다.
 
-**메모리가 같고 더 빠른 카드.** Qwen3 32B와 DeepSeek R1 Distill Qwen 32B는 RTX 3090에서 원활하게 돌아갑니다<Expect model="qwen3-32b" gpu="rtx-3090" verdict="A" /><Expect model="deepseek-r1-distill-32b" gpu="rtx-3090" verdict="A" />. RTX 4090에서는 둘 다 쾌적하게 돌아갑니다<Expect model="qwen3-32b" gpu="rtx-4090" verdict="S" /><Expect model="deepseek-r1-distill-32b" gpu="rtx-4090" verdict="S" />. 두 카드 모두 24GB이지만, 대역폭은 RTX 4090이 <Num kind="bandwidth" gpu="rtx-4090" />, RTX 3090이 <Num kind="bandwidth" gpu="rtx-3090" />입니다.
+**q8_0 KV 캐시.** RTX 3090의 Qwen3 32B는 8k에서 f16 캐시면 엄격한 기준선 바로 아래, q8_0이면 바로 위입니다. q8_0은 토큰마다 읽는 캐시가 작아서, 이 설정이면 쾌적하게 돌아갑니다<Expect model="qwen3-32b" gpu="rtx-3090" ctx="8192" kv="q8_0" verdict="S" />. DeepSeek R1 Distill Qwen 32B도 마찬가지입니다<Expect model="deepseek-r1-distill-32b" gpu="rtx-3090" ctx="8192" kv="q8_0" verdict="S" />. 이 속도 차이는 공개 벤치마크로 확인하지 못했으니 작은 이점 정도로 보세요. 캐시 종류를 바꾸는 법은 ‘<GuideLink slug="kv-cache-context" />’ 가이드에 있습니다.
 
 **같은 균형 등급 안에서 양자화 한 단계 낮추기.** Qwen3 32B를 IQ4_XS로 받으면 필요량이 <Num kind="needGB" model="qwen3-32b" quant="IQ4_XS" />로, Q4_K_M의 <Num kind="needGB" model="qwen3-32b" />보다 작습니다. 파일이 작아진 만큼 빨라져 RTX 3090에서 쾌적하게 돌아갑니다<Expect model="qwen3-32b" gpu="rtx-3090" quant="IQ4_XS" verdict="S" />. 다만 늘 통하지는 않습니다. RTX 3060 12GB에서 Qwen3 14B는 IQ4_XS로 낮춰도 엄격한 기준에 못 미쳐 원활하게 돌아갑니다<Expect model="qwen3-14b" gpu="rtx-3060-12gb" quant="IQ4_XS" verdict="A" />. 품질 차이는 ‘<GuideLink slug="gguf-quantization" />’ 가이드에서 다룹니다.
 
-**같은 계열의 작은 모델.** 엄격한 기준을 적용해도 Qwen3 8B는 RTX 3060 12GB에서 쾌적하게 돌아갑니다<Expect model="qwen3-8b" gpu="rtx-3060-12gb" verdict="S" />. 8GB인 RTX 4060에서도 쾌적하게 돌아갑니다<Expect model="qwen3-8b" gpu="rtx-4060" verdict="S" />. Qwen3.5 9B도 RTX 3060 12GB에서 쾌적하게 돌아갑니다<Expect model="qwen3.5-9b" gpu="rtx-3060-12gb" verdict="S" />. RTX 4060에서 Qwen3 8B는 8k 기준 필요량이 <Num kind="needGB" model="qwen3-8b" />이고, 사용 가능 메모리는 <Num kind="usableGB" gpu="rtx-4060" />입니다. 여유가 1GB도 안 되니 `ollama ps`로 확인하세요.
+**같은 계열의 작은 모델.** 엄격한 기준을 적용해도 Qwen3 8B는 RTX 3060 12GB에서 쾌적하게 돌아갑니다<Expect model="qwen3-8b" gpu="rtx-3060-12gb" verdict="S" />. 8GB인 RTX 4060에서도 기준을 살짝 넘어 쾌적하게 돌아갑니다<Expect model="qwen3-8b" gpu="rtx-4060" verdict="S" />. Qwen3.5 9B도 RTX 3060 12GB에서 쾌적하게 돌아갑니다<Expect model="qwen3.5-9b" gpu="rtx-3060-12gb" verdict="S" />. RTX 4060에서 Qwen3 8B는 8k 기준 필요량이 <Num kind="needGB" model="qwen3-8b" />이고, 사용 가능 메모리는 <Num kind="usableGB" gpu="rtx-4060" />입니다. 여유가 1GB도 안 되니 `ollama ps`로 확인하세요.
 
 **활성 파라미터가 적은 MoE 모델.** MoE(전문가 혼합) 모델은 토큰마다 전체 파라미터 중 수십억 개만 읽습니다. 그래서 크기에 비해 빨리 생성합니다. gpt-oss-20b는 RTX 5060 Ti 16GB에서 쾌적하게 돌아갑니다. 이 조합의 속도는 공개 벤치마크에서 실제로 잰 값입니다<Expect model="gpt-oss-20b" gpu="rtx-5060-ti-16gb" verdict="S" confidence="measured" />. 생각 모드가 기본으로 켜진 <HubLink model="qwen3.6-35b-a3b" />는 RTX 3090에 전부 올라가 쾌적하게 돌아갑니다<Expect model="qwen3.6-35b-a3b" gpu="rtx-3090" verdict="S" mode="full-gpu" />. RTX 5060 Ti 16GB에서는 <Num kind="needGB" model="qwen3.6-35b-a3b" />가 필요해 전문가 일부를 시스템 RAM에 두고, 원활하게 돌아갑니다<Expect model="qwen3.6-35b-a3b" gpu="rtx-5060-ti-16gb" verdict="A" mode="cpu-moe" confidence="theoretical" />. 이 조합의 속도는 이론 추정입니다. 이런 배치는 ‘<GuideLink slug="moe-cpu-offload" />’ 가이드에서 설명합니다.
 
 ## 생각 토큰도 컨텍스트를 쓴다
 
-지금 쓰는 답의 추론은 사용자 메시지와 같은 컨텍스트에 쌓입니다. 생각 토큰도 다른 토큰처럼 KV 캐시를 차지합니다. KV 캐시는 컨텍스트를 담아 두는 메모리입니다. 모델 카드들은 긴 추론을 전제로 합니다. Qwen3 카드는 대부분의 질문에 출력 길이를 32k 토큰으로 잡으라고 권합니다. Qwen3.5·Qwen3.6 카드도 같고, 어려운 수학·프로그래밍 문제에는 80k까지 권합니다. DeepSeek은 R1 평가에서 생성 길이를 최대 32k 토큰으로 잡았습니다. 컨텍스트가 4k나 8k라면 긴 추론 도중에 가득 찰 수 있습니다.
+모델이 답을 쓰는 동안 나오는 생각 토큰도 사용자 메시지와 같은 컨텍스트에 쌓입니다. 생각 토큰도 다른 토큰처럼 KV 캐시를 차지합니다. KV 캐시는 컨텍스트를 담아 두는 메모리입니다. 모델 카드들은 긴 추론을 전제로 합니다. Qwen3 카드는 대부분의 질문에 출력 길이를 32k 토큰으로 잡으라고 권합니다. Qwen3.5·Qwen3.6 카드도 같고, 어려운 수학·프로그래밍 문제에는 80k까지 권합니다. DeepSeek은 R1 평가에서 생성 길이를 최대 32k 토큰으로 잡았습니다. 컨텍스트가 4k나 8k라면 긴 추론 도중에 가득 찰 수 있습니다.
 
 작은 카드에서 Ollama를 쓰면 이런 일이 더 자주 생깁니다. <RuntimeFact id="ollama-default-ctx" />. 답을 쓰다 컨텍스트가 차면 Ollama는 앞부분을 밀어내고 계속 생성합니다. 그 결과 대화 앞부분이 빠집니다. 컨텍스트를 늘리는 방법은 ‘<GuideLink slug="ollama-context-length" />’ 가이드에 있습니다.
 
-지난 턴의 추론은 부담이 덜합니다. Qwen3·Qwen3.6·Gemma 4 모델 카드는 대화 기록에 지난 턴의 최종 답만 남기라고 설명합니다. 이 모델들의 채팅 템플릿도 지난 추론을 지웁니다. 다만 Gemma 4는 도구 호출 턴의 추론은 남깁니다. 일부러 남기는 설정도 있습니다. Qwen3.6에는 `preserve_thinking` 옵션이 있습니다. llama-server의 `--reasoning-preserve`는 기본으로 켜져 있습니다. 이를 지원하는 템플릿이면 지난 추론도 기록에 남습니다.
+지난 턴의 추론은 부담이 덜합니다. Qwen3·Qwen3.5·Gemma 4 모델 카드는 대화 기록에 지난 턴의 최종 답만 남기라고 설명합니다. 이 모델들의 채팅 템플릿도 지난 추론을 지웁니다. 다만 Gemma 4는 도구 호출 턴의 추론은 남깁니다. Qwen3.6 템플릿도 기본으로 지난 추론을 지우지만, 남겨 둔 추론을 활용하도록 학습했고 `preserve_thinking`으로 남길 수 있습니다. llama-server의 `--reasoning-preserve`는 기본으로 켜져 있습니다. 이를 지원하는 템플릿이면 지난 추론도 기록에 남습니다.
 
 아래 표는 이 글에 나온 생각 모드 모델이 32k에서 필요한 메모리입니다.
 
@@ -125,7 +127,7 @@ dense 모델인 Qwen3와 DeepSeek R1 distill은 모든 층이 전체 어텐션(f
 
 <CtxTable model="qwen3-14b" gpu="rtx-5060-ti-16gb" />
 
-f16 KV 캐시로 32k를 쓰면 Qwen3 14B는 <Num kind="needGB" model="qwen3-14b" ctx="32768" />가 필요합니다. 이 카드의 사용 가능 메모리는 <Num kind="usableGB" gpu="rtx-5060-ti-16gb" />입니다. CanRun 계산으로는 GPU에 전부 올라가지만, 여유가 1GB도 안 되니 `ollama ps`로 확인하세요<Expect model="qwen3-14b" gpu="rtx-5060-ti-16gb" ctx="32768" fits="true" mode="full-gpu" />. 8k에서는 쾌적하게 돌아가고<Expect model="qwen3-14b" gpu="rtx-5060-ti-16gb" verdict="S" />, 32k에서는 원활하게 돌아갑니다<Expect model="qwen3-14b" gpu="rtx-5060-ti-16gb" ctx="32768" verdict="A" />. 32k에서 한 단계 낮아지는 것은 새 토큰마다 더 커진 캐시를 읽어야 하기 때문입니다. RTX 3060 12GB에서는 같은 32k가 f16 캐시로는 들어가지 않아, 모델 일부가 시스템 RAM으로 넘어갑니다<Expect model="qwen3-14b" gpu="rtx-3060-12gb" ctx="32768" fits="true" mode="partial-offload" />. KV 캐시를 q4_0으로 바꾸면 아슬아슬하게 GPU에 남습니다<Expect model="qwen3-14b" gpu="rtx-3060-12gb" ctx="32768" kv="q4_0" fits="true" mode="full-gpu" />.
+f16 KV 캐시로 32k를 쓰면 Qwen3 14B는 <Num kind="needGB" model="qwen3-14b" ctx="32768" />가 필요합니다. 이 카드의 사용 가능 메모리는 <Num kind="usableGB" gpu="rtx-5060-ti-16gb" />입니다. CanRun 계산으로는 GPU에 전부 올라가지만, 여유가 1GB도 안 되니 `ollama ps`로 확인하세요<Expect model="qwen3-14b" gpu="rtx-5060-ti-16gb" ctx="32768" fits="true" mode="full-gpu" />. f16 캐시면 8k에서는 쾌적하게, 16k부터는 원활하게 돌아갑니다<Expect model="qwen3-14b" gpu="rtx-5060-ti-16gb" ctx="16384" verdict="A" /><Expect model="qwen3-14b" gpu="rtx-5060-ti-16gb" ctx="32768" verdict="A" />. 새 토큰마다 더 커진 캐시를 읽어야 하기 때문입니다. q8_0 캐시면 16k도 쾌적하게 돌아갑니다<Expect model="qwen3-14b" gpu="rtx-5060-ti-16gb" ctx="16384" kv="q8_0" verdict="S" />. RTX 3060 12GB에서는 같은 32k가 f16 캐시로는 들어가지 않아, 모델 일부가 시스템 RAM으로 넘어갑니다<Expect model="qwen3-14b" gpu="rtx-3060-12gb" ctx="32768" fits="true" mode="partial-offload" />. KV 캐시를 q4_0으로 바꾸면 아슬아슬하게 GPU에 남습니다<Expect model="qwen3-14b" gpu="rtx-3060-12gb" ctx="32768" kv="q4_0" fits="true" mode="full-gpu" />.
 
 ### 더 읽을거리
 
@@ -138,7 +140,7 @@ f16 KV 캐시로 32k를 쓰면 Qwen3 14B는 <Num kind="needGB" model="qwen3-14b"
 
 메모리 수치는 실제 GGUF 파일 크기와 파일 헤더, 모델 설정 파일(config)로 공식에 따라 계산한 값입니다. 그래서 오차 범위를 붙이지 않습니다. 속도는 추정치라서 오차 범위와 신뢰 라벨을 함께 붙입니다. ‘보정된 추정’의 오차 범위는 NVIDIA·AMD 카드에서 dense 모델을 GPU에만 올릴 때 ±12%입니다. MoE 모델이나 부분 오프로드, 그 밖의 하드웨어에서는 ±20%입니다. ‘이론 추정’은 ±30%로, MoE 전문가를 RAM에 두는 경우처럼 실제 속도 편차가 큰 구성에 붙입니다. 이 글의 판정표는 대부분 보정된 추정입니다. 16GB·24GB 카드의 gpt-oss-20b에는 ‘실측’ 라벨이 붙고, 전문가를 RAM에 둔 칸은 이론 추정입니다.
 
-가장 불확실한 부분은 1.5배라는 배수입니다. CanRun이 잰 값이 아니라 정해 둔 정책이고, 생각에 드는 실제 비용은 질문마다 다릅니다. 판정은 사용자 설정이 아니라 모델을 기준으로 합니다. 생각 모드를 끄고 쓴다면, 칸의 속도 범위를 기준표의 일반 기준과 비교해 보세요. 생각 모드를 켜고 쓴다면 답을 받기까지의 시간은 모델이 얼마나 오래 생각하는지에 달려 있습니다. 이 시간은 속도 추정만으로는 알 수 없습니다.
+가장 불확실한 부분은 1.5배라는 배수입니다. CanRun이 잰 값이 아니라 정해 둔 정책이고, 생각에 드는 실제 비용은 질문마다 다릅니다. 이 글의 판정 가운데 여럿은 엄격한 기준선 가까이에 있어서, 추정 속도가 몇 퍼센트만 달라도 한 단계가 바뀝니다. 생각 모드를 끄고 쓴다면, 칸의 속도 범위를 기준표의 일반 기준과 비교해 보세요. 생각 모드를 켜고 쓴다면 답을 받기까지의 시간은 모델이 얼마나 오래 생각하는지에 달려 있습니다. 이 시간은 속도 추정만으로는 알 수 없습니다.
 
 아래는 <HubLink gpu="rtx-3090" />에서 gpt-oss-20b를 실제로 잰 결과입니다.
 
@@ -160,41 +162,41 @@ f16 KV 캐시로 32k를 쓰면 Qwen3 14B는 <Num kind="needGB" model="qwen3-14b"
 
 ### 생각 모드 모델은 토큰을 만드는 속도도 느린가요?
 
-아니요. 토큰당 속도는 모델 크기와 양자화, 카드의 메모리 대역폭으로 정해집니다. 생각 모드가 있는지와는 관계가 없습니다. RTX 3060 12GB에서 Qwen3 14B와 Phi-4는 추정 속도가 비슷합니다. 생각 모드 모델이 느리게 느껴지는 이유는 답 하나에 토큰을 더 많이 쓰고, 생각이 끝나야 답이 시작되기 때문입니다.
+생각 모드가 있다고 토큰당 속도가 느려지지는 않습니다. 같은 컨텍스트 길이라면 토큰당 속도는 모델 크기와 양자화, 카드의 메모리 대역폭으로 정해집니다. 다만 추론이 길어지면 컨텍스트가 차고, 새 토큰마다 더 큰 KV 캐시를 읽어야 해서 답이 길어질수록 생성이 느려집니다. RTX 5060 Ti 16GB의 Qwen3 14B는 8k에서는 쾌적하게<Expect model="qwen3-14b" gpu="rtx-5060-ti-16gb" verdict="S" />, 32k에서는 원활하게 돌아갑니다<Expect model="qwen3-14b" gpu="rtx-5060-ti-16gb" ctx="32768" verdict="A" />(위 표 참고). 생각 모드 모델이 느리게 느껴지는 데는 이유가 하나 더 있습니다. 답 하나에 토큰을 더 많이 쓰고, 생각이 끝나야 답이 시작되기 때문입니다.
 
 ### gpt-oss는 think를 false로 해도 왜 계속 생각하나요?
 
-gpt-oss에는 끄는 설정이 없습니다. 모델 카드가 제공하는 추론 강도는 low·medium·high이고, Ollama도 gpt-oss에는 이 세 값만 허용합니다. 대신 `--think=low`나 `"think": "low"`를 쓰세요. DeepSeek R1 distill 모델도 늘 생각합니다. 다른 모델이라면 `--hidethinking`이 아니라 `--think=false`를 썼는지 확인하세요. `--hidethinking`은 추론을 숨기기만 합니다. Qwen3.5·Qwen3.6은 Qwen3의 `/no_think` 태그를 지원하지 않으니 런타임 스위치를 쓰세요. Ollama 오류 메시지는 생각 모드를 제대로 쓰려면 Qwen3와 DeepSeek R1을 다시 받으라고 안내합니다. 예전에 받은 모델이라면 다시 받아 보세요.
+gpt-oss에는 끄는 설정이 없습니다. 모델 카드가 제공하는 추론 강도는 low·medium·high이고, Ollama도 gpt-oss에는 이 세 값만 허용합니다. 대신 `--think=low`나 `"think": "low"`를 쓰세요. 다른 모델이라면 `--hidethinking`이 아니라 `--think=false`를 썼는지 확인하세요. `--hidethinking`은 추론을 숨기기만 합니다. 앱이 `/v1` 엔드포인트를 쓴다면 `think`는 무시되니 `reasoning_effort`를 `none`으로 보내세요. Qwen3.5·Qwen3.6은 Qwen3의 `/no_think` 태그를 지원하지 않으니 런타임 스위치를 쓰세요. Ollama의 DeepSeek R1은 `--think=false`면 생각을 멈추지만, 추론을 건너뛰는 방식이라 모델 카드는 답이 나빠질 수 있다고 경고합니다. 예전에 받은 Qwen3는 `--think=false`여도 계속 생각할 수 있습니다. Ollama 소스에 예전 Qwen3 템플릿은 늘 생각 블록을 연다고 적혀 있으니 모델을 다시 받으세요.
 
 ### 생각 모드를 꺼야 하나요?
 
-일상 대화나 간단한 질문이라면 끄고, 수학·코딩이나 여러 단계를 거쳐야 하는 문제라면 켜 두세요. Qwen3 모델 카드의 설명도 같습니다. 복잡한 추론과 수학, 코딩에는 생각 모드를, 일반 대화에는 비생각 모드를 권합니다. 켜 둔 채로 쓸 때는 앞에서 본 방법으로 엄격한 기준을 넘을 수 있습니다. 더 빠른 카드, 한 단계 낮은 양자화, MoE 모델입니다.
+일상 대화나 간단한 질문이라면 끄고, 수학·코딩이나 여러 단계를 거쳐야 하는 문제라면 켜 두세요. Qwen3 모델 카드의 설명도 같습니다. 복잡한 추론과 수학, 코딩에는 생각 모드를, 일반 대화에는 비생각 모드를 권합니다. 켜 둔 채로 써도 엄격한 기준을 넘을 방법이 있습니다. KV 캐시를 q8_0으로 바꾸거나, 양자화를 한 단계 낮추거나, 같은 계열의 작은 모델이나 MoE 모델로 바꾸는 방법입니다.
 
 ### 생각하는 길이를 제한할 수 있나요?
 
-어느 정도는 됩니다. llama-server의 `--reasoning-budget N`은 추론이 N토큰에 이르면 끝냅니다. gpt-oss는 Ollama와 llama.cpp 모두에서 추론 강도를 low로 낮출 수 있습니다. HyperCLOVA X SEED Think 14B 모델 카드에는 메시지에 적어 넣는 대략적인 길이 제한이 나옵니다. Ollama 문서에 나온 `think` 값은 켜기·끄기와 모델이 정해 둔 단계뿐입니다. 문서에는 숫자는 지원하지 않는다고 적혀 있습니다.
+어느 정도는 됩니다. llama-server의 `--reasoning-budget N`은 추론이 N토큰에 이르면 끝냅니다. gpt-oss는 Ollama와 llama.cpp 모두에서 추론 강도를 low로 낮출 수 있습니다. HyperCLOVA X SEED Think 14B 모델 카드는 메시지 끝에 `Think for maximum 1024 tokens` 같은 줄을 붙이라고 안내합니다. Ollama 문서에 나온 `think` 값은 켜기·끄기와 모델이 정해 둔 단계뿐입니다. 문서에는 숫자는 지원하지 않는다고 적혀 있습니다. Qwen3가 끝없이 생각하는 것 같다면 샘플링 설정을 보세요. 모델 카드는 생각 모드에서 greedy decoding(temperature 0)을 쓰면 같은 말이 끝없이 반복될 수 있다고 경고합니다. presence penalty를 주라고도 권합니다.
 
 ## 출처
 
-- [Ollama 문서: 생각 모드](https://docs.ollama.com/capabilities/thinking): `think` 값(`true`, 모델이 허용할 때만 끄는 `false`, `null`, 단계 이름. 숫자는 지원하지 않음), `/api/show`의 모델 기본값, gpt-oss의 low·medium·high 단계와 기본값 medium
-- [Ollama 블로그: 생각 모드](https://ollama.com/blog/thinking): `--think`, `--think=false`, `/set think`, `/set nothink`, 스크립트용 `--hidethinking`
+- [Ollama 문서: 생각 모드](https://docs.ollama.com/capabilities/thinking): `think` 값(`true`, 모델이 허용할 때만 끄는 `false`, `null`, 단계 이름. 숫자는 지원하지 않음), `/api/show`의 모델 기본값, gpt-oss의 low·medium·high 단계와 기본값 medium, Python 라이브러리의 `think`
+- [Ollama 블로그: 생각 모드](https://ollama.com/blog/thinking): `--think`, `--think=false`, `/set think`, `/set nothink`, 스크립트용 `--hidethinking`, DeepSeek R1에서 생각 모드 끄기
 - [Ollama v0.40.4 소스: cmd/cmd.go](https://github.com/ollama/ollama/blob/v0.40.4/cmd/cmd.go): `--think` 옵션(true·false·단계), 표시만 숨기는 `--hidethinking`, `Thinking...`·`...done thinking.` 표시, `ollama show`의 단계 표시, `--verbose` 시간 정보
 - [Ollama v0.40.4 소스: cmd/interactive.go](https://github.com/ollama/ollama/blob/v0.40.4/cmd/interactive.go): `/set think`, `/set nothink`
-- [Ollama v0.40.4 소스: server/model_thinking.go](https://github.com/ollama/ollama/blob/v0.40.4/server/model_thinking.go)와 [테스트 코드](https://github.com/ollama/ollama/blob/v0.40.4/server/model_thinking_test.go): 생각 모드를 켜고 끌 수 있는 로컬 모델은 기본으로 켜짐(Gemma 4 포함)
+- [Ollama v0.40.4 소스: server/model_thinking.go](https://github.com/ollama/ollama/blob/v0.40.4/server/model_thinking.go)와 [테스트 코드](https://github.com/ollama/ollama/blob/v0.40.4/server/model_thinking_test.go): 생각 모드를 켜고 끌 수 있는 로컬 모델은 기본으로 켜짐(Gemma 4 포함), 예전 Qwen3 템플릿은 늘 생각 블록을 연다는 설명
+- [Ollama v0.40.4 소스: openai/openai.go](https://github.com/ollama/ollama/blob/v0.40.4/openai/openai.go): OpenAI 호환 요청에는 `think` 필드가 없고, `reasoning_effort`가 `none`이면 생각 모드를 끔
 - [Ollama v0.40.4 소스: model/renderers/thinking.go](https://github.com/ollama/ollama/blob/v0.40.4/model/renderers/thinking.go): gpt-oss(harmony)의 low·medium·high 단계와 기본값 medium
 - [Ollama v0.40.4 소스: model/renderers/gemma4.go](https://github.com/ollama/ollama/blob/v0.40.4/model/renderers/gemma4.go): 생각 모드를 켜면 `<|think|>` 토큰을 넣는 코드
 - [Ollama v0.40.4 소스: server/routes.go](https://github.com/ollama/ollama/blob/v0.40.4/server/routes.go): 요청에 `think`가 없고 모델 기본값도 없으면 생각 모드를 켜는 코드, 답이 컨텍스트를 채우면 기본으로 앞부분을 밀어내는 동작
-- [Ollama v0.40.4 소스: server/images.go](https://github.com/ollama/ollama/blob/v0.40.4/server/images.go): 생각 모드를 제대로 쓰려면 Qwen3·DeepSeek R1을 다시 받으라는 오류 메시지
 - [llama.cpp 서버 README](https://github.com/ggml-org/llama.cpp/blob/a0e6dc7384edb8f5d927155e1d26c10b4a310e6d/tools/server/README.md): `--reasoning`, `--reasoning-effort`, `--reasoning-budget`, `--reasoning-budget-message`, `--reasoning-preserve` 옵션과 요청 필드 `chat_template_kwargs`·`reasoning_effort`
 - [llama.cpp 소스: server-context.cpp](https://github.com/ggml-org/llama.cpp/blob/a0e6dc7384edb8f5d927155e1d26c10b4a310e6d/tools/server/server-context.cpp#L1601-L1605): `--reasoning off`가 아니고 템플릿이 지원하면 생각 모드를 켜는 코드
 - [llama.cpp PR #20297 (추론 예산 처리)](https://github.com/ggml-org/llama.cpp/pull/20297): `--reasoning on`·`off`, 실제 토큰 예산과 예산 메시지 추가, 2026년 3월 병합. 그 전에는 `--reasoning-budget 0`이 생각 모드를 끄는 역할만 했다는 설명
-- [Qwen3-14B 모델 카드](https://huggingface.co/Qwen/Qwen3-14B): 기본으로 켜진 생각 모드, `enable_thinking=False`, `/think`·`/no_think` 태그, 빈 생각 블록, 출력 길이 32k 권장, 기록에서 추론 제외, 모드별 쓰임새
-- [Qwen3.5-35B-A3B 모델 카드](https://huggingface.co/Qwen/Qwen3.5-35B-A3B)·[Qwen3.6-35B-A3B 모델 카드](https://huggingface.co/Qwen/Qwen3.6-35B-A3B): 기본으로 켜진 생각 모드, 태그 스위치 공식 미지원, `chat_template_kwargs`의 `enable_thinking`, `preserve_thinking`, 출력 길이 32k와 최대 80k 권장
+- [Qwen3-14B 모델 카드](https://huggingface.co/Qwen/Qwen3-14B): 기본으로 켜진 생각 모드, `enable_thinking=False`, `/think`·`/no_think` 태그, 빈 생각 블록, 출력 길이 32k 권장, 기록에서 추론 제외, 모드별 쓰임새, greedy decoding 경고와 presence penalty 권장
+- [Qwen3.5-35B-A3B 모델 카드](https://huggingface.co/Qwen/Qwen3.5-35B-A3B)·[Qwen3.6-35B-A3B 모델 카드](https://huggingface.co/Qwen/Qwen3.6-35B-A3B): 기본으로 켜진 생각 모드, 태그 스위치 공식 미지원, `chat_template_kwargs`의 `enable_thinking`, Qwen3.5의 기록에서 추론 제외, Qwen3.6의 추론 보존 학습과 `preserve_thinking`, 출력 길이 32k와 최대 80k 권장
 - [Qwen3-30B-A3B-Instruct-2507 모델 카드](https://huggingface.co/Qwen/Qwen3-30B-A3B-Instruct-2507): 비생각 모드만 지원
 - [gpt-oss-20b 모델 카드](https://huggingface.co/openai/gpt-oss-20b)·[채팅 템플릿](https://huggingface.co/openai/gpt-oss-20b/blob/main/chat_template.jinja): 시스템 프롬프트로 정하는 low·medium·high 추론 강도, 지정하지 않으면 medium
-- [DeepSeek-R1-Distill-Qwen-32B 모델 카드](https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-32B): Qwen2.5 32B 기반, 생각을 건너뛰는 경우가 있어 `<think>`로 시작하게 하라는 권장, 평가 시 최대 생성 길이 32k
+- [DeepSeek-R1-Distill-Qwen-32B 모델 카드](https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-32B): Qwen2.5 32B 기반, 생각을 건너뛰면 답이 나빠질 수 있어 `<think>`로 시작하게 하라는 권장, 평가 시 최대 생성 길이 32k
 - [Gemma 4 26B-A4B 모델 카드](https://huggingface.co/google/gemma-4-26B-A4B-it)·[채팅 템플릿](https://huggingface.co/google/gemma-4-26B-A4B-it/blob/main/chat_template.jinja): 시스템 프롬프트 맨 앞의 `<|think|>`로 켜는 생각 모드, 기본값이 꺼진 `enable_thinking`, 도구 호출 턴을 뺀 지난 추론 제거
 - [EXAONE 4.0 32B 모델 카드](https://huggingface.co/LGAI-EXAONE/EXAONE-4.0-32B): `enable_thinking=True`로 켜는 추론 모드
-- [HyperCLOVA X SEED Think 14B 모델 카드](https://huggingface.co/naver-hyperclovax/HyperCLOVAX-SEED-Think-14B): 기본 설정에서 모델이 스스로 정하는 추론 여부, `force_reasoning`·`skip_reasoning`, 메시지에 적는 대략적인 길이 제한
+- [HyperCLOVA X SEED Think 14B 모델 카드](https://huggingface.co/naver-hyperclovax/HyperCLOVAX-SEED-Think-14B): 기본 설정에서 모델이 스스로 정하는 추론 여부, `force_reasoning`·`skip_reasoning`, 대략적인 길이 제한을 거는 `Think for maximum N tokens` 줄
 - [Phi-4 모델 카드](https://huggingface.co/microsoft/phi-4): 생각 블록이 없는 대화 형식
 - [llama.cpp의 gpt-oss 실행 안내 토론](https://github.com/ggml-org/llama.cpp/discussions/15396): RTX 카드별 llama-bench 결과. 본문의 RTX 3090·gpt-oss-20b 벤치마크 결과 출처
