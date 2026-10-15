@@ -2,6 +2,14 @@ CanRun changes often. New models arrive, the calculator gains features, and now 
 
 ## Changes to the site
 
+<Update id="apple-gpu-compute">
+
+### Corrected compute figures for Apple chips
+
+Apple does not publish its chips' GPU compute, and the figures we showed were double the theoretical FP32 compute, on the assumption that the GPU runs FP16 at twice that speed. Apple GPUs run FP16 at the same rate as FP32, so GPU and model pages now show the theoretical figures from Wikipedia's Apple silicon table as they are, about half the old ones. The prompt-processing factors were refitted to the same public benchmark with these figures, so prompt estimates moved by 7% or less, and the <SiteLink to="/gpu/apple-m5-ultra">Apple M5 Ultra</SiteLink>, which had no figure, now gets a prompt-processing estimate too. Generation speeds and verdicts did not change.
+
+</Update>
+
 <Update id="apple-prompt-speed">
 
 ### Prompt speed estimates for Macs

@@ -240,7 +240,7 @@ describe('8) class recalibration (10-15 D79·D81·D83): AMD Vulkan 4점 · DGX S
   });
 });
 
-describe('9) pp: Apple #4167 Llama 2 7B Q4_0 pp512 (10-16 D86, docs/02 §3.5)', () => {
+describe('9) pp: Apple #4167 Llama 2 7B Q4_0 pp512 (10-16 D86·D87, docs/02 §3.5)', () => {
   // 표시 밴드 = 데이터 레이어 PP_BAND 0.4 (docs/02 §3.5 policy) — 엔진 테스트라 값으로 둔다
   const PP_BAND = 0.4;
   const errors = APPLE_PP_CASES.map(({ hw, measuredPp }) => (ppEstimate(hw)! - measuredPp) / measuredPp);
