@@ -46,6 +46,11 @@ export const GUIDE_SLUGS = [
   'ollama-vs-llama-cpp-lm-studio',
   'thinking-models',
   'tokens-per-second',
+  // 10-15 D77: 배치 3 새 가이드 초안 4편 — 사용자 감수 대기(draft = noindex·미링크)
+  'amd-intel-gpus',
+  'laptop-gpu-llm',
+  'multi-gpu',
+  'cpu-only-llm',
 ] as const;
 
 export type GuideSlug = (typeof GUIDE_SLUGS)[number];
@@ -56,7 +61,7 @@ const BATCH1_MODELS = ['llama-3.1-8b', 'gemma-3-12b', 'qwen3-14b', 'gpt-oss-20b'
 /** 09-30 사용자가 채팅으로 6편 모두 게시 승인 (D40) */
 const PUBLISHED = { status: 'published', reviewedAt: '2026-09-30', datePublished: '2026-09-30', dateModified: '2026-09-30', author: 'CanRun' } as const;
 
-/** 10-15 D75·D76 배치 1·2 초안 — 게시 전환은 사용자가 슬러그별로 승인한 뒤(D40, reviewedAt·날짜 갱신과 함께) */
+/** 10-15 D75·D76·D77 배치 1·2·3 초안 —게시 전환은 사용자가 슬러그별로 승인한 뒤(D40, reviewedAt·날짜 갱신과 함께) */
 const DRAFT_1015 = { status: 'draft', datePublished: '2026-10-15', dateModified: '2026-10-15', author: 'CanRun' } as const;
 
 export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
@@ -368,6 +373,123 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
         title: '로컬 LLM 속도 읽는 법 — 초당 토큰, 생성과 프롬프트 처리, 몇이면 쓸 만한가',
         description:
           '로컬 LLM의 생성 속도와 프롬프트 처리 속도가 무엇인지, 판정마다 필요한 속도와 메모리 대역폭·VRAM 초과가 속도를 정하는 이유, 내 PC에서 재는 법을 정리했습니다.',
+      },
+    },
+  },
+  'amd-intel-gpus': {
+    ...DRAFT_1015,
+    grids: {
+      // 라데온·Arc 카드 바로 아래에 VRAM 이 같은 NVIDIA 카드: 12GB B580/3060 · 16GB 9060 XT/5060 Ti · 16GB 9070 XT/5070 Ti ·
+      // 24GB 7900 XTX/3090 × 모델 6. 본문이 이 순서("one row after the other" / "한 줄씩 번갈아")와 12·16·24GB 절의 짝을
+      // 말한다 — 카드를 바꾸면 그 문장들을 다시 확인한다
+      radeon: {
+        gpus: ['arc-b580', 'rtx-3060-12gb', 'rx-9060-xt-16gb', 'rtx-5060-ti-16gb', 'rx-9070-xt', 'rtx-5070-ti', 'rx-7900-xtx', 'rtx-3090'],
+        models: ['llama-3.1-8b', 'qwen3-14b', 'gpt-oss-20b', 'qwen3-30b-a3b-2507', 'gemma-3-27b', 'qwen3-32b'],
+      },
+    },
+    related: ['gpu-by-budget', 'gpu-offload-check', 'vram-requirements'],
+    locales: {
+      en: {
+        title: 'AMD Radeon and Intel Arc for local LLMs: ROCm, Vulkan and what runs',
+        description:
+          'Which local LLMs fit on Radeon RX 9000 and RX 7000 cards and the Intel Arc B580, how ROCm, Vulkan and SYCL differ on Windows and Linux, and why the speeds differ.',
+      },
+      ko: {
+        title: '라데온·인텔 Arc로 로컬 LLM — ROCm·Vulkan과 돌아가는 모델',
+        description:
+          '라데온 RX 9000·7000 계열과 인텔 Arc B580에서 돌아가는 로컬 LLM을 같은 용량의 NVIDIA 카드와 비교했습니다. Windows·Linux에서 ROCm·Vulkan·SYCL 중 무엇을 쓸 수 있는지도 정리했습니다.',
+      },
+    },
+  },
+  'laptop-gpu-llm': {
+    ...DRAFT_1015,
+    grids: {
+      // 노트북 GPU 7종 + 이름이 같은 데스크톱 카드를 짝으로(노트북 줄 바로 아래에 데스크톱 줄, 노트북 VRAM 작은 순) × 인기 모델 5.
+      // 본문이 "laptop GPU with the desktop card that shares its name" / "바로 아래 줄에 붙였습니다"라고 이 순서를 말한다 —
+      // 줄 순서를 바꾸면 두 문장을 다시 확인한다
+      laptop: {
+        gpus: [
+          'rtx-4060-laptop',
+          'rtx-4060',
+          'rtx-4070-laptop',
+          'rtx-4070',
+          'rtx-4080-laptop',
+          'rtx-4080',
+          'rtx-5070-ti-laptop',
+          'rtx-5070-ti',
+          'rtx-4090-laptop',
+          'rtx-4090',
+          'rtx-5080-laptop',
+          'rtx-5080',
+          'rtx-5090-laptop',
+          'rtx-5090',
+        ],
+        models: ['llama-3.1-8b', 'qwen3-14b', 'gpt-oss-20b', 'qwen3.8-27b', 'qwen3.5-35b-a3b'],
+      },
+    },
+    related: ['vram-requirements', 'mac-local-llm', 'moe-cpu-offload'],
+    locales: {
+      en: {
+        title: 'Local LLMs on a gaming laptop: laptop GPUs, VRAM and speed',
+        description:
+          'Which local LLMs run on RTX 40 and RTX 50 laptop GPUs, why a laptop chip can have less VRAM than its desktop namesake, and what power limits and system RAM change.',
+      },
+      ko: {
+        title: '노트북으로 로컬 LLM — 노트북 GPU는 이름이 같아도 VRAM이 다르다',
+        description:
+          'RTX 40·50 노트북 GPU에서 돌아가는 로컬 LLM을 정리했습니다. 이름이 같은 데스크톱 카드보다 VRAM이 적은 경우와, 전력 제한·시스템 RAM에 따라 달라지는 점도 함께 다룹니다.',
+      },
+    },
+  },
+  'multi-gpu': {
+    ...DRAFT_1015,
+    grids: {
+      // 짝을 이루는 카드(RTX 3060 12GB, RTX 5060 Ti 16GB)와 합계가 같은 한 장짜리 카드(RTX 3090 = 24GB, RTX 5090 = 32GB) × 모델 6.
+      // 그리드는 콤보 페이지처럼 한 줄 = 카드 한 장. 두 장 결과는 본문이 계산기 결과(이론 추정)로 말한다 — <Expect> 는 GPU 하나만
+      // 받으므로 고정되지 않는다(D77 ②). 본문이 말하는 한 장 칸은 전부 <Expect> 로 고정
+      multigpu: {
+        gpus: ['rtx-3060-12gb', 'rtx-5060-ti-16gb', 'rtx-3090', 'rtx-5090'],
+        models: ['qwen3-14b', 'gemma-3-27b', 'qwen3-30b-a3b-2507', 'qwen3-32b', 'llama-3.3-70b', 'gpt-oss-120b'],
+      },
+    },
+    related: ['vram-requirements', 'gpu-by-budget', 'moe-cpu-offload'],
+    locales: {
+      en: {
+        title: "Two GPUs for local LLMs: memory adds up, speed doesn't",
+        description:
+          'What a second GPU adds for local LLMs: room for bigger models, not faster tokens. Two RTX 3060 12GB vs one RTX 3090, mixing cards, and llama.cpp and Ollama setup.',
+      },
+      ko: {
+        title: '그래픽카드 2장으로 로컬 LLM — 메모리는 더해지고 속도는 더해지지 않는다',
+        description:
+          '그래픽카드를 두 장 꽂으면 로컬 LLM에서 무엇이 달라지는지 정리했습니다. 더 큰 모델이 들어가도 생성 속도는 빨라지지 않는 이유, RTX 3060 12GB 두 장과 RTX 3090 비교, llama.cpp·Ollama 설정을 다룹니다.',
+      },
+    },
+  },
+  'cpu-only-llm': {
+    ...DRAFT_1015,
+    grids: {
+      // CPU 전용 프로필 3종 × 모델 6. 행 순서 = 대역폭이 작은 순(DDR4-3200 51.2 → DDR5-5600 89.6 → DDR5-6000 96 GB/s).
+      // 본문이 이 순서("ordered from the least memory bandwidth to the most" / "위에서부터 메모리 대역폭이 작은 순서")를 말한다.
+      // CPU 행 칸의 맨 아래 줄(atRam)은 판정을 낸 RAM 구성(그 판정이 나오는 가장 작은 용량, 전부 불가면 가장 큰 용량)이고 본문이
+      // 그렇게 설명한다. gemma-3-12b 를 고른 이유: qwen3-14b·gemma-3-27b 는 DDR4 행이 64GB 구성 + Q2_K 제안으로 그려져 RAM 용량을
+      // 오해하게 만든다 — 둘은 본문 <Expect> 로만 다룬다
+      cpu: {
+        gpus: ['cpu-ddr4-3200-2ch', 'cpu-ddr5-5600-2ch', 'cpu-ddr5-6000-2ch'],
+        models: ['llama-3.2-3b', 'llama-3.1-8b', 'gemma-3-12b', 'gpt-oss-20b', 'qwen3-30b-a3b-2507', 'gpt-oss-120b'],
+      },
+    },
+    related: ['kv-cache-context', 'gguf-quantization', 'moe-cpu-offload'],
+    locales: {
+      en: {
+        title: 'Running LLMs without a GPU: CPU-only speed and how much RAM you need',
+        description:
+          'Which local LLMs run on a PC with no graphics card, how much system RAM each needs, and why RAM bandwidth and MoE models decide the speed.',
+      },
+      ko: {
+        title: '그래픽카드 없이 로컬 LLM — CPU와 시스템 RAM만으로 돌릴 수 있는 모델',
+        description:
+          '그래픽카드 없이 CPU와 시스템 RAM만으로 돌아가는 로컬 LLM과 모델별로 필요한 RAM 용량을 정리했습니다. 속도를 정하는 RAM 대역폭과 CPU에서 유리한 MoE 모델도 다룹니다.',
       },
     },
   },

@@ -1,0 +1,169 @@
+그래픽카드를 한 장 더 꽂으면 메모리는 늘지만 생성 속도는 빨라지지 않습니다. llama.cpp 기본 방식에서 RTX 3060 12GB 두 장에는 RTX 3090(24GB) 한 장만큼의 모델이 들어갑니다. 하지만 토큰을 만드는 속도는 RTX 3060 한 장 수준입니다. 그래서 두 번째 카드는 한 장에 다 안 들어가는 모델에 쓸모가 있고, 이미 들어가는 모델에는 거의 도움이 되지 않습니다.
+
+## 그래픽카드 두 장에 모델을 나눠 올리면
+
+llama.cpp는 따로 지정하지 않으면 모델을 층 단위로 나눠 카드마다 올립니다(`--split-mode layer`). Ollama도 0.30 버전부터 llama.cpp로 모델을 돌립니다. 카드마다 이어진 층 묶음을 하나씩 맡고, 그 층의 KV 캐시(컨텍스트를 담는 메모리)도 같은 카드에 둡니다. 토큰 하나를 만들 때는 첫 카드가 자기 층을 계산한 뒤 작은 중간 결과를 다음 카드로 넘깁니다. 그러면 다음 카드가 나머지 층을 계산합니다.
+
+카드들이 차례로 일하는 셈이라, 대화 하나에서 토큰 하나에 걸리는 시간은 카드마다 맡은 가중치를 읽는 시간을 더한 값입니다. 그래서 메모리는 카드 수만큼 늘어나도, 속도를 정하는 메모리 대역폭은 합쳐지지 않습니다.
+
+CanRun 계산에서도 한 장에 이미 들어가는 모델은 같은 카드 두 장에 올려도 예상 속도가 그대로입니다. 공개된 벤치마크 결과도 비슷합니다. 2024년에 공개된 벤치마크 모음 하나를 보겠습니다. Llama 3 8B Q4_K_M은 RTX 3090 두 장에서 한 장보다 몇 퍼센트 느렸습니다. 네 장과 여섯 장에서는 조금씩 더 느려졌습니다. 카드를 늘려 달라진 것은 들어가는 모델이었습니다. Llama 3 70B Q4_K_M은 RTX 3090 한 장에서는 메모리가 모자랐고, 두 장부터 돌아갔습니다.
+
+RTX 3060 12GB에서 Llama 3.1 8B를 돌린 공개 벤치마크 결과가 있습니다. 이 모델은 여유 있게 GPU에 다 올라가고 쾌적하게 돌아갑니다<Expect model="llama-3.1-8b" gpu="rtx-3060-12gb" verdict="S" mode="full-gpu" confidence="measured" />. 아래 속도는 추정이 아니라 실제로 잰 값입니다. CanRun 계산으로는 RTX 3060 12GB를 한 장 더 꽂아도 이 속도가 오르지 않습니다.
+
+<Measured model="llama-3.1-8b" gpu="rtx-3060-12gb" />
+
+프롬프트 처리는 예외입니다. 층을 나눠 올리면 프롬프트 토큰 여러 개를 한꺼번에 처리하므로 카드들이 동시에 일할 수 있습니다. 앞의 2024년 벤치마크 모음에서도 8k 토큰짜리 프롬프트는 RTX 3090을 늘릴 때마다 빨리 처리됐습니다. 한 장부터 여섯 장까지 그랬습니다. llama.cpp의 멀티 GPU 안내서도 프롬프트 처리 속도가 중요하면 층 분할을 쓰라고 합니다. 다만 CanRun 계산기는 여러 장 구성의 프롬프트 처리 속도를 보여 주지 않습니다. 그래서 이 글은 생성 속도만 다룹니다. 층 하나를 여러 카드가 나눠 계산하는 실험 기능도 있는데, 아래 설정 절에서 다룹니다.
+
+## 두 번째 카드가 도움이 될 때 — 한 장에 다 안 들어가는 모델
+
+두 번째 카드가 제 몫을 하는 것은 모델이 한 장의 VRAM에 다 들어가지 않을 때입니다. 카드가 한 장뿐이면 dense 모델은 가중치 일부를 시스템 RAM에 둡니다. 이 부분 오프로드에서는 생성 속도가 크게 떨어집니다. MoE 모델은 대신 전문가 가중치 일부를 RAM에 둡니다.
+
+아래 표는 자주 쓰는 모델을 그래픽카드 한 장에 올릴 때 필요한 메모리입니다. Q4_K_M(gpt-oss는 MXFP4), 8k 컨텍스트, f16 KV 캐시 기준입니다. 카드가 늘면 카드마다 조금씩 더 드는데, 아래 ‘카드를 늘릴 때마다 드는 메모리’에서 설명합니다.
+
+<ModelMemoryTable models="qwen3-14b,gemma-3-27b,qwen3-30b-a3b-2507,qwen3-32b,gemma-4-31b,llama-3.3-70b,gpt-oss-120b" />
+
+<HubLink model="gemma-3-27b" />를 보면 차이가 분명합니다. 8k에서 <Num kind="needGB" model="gemma-3-27b" />가 필요해, RTX 3060 12GB가 쓸 수 있는 <Num kind="usableGB" gpu="rtx-3060-12gb" />보다 많습니다. 그래서 한 장에서는 일부가 시스템 RAM으로 넘어가 겨우 돌아갑니다<Expect model="gemma-3-27b" gpu="rtx-3060-12gb" verdict="B" mode="partial-offload" />. 카드 밖으로 나가는 양은 아래 막대에서 볼 수 있습니다.
+
+<MemoryBreakdown model="gemma-3-27b" gpu="rtx-3060-12gb" />
+
+이 카드를 두 장 쓰면 VRAM이 모두 24GB입니다. 화면 출력은 첫 번째 카드만 맡으므로 두 장이 쓸 수 있는 메모리는 <Num kind="usableGB" gpu="rtx-3090" />입니다. RTX 3090 한 장과 같은 양입니다. Gemma 3 27B는 여기에 몇 GB 여유를 두고 들어가서, 시스템 RAM으로 넘어가는 부분이 없습니다. CanRun 계산기에서는 두 장이 한 장보다 세 배 가까이 빠르고, 원활하게 돌아가는 것으로 나옵니다. 여러 장 구성의 결과는 모두 이론 추정(±30%)입니다.
+
+MoE 모델은 다른 방식으로 나아집니다. RTX 3060 12GB 한 장에서 Qwen3 30B-A3B는 들어가지 않는 전문가를 시스템 RAM에 둡니다. 그래도 원활하게 돌아가고, 이 속도는 이론 추정입니다<Expect model="qwen3-30b-a3b-2507" gpu="rtx-3060-12gb" verdict="A" mode="cpu-moe" confidence="theoretical" />. 나눠 올린 모습은 ‘<ComboLink model="qwen3-30b-a3b-2507" gpu="rtx-3060-12gb" />’ 페이지에 나옵니다. 이 모델은 한 장 기준으로 <Num kind="needGB" model="qwen3-30b-a3b-2507" />가 필요하므로, 두 장이면 VRAM에 전부 들어갑니다. 계산기에서는 쾌적하게 돌아가는 것으로 한 단계 올라갑니다. 이 결과도 이론 추정입니다.
+
+이미 한 장에 들어가는 모델은 카드를 더해도 느낄 만한 차이가 없습니다. Qwen3 14B는 RTX 3060 12GB 한 장에 다 올라가 원활하게 돌아갑니다<Expect model="qwen3-14b" gpu="rtx-3060-12gb" verdict="A" mode="full-gpu" />. 두 장이어도 CanRun 예상 속도는 같습니다. Ollama는 이런 모델을 어차피 카드 한 장에만 올립니다.
+
+가장 큰 MoE 모델은 시스템 RAM에도 기댑니다. 시스템 RAM이 32GB면 gpt-oss-120b는 RTX 3090 한 장으로 돌릴 수 없습니다<Expect model="gpt-oss-120b" gpu="rtx-3090" fits="false" />. VRAM에 못 들어간 전문가를 담기에 RAM이 모자라기 때문입니다. RAM이 64GB면 RTX 3090 한 장으로도 전문가 대부분을 RAM에 두고 겨우 돌아가며, 이 속도는 이론 추정입니다<Expect model="gpt-oss-120b" gpu="rtx-3090" ram="64" verdict="B" mode="cpu-moe" confidence="theoretical" />. RTX 3090을 한 장 더 꽂으면 GPU에 전문가를 더 많이 둘 수 있습니다. 그러면 나머지가 32GB RAM에 들어가고, CanRun 계산기에서는 원활하게 돌아가는 것으로 나옵니다(이론 추정). 한 장으로 돌리는 경우는 ‘<ComboLink model="gpt-oss-120b" gpu="rtx-3090" />’ 페이지와 ‘<GuideLink slug="moe-cpu-offload" />’ 가이드에서 다룹니다.
+
+## RTX 3060 12GB 두 장과 RTX 3090, RTX 5060 Ti 16GB 두 장과 RTX 5090
+
+이 두 비교가 자주 나오는 것은 메모리 합계가 같기 때문입니다. 12GB 두 장은 RTX 3090과 같은 24GB이고, 16GB 두 장은 RTX 5090과 같은 32GB입니다. 아래 표는 각 카드를 한 장씩 따로 판정한 결과입니다. 8k 컨텍스트, f16 KV 캐시, 시스템 RAM 32GB(DDR5), Windows를 가정했습니다. 두 장 구성은 표에 없어서, CanRun 계산기 결과를 본문에 적었습니다.
+
+<ComboGrid grid="multigpu" />
+
+메모리만 보면 두 장 구성은 한 장과 거의 같습니다. 화면 출력 몫은 똑같이 한 번만 빠집니다. 다만 계산 중에 쓰는 연산 버퍼가 카드마다 따로 붙는데, 8k에서 카드당 반 GB 남짓입니다. 그래서 CanRun 계산으로는 두 장 구성에 같은 용량의 한 장짜리 카드와 거의 같은 모델이 들어갑니다.
+
+속도는 다릅니다. 메모리 대역폭은 RTX 3060 12GB가 <Num kind="bandwidth" gpu="rtx-3060-12gb" />, RTX 3090이 <Num kind="bandwidth" gpu="rtx-3090" />로 두 배 반쯤 차이 납니다. RTX 5060 Ti 16GB는 <Num kind="bandwidth" gpu="rtx-5060-ti-16gb" />, RTX 5090은 <Num kind="bandwidth" gpu="rtx-5090" />로 네 배입니다. 두 장 구성은 카드들이 차례로 일하므로 작은 카드 한 장 속도로 토큰을 만듭니다. 그래서 이 대역폭 차이가 예상 속도에도 그대로 나타납니다.
+
+### 24GB — RTX 3060 12GB 두 장과 RTX 3090
+
+Gemma 3 27B는 RTX 3090에서 쾌적하게 돌아가고<Expect model="gemma-3-27b" gpu="rtx-3090" verdict="S" mode="full-gpu" />, 앞 절에서 본 것처럼 두 장 구성에서는 원활하게 돌아갑니다. <HubLink model="qwen3-32b" />는 RTX 3090에 다 올라가 원활하게 돌아갑니다<Expect model="qwen3-32b" gpu="rtx-3090" verdict="A" mode="full-gpu" />. 두 장 구성에도 들어가지만, 늘어난 연산 버퍼만큼 여유가 줄어 1GB가 채 남지 않습니다. 속도는 RTX 3060 수준이라 생각 모드 모델에 적용하는 엄격한 기준에 살짝 못 미칩니다. 그래서 계산기에서는 겨우 돌아가는 것으로 나옵니다. 이론 추정이라 실제로는 그 기준의 위아래 어느 쪽에도 놓일 수 있습니다. RTX 3060 12GB 한 장이면 Qwen3 32B는 일부를 시스템 RAM에 두고 겨우 돌아갑니다<Expect model="qwen3-32b" gpu="rtx-3060-12gb" verdict="B" mode="partial-offload" />.
+
+### 32GB — RTX 5060 Ti 16GB 두 장과 RTX 5090
+
+Qwen3 32B는 RTX 5090에서 쾌적하게 돌아갑니다<Expect model="qwen3-32b" gpu="rtx-5090" verdict="S" mode="full-gpu" />. RTX 5060 Ti 16GB 한 장에서는 일부를 시스템 RAM에 둬야 해서 겨우 돌아갑니다<Expect model="qwen3-32b" gpu="rtx-5060-ti-16gb" verdict="B" mode="partial-offload" />. 두 장이면 GPU에 다 올라가고, 계산기에서는 원활하게 돌아가는 것으로 나옵니다(이론 추정). 한국 모델 EXAONE 4.0 32B도 같습니다. RTX 5060 Ti 16GB 한 장에서는 일부가 시스템 RAM으로 넘어가 겨우 돌아갑니다<Expect model="exaone-4.0-32b" gpu="rtx-5060-ti-16gb" verdict="B" mode="partial-offload" />. 두 장이면 GPU에 다 올라가 계산기에서 원활하게 돌아가는 것으로 나옵니다(이론 추정).
+
+70B급 dense 모델은 두 구성 모두에 넘칩니다. <HubLink model="llama-3.3-70b" />는 Q4_K_M에서 <Num kind="needGB" model="llama-3.3-70b" />가 필요합니다. 그래서 RTX 5090에서도 일부가 시스템 RAM에 남아 겨우 돌아갑니다<Expect model="llama-3.3-70b" gpu="rtx-5090" verdict="B" mode="partial-offload" />. RTX 5060 Ti 16GB 두 장도 메모리가 똑같이 32GB라 부분 오프로드가 됩니다. RTX 3090 두 장은 합계 48GB라서 8k에서는 2GB가 안 되는 여유를 두고 다 들어갑니다. 계산기에서는 원활하게 돌아가는 것으로 나오고(이론 추정), 16k로 늘리면 일부가 시스템 RAM으로 넘어갑니다. RTX 3090 한 장으로는 Q4_K_M을 돌릴 수 없습니다. 모델의 너무 많은 부분이 시스템 RAM에 남기 때문입니다<Expect model="llama-3.3-70b" gpu="rtx-3090" verdict="F" mode="partial-offload" />. 같은 크기의 Llama 3 70B는 앞의 2024년 벤치마크 모음에도 있습니다. RTX 3090 두 장에서 CanRun 추정보다 조금 빠르게 돌아갔습니다.
+
+### 두 장 구성의 가격
+
+CanRun 데이터에 있는 가격은 다음과 같습니다. 이 글의 가격은 모두 미국 달러입니다.
+
+- RTX 3060 12GB: <Price gpu="rtx-3060-12gb" />
+- RTX 3090: <Price gpu="rtx-3090" />
+- RTX 5060 Ti 16GB: <Price gpu="rtx-5060-ti-16gb" />
+- RTX 5090: <Price gpu="rtx-5090" />
+
+이 글을 쓸 때의 가격으로는 RTX 3060 12GB 두 장이 RTX 3090 한 장 값의 절반이 조금 안 됐습니다. RTX 5060 Ti 16GB 두 장은 RTX 5090 값의 4분의 1을 조금 넘었습니다. 두 장 구성으로는 메모리를 얻고, 한 장짜리 큰 카드로는 메모리와 속도를 함께 얻는 셈입니다. 두 장을 쓰려면 PCIe 슬롯 두 개와 카드 사이 공간, 두 장이 들어가는 케이스, 두 장을 감당할 파워도 필요합니다. 한 장짜리 카드를 예산별로 비교한 글은 ‘<GuideLink slug="gpu-by-budget" />’입니다.
+
+## 서로 다른 카드 섞기 — 남은 메모리 비율로 나뉜다
+
+카드가 같은 모델일 필요는 없습니다. llama.cpp는 따로 지정하지 않으면 카드마다 남은 메모리에 비례해 층을 나눕니다. RTX 3090과 RTX 3060 12GB를 함께 쓰는 경우를 보겠습니다. 층의 3분의 2쯤은 RTX 3090에, 나머지 3분의 1쯤은 RTX 3060에 갑니다. VRAM 합계는 36GB이고, 여기서 화면 출력 몫이 빠집니다. 토큰마다 두 카드를 차례로 거치므로, RTX 3060이 맡은 3분의 1은 RTX 3060 속도로 읽힙니다. 그 몫만큼 전체 속도가 떨어집니다.
+
+RTX 3090 한 장에 들어가는 모델이라면 손해입니다. <HubLink model="qwen3-8b" />는 RTX 3090에서 쾌적하게 돌아가고<Expect model="qwen3-8b" gpu="rtx-3090" verdict="S" mode="full-gpu" />, Qwen3 32B도 RTX 3090에 다 올라가 원활하게 돌아갑니다<Expect model="qwen3-32b" gpu="rtx-3090" verdict="A" mode="full-gpu" />. 하지만 두 카드에 나눠 올리면, RTX 3090 한 장에 들어가는 모델의 CanRun 예상 속도는 3분의 1쯤 떨어집니다. 계산기는 한 카드에 다 들어가고 그 카드만 쓰는 편이 빠를 때 따로 안내합니다. Ollama는 이 문제를 스스로 피합니다. Ollama FAQ에 따르면 모델이 GPU 한 장에 다 들어가면 그 한 장에만 올립니다. llama.cpp는 보이는 카드를 모두 쓰므로, 한 장만 쓰려면 `--device`로 고릅니다(다음 절).
+
+얻는 것은 메모리입니다. <HubLink model="nemotron-3.5-lightning-30b-a3b" />는 <Num kind="needGB" model="nemotron-3.5-lightning-30b-a3b" />가 필요해, RTX 3090이 쓸 수 있는 <Num kind="usableGB" gpu="rtx-3090" />를 넘습니다. RTX 3090 한 장에서는 전문가 일부를 시스템 RAM에 두고 원활하게 돌아가며, 이 속도는 이론 추정입니다<Expect model="nemotron-3.5-lightning-30b-a3b" gpu="rtx-3090" verdict="A" mode="cpu-moe" confidence="theoretical" />. RTX 3060 12GB를 더하면 GPU에 다 올라갑니다. 이 글을 쓸 때 카탈로그 전체를 8k로 계산해 보니, 새로 GPU에 다 올라간 모델은 이것 하나였습니다. 반대로 RTX 3090 한 장에서 쾌적하게 돌아가던 모델 몇 개는 나눠 올리면서 한 단계 내려갔습니다. 섞어 쓸 생각이라면 계산기에서 내 조합을 먼저 확인해 보세요.
+
+계산기는 같은 제조사의 데스크톱 카드끼리만, 모두 합쳐 네 장까지 섞어 계산합니다. GTX 10 시리즈 같은 오래된 카드는 뺐습니다. NVIDIA와 AMD 카드를 한 PC에서 함께 쓰려면 두 카드를 모두 다루는 llama.cpp 빌드가 필요합니다. 이 내용은 아래 자주 묻는 질문에 있습니다.
+
+## 카드를 늘릴 때마다 드는 메모리
+
+카드를 늘리면 VRAM도 늘지만, 그 전부를 모델에 쓸 수는 없습니다.
+
+- **카드마다 연산 버퍼.** CanRun 계산에서는 카드마다 연산 버퍼가 따로 붙습니다. 8k에서 반 GB 남짓이고, 컨텍스트가 길수록 조금씩 늘어납니다. 두 장이면 두 번, 네 장이면 네 번 듭니다.
+- **화면 출력 몫은 한 번.** Windows는 모니터를 연결한 카드에서 VRAM 일부를 씁니다. 얼마인지는 메모리 표 아래 설명에 있습니다. 여러 장이면 CanRun은 첫 번째 카드에서만 이 몫을 뺍니다. llama.cpp는 남은 메모리 비율로 층을 나누므로, 이 카드는 층을 조금 덜 받습니다.
+- **카드마다 남기는 여유.** llama.cpp는 2025년 12월부터 메모리에 맞춰 설정을 자동으로 정하는 기능이 기본으로 켜져 있습니다. 이 기능은 카드마다 VRAM을 조금씩 비워 둡니다(`--fit-target`). 그리고 컨텍스트 길이나 GPU에 올릴 층 수처럼 직접 정하지 않은 설정을 조절합니다. 카드가 늘면 비워 두는 양도 늘어납니다. 그래서 CanRun 계산으로 아슬아슬하게 들어가는 모델은 실제로는 다르게 잡힐 수 있습니다. 컨텍스트가 짧게 잡히거나, 층 하나가 시스템 RAM에 남는 식입니다. RTX 3060 12GB 두 장의 Qwen3 32B가 그런 예입니다. llama.cpp 로그나 `ollama ps`로 확인하세요.
+- **층 단위로 나뉜다.** llama.cpp는 층 하나를 카드 한 장에 통째로 맡기고, 출력층은 마지막 카드에 둡니다. 카드마다 층 단위로 끊기므로 카드마다 VRAM이 조금씩 남을 수 있습니다. CanRun은 카드들의 메모리를 한데 합쳐 계산해서 이 부분은 반영하지 않습니다.
+
+컨텍스트에 쓸 수 있는 메모리도 카드 수만큼 늘어납니다. 카드마다 자기가 맡은 층의 KV 캐시를 두기 때문입니다. Qwen3 32B를 f16 KV 캐시로 32k까지 쓰면 <Num kind="needGB" model="qwen3-32b" ctx="32768" />가 필요합니다. 24GB 카드 한 장이 쓸 수 있는 <Num kind="usableGB" gpu="rtx-3090" />보다 많지만, RTX 3090 두 장에는 넉넉하게 들어갑니다. KV 캐시가 늘어나는 원리는 ‘<GuideLink slug="kv-cache-context" />’ 가이드에 있습니다.
+
+## llama.cpp·Ollama 설정
+
+### llama.cpp
+
+llama.cpp는 보이는 GPU를 모두 써서 모델을 나눠 올립니다. 그래서 두 장이면 대개 아무것도 바꾸지 않아도 됩니다. 아래 옵션은 llama.cpp 멀티 GPU 안내서에 나온 것입니다. 명령은 Windows PowerShell 기준이고, Linux에서는 모델 경로를 `./Qwen3-32B-Q4_K_M.gguf`처럼 씁니다.
+
+```powershell
+llama-server --list-devices
+llama-server -m .\Qwen3-32B-Q4_K_M.gguf
+llama-server -m .\Qwen3-32B-Q4_K_M.gguf -dev CUDA0,CUDA1 -ts 3,1
+llama-server -m .\Qwen3-8B-Q4_K_M.gguf -dev CUDA0
+```
+
+첫 줄은 카드 목록을 보여 줍니다. CUDA0, CUDA1 같은 장치 이름과 메모리가 나옵니다. 둘째 줄은 기본 동작으로, 보이는 카드 모두에 남은 메모리 비율로 층을 나눕니다. 셋째 줄은 첫 카드에 3, 둘째 카드에 1의 비율로 직접 나눕니다. `-ts`(`--tensor-split`)의 비율은 `--device`에 적은 순서를 따릅니다. 자동 분할로 한 카드가 너무 꽉 찰 때 씁니다. 화면 출력을 맡은 카드가 대표적입니다. 마지막 줄은 카드 한 장만 씁니다.
+
+CUDA로 빌드한 llama.cpp라면 환경 변수 `CUDA_VISIBLE_DEVICES`로 카드를 아예 감출 수 있습니다. PowerShell에서는 `$env:CUDA_VISIBLE_DEVICES="0"; llama-server ...`, Linux에서는 `CUDA_VISIBLE_DEVICES=0 llama-server ...`처럼 씁니다. `--device`는 llama.cpp에 보이는 카드 가운데서 고르는 옵션이고, 어느 백엔드에서나 씁니다.
+
+### Ollama
+
+Ollama는 카드 배치를 스스로 정합니다. Ollama FAQ에 따르면 모델이 GPU 한 장에 다 들어가면 그 한 장에 올립니다. 한 장에 안 들어갈 때만 모든 GPU에 나눠 올립니다. 환경 변수 `OLLAMA_SCHED_SPREAD`를 켜면 늘 모든 GPU에 나눠 올립니다.
+
+특정 NVIDIA 카드만 쓰게 하려면 `CUDA_VISIBLE_DEVICES`를 지정합니다. Ollama GPU 문서는 번호 대신 `nvidia-smi -L`이 보여 주는 UUID를 쓰라고 권합니다. 번호 순서는 바뀔 수 있기 때문입니다. AMD 카드는 `ROCR_VISIBLE_DEVICES`를 씁니다.
+
+```powershell
+nvidia-smi -L
+$env:CUDA_VISIBLE_DEVICES="GPU-your-uuid-1,GPU-your-uuid-2"; ollama serve
+```
+
+Windows에서 계속 쓰려면 ‘계정의 환경 변수 편집’에서 변수를 추가하고 Ollama를 다시 실행합니다. 모델을 올린 뒤 `ollama ps`의 PROCESSOR 열이 `100% GPU`면 모델이 GPU에 다 올라간 것입니다. 카드마다 메모리를 얼마나 쓰는지는 `nvidia-smi`로 볼 수 있습니다.
+
+### 텐서 분할 — 생성은 빨라질 수 있지만 실험 기능
+
+llama.cpp에는 2026년 4월부터 실험 기능 `--split-mode tensor`가 있습니다. 층 하나를 여러 카드에 나눠, 같은 토큰을 카드들이 함께 계산하는 방식입니다. 이 기능을 넣은 PR에는 RTX 4090 두 장으로 잰 결과가 있습니다. dense 모델은 층 분할보다 빠르게 생성했고, 일부 MoE 모델은 오히려 느렸습니다. 프롬프트 처리도 느려진 경우가 많았습니다.
+
+조건도 까다롭습니다. 플래시 어텐션을 켜야 하고, KV 캐시를 양자화하면 안 됩니다. 자동 메모리 맞춤(`--fit`)이 동작하지 않고, 지원하지 않는 모델 구조도 있습니다. 카드 사이 연결 속도의 영향도 훨씬 큽니다. llama.cpp 안내서는 NVIDIA 카드와 CUDA 조합이면 성능이 좋을 것이라고 적었습니다. 다른 조합은 보장하지 않는다고 합니다. CanRun은 이 방식을 계산하지 않고, 이 글의 추정은 모두 층 분할 기준입니다. 예전 글에 나오는 `--split-mode row`는 2026년 7월 CUDA 백엔드에서 빠졌습니다.
+
+## 이 숫자는 얼마나 확실한가
+
+GPU 여러 장 계산은 계산기에서만 쓰는 베타 기능입니다. GPU 페이지, 모델 페이지, 조합 페이지와 위의 판정 표는 모두 그래픽카드 한 장 기준입니다. 여러 장 구성의 결과는 공개 벤치마크와 연결하지 않아서, 속도는 늘 이론 추정(±30%)으로 표시합니다. 이 글에서 두 장 구성의 판정은 판정 표가 아니라 계산기에서 가져왔습니다.
+
+같은 카드 여러 장 구성은 공개 벤치마크 10건과 비교해 봤습니다. 두 장에서 네 장까지 쓴 구성이고, NVIDIA 구성 9건과 AMD RX 7900 XTX 두 장 1건입니다. 10건 모두 실제 속도가 CanRun 추정과 같거나 빨랐고, 차이는 최대 22%였습니다. 서로 다른 카드를 섞은 구성은 3건과 비교했습니다. 카탈로그에 있는 카드끼리 섞은 것은 RTX 5070 Ti와 RTX 3060 12GB 조합 하나입니다. 이 조합은 실제 속도가 추정보다 7%쯤 빨랐습니다. 나머지 2건은 오래된 데이터센터용 카드가 섞여 있어서, 층을 나누는 계산식만 확인했습니다. 다음 구성은 아직 비교해 본 결과가 없습니다. 서로 다른 카드에 MoE 모델을 올린 구성, AMD 카드끼리 섞은 구성, 서로 다른 카드 세 장 이상입니다.
+
+메모리 수치는 다른 CanRun 페이지와 같이 실제 GGUF 파일로 공식에 따라 계산합니다. 그래픽카드에 올라가는 가중치, KV 캐시, 카드마다 붙는 연산 버퍼, 화면 출력 몫이 들어갑니다. 계산에서 빠지는 부분은 위 메모리 절에 적었습니다. 카드마다 남기는 여유, 층 단위로 끊기는 몫, 마지막 카드에 놓이는 출력층입니다.
+
+결과는 다음 조건을 가정합니다. Windows에서 첫 번째 카드가 화면 출력을 맡고, 시스템 RAM은 32GB(DDR5)입니다. 8k 컨텍스트, f16 KV 캐시, 한 번에 요청 하나, llama.cpp 기본 층 분할입니다. 본문에서 카드 한 장에 붙인 판정은 이 조건 기준입니다. Qwen3 32B처럼 생각 모드가 있는 모델은 아래 기준표보다 속도 기준이 1.5배 엄격합니다.
+
+<Threshold />
+
+## 자주 묻는 질문
+
+### 그래픽카드를 한 장 더 꽂으면 생성 속도가 빨라지나요?
+
+모델이 이미 한 장에 들어간다면 빨라지지 않습니다. llama.cpp 기본 방식에서는 카드들이 토큰마다 차례로 일해서, 같은 카드 두 장이 한 장과 비슷한 속도를 냅니다. Ollama는 한 장에 들어가는 모델을 어차피 한 장에만 올립니다. 기본 방식에서 두 번째 카드가 속도를 올리는 것은 모델이 시스템 RAM으로 넘치지 않게 해 줄 때뿐입니다. Gemma 3 27B는 RTX 3060 12GB 한 장에서 겨우 돌아가지만<Expect model="gemma-3-27b" gpu="rtx-3060-12gb" verdict="B" mode="partial-offload" />, 두 장이면 VRAM에 전부 들어갑니다.
+
+### 12GB 카드 두 장은 24GB 카드 한 장과 같은가요?
+
+메모리는 거의 같고, 속도는 다릅니다. 둘 다 24GB이고 화면 출력 몫도 똑같이 빠집니다. 다만 두 장 구성은 연산 버퍼가 하나 더 붙어, 8k에서 반 GB 남짓 덜 씁니다. 속도는 12GB 카드 한 장 수준입니다. RTX 3090은 RTX 3060 12GB보다 메모리를 두 배 반쯤 빨리 읽습니다. 예상 속도도 그만큼 차이 납니다.
+
+### NVLink나 빠른 PCIe 슬롯이 필요한가요?
+
+llama.cpp 기본 방식인 층 분할에서는 필요하지 않습니다. 토큰마다 카드 사이로 오가는 것은 작은 중간 결과뿐입니다. llama.cpp 멀티 GPU 안내서도 이 방식은 카드 사이 연결이 느려도 견딜 수 있다고 설명합니다. 실험 기능인 텐서 분할은 연결 속도에 훨씬 민감합니다. 같은 안내서는 여러 장이 한 장보다 느릴 때 PCIe 레인을 늘리거나 NVLink를 쓰라고 권합니다.
+
+### NVIDIA 카드와 AMD 카드를 섞어 쓸 수 있나요?
+
+따로 준비할 것이 있고, CanRun은 이 구성을 추정하지 않습니다. NVIDIA 카드는 CUDA, AMD 카드는 ROCm으로 돌아갑니다. 그래서 llama.cpp 하나로 둘을 함께 쓰려면 방법이 두 가지입니다. 백엔드를 여러 개 넣어 빌드하거나, Vulkan처럼 두 카드를 모두 다루는 백엔드를 씁니다. llama.cpp 빌드 안내서에 따르면 여러 백엔드를 함께 빌드하고 `--device`로 장치를 고를 수 있습니다. CanRun 계산기는 같은 제조사 카드끼리만 섞어 계산합니다. 다른 구성은 추정할 만큼 공개 결과가 많지 않기 때문입니다.
+
+## 출처
+
+- [llama.cpp: 멀티 GPU 안내서](https://github.com/ggml-org/llama.cpp/blob/master/docs/multi-gpu.md): 분할 방식(기본인 층 분할과 층마다 같은 카드에 두는 KV 캐시, 실험 기능인 텐서 분할, 더 쓰지 않는 row 분할), `--tensor-split`, `--device`, `--list-devices`, `CUDA_VISIBLE_DEVICES`, 층 분할이 느린 연결을 견딘다는 설명, 텐서 분할의 조건
+- [llama.cpp 소스: 층 배치](https://github.com/ggml-org/llama.cpp/blob/99b95488cac0f00ce3f05af113a8c1e287753f87/src/llama-model.cpp#L1558-L1616): 장치마다 남은 메모리 비율로 나누는 기본 분할, 층 단위 배치, CPU에 두는 입력층과 마지막 장치에 두는 출력층
+- [llama.cpp: 서버 README](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md): `--split-mode`, `--tensor-split`, `--main-gpu`, `--fit`, `--fit-target`(장치마다 남기는 여유), `--fit-ctx`
+- [llama.cpp PR #16653: 자동 메모리 맞춤](https://github.com/ggml-org/llama.cpp/pull/16653): 기본으로 켜지는 `--fit`, 직접 정하지 않은 설정을 장치 메모리에 맞춤, 2025년 12월 병합
+- [llama.cpp PR #19378: 텐서 병렬](https://github.com/ggml-org/llama.cpp/pull/19378): 2026년 4월 병합된 실험 기능 `--split-mode tensor`, RTX 4090 두 장 측정 결과, 조건(플래시 어텐션, 양자화하지 않은 KV 캐시, `--fit` 미지원, 지원하지 않는 구조)
+- [llama.cpp PR #24216: -sm row 제거](https://github.com/ggml-org/llama.cpp/pull/24216): 2026년 7월 CUDA 백엔드에서 row 분할 제거
+- [llama.cpp: 빌드 안내서](https://github.com/ggml-org/llama.cpp/blob/master/docs/build.md): CUDA와 Vulkan처럼 여러 백엔드를 함께 빌드하고 `--device`로 장치 고르기
+- [Ollama FAQ](https://docs.ollama.com/faq): 여러 GPU에 모델을 올리는 방식(한 장에 들어가면 그 한 장, 아니면 모든 GPU), `ollama ps`의 PROCESSOR 열
+- [Ollama 문서: GPU](https://docs.ollama.com/gpu): `nvidia-smi -L`의 UUID로 쓰는 `CUDA_VISIBLE_DEVICES`, AMD의 `ROCR_VISIBLE_DEVICES`, Vulkan의 `GGML_VK_VISIBLE_DEVICES`
+- [Ollama 소스: envconfig/config.go](https://github.com/ollama/ollama/blob/98acec40ae2b3ed361fc5117e5b2ae81a4bf5c18/envconfig/config.go): `OLLAMA_SCHED_SPREAD`(늘 모든 GPU에 나눠 올림)
+- [Ollama v0.30.0 릴리스 노트](https://github.com/ollama/ollama/releases/tag/v0.30.0): llama.cpp로 모델 실행
+- [GPU-Benchmarks-on-LLM-Inference](https://github.com/XiongjieDai/GPU-Benchmarks-on-LLM-Inference): RTX 3090 한 장~여섯 장, RTX 4090 한 장~여덟 장으로 Llama 3 8B·70B를 돌린 2024년 llama.cpp 결과. 이 글의 생성·프롬프트 처리 경향과 CanRun 여러 장 계산 검증에 썼습니다.
+- [llama.cpp 토론 #21112](https://github.com/ggml-org/llama.cpp/discussions/21112): 서로 다른 카드 검증에 쓴 RTX 5070 Ti + RTX 3060 12GB 결과

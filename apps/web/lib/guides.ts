@@ -72,6 +72,22 @@ const LOADERS: Readonly<Record<GuideSlug, Readonly<Record<Locale, () => Promise<
     en: () => import('@/content/en/guides/tokens-per-second.mdx') as Promise<GuideModule>,
     ko: () => import('@/content/ko/guides/tokens-per-second.mdx') as Promise<GuideModule>,
   },
+  'amd-intel-gpus': {
+    en: () => import('@/content/en/guides/amd-intel-gpus.mdx') as Promise<GuideModule>,
+    ko: () => import('@/content/ko/guides/amd-intel-gpus.mdx') as Promise<GuideModule>,
+  },
+  'laptop-gpu-llm': {
+    en: () => import('@/content/en/guides/laptop-gpu-llm.mdx') as Promise<GuideModule>,
+    ko: () => import('@/content/ko/guides/laptop-gpu-llm.mdx') as Promise<GuideModule>,
+  },
+  'multi-gpu': {
+    en: () => import('@/content/en/guides/multi-gpu.mdx') as Promise<GuideModule>,
+    ko: () => import('@/content/ko/guides/multi-gpu.mdx') as Promise<GuideModule>,
+  },
+  'cpu-only-llm': {
+    en: () => import('@/content/en/guides/cpu-only-llm.mdx') as Promise<GuideModule>,
+    ko: () => import('@/content/ko/guides/cpu-only-llm.mdx') as Promise<GuideModule>,
+  },
 };
 
 export function isGuideSlug(slug: string): slug is GuideSlug {

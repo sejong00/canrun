@@ -1,0 +1,152 @@
+A second graphics card adds memory, not generation speed. With llama.cpp's default split, two RTX 3060 12GB cards hold about what one 24GB RTX 3090 holds, but each token is generated at roughly one RTX 3060's speed. So a second card pays off when a model does not fit on one card, and does little for a model that already fits.
+
+## What splitting a model across GPUs does
+
+llama.cpp, which Ollama 0.30 and later also runs on, splits a model across cards by layers unless you tell it otherwise (`--split-mode layer`). Each card holds a contiguous block of layers, and the KV cache (the memory that holds the context) for those layers stays on the same card. To generate a token, the first card runs its layers, then hands a small intermediate result to the next card, which runs the rest. The cards take turns, so for a single chat the time per token is the time each card needs to read its own share of the weights. Memory adds up across the cards; memory bandwidth, which sets the speed, does not.
+
+In CanRun's calculation, a model that already fits on one card gets the same estimated speed on two identical cards. Public results point the same way. In one 2024 benchmark set, Llama 3 8B at Q4_K_M (a 4-bit quant) generated a few percent slower on two RTX 3090 cards than on one, and a little slower again on four and six. What the extra cards changed was what fit: Llama 3 70B at Q4_K_M ran out of memory on one RTX 3090 and ran on two.
+
+Llama 3.1 8B on an RTX 3060 12GB is a measured example. It fits with room to spare and Runs great, a measured cell;<Expect model="llama-3.1-8b" gpu="rtx-3060-12gb" verdict="S" mode="full-gpu" confidence="measured" /> in CanRun's calculation a second RTX 3060 12GB would not raise that speed.
+
+<Measured model="llama-3.1-8b" gpu="rtx-3060-12gb" />
+
+Prompt processing is the exception. Layer split works on many prompt tokens at once, so the cards can be busy at the same time. In the same 2024 benchmark set, an 8k-token prompt was processed faster at each step from one to six RTX 3090 cards. llama.cpp's multi-GPU guide recommends the layer mode when fast prompt processing matters. CanRun's calculator does not show prompt speed for several cards, so this guide sticks to generation speed. A newer, experimental mode splits every layer across the cards instead; it is covered in the setup section below.
+
+## When a second card pays off: models that do not fit on one
+
+A second card earns its place when a model does not fit in one card's VRAM. Without it, part of a dense model's weights sits in system RAM (partial offload) and generation slows down sharply; a mixture-of-experts (MoE) model keeps some of its expert weights in RAM instead. The table lists what common models need on one graphics card at Q4_K_M (MXFP4 for gpt-oss), an 8k context and an f16 KV cache. Each extra card adds a little on top, as the section on memory costs explains.
+
+<ModelMemoryTable models="qwen3-14b,gemma-3-27b,qwen3-30b-a3b-2507,qwen3-32b,gemma-4-31b,llama-3.3-70b,gpt-oss-120b" />
+
+<HubLink model="gemma-3-27b" /> shows the difference. It needs <Num kind="needGB" model="gemma-3-27b" />, more than the <Num kind="usableGB" gpu="rtx-3060-12gb" /> an RTX 3060 12GB can use, so on one card part of it sits in system RAM and it Runs slowly.<Expect model="gemma-3-27b" gpu="rtx-3060-12gb" verdict="B" mode="partial-offload" /> The bar shows how much has to leave the card.
+
+<MemoryBreakdown model="gemma-3-27b" gpu="rtx-3060-12gb" />
+
+Two of these cards have 24GB between them. Only the first card drives the display, so the pair can use <Num kind="usableGB" gpu="rtx-3090" />, the same as one RTX 3090. Gemma 3 27B fits there with several gigabytes to spare and nothing goes to system RAM. In CanRun's calculator the pair runs it close to three times as fast as one card does and rates it Runs well, a theoretical estimate (±30%) like every multi-card result.
+
+MoE models gain in a different way. On one RTX 3060 12GB, Qwen3 30B-A3B keeps the experts that do not fit in system RAM and Runs well, a theoretical estimate.<Expect model="qwen3-30b-a3b-2507" gpu="rtx-3060-12gb" verdict="A" mode="cpu-moe" confidence="theoretical" /> Our page for <ComboLink model="qwen3-30b-a3b-2507" gpu="rtx-3060-12gb" /> shows that split. It needs <Num kind="needGB" model="qwen3-30b-a3b-2507" /> on one card, so on two cards it fits entirely in VRAM, and the calculator moves it up to Runs great, also theoretical.
+
+When the model already fits, a second card changes nothing you would notice. Qwen3 14B fits on one RTX 3060 12GB and Runs well there;<Expect model="qwen3-14b" gpu="rtx-3060-12gb" verdict="A" mode="full-gpu" /> on two, CanRun's estimate stays the same, and Ollama would load it onto one card anyway.
+
+The largest MoE models lean on system RAM as well. With 32GB of RAM, gpt-oss-120b does not fit with one RTX 3090,<Expect model="gpt-oss-120b" gpu="rtx-3090" fits="false" /> because the experts that do not fit in VRAM need more RAM than is left. With 64GB of RAM one RTX 3090 runs it, keeping most experts in RAM, and it Runs slowly, a theoretical estimate.<Expect model="gpt-oss-120b" gpu="rtx-3090" ram="64" verdict="B" mode="cpu-moe" confidence="theoretical" /> A second RTX 3090 holds more of the experts, so in CanRun's calculator the rest fits in 32GB of RAM and the pair rates it Runs well (theoretical). See our page for <ComboLink model="gpt-oss-120b" gpu="rtx-3090" /> and <GuideLink slug="moe-cpu-offload" /> for the single-card case.
+
+## Two RTX 3060 12GB or one RTX 3090? Two RTX 5060 Ti 16GB or one RTX 5090?
+
+These two comparisons come up often because the totals match: two 12GB cards make 24GB, like an RTX 3090, and two 16GB cards make 32GB, like an RTX 5090. The grid shows each card on its own at 8k with an f16 KV cache, 32GB of DDR5 system RAM and Windows. Pairs are not in the grid; the text below gives what CanRun's calculator shows for them.
+
+<ComboGrid grid="multigpu" />
+
+On memory, the pairs come close. A pair loses the same display share as the single card, but each card in it holds its own compute buffer, the runtime's working memory, which is about half a gigabyte at 8k. So in CanRun's calculation a pair fits almost everything the matching single card fits.
+
+On speed, they do not. The RTX 3060 12GB reads its memory at <Num kind="bandwidth" gpu="rtx-3060-12gb" /> and the RTX 3090 at <Num kind="bandwidth" gpu="rtx-3090" />, about two and a half times as fast. The RTX 5060 Ti 16GB has <Num kind="bandwidth" gpu="rtx-5060-ti-16gb" /> and the RTX 5090 <Num kind="bandwidth" gpu="rtx-5090" />, four times as much. Because the cards in a pair take turns, the pair generates at about one smaller card's speed, and these ratios carry over to the estimates.
+
+### 24GB: two RTX 3060 12GB against one RTX 3090
+
+Gemma 3 27B Runs great on the RTX 3090<Expect model="gemma-3-27b" gpu="rtx-3090" verdict="S" mode="full-gpu" /> and Runs well on the pair, as the previous section showed. <HubLink model="qwen3-32b" /> fits on the RTX 3090 and Runs well.<Expect model="qwen3-32b" gpu="rtx-3090" verdict="A" mode="full-gpu" /> On the pair it fits too, with little margin, because the second compute buffer takes part of what the RTX 3090 has spare. At the RTX 3060's speed it lands just under the stricter line that thinking models must clear, so the calculator shows Runs slowly, a theoretical estimate that could fall on either side of that line. On one RTX 3060 12GB, Qwen3 32B runs partly from system RAM and Runs slowly.<Expect model="qwen3-32b" gpu="rtx-3060-12gb" verdict="B" mode="partial-offload" />
+
+### 32GB: two RTX 5060 Ti 16GB against one RTX 5090
+
+Qwen3 32B Runs great on the RTX 5090.<Expect model="qwen3-32b" gpu="rtx-5090" verdict="S" mode="full-gpu" /> One RTX 5060 Ti 16GB has to put part of it in system RAM, and it Runs slowly there.<Expect model="qwen3-32b" gpu="rtx-5060-ti-16gb" verdict="B" mode="partial-offload" /> Two of them hold it fully, and the calculator rates it Runs well (theoretical).
+
+A dense 70B model needs more than either. <HubLink model="llama-3.3-70b" /> needs <Num kind="needGB" model="llama-3.3-70b" /> at Q4_K_M, so on the RTX 5090 part of it sits in system RAM and it Runs slowly;<Expect model="llama-3.3-70b" gpu="rtx-5090" verdict="B" mode="partial-offload" /> two RTX 5060 Ti 16GB cards have the same 32GB and get the same partial offload. Two RTX 3090 cards, with 48GB between them, hold it at 8k with less than two gigabytes to spare, and the calculator rates it Runs well (theoretical); at 16k part of it spills into system RAM. One RTX 3090 is rated Won't run at Q4_K_M, because too much of the model sits in system RAM.<Expect model="llama-3.3-70b" gpu="rtx-3090" verdict="F" mode="partial-offload" /> In the 2024 benchmark set above, two RTX 3090 cards generated Llama 3 70B, the same size, somewhat faster than CanRun's estimate.
+
+### What the pairs cost
+
+Our data lists the RTX 3060 12GB at <Price gpu="rtx-3060-12gb" />, the RTX 3090 at <Price gpu="rtx-3090" />, the RTX 5060 Ti 16GB at <Price gpu="rtx-5060-ti-16gb" /> and the RTX 5090 at <Price gpu="rtx-5090" />. At those prices, when this guide was written, two RTX 3060 12GB cards cost a little under half an RTX 3090, and two RTX 5060 Ti 16GB cards a little over a quarter of an RTX 5090. A pair buys the memory; the single card buys the memory and the speed. Two cards also need two free PCIe slots with room between them, a case that fits both and a power supply sized for both. For single cards by budget, see <GuideLink slug="gpu-by-budget" />.
+
+## Mixing different cards
+
+Cards do not have to match. Without other instructions, llama.cpp splits the layers in proportion to each card's free memory. An RTX 3090 with an RTX 3060 12GB gets about two thirds of the layers on the RTX 3090 and one third on the RTX 3060, out of 36GB in total, minus the display share. Each token still passes through both cards, so the third on the RTX 3060 is read at the RTX 3060's speed, and that share slows the whole run.
+
+For a model that fits on the RTX 3090 alone, that is a loss. <HubLink model="qwen3-8b" /> Runs great on the RTX 3090,<Expect model="qwen3-8b" gpu="rtx-3090" verdict="S" mode="full-gpu" /> and Qwen3 32B fits there and Runs well,<Expect model="qwen3-32b" gpu="rtx-3090" verdict="A" mode="full-gpu" /> but split across both cards, CanRun's estimate for models that fit on the RTX 3090 alone drops by about a third. The calculator adds a note when one card can hold the model alone and would be faster that way. Ollama avoids the problem on its own: its FAQ says it loads a model onto a single GPU when the model fits there. llama.cpp uses every card it can see, so pick one with `--device` (see the next section).
+
+The gain is memory. <HubLink model="nemotron-3.5-lightning-30b-a3b" /> needs <Num kind="needGB" model="nemotron-3.5-lightning-30b-a3b" />, more than the <Num kind="usableGB" gpu="rtx-3090" /> an RTX 3090 can use. On the RTX 3090 alone it keeps some experts in system RAM and Runs well, a theoretical estimate;<Expect model="nemotron-3.5-lightning-30b-a3b" gpu="rtx-3090" verdict="A" mode="cpu-moe" confidence="theoretical" /> with the RTX 3060 12GB added, it fits on the GPUs. When this guide was written, that was the only model in CanRun's catalog that the extra RTX 3060 12GB moved fully onto the GPUs at 8k, while several models that fit on the RTX 3090 alone dropped from Runs great once split. Check your own pair in the calculator before you count on a mixed setup.
+
+The calculator mixes desktop cards from the same maker only, up to four cards in total, and leaves out older cards such as the GTX 10 series. NVIDIA and AMD cards in one machine need a llama.cpp build that drives both, which the FAQ below covers.
+
+## What each extra card costs in memory
+
+Adding cards adds VRAM, but not all of it holds the model.
+
+- **A compute buffer per card.** In CanRun's calculation each card holds its own compute buffer, about half a gigabyte at 8k, growing slowly with the context. Two cards pay it twice, four cards four times.
+- **The display share, once.** Windows keeps some VRAM on the card that drives your monitor (the note under the memory table gives the amount). With several cards, CanRun takes it from the first card only, which then gets slightly fewer layers in llama.cpp's free-memory split.
+- **A margin on every card.** llama.cpp's automatic fitting, on by default since December 2025, keeps some VRAM free on each card (`--fit-target`) and adjusts the settings you leave unset, such as the context size and the number of GPU layers. The margins add up with the number of cards, so a model that only just fits in CanRun's numbers, such as Qwen3 32B on two RTX 3060 12GB cards, may start with a shorter context or with a layer in system RAM. Check the llama.cpp log or `ollama ps`.
+- **Whole layers.** llama.cpp gives each layer to one card and puts the output layer on the last card. A card's share is rounded to whole layers, so some VRAM on each card can stay unused. CanRun counts the cards' memory as one pool and does not model this.
+
+Room for context grows with the cards too, because each card keeps the KV cache for its own layers. Qwen3 32B at 32k with an f16 KV cache needs <Num kind="needGB" model="qwen3-32b" ctx="32768" />, more than the <Num kind="usableGB" gpu="rtx-3090" /> one 24GB card can use, and comfortably within two RTX 3090 cards. How the KV cache grows is explained in <GuideLink slug="kv-cache-context" />.
+
+## Setting it up in llama.cpp and Ollama
+
+### llama.cpp
+
+llama.cpp spreads a model across every GPU it can see, so for two cards you usually change nothing. The options below come from llama.cpp's multi-GPU guide. The commands are written for PowerShell on Windows; on Linux, write the model path as `./Qwen3-32B-Q4_K_M.gguf`.
+
+```powershell
+llama-server --list-devices
+llama-server -m .\Qwen3-32B-Q4_K_M.gguf
+llama-server -m .\Qwen3-32B-Q4_K_M.gguf -dev CUDA0,CUDA1 -ts 3,1
+llama-server -m .\Qwen3-8B-Q4_K_M.gguf -dev CUDA0
+```
+
+The first command lists the cards with their names, such as CUDA0 and CUDA1, and their memory. The second uses the default: layers split across all visible cards by free memory. The third sets a custom split, three parts to the first card and one to the second; `-ts` (`--tensor-split`) takes proportions in the order of `--device`. Use it when the automatic split leaves one card too full, for example the card that drives the display. The last command runs on one card only.
+
+For CUDA builds, the environment variable `CUDA_VISIBLE_DEVICES` hides cards from llama.cpp altogether: `$env:CUDA_VISIBLE_DEVICES="0"; llama-server ...` in PowerShell, or `CUDA_VISIBLE_DEVICES=0 llama-server ...` on Linux. `--device` picks among the cards llama.cpp can see and works with every backend.
+
+### Ollama
+
+Ollama decides on its own. According to its FAQ, it loads a model onto one GPU when the model fits on any single GPU, and spreads it across all GPUs only when it does not. The environment variable `OLLAMA_SCHED_SPREAD` makes it always spread across all GPUs. To limit Ollama to certain NVIDIA cards, set `CUDA_VISIBLE_DEVICES`; Ollama's GPU documentation recommends the card UUIDs that `nvidia-smi -L` prints, because numeric order can vary. AMD cards use `ROCR_VISIBLE_DEVICES` instead.
+
+```powershell
+nvidia-smi -L
+$env:CUDA_VISIBLE_DEVICES="GPU-your-uuid-1,GPU-your-uuid-2"; ollama serve
+```
+
+For a lasting setting on Windows, add the variable under "Edit environment variables for your account" and restart Ollama from the Start menu. After loading a model, `ollama ps` shows whether it sits fully on the GPUs (PROCESSOR reads 100% GPU), and `nvidia-smi` shows how much memory each card uses.
+
+### Tensor split: faster generation, experimental
+
+Since April 2026, llama.cpp has an experimental `--split-mode tensor` that splits each layer across the cards, so they work on the same token together. In the tests in the pull request that added it, run on two RTX 4090 cards, dense models generated faster than with layer split, while some MoE models generated slower and prompt processing was often slower. It needs flash attention and an unquantized KV cache, does not work with automatic fitting or every model architecture, and depends far more on the link between the cards. llama.cpp's guide says its performance should be good for NVIDIA cards with CUDA, with no guarantees for other setups. CanRun does not model this mode; all estimates here assume layer split. The older `--split-mode row`, which older guides mention, was removed from the CUDA backend in July 2026.
+
+## How sure are these numbers?
+
+Several GPUs are a calculator-only beta. GPU pages, model pages, the combo pages and the grid above all assume one graphics card. Multi-card results are never matched to public benchmarks, so their speeds are labeled theoretical (±30%), and the verdicts this guide gives for pairs come from the calculator, not from the grid.
+
+For identical cards, CanRun checked its formula against ten public results with two to four cards: nine NVIDIA setups and one pair of AMD RX 7900 XTX cards. Every result came out at or above CanRun's estimate, by up to 22%. For mixed cards there are three checks. The only one with cards from the catalog, an RTX 5070 Ti with an RTX 3060 12GB, measured about 7% above the estimate. The other two used an older datacenter card and checked only the split formula. CanRun has no checks for MoE models on mixed cards, for mixed AMD cards or for more than two mixed cards.
+
+The memory figures (weights on the GPU, KV cache, compute buffer per card, display share) are calculated by formula from real GGUF files, as on every CanRun page. What the formula leaves out is listed in the memory section above: the fitting margin on each card, whole-layer rounding and the output layer on the last card. Results assume Windows with the first card driving the display, 32GB of DDR5 system RAM, an 8k context, an f16 KV cache, one request at a time and llama.cpp's default layer split. Verdict names for single cards refer to that baseline. Models with a thinking mode, such as Qwen3 32B, face 1.5× stricter speed thresholds than the legend shows.
+
+<Threshold />
+
+## FAQ
+
+### Does a second GPU make a model generate faster?
+
+Not if the model already fits on one card. With llama.cpp's default layer split the cards take turns on each token, so two identical cards generate at about one card's speed, and Ollama loads a model that fits onto a single card anyway. With the default split, a second card speeds things up only when it keeps a model out of system RAM: Gemma 3 27B on one RTX 3060 12GB Runs slowly,<Expect model="gemma-3-27b" gpu="rtx-3060-12gb" verdict="B" mode="partial-offload" /> and two of those cards hold it entirely in VRAM.
+
+### Are two 12GB cards the same as one 24GB card?
+
+For memory, almost: both have 24GB and lose the same display share, but the pair holds one more compute buffer, about half a gigabyte at 8k. For speed, no: the pair generates at about the speed of one 12GB card. Against an RTX 3090, two RTX 3060 12GB cards read memory about two and a half times slower, and the estimates follow that.
+
+### Do the cards need NVLink or a fast PCIe slot?
+
+Not for llama.cpp's default layer split. Only a small intermediate result moves between the cards for each token, and llama.cpp's multi-GPU guide says this mode can tolerate slow links between GPUs. The experimental tensor split is much more sensitive, and the same guide suggests more PCIe lanes or NVLink when several cards run slower than one.
+
+### Can I mix NVIDIA and AMD cards?
+
+Only with extra setup, and CanRun does not estimate it. NVIDIA cards run through CUDA and AMD cards through ROCm, so one llama.cpp process needs a build with more than one backend, or a backend that drives both, such as Vulkan; llama.cpp's build guide notes that you can build several backends together and choose devices with `--device`. CanRun's calculator only mixes cards from the same maker, because too few public results exist to estimate the other setups.
+
+## Sources
+
+- [llama.cpp: multi-GPU guide](https://github.com/ggml-org/llama.cpp/blob/master/docs/multi-gpu.md): split modes (layer as the default pipeline split with the KV cache on the card that owns each layer, experimental tensor, deprecated row), `--tensor-split`, `--device`, `--list-devices`, `CUDA_VISIBLE_DEVICES`, tolerance of slow links in layer mode, and tensor-mode requirements.
+- [llama.cpp source: layer placement](https://github.com/ggml-org/llama.cpp/blob/99b95488cac0f00ce3f05af113a8c1e287753f87/src/llama-model.cpp#L1558-L1616): the default split by each device's free memory, whole layers per device, the input layer on the CPU and the output layer on the last device.
+- [llama.cpp: server README](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md): `--split-mode`, `--tensor-split`, `--main-gpu`, `--fit`, `--fit-target` (margin per device) and `--fit-ctx`.
+- [llama.cpp PR #16653: automatic fitting](https://github.com/ggml-org/llama.cpp/pull/16653): `--fit`, on by default, sets unset options to fit device memory. Merged in December 2025.
+- [llama.cpp PR #19378: tensor parallelism](https://github.com/ggml-org/llama.cpp/pull/19378): experimental `--split-mode tensor`, merged in April 2026, with test results on two RTX 4090 cards and its limits (flash attention, unquantized KV cache, no `--fit`, unsupported architectures).
+- [llama.cpp PR #24216: remove -sm row](https://github.com/ggml-org/llama.cpp/pull/24216): row split removed from the CUDA backend in July 2026.
+- [llama.cpp: build guide](https://github.com/ggml-org/llama.cpp/blob/master/docs/build.md): building several backends together, such as CUDA and Vulkan, and choosing devices with `--device`.
+- [Ollama FAQ](https://docs.ollama.com/faq): how Ollama loads models on multiple GPUs (one GPU when the model fits on any single one, otherwise all GPUs) and the PROCESSOR column of `ollama ps`.
+- [Ollama docs: GPU](https://docs.ollama.com/gpu): `CUDA_VISIBLE_DEVICES` with UUIDs from `nvidia-smi -L`, `ROCR_VISIBLE_DEVICES` for AMD and `GGML_VK_VISIBLE_DEVICES` for Vulkan.
+- [Ollama source: envconfig/config.go](https://github.com/ollama/ollama/blob/98acec40ae2b3ed361fc5117e5b2ae81a4bf5c18/envconfig/config.go): `OLLAMA_SCHED_SPREAD`, "Always schedule model across all GPUs".
+- [Ollama v0.30.0 release notes](https://github.com/ollama/ollama/releases/tag/v0.30.0): models run with llama.cpp.
+- [GPU-Benchmarks-on-LLM-Inference](https://github.com/XiongjieDai/GPU-Benchmarks-on-LLM-Inference): 2024 llama.cpp results for Llama 3 8B and 70B on one to six RTX 3090 cards and one to eight RTX 4090 cards, used here for the generation and prompt-processing trends and as part of CanRun's multi-GPU check.
+- [llama.cpp discussion #21112](https://github.com/ggml-org/llama.cpp/discussions/21112): the RTX 5070 Ti + RTX 3060 12GB result used for CanRun's mixed-card check.

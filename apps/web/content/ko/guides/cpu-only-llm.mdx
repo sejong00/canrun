@@ -1,0 +1,155 @@
+그래픽카드가 없어도 llama.cpp 계열 도구는 CPU와 시스템 RAM으로 모델을 돌립니다. Llama 3.1 8B Q4_K_M은 RAM 16GB에 들어갑니다<Expect model="llama-3.1-8b" gpu="cpu-ddr5-5600-2ch" ram="16" fits="true" mode="cpu-only" />. 듀얼 채널 DDR5-5600에서는 겨우 돌아갑니다(보정된 추정)<Expect model="llama-3.1-8b" gpu="cpu-ddr5-5600-2ch" verdict="B" confidence="calibrated" />. MoE 모델인 gpt-oss-20b는 RAM 32GB가 필요합니다<Expect model="gpt-oss-20b" gpu="cpu-ddr5-5600-2ch" ram="32" fits="true" mode="cpu-only" />. 대신 토큰마다 모델의 일부만 읽어서, CanRun 추정 속도는 Llama 3.1 8B보다 높습니다. 속도는 주로 RAM이 얼마나 빠른지로 정해집니다.
+
+## CPU만으로 돌아가는 모델 — DDR4·DDR5 프로필별 판정
+
+아래 표는 모델 여섯 개를 CanRun의 CPU 전용 프로필 세 가지에서 비교합니다. 위에서부터 메모리 대역폭이 작은 순서로, 듀얼 채널 DDR4-3200, DDR5-5600, DDR5-6000입니다. 모든 칸은 8k 컨텍스트와 f16 KV 캐시를 기준으로 합니다. RAM 가운데 4GB는 OS와 다른 프로그램 몫으로 빼고 계산합니다. 표 설명에 나오는 시스템 RAM 32GB는 그래픽카드에만 해당합니다. CPU 행에서는 칸 맨 아래 줄이 그 판정을 낸 RAM 용량입니다. 16·32·64·96GB 가운데 그 판정이 나오는 가장 작은 용량을 적습니다. 어느 용량으로도 안 되면 CanRun이 따져 보는 가장 큰 용량을 적습니다.
+
+<ComboGrid grid="cpu" />
+
+이 표를 읽을 때 알아 둘 규칙이 두 가지 있습니다. 첫째, CanRun은 CPU 전용 구성에 ‘겨우 가능’보다 높은 판정을 주지 않습니다. 추정 속도가 아무리 높아도 마찬가지입니다. ‘쾌적’과 ‘원활’은 GPU가 있어야 받을 수 있습니다. 그래서 배지는 돌아가는지만 알려 주고, 칸 사이의 차이는 속도 범위에서 납니다. 예를 들어 DDR5-5600에서 Llama 3.2 3B의 추정 속도는 그래픽카드의 ‘원활’ 기준을 훌쩍 넘습니다. 그래도 CPU 전용이라 겨우 돌아가는 것으로 나옵니다<Expect model="llama-3.2-3b" gpu="cpu-ddr5-5600-2ch" verdict="B" mode="cpu-only" />.
+
+둘째, RAM에 들어가지 않거나 추정 속도가 가장 낮은 기준선보다 느리면 돌릴 수 없다고 판정합니다. 기준선은 이 글 끝의 범례에 있습니다. 생각 모드가 있는 모델은 답 하나에 토큰을 훨씬 많이 쓰기 때문에 이 기준선이 1.5배 높습니다.
+
+### 작은 dense 모델 — 3B~12B
+
+Llama 3.2 3B, Llama 3.1 8B, Gemma 3 12B는 RAM 16GB에 들어갑니다<Expect model="llama-3.2-3b" gpu="cpu-ddr5-5600-2ch" ram="16" fits="true" /><Expect model="gemma-3-12b" gpu="cpu-ddr5-5600-2ch" ram="16" fits="true" />. 세 프로필 모두에서 겨우 돌아갑니다<Expect model="llama-3.2-3b" gpu="cpu-ddr4-3200-2ch" verdict="B" /><Expect model="llama-3.2-3b" gpu="cpu-ddr5-6000-2ch" verdict="B" /><Expect model="llama-3.1-8b" gpu="cpu-ddr4-3200-2ch" verdict="B" /><Expect model="llama-3.1-8b" gpu="cpu-ddr5-6000-2ch" verdict="B" /><Expect model="gemma-3-12b" gpu="cpu-ddr4-3200-2ch" verdict="B" /><Expect model="gemma-3-12b" gpu="cpu-ddr5-5600-2ch" verdict="B" /><Expect model="gemma-3-12b" gpu="cpu-ddr5-6000-2ch" verdict="B" />. 차이는 속도 범위에 있습니다. dense 모델은 토큰마다 파일 전체를 읽습니다. 그래서 파일이 <Num kind="fileGB" model="gemma-3-12b" />인 Gemma 3 12B는 <Num kind="fileGB" model="llama-3.1-8b" />인 Llama 3.1 8B보다 느립니다. 셋 가운데 가장 작은 Llama 3.2 3B가 가장 빠릅니다.
+
+한국 모델 <HubLink model="kanana-1.5-8b" />는 Llama 3.1 8B와 파라미터 수가 같아서, CPU에서도 추정 속도가 같습니다. DDR5-5600에서 겨우 돌아갑니다<Expect model="kanana-1.5-8b" gpu="cpu-ddr5-5600-2ch" verdict="B" />.
+
+### 생각 모드 모델과 DDR4
+
+<HubLink model="qwen3-14b" />는 기본 설정에서 답하기 전에 생각 과정을 씁니다. 그래서 가장 낮은 기준선이 1.5배 높습니다. DDR4-3200에서는 Q4_K_M의 추정 속도가 이 선에 못 미쳐 돌릴 수 없습니다<Expect model="qwen3-14b" gpu="cpu-ddr4-3200-2ch" verdict="F" />. 이때 CanRun은 손실 큼 등급인 Q2_K를 대신 제시합니다. Q2_K로는 겨우 돌아갑니다<Expect model="qwen3-14b" gpu="cpu-ddr4-3200-2ch" quant="Q2_K" verdict="B" />. DDR5-5600에서는 RAM이 빨라진 만큼 Q4_K_M도 기준선을 넘어 겨우 돌아갑니다<Expect model="qwen3-14b" gpu="cpu-ddr5-5600-2ch" verdict="B" />.
+
+### 27B 이상 dense 모델
+
+<HubLink model="gemma-3-27b" />는 RAM 32GB가 필요합니다. DDR5-5600에서는 기준선을 간신히 넘겨 겨우 돌아갑니다<Expect model="gemma-3-27b" gpu="cpu-ddr5-5600-2ch" ram="32" verdict="B" />. DDR4-3200에서는 Q4_K_M으로 돌릴 수 없습니다<Expect model="gemma-3-27b" gpu="cpu-ddr4-3200-2ch" verdict="F" />. <HubLink model="qwen3-32b" />는 세 프로필 모두에서 Q4_K_M으로 돌릴 수 없습니다<Expect model="qwen3-32b" gpu="cpu-ddr4-3200-2ch" verdict="F" /><Expect model="qwen3-32b" gpu="cpu-ddr5-5600-2ch" verdict="F" /><Expect model="qwen3-32b" gpu="cpu-ddr5-6000-2ch" verdict="F" />. <HubLink model="llama-3.3-70b" />는 RAM 64GB면 파일이 들어가지만, 그래도 돌릴 수 없습니다<Expect model="llama-3.3-70b" gpu="cpu-ddr5-5600-2ch" ram="64" fits="true" verdict="F" />. 모델을 RAM에 올릴 수 있다고 해서 쓸 만한 속도가 나오는 것은 아닙니다.
+
+### 무엇을 설치하나
+
+CPU 전용이라고 따로 준비할 프로그램은 없습니다. llama.cpp README에는 x86 CPU의 AVX, AVX2, AVX512, AMX 지원이 적혀 있습니다. LM Studio 시스템 요구 사항에 따르면 Windows PC에는 AVX2를 지원하는 CPU가 필요합니다. Ollama에서 모델이 CPU로만 돌면 `ollama ps`의 PROCESSOR 열에 `100% CPU`가 나옵니다. Ollama FAQ는 이 표시를 모델 전체가 시스템 메모리에 올라간 상태라고 설명합니다. CanRun의 CPU 프로필별 모델 페이지에는 `-ngl 0`을 넣은 llama.cpp 명령이 나옵니다. `-ngl 0`은 그래픽카드에 층을 하나도 올리지 않는다는 뜻입니다.
+
+## RAM 대역폭이 속도를 정한다 — DDR4와 DDR5, 듀얼 채널
+
+토큰 하나를 만들 때 CPU는 그 토큰에 쓰는 가중치를 모두 읽습니다. 지금까지의 대화를 담은 KV 캐시도 함께 읽습니다. 메모리 대역폭은 CPU가 RAM에서 1초에 몇 기가바이트를 읽을 수 있는지를 말합니다. 이 값이 토큰을 얼마나 자주 만들 수 있는지를 제한합니다. CanRun은 RAM의 정격 대역폭에 효율 계수를 곱하고, 토큰당 읽는 바이트로 나눠 속도를 추정합니다. CPU에서 dense 모델을 돌릴 때는 정격 대역폭의 절반을 쓴다고 봅니다. 이 계수는 코어 8개 이상인 CPU의 공개 벤치마크 결과에 맞춰 정했습니다.
+
+듀얼 채널 DDR4-3200의 대역폭은 <Num kind="bandwidth" gpu="cpu-ddr4-3200-2ch" />입니다. DDR5-5600은 <Num kind="bandwidth" gpu="cpu-ddr5-5600-2ch" />, DDR5-6000은 <Num kind="bandwidth" gpu="cpu-ddr5-6000-2ch" />입니다. DDR4-3200에서 DDR5-5600으로 가면 대역폭이 4분의 3쯤 늘고, CanRun 추정 속도도 같은 비율로 오릅니다. Llama 3.1 8B는 두 프로필 모두에서 겨우 돌아갑니다<Expect model="llama-3.1-8b" gpu="cpu-ddr4-3200-2ch" verdict="B" /><Expect model="llama-3.1-8b" gpu="cpu-ddr5-5600-2ch" verdict="B" />. 하지만 DDR5 행의 속도 범위가 DDR4 행보다 한참 위에 있습니다. DDR5-6000은 DDR5-5600보다 대역폭이 10%도 늘지 않습니다. 그래픽카드는 자기 메모리를 훨씬 빨리 읽습니다. RTX 3060 12GB의 대역폭은 <Num kind="bandwidth" gpu="rtx-3060-12gb" />입니다. 듀얼 채널 DDR5-5600의 네 배쯤입니다.
+
+### 모듈 하나와 둘
+
+세 프로필은 모두 듀얼 채널을 가정합니다. 일반 데스크톱 CPU는 메모리 채널이 두 개입니다. 예를 들어 인텔 Core Ultra 9 285K 사양 페이지에도 2채널로 나와 있습니다. 커세어의 듀얼 채널 RAM 설명에 따르면, 모듈 하나만 꽂으면 싱글 채널로 동작합니다. 듀얼 채널은 싱글 채널의 두 배 속도라고 설명합니다. 모듈이 하나면 대역폭이 절반이 되고, CanRun 공식으로는 모든 모델의 추정 속도도 절반이 됩니다. 모듈이 하나뿐이라면 같은 모듈을 메인보드 설명서가 알려 주는 슬롯에 하나 더 꽂아 보세요. CanRun 계산으로는 대역폭이 두 배가 됩니다. 반대로 모듈 네 개를 꽂으면 일부 CPU에서는 정격 메모리 속도가 내려갑니다. 이 경우는 ‘<GuideLink slug="moe-cpu-offload" />’ 가이드에서 다룹니다.
+
+### 파일이 작을수록 빠르다
+
+dense 모델은 토큰마다 파일 전체를 읽으므로, 양자화가 CPU 속도를 바로 바꿉니다. Llama 3.1 8B는 Q8_0 파일이 <Num kind="fileGB" model="llama-3.1-8b" quant="Q8_0" />, Q4_K_M 파일이 <Num kind="fileGB" model="llama-3.1-8b" />입니다. 아래 표는 듀얼 채널 DDR5-5600에서 양자화별 결과를 보여 줍니다. 모든 칸이 보정된 추정입니다.
+
+<QuantLadder model="llama-3.1-8b" gpu="cpu-ddr5-5600-2ch" />
+
+Q8_0의 추정 속도는 Q4_K_M보다 3분의 1 넘게 낮습니다. IQ4_XS는 Q4_K_M보다 조금 빠릅니다. Q2_K는 더 빠르지만 손실 큼 등급입니다. 네 양자화 모두 CPU 전용 상한 때문에 겨우 돌아가는 것으로 나옵니다<Expect model="llama-3.1-8b" gpu="cpu-ddr5-5600-2ch" quant="Q8_0" verdict="B" /><Expect model="llama-3.1-8b" gpu="cpu-ddr5-5600-2ch" quant="IQ4_XS" verdict="B" /><Expect model="llama-3.1-8b" gpu="cpu-ddr5-5600-2ch" quant="Q2_K" verdict="B" />. 흔히 받는 Q4_K_M은 균형 등급입니다. 등급별 차이는 ‘<GuideLink slug="gguf-quantization" />’ 가이드에서 설명합니다.
+
+## dense와 MoE — CPU에서는 활성 파라미터가 속도를 정한다
+
+MoE(전문가 혼합) 모델은 층마다 대부분을 여러 전문가 블록으로 나눕니다. 그리고 라우터가 토큰마다 그중 몇 개만 고릅니다. 어떤 전문가가 뽑힐지 모르므로 파일 전체가 RAM에 있어야 합니다. 하지만 토큰마다 읽는 것은 활성 부분뿐입니다. 아래 표에 이 절에서 다루는 모델의 전체 파라미터와 활성 파라미터가 있습니다.
+
+<ModelFacts models="llama-3.1-8b,kanana-1.5-15.7b-a3b,gpt-oss-20b,qwen3-30b-a3b-2507,gpt-oss-120b" />
+
+듀얼 채널 DDR5-5600에서 gpt-oss-20b의 CanRun 추정 속도는 Llama 3.1 8B의 두 배가 넘습니다. 그런데 파일은 <Num kind="fileGB" model="gpt-oss-20b" />로, Llama 3.1 8B의 두 배 반쯤 됩니다. 둘 다 겨우 돌아갑니다<Expect model="gpt-oss-20b" gpu="cpu-ddr5-5600-2ch" verdict="B" mode="cpu-only" confidence="calibrated" /><Expect model="llama-3.1-8b" gpu="cpu-ddr5-5600-2ch" verdict="B" mode="cpu-only" />. <HubLink model="qwen3-30b-a3b-2507" />은 파일이 <Num kind="fileGB" model="qwen3-30b-a3b-2507" />로 Llama 3.1 8B의 네 배 가까이 됩니다. 그런데도 CanRun 추정 속도는 Llama 3.1 8B의 두 배 가까이 됩니다. 이 프로필에서 잰 공개 벤치마크 결과는 그보다도 높습니다(마지막 절 참고)<Expect model="qwen3-30b-a3b-2507" gpu="cpu-ddr5-5600-2ch" verdict="B" confidence="measured" />.
+
+### RAM 96GB로 gpt-oss-120b 돌리기
+
+gpt-oss-120b 파일은 <Num kind="fileGB" model="gpt-oss-120b" />입니다. DDR5-5600 RAM이 96GB면 들어가고, 겨우 돌아갑니다(보정된 추정)<Expect model="gpt-oss-120b" gpu="cpu-ddr5-5600-2ch" ram="96" verdict="B" mode="cpu-only" confidence="calibrated" />. CanRun 추정 속도는 Llama 3.1 8B보다 높습니다. RAM 64GB에서는 시스템 몫 4GB를 빼고 나면 파일이 들어가지 않습니다<Expect model="gpt-oss-120b" gpu="cpu-ddr5-5600-2ch" ram="64" fits="false" />. CanRun의 DDR4-3200 프로필은 64GB까지라서, 이 행에서는 돌릴 수 없습니다<Expect model="gpt-oss-120b" gpu="cpu-ddr4-3200-2ch" verdict="F" fits="false" />. gpt-oss 두 모델은 늘 추론 과정을 먼저 쓰고 답합니다. 그래서 답 하나에 보이는 것보다 많은 토큰이 들고, CPU 속도에서는 그만큼 오래 기다립니다. 자세한 내용은 ‘<GuideLink slug="thinking-models" />’ 가이드에 있습니다.
+
+### RAM 16GB에 들어가는 MoE
+
+RAM이 16GB인 PC라면 카카오의 MoE 모델 <HubLink model="kanana-1.5-15.7b-a3b" />가 들어갑니다. DDR5-5600에서 겨우 돌아가지만<Expect model="kanana-1.5-15.7b-a3b" gpu="cpu-ddr5-5600-2ch" ram="16" fits="true" verdict="B" />, 추정 속도는 Llama 3.1 8B보다 3분의 2쯤 높습니다. 파일은 <Num kind="fileGB" model="kanana-1.5-15.7b-a3b" />이고, 컨텍스트는 <Num kind="maxContext" model="kanana-1.5-15.7b-a3b" />까지 지원합니다. 모델 카드에 따르면 한국어와 영어를 함께 다루는 모델입니다.
+
+### MoE가 불리해지는 경우
+
+토큰마다 KV 캐시도 읽어야 합니다. 활성 부분이 작은 모델일수록 한 번에 읽는 양에서 KV 캐시가 차지하는 몫이 큽니다. f16 KV 캐시로 32k를 쓰면 Qwen3 30B-A3B의 추정 속도는 8k 추정의 절반을 조금 넘습니다. 같은 조건에서 Llama 3.1 8B는 3분의 2쯤으로 내려갑니다. 또 하나의 한계는 RAM 용량이고, 다음 절에서 다룹니다.
+
+## RAM은 얼마나 필요한가
+
+CPU로 돌리면 모델 파일 전체와 KV 캐시가 RAM에 들어가야 합니다. OS와 열어 둔 다른 프로그램도 같은 RAM을 씁니다. CanRun은 이 몫으로 4GB를 빼고, 남은 용량을 양자화 파일과 KV 캐시의 합계와 비교합니다. 넘치는 부분을 보낼 곳은 없습니다. 합계가 들어가지 않으면 그 RAM 용량에서는 돌릴 수 없다고 판정합니다.
+
+- Llama 3.1 8B는 파일이 <Num kind="fileGB" model="llama-3.1-8b" />, 8k KV 캐시가 <Num kind="kvGB" model="llama-3.1-8b" />라서 16GB면 충분합니다<Expect model="llama-3.1-8b" gpu="cpu-ddr5-5600-2ch" ram="16" fits="true" />.
+- gpt-oss-20b는 모델 카드에 메모리 16GB 안에서 돌아간다고 나와 있습니다. 하지만 RAM이 16GB인 PC는 OS도 같은 RAM에 올려야 합니다. CanRun 계산으로는 남는 12GB를 조금 넘어서<Expect model="gpt-oss-20b" gpu="cpu-ddr5-5600-2ch" ram="16" fits="false" /> 32GB가 필요합니다<Expect model="gpt-oss-20b" gpu="cpu-ddr5-5600-2ch" ram="32" verdict="B" />.
+- Qwen3 30B-A3B는 파일만으로도 16GB에서 남는 용량보다 커서<Expect model="qwen3-30b-a3b-2507" gpu="cpu-ddr5-5600-2ch" ram="16" fits="false" /> 32GB가 필요합니다<Expect model="qwen3-30b-a3b-2507" gpu="cpu-ddr5-5600-2ch" ram="32" fits="true" />.
+- gpt-oss-120b는 위에서 본 것처럼 96GB가 필요합니다<Expect model="gpt-oss-120b" gpu="cpu-ddr5-5600-2ch" ram="96" fits="true" />.
+
+### 컨텍스트가 길면 RAM이 더 든다
+
+KV 캐시는 컨텍스트가 길수록 커집니다. 아래 표는 듀얼 채널 DDR5-5600, RAM 16GB에서 Llama 3.1 8B를 돌리는 경우입니다. 위 판정 표의 칸과 같은 용량입니다. 모든 칸이 보정된 추정입니다.
+
+<CtxTable model="llama-3.1-8b" gpu="cpu-ddr5-5600-2ch" />
+
+KV 캐시를 f16으로 두고 32k를 쓰면 KV 캐시만 <Num kind="kvGB" model="llama-3.1-8b" ctx="32768" />입니다. 그래도 16GB 안에 들어갑니다<Expect model="llama-3.1-8b" gpu="cpu-ddr5-5600-2ch" ctx="32768" fits="true" />. 64k에서는 들어가지 않습니다<Expect model="llama-3.1-8b" gpu="cpu-ddr5-5600-2ch" ctx="65536" fits="false" />. KV 캐시를 q8_0(8비트)으로 바꾸면 크기가 절반쯤으로 줄어, 64k도 16GB에 들어갑니다<Expect model="llama-3.1-8b" gpu="cpu-ddr5-5600-2ch" ctx="65536" kv="q8_0" fits="true" />. 컨텍스트가 길어지면 속도 범위도 내려갑니다. 토큰마다 KV 캐시 전체를 읽기 때문입니다. f16 KV 캐시로 32k를 쓰면 추정 속도는 8k의 3분의 2쯤입니다. 다른 모델의 KV 캐시 크기는 ‘<GuideLink slug="kv-cache-context" />’ 가이드에 있습니다.
+
+## 내장 그래픽, 맥, 스트릭스 헤일로
+
+데스크톱·노트북 CPU 대부분에는 내장 그래픽이 들어 있습니다. 마이크로소프트는 작업 관리자의 GPU 메모리 항목을 설명하면서 이렇게 적었습니다. 내장 GPU의 전용 메모리는 그래픽용으로 떼어 둔 시스템 메모리입니다. 내장 GPU와 외장 GPU 모두 공유 시스템 메모리도 쓸 수 있습니다. 결국 내장 그래픽은 CPU와 같은 듀얼 채널 RAM을 읽습니다. CanRun처럼 메모리 대역폭으로 속도를 계산하면, 내장 그래픽도 그 RAM이 허락하는 속도를 넘을 수 없습니다. CanRun에는 일반 내장 그래픽 프로필이 없습니다. 이런 PC는 RAM에 맞는 CPU 프로필을 고르면 됩니다.
+
+그래픽카드 없이도 모델이 빨리 도는 기기는 메모리 대역폭이 큽니다. <HubLink gpu="amd-strix-halo" />의 대역폭은 <Num kind="bandwidth" gpu="amd-strix-halo" />입니다. <HubLink gpu="apple-m4-pro" />는 <Num kind="bandwidth" gpu="apple-m4-pro" />입니다. 둘 다 듀얼 채널 DDR5-5600의 세 배쯤입니다. 이 기기들은 GPU가 그 메모리를 쓰기 때문에, CanRun은 GPU 기준으로 판정합니다. Qwen3 30B-A3B는 32GB 스트릭스 헤일로에서 쾌적하게 돌아갑니다<Expect model="qwen3-30b-a3b-2507" gpu="amd-strix-halo" ram="32" verdict="S" />. 같은 모델이 DDR5-5600 CPU 프로필에서는 겨우 돌아갑니다. 이런 기기는 ‘<GuideLink slug="mac-local-llm" />’와 ‘<GuideLink slug="unified-memory-128gb" />’ 가이드에서 따로 다룹니다.
+
+### 다음으로 볼 곳
+
+- CPU 프로필 페이지 <HubLink gpu="cpu-ddr4-3200-2ch" />, <HubLink gpu="cpu-ddr5-5600-2ch" />, <HubLink gpu="cpu-ddr5-6000-2ch" />에서 카탈로그의 모든 모델과 필요한 RAM 용량을 볼 수 있습니다.
+- 그래픽카드를 더하면 시스템 RAM에 주로 두는 MoE 모델이 어떻게 달라지는지: <GuideLink slug="moe-cpu-offload" />
+- 8~32GB 그래픽카드에 들어가는 모델: <GuideLink slug="vram-requirements" />
+- 생성 속도를 읽고 재는 법: <GuideLink slug="tokens-per-second" />
+
+## 이 숫자는 얼마나 확실한가
+
+메모리 수치는 실제 GGUF 파일 크기와 각 모델의 공개 config로 계산합니다. 공식으로 계산한 값이라 오차 범위를 붙이지 않습니다. CPU에서는 파일 전체와 KV 캐시, 시스템 몫 4GB를 셉니다.
+
+속도는 추정치라서 오차 범위와 신뢰 라벨을 함께 붙입니다. CPU 전용 칸은 보정된 추정이고, 오차 범위는 ±20%입니다. NVIDIA·AMD 그래픽카드가 아닌 하드웨어에 쓰는 범위입니다. CanRun 속도 공식으로 아직 검증하지 않은 층 구조를 쓰는 모델은 이론 추정(±30%)입니다. LFM2.5와 Ling 3.0이 여기에 속합니다. CPU 계수는 코어 8개 이상인 CPU와 데스크톱용 DDR4·DDR5 듀얼 채널을 가정합니다. CanRun은 코어 수를 계산에 넣지 않습니다. 그래서 코어가 적은 CPU는 범위보다 느릴 수 있습니다.
+
+아래는 듀얼 채널 DDR5-5600에서 Qwen3 30B-A3B를 돌린 공개 벤치마크 결과 한 건입니다. hardware-corner.net이 모은 사용자 측정 결과이고, CanRun이 잰 값은 아닙니다. CanRun의 8k 추정 범위와 나란히 보여 줍니다.
+
+<Measured model="qwen3-30b-a3b-2507" gpu="cpu-ddr5-5600-2ch" />
+
+공개 결과는 CanRun 추정 범위보다 높고, CanRun의 4k 추정보다도 높습니다. 그래서 이 모델은 CanRun의 CPU 추정이 실제보다 낮게 나왔을 수 있습니다. 출처는 이 구성의 결과를 범위로 적었고, 어떤 CPU인지는 밝히지 않았습니다.
+
+CanRun은 CPU 전용 구성의 프롬프트 처리 속도를 추정하지 않습니다. 프롬프트를 읽는 속도는 대역폭이 아니라 연산 성능에 달려 있습니다. 그래서 여기 나온 속도로는 긴 프롬프트나 붙여 넣은 문서를 읽는 시간을 알 수 없습니다. `llama-bench`로 두 가지를 모두 잴 수 있습니다. `-p`가 프롬프트 처리, `-n`이 생성입니다.
+
+모든 수치는 컨텍스트가 8k까지 찬 상태를 가정합니다. KV 캐시는 f16, 모델은 하나, 요청도 한 번에 하나이고, llama.cpp 계열 런타임을 씁니다. 본문에서 말하는 판정은 이 기준입니다. 다른 컨텍스트 길이의 결과는 표에서 확인합니다. 생각 모드가 있는 모델은 속도 기준이 1.5배 엄격한데, 범례에는 이 점이 나오지 않습니다. 판정 기준은 다음과 같습니다.
+
+<Threshold />
+
+## 자주 묻는 질문
+
+### 그래픽카드 없이 로컬 LLM을 돌릴 수 있나요?
+
+네. llama.cpp, LM Studio, Ollama 모두 CPU와 시스템 RAM으로 모델을 돌립니다. Llama 3.1 8B Q4_K_M은 RAM 16GB에 들어갑니다. 듀얼 채널 DDR5-5600에서는 겨우 돌아갑니다(보정된 추정)<Expect model="llama-3.1-8b" gpu="cpu-ddr5-5600-2ch" verdict="B" confidence="calibrated" />. CanRun은 CPU 전용 구성에 이보다 높은 판정을 주지 않습니다. MoE 모델인 gpt-oss-20b는 추정 속도가 Llama 3.1 8B보다 높지만, RAM 32GB가 필요합니다<Expect model="gpt-oss-20b" gpu="cpu-ddr5-5600-2ch" ram="32" fits="true" />.
+
+### CPU로 돌리려면 RAM이 얼마나 필요한가요?
+
+모델 파일과 KV 캐시가 들어가고, 시스템 몫 4GB가 남아야 합니다. 8k 기준으로 16GB면 Llama 3.1 8B와 Qwen3 14B Q4_K_M이 들어갑니다<Expect model="llama-3.1-8b" gpu="cpu-ddr5-5600-2ch" ram="16" fits="true" /><Expect model="qwen3-14b" gpu="cpu-ddr5-5600-2ch" ram="16" fits="true" />. 32GB면 gpt-oss-20b와 Qwen3 30B-A3B가 들어갑니다<Expect model="gpt-oss-20b" gpu="cpu-ddr5-5600-2ch" ram="32" fits="true" /><Expect model="qwen3-30b-a3b-2507" gpu="cpu-ddr5-5600-2ch" ram="32" fits="true" />. gpt-oss-120b는 96GB가 필요합니다<Expect model="gpt-oss-120b" gpu="cpu-ddr5-5600-2ch" ram="96" fits="true" />. 컨텍스트를 늘리면 KV 캐시가 커지는데, 얼마나 커지는지는 위 컨텍스트 표에서 볼 수 있습니다.
+
+### CPU 코어가 많으면 더 빨라지나요?
+
+CanRun 계산은 코어 수를 세지 않습니다. 생성 속도는 RAM 대역폭으로 계산하고, 코어 8개 이상인 CPU를 가정합니다. 코어가 이보다 적으면 범위보다 느릴 수 있습니다. 프롬프트를 읽는 단계는 연산 성능에 달려 있어서 CPU 성능이 더 중요합니다. CanRun은 CPU에서는 이 단계를 추정하지 않습니다.
+
+### DDR4 RAM으로도 되나요?
+
+작은 모델이라면 됩니다. CanRun 계산으로 DDR4-3200은 DDR5-5600 속도의 절반을 조금 넘습니다. Llama 3.1 8B는 듀얼 채널 DDR4-3200에서 겨우 돌아갑니다<Expect model="llama-3.1-8b" gpu="cpu-ddr4-3200-2ch" verdict="B" />. 기본 설정에서 생각 모드가 켜지는 Qwen3 14B는 여기서 Q4_K_M으로 돌릴 수 없습니다<Expect model="qwen3-14b" gpu="cpu-ddr4-3200-2ch" verdict="F" />. DDR5-5600에서는 겨우 돌아갑니다<Expect model="qwen3-14b" gpu="cpu-ddr5-5600-2ch" verdict="B" />. CanRun의 DDR4 프로필은 64GB까지라서 gpt-oss-120b가 들어가지 않습니다<Expect model="gpt-oss-120b" gpu="cpu-ddr4-3200-2ch" fits="false" />.
+
+### CPU에는 어떤 모델이 어울리나요?
+
+RAM에 들어간다면 활성 부분이 작은 MoE 모델이 어울립니다. 32GB라면 gpt-oss-20b와 Qwen3 30B-A3B의 추정 속도가 Llama 3.1 8B보다 높습니다<Expect model="qwen3-30b-a3b-2507" gpu="cpu-ddr5-5600-2ch" ram="32" verdict="B" />. 16GB라면 Kanana 1.5 15.7B-A3B가 들어갑니다<Expect model="kanana-1.5-15.7b-a3b" gpu="cpu-ddr5-5600-2ch" ram="16" fits="true" />. Llama 3.2 3B 같은 작은 dense 모델도 추정 속도가 높습니다. 큰 dense 모델은 느립니다. Gemma 3 27B는 DDR5-5600에서 기준선을 간신히 넘습니다<Expect model="gemma-3-27b" gpu="cpu-ddr5-5600-2ch" verdict="B" />. Qwen3 32B는 세 프로필 모두에서 돌릴 수 없습니다<Expect model="qwen3-32b" gpu="cpu-ddr5-6000-2ch" verdict="F" />.
+
+## 출처
+
+- [llama.cpp README](https://github.com/ggml-org/llama.cpp): 의존성 없는 C/C++ 구현, x86의 AVX·AVX2·AVX512·AMX 지원
+- [llama.cpp: server README](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md): `-ngl`/`--n-gpu-layers`(VRAM에 올릴 층 수), `-t`/`--threads`
+- [llama.cpp: llama-bench README](https://github.com/ggml-org/llama.cpp/blob/master/tools/llama-bench/README.md): 프롬프트 처리(`-p`)와 생성(`-n`) 측정
+- [LM Studio: 시스템 요구 사항](https://lmstudio.ai/docs/app/system-requirements): x64 Windows에서 AVX2 필요
+- [Ollama FAQ](https://docs.ollama.com/faq): `ollama ps`의 PROCESSOR 열, `100% CPU`는 모델 전체가 시스템 메모리에 올라간 상태
+- [커세어: 듀얼 채널 RAM이란](https://www.corsair.com/us/en/explorer/diy-builder/memory/what-is-dual-channel-ram/): 모듈 하나는 싱글 채널, 듀얼 채널은 싱글 채널의 두 배 속도
+- [인텔 Core Ultra 9 285K 사양](https://www.intel.com/content/www/us/en/products/sku/241060/intel-core-ultra-9-processor-285k-36m-cache-up-to-5-70-ghz/specifications.html): 메모리 채널 2개
+- [마이크로소프트 DirectX 블로그: 작업 관리자의 GPU](https://devblogs.microsoft.com/directx/gpus-in-the-task-manager/): 내장 GPU의 전용 메모리는 그래픽용으로 떼어 둔 시스템 메모리, 공유 메모리는 일반 시스템 메모리
+- [gpt-oss-20b 모델 카드](https://huggingface.co/openai/gpt-oss-20b): 전체·활성 파라미터, MXFP4, 메모리 16GB 안에서 구동
+- [gpt-oss-120b 모델 카드](https://huggingface.co/openai/gpt-oss-120b): 전체·활성 파라미터, MXFP4
+- [Qwen3-30B-A3B-Instruct-2507 모델 카드](https://huggingface.co/Qwen/Qwen3-30B-A3B-Instruct-2507): 전체·활성 파라미터, 토큰당 전문가 수
+- [Qwen3-14B 모델 카드](https://huggingface.co/Qwen/Qwen3-14B): 생각 모드 기본 켜짐
+- [Kanana 1.5 15.7B-A3B Instruct 모델 카드](https://huggingface.co/kakaocorp/kanana-1.5-15.7b-a3b-instruct): Kanana 계열의 첫 MoE 모델, 한국어·영어
+- [Kanana 1.5 8B Instruct 모델 카드](https://huggingface.co/kakaocorp/kanana-1.5-8b-instruct-2505): 파라미터 수
+- [hardware-corner.net: Qwen3 하드웨어 요구 사항](https://www.hardware-corner.net/guides/qwen3-hardware-requirements/): CPU와 시스템 RAM으로 Qwen3 30B-A3B를 돌린 사용자 결과, 듀얼 채널 DDR5-5600 공개 벤치마크의 출처

@@ -1,0 +1,150 @@
+Yes. Without a graphics card, llama.cpp and the tools built on it run a model on the CPU from system RAM. Llama 3.1 8B at Q4_K_M fits in 16GB of RAM<Expect model="llama-3.1-8b" gpu="cpu-ddr5-5600-2ch" ram="16" fits="true" mode="cpu-only" /> and Runs slowly on dual-channel DDR5-5600, a calibrated estimate.<Expect model="llama-3.1-8b" gpu="cpu-ddr5-5600-2ch" verdict="B" confidence="calibrated" /> gpt-oss-20b, an MoE model, needs 32GB,<Expect model="gpt-oss-20b" gpu="cpu-ddr5-5600-2ch" ram="32" fits="true" mode="cpu-only" /> yet CanRun estimates it faster than Llama 3.1 8B, because each token reads only a small part of it. The speed depends mostly on how fast your RAM is.
+
+## Which models run on a CPU alone
+
+The grid puts six models on CanRun's three CPU-only profiles, ordered from the least memory bandwidth to the most: dual-channel DDR4-3200, DDR5-5600 and DDR5-6000. Every cell assumes an 8k context, an f16 KV cache and 4GB of RAM kept for the system and other programs. The 32GB in the caption applies to graphics cards only. On these rows the last line in each cell gives the RAM size behind the verdict: the smallest of 16, 32, 64 and 96GB that reaches it, or the largest CanRun checks when nothing works.
+
+<ComboGrid grid="cpu" />
+
+Two rules shape this grid. First, CanRun caps every CPU-only setup at Runs slowly, however high its estimate; Runs great and Runs well need a GPU. The badge therefore says only whether a model runs, and the speed band tells the cells apart. Llama 3.2 3B on DDR5-5600 has an estimate well above the speed Runs well asks of a graphics card, and it is still rated Runs slowly.<Expect model="llama-3.2-3b" gpu="cpu-ddr5-5600-2ch" verdict="B" mode="cpu-only" /> Second, a model is rated Won't run when it does not fit in RAM or when its estimate falls under the floor in the legend at the end of this guide. Models with a thinking mode face a floor 1.5× higher, because they write many more tokens per answer.
+
+### Small dense models: 3B to 12B
+
+Llama 3.2 3B, Llama 3.1 8B and Gemma 3 12B fit in 16GB of RAM and run on all three profiles, rated Runs slowly.<Expect model="llama-3.2-3b" gpu="cpu-ddr4-3200-2ch" verdict="B" /><Expect model="llama-3.2-3b" gpu="cpu-ddr5-6000-2ch" verdict="B" /><Expect model="llama-3.1-8b" gpu="cpu-ddr4-3200-2ch" verdict="B" /><Expect model="llama-3.1-8b" gpu="cpu-ddr5-6000-2ch" verdict="B" /><Expect model="gemma-3-12b" gpu="cpu-ddr4-3200-2ch" verdict="B" /><Expect model="gemma-3-12b" gpu="cpu-ddr5-5600-2ch" verdict="B" /><Expect model="gemma-3-12b" gpu="cpu-ddr5-6000-2ch" verdict="B" /><Expect model="gemma-3-12b" gpu="cpu-ddr5-5600-2ch" ram="16" fits="true" /><Expect model="llama-3.2-3b" gpu="cpu-ddr5-5600-2ch" ram="16" fits="true" /> Their speed bands are what differ. A dense model reads its whole file for every token, so the Gemma 3 12B file, at <Num kind="fileGB" model="gemma-3-12b" />, makes it slower than Llama 3.1 8B at <Num kind="fileGB" model="llama-3.1-8b" />, and Llama 3.2 3B, the smallest of the three, is the quickest.
+
+### Thinking models and DDR4
+
+<HubLink model="qwen3-14b" /> thinks before it answers by default, so its floor is 1.5× higher. On DDR4-3200 its estimate falls under that floor and it Won't run at Q4_K_M.<Expect model="qwen3-14b" gpu="cpu-ddr4-3200-2ch" verdict="F" /> For that setup CanRun points to Q2_K, a Heavy loss quant, which Runs slowly.<Expect model="qwen3-14b" gpu="cpu-ddr4-3200-2ch" quant="Q2_K" verdict="B" /> On DDR5-5600 the faster RAM lifts Q4_K_M over the floor, and it Runs slowly.<Expect model="qwen3-14b" gpu="cpu-ddr5-5600-2ch" verdict="B" />
+
+### Dense models from 27B up
+
+<HubLink model="gemma-3-27b" /> needs 32GB of RAM and only just clears the floor on DDR5-5600, where it Runs slowly.<Expect model="gemma-3-27b" gpu="cpu-ddr5-5600-2ch" ram="32" verdict="B" /> On DDR4-3200 it Won't run at Q4_K_M.<Expect model="gemma-3-27b" gpu="cpu-ddr4-3200-2ch" verdict="F" /> <HubLink model="qwen3-32b" /> is rated Won't run at Q4_K_M on all three profiles,<Expect model="qwen3-32b" gpu="cpu-ddr4-3200-2ch" verdict="F" /><Expect model="qwen3-32b" gpu="cpu-ddr5-5600-2ch" verdict="F" /><Expect model="qwen3-32b" gpu="cpu-ddr5-6000-2ch" verdict="F" /> and <HubLink model="llama-3.3-70b" /> Won't run even with 64GB, which holds its file.<Expect model="llama-3.3-70b" gpu="cpu-ddr5-5600-2ch" ram="64" fits="true" verdict="F" /> Having the RAM to load a model is not the same as running it at a usable pace.
+
+### What to install
+
+You do not need special software. The llama.cpp README lists AVX, AVX2, AVX512 and AMX support for x86 processors. LM Studio's system requirements say a Windows PC needs a processor with AVX2. In Ollama, `ollama ps` shows `100% CPU` under PROCESSOR, which the Ollama FAQ describes as a model loaded entirely in system memory. CanRun's page for each model on a CPU profile prints a llama.cpp command with `-ngl 0`, which keeps every layer off the graphics card.
+
+## RAM bandwidth sets the speed: DDR4, DDR5 and dual channel
+
+To write one token, the processor reads every weight the model uses for that token, plus the KV cache, the memory that holds the conversation so far. Memory bandwidth, how many gigabytes per second the processor can read from RAM, limits how often it can do that. CanRun's estimate is the RAM's rated bandwidth times an efficiency factor, divided by the bytes read per token. For a dense model on a CPU, CanRun counts on half of the rated bandwidth, a factor fitted to public benchmarks for processors with eight or more cores.
+
+Dual-channel DDR4-3200 reads <Num kind="bandwidth" gpu="cpu-ddr4-3200-2ch" />, DDR5-5600 reads <Num kind="bandwidth" gpu="cpu-ddr5-5600-2ch" /> and DDR5-6000 reads <Num kind="bandwidth" gpu="cpu-ddr5-6000-2ch" />. Going from DDR4-3200 to DDR5-5600 adds about three-quarters to the bandwidth, and CanRun's estimates rise by the same ratio. Llama 3.1 8B Runs slowly on both,<Expect model="llama-3.1-8b" gpu="cpu-ddr4-3200-2ch" verdict="B" /><Expect model="llama-3.1-8b" gpu="cpu-ddr5-5600-2ch" verdict="B" /> but its band on the DDR5 row sits well above the DDR4 one. DDR5-6000 adds less than a tenth over DDR5-5600. A graphics card reads its own memory much faster: the RTX 3060 12GB reads <Num kind="bandwidth" gpu="rtx-3060-12gb" />, about four times dual-channel DDR5-5600.
+
+### One stick or two
+
+All three profiles assume dual channel. Mainstream desktop processors have two memory channels; Intel's specification for the Core Ultra 9 285K, for example, lists two. Corsair's guide to dual-channel RAM describes a single stick as single-channel and dual channel as twice its speed. With one stick, the bandwidth halves, and in CanRun's formula so does the estimate for every model. If your PC has one stick, a second matching stick in the slot your motherboard manual names doubles the bandwidth in CanRun's calculation. Four sticks can lower the rated memory speed on some processors; <GuideLink slug="moe-cpu-offload" /> covers that case.
+
+### Smaller files are faster
+
+Since a dense model reads its whole file for every token, the quant changes CPU speed directly. Llama 3.1 8B at Q8_0 is <Num kind="fileGB" model="llama-3.1-8b" quant="Q8_0" /> against <Num kind="fileGB" model="llama-3.1-8b" /> at Q4_K_M. The ladder below shows each step on dual-channel DDR5-5600; every cell is calibrated.
+
+<QuantLadder model="llama-3.1-8b" gpu="cpu-ddr5-5600-2ch" />
+
+At Q8_0 the estimate is more than a third lower than at Q4_K_M. IQ4_XS is a little quicker than Q4_K_M, and Q2_K is quicker still but belongs to the Heavy loss group. All four are rated Runs slowly, the CPU-only cap.<Expect model="llama-3.1-8b" gpu="cpu-ddr5-5600-2ch" quant="Q8_0" verdict="B" /><Expect model="llama-3.1-8b" gpu="cpu-ddr5-5600-2ch" quant="IQ4_XS" verdict="B" /><Expect model="llama-3.1-8b" gpu="cpu-ddr5-5600-2ch" quant="Q2_K" verdict="B" /> Q4_K_M, the usual default, sits in the Good balance group; for how the quality groups differ, see <GuideLink slug="gguf-quantization" />.
+
+## Dense and MoE models on a CPU
+
+A mixture-of-experts (MoE) model splits most of each layer into many expert blocks, and a router picks a few of them for every token. The whole file has to sit in RAM, since the router can pick any expert, but each token reads only the active part. The table lists total and active parameters for the models in this section.
+
+<ModelFacts models="llama-3.1-8b,kanana-1.5-15.7b-a3b,gpt-oss-20b,qwen3-30b-a3b-2507,gpt-oss-120b" />
+
+On dual-channel DDR5-5600, CanRun's estimate for gpt-oss-20b is more than twice the estimate for Llama 3.1 8B, although its file, <Num kind="fileGB" model="gpt-oss-20b" />, is about two and a half times as large. Both are rated Runs slowly.<Expect model="gpt-oss-20b" gpu="cpu-ddr5-5600-2ch" verdict="B" mode="cpu-only" confidence="calibrated" /><Expect model="llama-3.1-8b" gpu="cpu-ddr5-5600-2ch" verdict="B" mode="cpu-only" /> The <HubLink model="qwen3-30b-a3b-2507" /> file, <Num kind="fileGB" model="qwen3-30b-a3b-2507" />, is nearly four times the size of Llama 3.1 8B's, and CanRun's estimate for it is close to double. A public benchmark on this profile, shown in the last section, came out higher still.<Expect model="qwen3-30b-a3b-2507" gpu="cpu-ddr5-5600-2ch" verdict="B" confidence="measured" />
+
+### gpt-oss-120b with 96GB of RAM
+
+The gpt-oss-120b file is <Num kind="fileGB" model="gpt-oss-120b" />. With 96GB of DDR5-5600 it fits and Runs slowly, a calibrated estimate,<Expect model="gpt-oss-120b" gpu="cpu-ddr5-5600-2ch" ram="96" verdict="B" mode="cpu-only" confidence="calibrated" /> and CanRun's estimate for it is higher than for Llama 3.1 8B. With 64GB it does not fit after the 4GB CanRun keeps for the system.<Expect model="gpt-oss-120b" gpu="cpu-ddr5-5600-2ch" ram="64" fits="false" /> CanRun's DDR4-3200 profile stops at 64GB, so on that row it is rated Won't run.<Expect model="gpt-oss-120b" gpu="cpu-ddr4-3200-2ch" verdict="F" fits="false" /> Both gpt-oss models always reason before they answer, so a reply costs more tokens than the answer you read, and at CPU speeds that wait adds up; see <GuideLink slug="thinking-models" />.
+
+### An MoE model for 16GB
+
+On a PC with 16GB, <HubLink model="kanana-1.5-15.7b-a3b" />, a Korean MoE model from Kakao, fits and Runs slowly on DDR5-5600,<Expect model="kanana-1.5-15.7b-a3b" gpu="cpu-ddr5-5600-2ch" ram="16" fits="true" verdict="B" /> with an estimate about two-thirds higher than Llama 3.1 8B's. Its file is <Num kind="fileGB" model="kanana-1.5-15.7b-a3b" />. It supports <Num kind="maxContext" model="kanana-1.5-15.7b-a3b" /> of context.
+
+### Where MoE models lose ground
+
+Every token also reads the KV cache, and for a model that reads only a small active part, the cache makes up a larger share of each read. At 32k with an f16 KV cache, CanRun's estimate for Qwen3 30B-A3B is a little over half of its 8k estimate, against about two-thirds for Llama 3.1 8B. The other limit is RAM size, which the next section covers.
+
+## How much RAM you need
+
+On a CPU, the whole model file and its KV cache have to fit in RAM, next to the OS and whatever else is open. CanRun keeps 4GB for those and compares the rest with the file at your quant plus the KV cache at your context. There is nowhere else for the model to go: if the total does not fit, CanRun rates the model Won't run at that RAM size.
+
+- Llama 3.1 8B: the file is <Num kind="fileGB" model="llama-3.1-8b" /> and the KV cache at 8k is <Num kind="kvGB" model="llama-3.1-8b" />, so 16GB is enough.<Expect model="llama-3.1-8b" gpu="cpu-ddr5-5600-2ch" ram="16" fits="true" />
+- gpt-oss-20b: its model card says it runs within 16GB of memory, but a PC with 16GB of RAM also has to hold the OS. In CanRun's calculation it misses the 12GB left free by a small margin,<Expect model="gpt-oss-20b" gpu="cpu-ddr5-5600-2ch" ram="16" fits="false" /> so it needs 32GB.<Expect model="gpt-oss-20b" gpu="cpu-ddr5-5600-2ch" ram="32" verdict="B" />
+- Qwen3 30B-A3B: the file alone is more than 16GB leaves free,<Expect model="qwen3-30b-a3b-2507" gpu="cpu-ddr5-5600-2ch" ram="16" fits="false" /> so it needs 32GB.<Expect model="qwen3-30b-a3b-2507" gpu="cpu-ddr5-5600-2ch" ram="32" fits="true" />
+- gpt-oss-120b: 96GB, as above.<Expect model="gpt-oss-120b" gpu="cpu-ddr5-5600-2ch" ram="96" fits="true" />
+
+### Longer context needs more RAM
+
+The KV cache grows with the context. The table shows Llama 3.1 8B on dual-channel DDR5-5600 with 16GB of RAM, the size its grid cell uses; every cell is calibrated.
+
+<CtxTable model="llama-3.1-8b" gpu="cpu-ddr5-5600-2ch" />
+
+At 32k with an f16 KV cache, the cache alone is <Num kind="kvGB" model="llama-3.1-8b" ctx="32768" />, and the model still fits in 16GB.<Expect model="llama-3.1-8b" gpu="cpu-ddr5-5600-2ch" ctx="32768" fits="true" /> At 64k it does not,<Expect model="llama-3.1-8b" gpu="cpu-ddr5-5600-2ch" ctx="65536" fits="false" /> unless you switch to a q8_0 (8-bit) KV cache, which takes about half the space and brings 64k back inside 16GB.<Expect model="llama-3.1-8b" gpu="cpu-ddr5-5600-2ch" ctx="65536" kv="q8_0" fits="true" /> The speed band falls as the context grows, because every token reads the whole cache: at 32k with an f16 cache, the estimate is about two-thirds of the 8k one. For how the cache grows on other models, see <GuideLink slug="kv-cache-context" />.
+
+## Integrated graphics, Macs and Strix Halo
+
+Most desktop and laptop processors include integrated graphics. Microsoft's explanation of GPU memory in Task Manager says that on integrated GPUs, dedicated memory is system memory reserved for graphics, and that integrated and discrete GPUs alike can use shared system memory. So integrated graphics read the same dual-channel RAM as the processor. In a calculation driven by memory bandwidth, like CanRun's, they cannot generate faster than that RAM allows. CanRun has no profile for ordinary integrated graphics; for such a PC, pick the CPU profile that matches its RAM.
+
+What lets some machines without a graphics card run models quickly is wider memory. The <HubLink gpu="amd-strix-halo" /> reads <Num kind="bandwidth" gpu="amd-strix-halo" /> and the <HubLink gpu="apple-m4-pro" /> reads <Num kind="bandwidth" gpu="apple-m4-pro" />, about three times dual-channel DDR5-5600. Their GPUs use that memory, so CanRun rates them by GPU rules: Qwen3 30B-A3B Runs great on a 32GB Strix Halo,<Expect model="qwen3-30b-a3b-2507" gpu="amd-strix-halo" ram="32" verdict="S" /> while on the DDR5-5600 CPU profile it Runs slowly. These machines have their own guides: <GuideLink slug="mac-local-llm" /> and <GuideLink slug="unified-memory-128gb" />.
+
+### Where to go next
+
+- The CPU profile pages, <HubLink gpu="cpu-ddr4-3200-2ch" />, <HubLink gpu="cpu-ddr5-5600-2ch" /> and <HubLink gpu="cpu-ddr5-6000-2ch" />, list every model in the catalog with the RAM size it needs.
+- <GuideLink slug="moe-cpu-offload" />: what an added graphics card changes for MoE models that live mostly in system RAM.
+- <GuideLink slug="vram-requirements" />: what fits on graphics cards from 8GB to 32GB.
+- <GuideLink slug="tokens-per-second" />: how to read and measure generation speed.
+
+## How sure are these numbers?
+
+The memory figures are calculated by formula from real GGUF file sizes and each model's published configuration, so they carry no band. On a CPU, CanRun counts the whole file, the KV cache and the 4GB it keeps for the system.
+
+The speeds are estimates with a band and a label. CPU-only cells are calibrated, ±20%, the band CanRun uses for hardware other than NVIDIA and AMD graphics cards. Models with layer types CanRun's speed formula has not been checked against, such as LFM2.5 and Ling 3.0, are theoretical, ±30%. The CPU factor assumes a processor with eight or more cores and desktop DDR4 or DDR5 in dual channel. CanRun does not model core count, so a processor with fewer cores can land below the band.
+
+Below is one public measurement, for Qwen3 30B-A3B on dual-channel DDR5-5600. It is a community result collected on hardware-corner.net, not a CanRun run, shown next to CanRun's 8k estimate band.
+
+<Measured model="qwen3-30b-a3b-2507" gpu="cpu-ddr5-5600-2ch" />
+
+The public figure is above CanRun's band, and above CanRun's estimate for a 4k context too, so for this model CanRun's CPU estimate may be on the low side. The source lists a range for this setup and does not name the processor.
+
+CanRun gives no prompt-processing estimate for CPU-only setups. Reading the prompt depends on compute rather than bandwidth, so the rates here do not tell you how long a long prompt or a pasted document takes to read. `llama-bench` measures both: prompt processing with `-p` and generation with `-n`.
+
+All of this assumes an 8k context filled to that length, an f16 KV cache, one model loaded, one request at a time and a llama.cpp-class runtime. Verdict names in the text refer to that baseline; for other contexts, read the tables. Models with a thinking mode face 1.5× stricter speed thresholds, which the legend does not show. The thresholds:
+
+<Threshold />
+
+## FAQ
+
+### Can you run a local LLM without a GPU?
+
+Yes. llama.cpp, LM Studio and Ollama all run models on the CPU from system RAM. Llama 3.1 8B at Q4_K_M fits in 16GB of RAM and Runs slowly on dual-channel DDR5-5600, a calibrated estimate;<Expect model="llama-3.1-8b" gpu="cpu-ddr5-5600-2ch" verdict="B" confidence="calibrated" /> Runs slowly is the highest verdict CanRun gives a CPU-only setup. gpt-oss-20b, an MoE model with a small active part, gets a higher estimate than Llama 3.1 8B but needs 32GB of RAM.<Expect model="gpt-oss-20b" gpu="cpu-ddr5-5600-2ch" ram="32" fits="true" />
+
+### How much RAM do I need to run a local LLM on the CPU?
+
+Enough for the model file and its KV cache after about 4GB for the system. At 8k, 16GB covers Llama 3.1 8B and Qwen3 14B at Q4_K_M,<Expect model="llama-3.1-8b" gpu="cpu-ddr5-5600-2ch" ram="16" fits="true" /><Expect model="qwen3-14b" gpu="cpu-ddr5-5600-2ch" ram="16" fits="true" /> 32GB covers gpt-oss-20b and Qwen3 30B-A3B,<Expect model="gpt-oss-20b" gpu="cpu-ddr5-5600-2ch" ram="32" fits="true" /><Expect model="qwen3-30b-a3b-2507" gpu="cpu-ddr5-5600-2ch" ram="32" fits="true" /> and gpt-oss-120b needs 96GB.<Expect model="gpt-oss-120b" gpu="cpu-ddr5-5600-2ch" ram="96" fits="true" /> A longer context adds to the KV cache; the context table above shows how much.
+
+### Do more CPU cores make generation faster?
+
+CanRun's calculation does not count cores: it ties generation speed to RAM bandwidth and assumes a processor with eight or more cores. A processor with fewer cores can fall below the band. Reading the prompt depends on compute instead, so the processor matters more for that step, which CanRun does not estimate on a CPU.
+
+### Is DDR4 RAM enough for a local LLM?
+
+For small models, yes, at a little over half the DDR5-5600 speed in CanRun's calculation. Llama 3.1 8B Runs slowly on dual-channel DDR4-3200.<Expect model="llama-3.1-8b" gpu="cpu-ddr4-3200-2ch" verdict="B" /> Qwen3 14B, which thinks by default, Won't run there at Q4_K_M<Expect model="qwen3-14b" gpu="cpu-ddr4-3200-2ch" verdict="F" /> but Runs slowly on DDR5-5600.<Expect model="qwen3-14b" gpu="cpu-ddr5-5600-2ch" verdict="B" /> CanRun's DDR4 profile goes up to 64GB, too little for gpt-oss-120b.<Expect model="gpt-oss-120b" gpu="cpu-ddr4-3200-2ch" fits="false" />
+
+### Which models make sense on a CPU?
+
+MoE models with a small active part, as long as they fit in your RAM: with 32GB, gpt-oss-20b and Qwen3 30B-A3B get higher estimates than Llama 3.1 8B;<Expect model="qwen3-30b-a3b-2507" gpu="cpu-ddr5-5600-2ch" ram="32" verdict="B" /> with 16GB, Kanana 1.5 15.7B-A3B fits.<Expect model="kanana-1.5-15.7b-a3b" gpu="cpu-ddr5-5600-2ch" ram="16" fits="true" /> Small dense models such as Llama 3.2 3B also get high estimates. Larger dense models are slow: Gemma 3 27B only just clears the floor on DDR5-5600,<Expect model="gemma-3-27b" gpu="cpu-ddr5-5600-2ch" verdict="B" /> and Qwen3 32B Won't run on any of the three profiles.<Expect model="qwen3-32b" gpu="cpu-ddr5-6000-2ch" verdict="F" />
+
+## Sources
+
+- [llama.cpp README](https://github.com/ggml-org/llama.cpp): plain C/C++ implementation with AVX, AVX2, AVX512 and AMX support for x86.
+- [llama.cpp: server README](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md): `-ngl`/`--n-gpu-layers` (layers stored in VRAM) and `-t`/`--threads`.
+- [llama.cpp: llama-bench README](https://github.com/ggml-org/llama.cpp/blob/master/tools/llama-bench/README.md): prompt processing (`-p`) and text generation (`-n`) tests.
+- [LM Studio: system requirements](https://lmstudio.ai/docs/app/system-requirements): AVX2 required on x64 Windows.
+- [Ollama FAQ](https://docs.ollama.com/faq): the PROCESSOR column of `ollama ps`, where `100% CPU` means the model is loaded entirely in system memory.
+- [Corsair: what is dual-channel RAM](https://www.corsair.com/us/en/explorer/diy-builder/memory/what-is-dual-channel-ram/): one stick runs single-channel; dual channel doubles the speed of single-channel.
+- [Intel Core Ultra 9 285K specifications](https://www.intel.com/content/www/us/en/products/sku/241060/intel-core-ultra-9-processor-285k-36m-cache-up-to-5-70-ghz/specifications.html): two memory channels.
+- [Microsoft DirectX blog: GPUs in the Task Manager](https://devblogs.microsoft.com/directx/gpus-in-the-task-manager/): on integrated GPUs, dedicated memory is system memory reserved for graphics; shared memory is normal system memory.
+- [gpt-oss-20b model card](https://huggingface.co/openai/gpt-oss-20b): total and active parameters, MXFP4, runs within 16GB of memory.
+- [gpt-oss-120b model card](https://huggingface.co/openai/gpt-oss-120b): total and active parameters, MXFP4.
+- [Qwen3-30B-A3B-Instruct-2507 model card](https://huggingface.co/Qwen/Qwen3-30B-A3B-Instruct-2507): total and activated parameters, experts per token.
+- [Qwen3-14B model card](https://huggingface.co/Qwen/Qwen3-14B): thinking mode on by default.
+- [Kanana 1.5 15.7B-A3B Instruct model card](https://huggingface.co/kakaocorp/kanana-1.5-15.7b-a3b-instruct): the first MoE model in Kakao's Kanana family, for Korean and English.
+- [hardware-corner.net: Qwen3 hardware requirements](https://www.hardware-corner.net/guides/qwen3-hardware-requirements/): community results for Qwen3 30B-A3B on CPU and system RAM, the source of the measured point on dual-channel DDR5-5600.
