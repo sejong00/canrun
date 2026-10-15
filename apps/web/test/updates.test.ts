@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { isCalendarDate, parseGpus, parseModels } from '@canrun/data';
+import { GUIDES, GUIDE_SLUGS } from '@/content/guides';
 import { STATIC_PAGE_SLUGS } from '@/content/pages';
 import { SITE_UPDATES, latestSiteUpdate } from '@/content/updates';
 import { catalogAdditions } from '@/lib/updates';
@@ -96,10 +97,18 @@ describe('updates MDX (en and ko are the same page, written separately)', () => 
 });
 
 describe('static page MDX internal links (<SiteLink to>) point at pages that exist', () => {
-  // 정적 페이지 MDX 에는 가이드의 HubLink 같은 id 검사 컴포넌트가 없다 — 모델·GPU 허브 링크는 카탈로그 id 로 확인한다
+  // 정적 페이지 MDX 에는 가이드의 HubLink 같은 id 검사 컴포넌트가 없다 — 모델·GPU 허브 링크는 카탈로그 id 로 확인한다.
+  // 가이드는 published 만(D40 — 초안은 어떤 페이지에서도 링크하지 않는다), 목차는 published 가 1편 이상일 때만
   const modelIds = new Set(parseModels(seedJson('models.json')).map((m) => m.id));
   const gpuIds = new Set(parseGpus(seedJson('gpus.json')).map((g) => g.id));
-  const fixed = new Set(['/', '/calculator', ...STATIC_PAGE_SLUGS.map((slug) => `/${slug}`)]);
+  const published = GUIDE_SLUGS.filter((slug) => GUIDES[slug].status === 'published');
+  const fixed = new Set([
+    '/',
+    '/calculator',
+    ...STATIC_PAGE_SLUGS.map((slug) => `/${slug}`),
+    ...(published.length > 0 ? ['/guides'] : []),
+    ...published.map((slug) => `/guides/${slug}`),
+  ]);
   const exists = (to: string) => {
     const hub = /^\/(model|gpu)\/([^/]+)$/.exec(to);
     if (hub) return (hub[1] === 'model' ? modelIds : gpuIds).has(hub[2]!);
@@ -107,7 +116,7 @@ describe('static page MDX internal links (<SiteLink to>) point at pages that exi
   };
 
   for (const locale of ['en', 'ko'] as const) {
-    it(`${locale}: every SiteLink target is a static page, the calculator or a catalog model/GPU hub`, () => {
+    it(`${locale}: every SiteLink target is a static page, the calculator, a catalog model/GPU hub or a published guide`, () => {
       const dir = join(webRoot, 'content', locale, 'pages');
       const bad = readdirSync(dir)
         .filter((f) => f.endsWith('.mdx'))
