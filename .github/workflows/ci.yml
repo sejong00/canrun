@@ -57,14 +57,16 @@ jobs:
       - name: Lighthouse CI
         run: pnpm lhci
 
-      # 리포트는 워크플로 아티팩트로만 — temporary-public-storage(공개 URL) 업로드 금지
+      # 리포트는 워크플로 아티팩트로만 — temporary-public-storage(공개 URL) 업로드 금지.
+      # 실패했을 때만 14일 보관 — 매번 90일씩 쌓여 저장 한도를 넘긴 적이 있다(PROGRESS §4 D78).
       - name: Upload Lighthouse report
-        if: always()
+        if: failure()
         uses: actions/upload-artifact@v7
         with:
           name: lighthouse-report
           path: lhci-report/
           if-no-files-found: ignore
+          retention-days: 14
 
   gitleaks:
     runs-on: ubuntu-latest

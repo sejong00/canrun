@@ -112,4 +112,4 @@ Cloudflare Pages/Workers/D1 무료 티어 $0 + 도메인 ~$1 + Sentry $0 = **~$1
 
 **Phase 2(Workers+D1) 추가 규칙**: 서버 시크릿은 `wrangler secret`으로만 주입 · D1은 prepared statement만(문자열 SQL 조립 금지) · 제출 입력은 파서가 숫자·열거형 화이트리스트로 정규화, 자유 텍스트는 렌더 시 이스케이프(XSS 차단) · URL 필드는 도메인 화이트리스트 + `rel="nofollow noopener"` · rate limit용 IP는 **솔트 해시로만 저장(원문 IP 저장 금지, TTL 24h)** — PII 미수집 설계로 GDPR·개인정보보호법 부담 최소화(프라이버시 페이지에 명시).
 
-**운영**: 저장소는 시작 시 private 권장(공개 전환 시 GitHub secret scanning 활성화 + 히스토리 1회 스캔). 의존성 lockfile 고정 + Dependabot. 배포는 GitHub → Cloudflare 단방향(로컬에서 프로덕션 직배포 금지).
+**운영**: 저장소는 시작 시 private 권장(공개 전환 시 GitHub secret scanning 활성화 + 히스토리 1회 스캔) → 2026-10-15 공개 전환 완료(Actions 무료 한도 초과 대응, secret scanning·push protection 켬 — `docs/PROGRESS.md` §4 D78). 의존성 lockfile 고정 + Dependabot. 배포는 GitHub → Cloudflare 단방향(로컬에서 프로덕션 직배포 금지).
