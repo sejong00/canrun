@@ -439,7 +439,7 @@ export const HETERO_GPU_CASES: readonly HeteroGpuCase[] = [
   { label: 'RTX 3060 12GB + Tesla P100 16GB, Qwen3.8-27B Q4_K_M 층 분할', kind: 'formula', hw: hetero([RTX3060_FIT, P100_FIT]), mq: Q38_27B_Q4, ctx: 128, measuredTg: 13.81, source: SPLIT_BENCH },
 ];
 
-// ---------- 8) 클래스 계수 재보정 (10-15 D79): AMD Vulkan 스코어보드 · DGX Spark 개발진 결과 파일 ----------
+// ---------- 8) 클래스 계수 재보정 (10-15 D79·D81): AMD Vulkan 스코어보드 · DGX Spark 개발진 결과 파일 · Apple gpt-oss 가이드 ----------
 export type SourcedSpeedCase = SpeedCase & { source: string };
 
 // Vulkan 스코어보드(토론 #10879) no-FA 표 — 값은 각 제출 댓글의 fa 0 줄(10-15 D80 에 댓글로 고정)
@@ -456,9 +456,17 @@ const QWEN25_7B_Q8: ModelQuant = { ...dense(7.54 * GIB, 56, 7.62), quant: 'Q8_0'
 // Gemma 3 4B QAT Q4_0: 34층 중 전체 어텐션 5층 · KV 헤드 4 · head 256 → 20 KiB/tok (카탈로그 Gemma 3 와 같은 SWA 사전 계산 방식)
 const GEMMA3_4B_Q40: ModelQuant = { ...dense(2.35 * GIB, 20, 3.88), attnType: 'swa' }; // quant 표기는 속도식에 안 쓰인다(fileGB 사용)
 
+// gpt-oss 가이드 토론(#15396) Apple Metal — llama-bench -fa 1 -b 2048 -ub 2048, tg128 깊이 0(ctx 2048 은 s2 레코드 관례). 10-15 D81
+const OSS_GUIDE = 'https://github.com/ggml-org/llama.cpp/discussions/15396';
+const OSS_GUIDE_COMMENT = `${OSS_GUIDE}#discussioncomment-`;
+
 /**
- * AMD dense(Vulkan no-FA 표 4점, ±12%) · DGX Spark(b7941 llama-bench, 깊이 0 은 ctx 2048·깊이 8192 는 ctx 8192, ±20%).
+ * AMD dense(Vulkan no-FA 표 4점, ±12%) · DGX Spark(b7941 llama-bench, 깊이 0 은 ctx 2048·깊이 8192 는 ctx 8192, ±20%) ·
+ * Apple MoE(gpt-oss 가이드 8점, ±20% — 10-15 D81).
  * 계수는 이 점들이 모두 밴드 안에 들도록 정했다 — constants.ts EFF 주석.
+ * Apple 반례(범위 밖, 회귀에 넣지 않음): MacBook Pro M3 Max 128GB(400GB/s) gpt-oss-20b b6250 tg128 64.26
+ * (https://github.com/ggml-org/llama.cpp/discussions/15396#discussioncomment-14224424) — 계수 0.44 로 +28%. pp 를 32k 까지 9분 돌린 뒤의 값이고,
+ * 개발자가 답글에서 열 스로틀링으로 보인다며 tg 만 다시 재 보라고 했다(#discussioncomment-14225207).
  */
 export const RECAL_1015_CASES: readonly SourcedSpeedCase[] = [
   { label: 'RX 7900 XTX L2-7B Q4_0 Vulkan (b10868)', hw: dgpu(24, 960, 'amd'), mq: L2_7B, ctx: 512, measuredTg: 182.63, band: 0.12, source: VULKAN_7900XTX },
@@ -476,4 +484,14 @@ export const RECAL_1015_CASES: readonly SourcedSpeedCase[] = [
   { label: 'DGX Spark Qwen2.5-Coder-7B Q8_0 tg32 d8192', hw: SPARK, mq: QWEN25_7B_Q8, ctx: 8192, measuredTg: 27.38, band: 0.2, source: SPARK_RESULTS },
   { label: 'DGX Spark Gemma 3 4B QAT Q4_0 tg32 d0', hw: SPARK, mq: GEMMA3_4B_Q40, ctx: 2048, measuredTg: 81.05, band: 0.2, source: SPARK_RESULTS },
   { label: 'DGX Spark Gemma 3 4B QAT Q4_0 tg32 d8192', hw: SPARK, mq: GEMMA3_4B_Q40, ctx: 8192, measuredTg: 71.61, band: 0.2, source: SPARK_RESULTS },
+  // Apple(base/Pro/Max) MoE — 36GB M4 Max 는 32코어 GPU(410GB/s) 구성뿐이다(https://support.apple.com/en-us/121553). 옛 레코드는 이 값을 40코어(546GB/s)에 붙였었다
+  { label: 'Apple M4 Max 32c 36GB gpt-oss-20b (b6123)', hw: unified(36, 410, 'apple'), mq: GPT_OSS_20B, ctx: 2048, measuredTg: 92.36, band: 0.2, source: OSS_GUIDE },
+  { label: 'Apple M4 Max 32c 36GB gpt-oss-20b (b6293)', hw: unified(36, 410, 'apple'), mq: GPT_OSS_20B, ctx: 2048, measuredTg: 95.88, band: 0.2, source: `${OSS_GUIDE_COMMENT}14225207` },
+  { label: 'Apple M4 Pro 64GB gpt-oss-20b (b6280)', hw: unified(64, 273, 'apple'), mq: GPT_OSS_20B, ctx: 2048, measuredTg: 63.34, band: 0.2, source: `${OSS_GUIDE_COMMENT}14226807` },
+  { label: 'Apple M1 Max 64GB gpt-oss-20b (b6180)', hw: unified(64, 400, 'apple'), mq: GPT_OSS_20B, ctx: 2048, measuredTg: 75.15, band: 0.2, source: `${OSS_GUIDE_COMMENT}14146721` },
+  { label: 'Apple M1 Pro 32GB gpt-oss-20b (b6123)', hw: unified(32, 200, 'apple'), mq: GPT_OSS_20B, ctx: 2048, measuredTg: 45.68, band: 0.2, source: OSS_GUIDE },
+  // Apple Ultra MoE(계수 0.29 유지 — 같은 가이드로 재확인)
+  { label: 'Apple M3 Ultra 80c gpt-oss-20b (b6310)', hw: unified(512, 819, 'apple-ultra'), mq: GPT_OSS_20B, ctx: 2048, measuredTg: 115.52, band: 0.2, source: `${OSS_GUIDE_COMMENT}14249698` },
+  { label: 'Apple M2 Ultra 76c gpt-oss-20b (b6123)', hw: unified(192, 800, 'apple-ultra'), mq: GPT_OSS_20B, ctx: 2048, measuredTg: 116.08, band: 0.2, source: OSS_GUIDE },
+  { label: 'Apple M2 Ultra 76c gpt-oss-120b (b6123)', hw: unified(192, 800, 'apple-ultra'), mq: GPT_OSS_120B, ctx: 2048, measuredTg: 79.68, band: 0.2, source: OSS_GUIDE },
 ];

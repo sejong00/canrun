@@ -263,9 +263,10 @@ export function hardwareConfigs(
 
 /**
  * 통합 메모리 칩의 CPU 경로 실효 대역폭 — 엔진 cpu-only 는 `EFF.cpu × ramBandwidthGBs` 라서
- * 통합 대역폭 전체를 넣으면 CPU 계수(dense 0.5·MoE 0.43)가 같은 칩의 GPU 계수(apple MoE 0.30 등)보다
+ * 통합 대역폭 전체를 넣으면 CPU 계수(dense 0.5·MoE 0.43)가 같은 칩의 GPU 계수(apple-ultra MoE 0.29 등)보다
  * 커져, wired limit 를 넘어 CPU 로 떨어진 구성이 더 빠르게 추정되는 역전이 생긴다(P1-1 리뷰).
  * 같은 메모리에서 CPU 경로가 GPU 경로를 넘지 않도록 기존 계수 비율로 깎는다 — 새 상수 없음.
+ * 10-15 D81 에 apple MoE 가 0.30 → 0.44 가 되어 apple 은 깎이지 않는다(비율 1) — 지금 깎이는 것은 apple-ultra 뿐.
  */
 export function unifiedCpuBandwidth(gpu: Pick<Gpu, 'effClass' | 'memBandwidthGBs'>): number {
   const cls = EFF[gpu.effClass];

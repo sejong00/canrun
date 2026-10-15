@@ -116,6 +116,8 @@ Speeds on a Mac running fully on the GPU are calibrated estimates with a ±20% b
 
 CanRun applies the same efficiency factors (one for dense models, one for MoE) to every base, Pro and Max chip, so its estimates rise in step with bandwidth. In the public llama.cpp Apple silicon thread, the M4 Max doubles the M4 Pro's bandwidth but lifts measured generation speed by clearly less than double, so Max-chip estimates may run high; read them with the band in mind.
 
+The MoE factor is fitted to gpt-oss-20b results on M1 Pro, M1 Max, M4 Pro and M4 Max Macs from llama.cpp's gpt-oss guide thread, and CanRun's estimates land within 12% of each. The thread also has a much slower M3 Max result; a llama.cpp maintainer suggested it may have been heat-throttled, so CanRun leaves it out.
+
 Not modelled: models for MLX, Apple's machine-learning framework (CanRun's estimates are for GGUF files, calibrated on llama.cpp results), a GPU/CPU layer split, other open apps' memory, laptop thermal limits, a raised GPU memory limit, and more than one model or request at a time.
 
 On your own Mac, `ollama ps` is the ground truth: SIZE, PROCESSOR (100% GPU) and CONTEXT. For llama.cpp, read the load log.
@@ -146,7 +148,8 @@ In CanRun's calculation, a 16GB Mac's GPU gets about as much memory as a GeForce
 
 - [llama.cpp discussion #2182: Adjust VRAM/RAM split on Apple Silicon](https://github.com/ggml-org/llama.cpp/discussions/2182): code keeping back about a third of unified memory on Macs with up to 32GB and a quarter on larger ones, `sudo sysctl iogpu.wired_limit_mb`, the reset at restart unless the setting is in `/etc/sysctl.conf`, and the warning about swapping. Also the source cited for CanRun's 70% figure.
 - [Apple Metal docs: recommendedMaxWorkingSetSize](https://developer.apple.com/documentation/metal/mtldevice/recommendedmaxworkingsetsize): an approximation of how much memory the GPU can allocate without affecting performance.
-- [llama.cpp discussion #4167: Performance of llama.cpp on Apple Silicon M-series](https://github.com/ggml-org/llama.cpp/discussions/4167): public generation-speed measurements by chip, with speed tracking bandwidth, less than proportionally at the top end. Source of CanRun's Apple efficiency data.
+- [llama.cpp discussion #4167: Performance of llama.cpp on Apple Silicon M-series](https://github.com/ggml-org/llama.cpp/discussions/4167): public generation-speed measurements by chip, with speed tracking bandwidth, less than proportionally at the top end. Source of CanRun's Apple factor for dense models.
+- [llama.cpp discussion #15396: running gpt-oss with llama.cpp](https://github.com/ggml-org/llama.cpp/discussions/15396): the gpt-oss-20b results on M1 Pro, M1 Max, M4 Pro and M4 Max Macs that CanRun's Apple MoE factor is fitted to, and the M3 Max result a maintainer suggested was heat-throttled.
 - [llama.cpp build docs](https://github.com/ggml-org/llama.cpp/blob/master/docs/build.md): Metal enabled by default on macOS, running computation on the GPU; `--n-gpu-layers 0` disables GPU inference.
 - [llama.cpp README](https://github.com/ggml-org/llama.cpp): Apple silicon as a first-class target through ARM NEON, Accelerate and Metal.
 - [Ollama docs: context length](https://docs.ollama.com/context-length): default context tiers by GPU memory, the app slider, `OLLAMA_CONTEXT_LENGTH`, and the CONTEXT column in `ollama ps`.

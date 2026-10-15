@@ -146,8 +146,8 @@ tg = eff × memBandwidthGBs / bytesPerToken
 | nvidia (CUDA) | **0.70** | **0.45** | 0.62~0.80 (대역폭 클수록↓: 5090은 0.62, 3060은 0.80) |
 | amd (RDNA3/4) | **0.76** | 0.50 | 0.72~0.79 (Vulkan no-FA 4점, 값은 제출 댓글의 fa 0 줄 — 10-15 D79 에 0.78 → 0.77, D80 에 9070 XT 를 no-FA 값으로 고쳐 0.76) |
 | intel-arc | 0.59 | — | B580 실측 |
-| apple (base/Pro/Max) | **0.60** | 0.30 | 0.55~0.72 |
-| apple-ultra | 0.44 | 0.29 | 800GB/s급 비포화 |
+| apple (base/Pro/Max) | **0.60** | **0.44** | dense 0.55~0.72 · MoE 0.40~0.50 (gpt-oss 가이드 #15396 의 gpt-oss-20b 5점 — M4 Max 36GB 는 32코어 GPU 410GB/s. 10-15 D81 에 0.30 → 0.44: 옛 0.30 은 그 값을 40코어 546GB/s 에 붙인 레코드와 Ultra 값에 기댄 값이었다. 개발자가 열 스로틀링으로 본 M3 Max 0.34 는 제외) |
+| apple-ultra | 0.44 | 0.29 | 800GB/s급 비포화 (MoE: 같은 가이드의 M3 Ultra·M2 Ultra gpt-oss 3점 0.28~0.31 — 10-15 D81 재확인) |
 | strix (Ryzen AI Max) | 0.65 | **0.53** | ROCm7/Vulkan |
 | dgx-spark | **0.78** | **0.68** | dense 0.72~0.89 · MoE 0.60~0.83 (개발진 결과 파일 b7941, 깊이 0·8192 — 10-15 D79. 옛 0.40 은 출처와 맞지 않던 한 점에 맞춘 값) |
 | cpu | 0.50 | 0.43 | ≥8코어 전제, 코어 부족 시 ×0.7. MoE 0.43 의 근거(hardware-corner "DDR5-5600 · Qwen3 Q4 · 18–20")는 컨텍스트·CPU 미기재라 10-15 D79 에 실측 레코드에서 뺐다 — 값은 유지 |
@@ -216,7 +216,7 @@ F: tg < 2 || 모든 quant 미탑재
 - KV: 아키텍처 7종 공식값 **전수 일치**
 - 속도: 실측 12점 대조 **MAE 6.3% / max 17.1%** (worst: M4 Pro −17%, 5060Ti MoE −15% → 클래스 계수 한계, Phase 2 기기별 보정 대상). 10-15 D80 에 Strix Halo 점의 ctx 를 출처(pp512/tg128)대로 2048 → 512 로 고쳐 그 점 오차 −3.2% → −1.2%, MAE 6.2%
 - cpu-moe(09-30 → 10-01): 전문가 전부 RAM 공개 실측 3점(3060 Ti+DDR5-6800 gpt-oss-120b 24.85 · 5080+DDR5-4800 Qwen3.5-35B-A3B Q4_K_M 51.0·Q8_0 35.7) 각 ±20% 이내 + 전문가 일부 GPU 배치(`--n-cpu-moe N`)를 포함한 공개 실측 전체 MAE < 12%·±20% 안 ≥ 80%·전부 ±40% 안 (verify-regression 5)
-- 클래스 계수 재보정(10-15 D79·D80, verify-regression 8): AMD Vulkan no-FA 4점(7900 XTX b10868 182.63 · 9070 XT b7825 131.54 · 9070 b6188 119.71 · 7800 XT b7875 118.27 — 각 제출 댓글의 fa 0 줄) 각 ±12% 안·MAE 3.7%(최대 +5.1% 9070) — amd dense 0.78 → 0.77(D79) → 0.76(D80: 표가 9070 XT 의 FA 켬 줄 137.11 을 no-FA 칸에 넣어 두었다). DGX Spark 개발진 결과 파일(b7941, `-fa 1 -mmp 0`) 5모델 × 깊이 0·8192 10점 각 ±20% 안·MAE 10.0%(최대 −18.2% Qwen3-30B-A3B Q8_0 깊이 0) — dgx-spark 0.40/0.40 → dense 0.78·MoE 0.68
+- 클래스 계수 재보정(10-15 D79·D80·D81, verify-regression 8): AMD Vulkan no-FA 4점(7900 XTX b10868 182.63 · 9070 XT b7825 131.54 · 9070 b6188 119.71 · 7800 XT b7875 118.27 — 각 제출 댓글의 fa 0 줄) 각 ±12% 안·MAE 3.7%(최대 +5.1% 9070) — amd dense 0.78 → 0.77(D79) → 0.76(D80: 표가 9070 XT 의 FA 켬 줄 137.11 을 no-FA 칸에 넣어 두었다). DGX Spark 개발진 결과 파일(b7941, `-fa 1 -mmp 0`) 5모델 × 깊이 0·8192 10점 각 ±20% 안·MAE 10.0%(최대 −18.2% Qwen3-30B-A3B Q8_0 깊이 0) — dgx-spark 0.40/0.40 → dense 0.78·MoE 0.68. Apple MoE(10-15 D81): gpt-oss 가이드(#15396, `-fa 1 -ub 2048` tg128) gpt-oss-20b 5점(M4 Max 36GB=32코어 b6123 92.36·b6293 95.88 · M4 Pro 64GB 63.34 · M1 Max 64GB 75.15 · M1 Pro 32GB 45.68) 각 ±20% 안·MAE 10.2%(최대 −11.9% M4 Max b6293) — apple MoE 0.30 → 0.44. 같은 가이드의 Ultra 3점(M3 Ultra 20b 115.52 · M2 Ultra 20b 116.08 · 120b 79.68)은 apple-ultra MoE 0.29 로 각 ±7% 안·MAE 4.2%. 반례(회귀 밖): MacBook Pro M3 Max 128GB 64.26 은 0.44 로 +28% — 개발자가 열 스로틀링으로 봤다. 부수 효과: `unifiedCpuBandwidth`(통합 메모리 칩의 CPU 경로를 GPU 경로 이하로 깎는 계수 비율)가 apple 에서 min(1, 0.6/0.5, 0.30/0.43)=0.70 → 1.0 이 되어 맥의 cpu-only 이론 추정이 1.43배로 올랐다(CPU 경로 dense 0.5·MoE 0.43 이 GPU 경로 0.6·0.44 아래라 역전 없음)
 - 멀티 GPU(§6): 같은 카드 2~4장 공개 실측 10점 전부 ±30% 안·과대 5% 이하·MAE < 15%(verify-regression 6) + 서로 다른 카드 3점(5070 Ti + 3060 −6.8% · 3060 + P100 카드별 계수 +2.6%·−1.5%, verify-regression 7 — 10-03 D67)
 - 판정: RTX 4060 8GB에서 8B Q4_K_M "가능"(실측 38~42 tok/s로 확인) / 14B Q4_K_M "풀 오프로드 불가" — 커뮤니티 통념과 일치
 - CI 이식 시 print 스크립트가 아닌 **assertion 테스트로 변환**할 것 (Windows cp949 콘솔 인코딩 이슈가 외부 리뷰에서 재현됨)

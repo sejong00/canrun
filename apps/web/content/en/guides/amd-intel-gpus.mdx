@@ -76,7 +76,7 @@ LM Studio ships its llama.cpp engine as separate runtimes for the CPU, CUDA, Vul
 
 ### Which backend is faster?
 
-CanRun does not model the backend; its dense-model efficiency figures for Radeon and Arc cards come from public llama-bench results run through Vulkan. llama.cpp's own scoreboards give a rough answer for Llama 2 7B: on the RX 9070 XT, Vulkan generated about 30% faster than ROCm, and on the RX 7900 XTX about a tenth faster, while prompt speed was about the same on both cards. The runs come from different builds and machines, so measure your own card: load the same GGUF with each build and compare the `eval time` line that llama-server prints after each reply. For which figures to compare, see <GuideLink slug="tokens-per-second" />. The one ROCm result for a catalog model in CanRun's data, gpt-oss-20b on the RX 7900 XT, is shown under "How sure are these numbers?".
+CanRun does not model the backend; its dense-model efficiency figures for Radeon and Arc cards come from public llama-bench results run through Vulkan. llama.cpp's own scoreboards give a rough answer for Llama 2 7B: on the RX 9070 XT, Vulkan generated about 30% faster than ROCm, and on the RX 7900 XTX about a tenth faster, while prompt speed was about the same on both cards. The runs come from different builds and machines, so measure your own card: load the same GGUF with each build and compare the `eval time` line that llama-server prints after each reply. For which figures to compare, see <GuideLink slug="tokens-per-second" />. Public ROCm results for gpt-oss-20b are discussed under "How sure are these numbers?".
 
 ## Same VRAM, different speed: RX 9070 XT vs RTX 5070 Ti, RX 7900 XTX vs RTX 3090
 
@@ -136,11 +136,7 @@ The memory figures are calculated by formula from real GGUF file sizes and heade
 
 The speeds are estimates with a band and a label. Measured means a public benchmark for that card, model and quant. Calibrated means ±12% for dense models fully on an NVIDIA or AMD card and ±20% for MoE models, partial offload and other hardware, Intel Arc included. Theoretical means ±30%; in this guide it covers MoE experts in system RAM and every MoE model on the Arc B580.
 
-The Radeon and Arc dense-model efficiency figures rest on public Vulkan results for Llama 2 7B, which is not in the catalog, and no Radeon or Arc cell in the grid is measured. Our data holds one public measurement of a catalog model on a Radeon card: gpt-oss-20b on the <HubLink gpu="rx-7900-xt" />, from llama.cpp's gpt-oss guide thread (llama-bench through ROCm at a 2k context; not a CanRun run). The box below shows it next to CanRun's own 8k estimate band.
-
-<Measured model="gpt-oss-20b" gpu="rx-7900-xt" />
-
-The measured speed is well below the estimate band, even though a 2k run reads less KV cache than the 8k estimate assumes. The verdict stays Runs great,<Expect model="gpt-oss-20b" gpu="rx-7900-xt" verdict="S" confidence="measured" /> but until more results arrive, read CanRun's MoE speeds on Radeon cards as possibly high.
+The Radeon and Arc dense-model efficiency figures rest on public Vulkan results for Llama 2 7B, which is not in the catalog, and no Radeon or Arc cell in the grid is measured. For MoE models, llama.cpp's gpt-oss guide thread has two ROCm results for gpt-oss-20b (llama-bench at a 2k context; not CanRun runs). An RX 7900 GRE, which is not in our catalog, ran the same MXFP4 file CanRun uses, and CanRun's formula puts that card about a tenth faster than it measured. The result for the <HubLink gpu="rx-7900-xt" /> is much slower. Its poster converted the model themselves, into a file that stores the weights outside the experts at 16 bits, so each token reads more memory than with the MXFP4 file. CanRun therefore does not match it to the MXFP4 cell, and gpt-oss-20b on the RX 7900 XT is a calibrated estimate that Runs great.<Expect model="gpt-oss-20b" gpu="rx-7900-xt" verdict="S" confidence="calibrated" /> Even allowing for the larger file, that result is lower than CanRun's estimate, so until more results arrive, read CanRun's MoE speeds on Radeon cards as possibly high.
 
 All of this assumes Windows with the card driving the display, 32GB of DDR5-5600 dual-channel system RAM, an 8k context, an f16 KV cache, one model loaded, one request slot and a llama.cpp-class runtime. The backend (ROCm, Vulkan or SYCL) is not part of the calculation. On your PC, the PROCESSOR column of `ollama ps` shows what actually happened: 100% GPU, or a CPU/GPU split.
 
@@ -184,5 +180,5 @@ For the 14B models named here, yes at Q4_K_M with an 8k context, with little mar
 - [llama.cpp: performance with Vulkan](https://github.com/ggml-org/llama.cpp/discussions/10879): llama-bench results for Llama 2 7B at Q4_0 on the RX 7900 XTX, RX 9070 XT and Arc B580, the basis of CanRun's Radeon and Arc figures.
 - [llama.cpp: performance on AMD ROCm (HIP)](https://github.com/ggml-org/llama.cpp/discussions/15021): the same benchmark on the RX 9070 XT and RX 7900 XTX through ROCm, compared here with the Vulkan results.
 - [llama.cpp: performance on NVIDIA CUDA](https://github.com/ggml-org/llama.cpp/discussions/15013): the same benchmark on the RTX 5070 Ti, RTX 3090 and RTX 3060 12GB.
-- [llama.cpp: guide to running gpt-oss](https://github.com/ggml-org/llama.cpp/discussions/15396): the gpt-oss-20b result on the RX 7900 XT through ROCm.
+- [llama.cpp: guide to running gpt-oss](https://github.com/ggml-org/llama.cpp/discussions/15396): gpt-oss-20b results through ROCm on the RX 7900 XT, with a self-converted file, and on the RX 7900 GRE, with the MXFP4 file.
 - [gpt-oss-20b model card](https://huggingface.co/openai/gpt-oss-20b): total and active parameters, runs within 16GB of memory.

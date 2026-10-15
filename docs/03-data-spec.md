@@ -173,12 +173,13 @@ KV = KiB/tok(f16). 파일 크기 = 실측 GGUF(decimal GB), 출처 repo 명기.
 | RTX 3060 | 〃 | 〃 | 2,138 | 75.6 | 〃 |
 | RTX 5090/4090/3090 | Qwen3-8B Q4 | 16k | — | 145.3/104.3/87.5 | hardware-corner llama-bench |
 | RTX 5090/4090/3090 | Qwen3-30B-A3B Q4 | 16k | — | 141.6/139.7/113.8 | 〃 |
-| RTX 4090 | gpt-oss-20b MXFP4 | 2k | 8,078 | 225.2 | llama.cpp #15396 |
+| RTX 4090 | gpt-oss-20b MXFP4 | 2k | 8,078 | 225.2 | llama.cpp #15396 (10-15 D81 — 제출 댓글 b6210 ub 4096 줄) |
 | RTX 5060 Ti 16GB | 〃 | 2k | 3,821 | 111.6 | 〃 |
 | RTX 4060 | L3.1-8B Q4_K_M | 가중 | 1,528 | 38.1 | LocalScore acc/137 |
 | RTX 3060 12GB | Qwen2.5-14B Q4_K_M | 가중 | 753 | 26.4 | LocalScore acc/43 |
 | M4 Max 40c | L2-7B Q4_0 | 짧음 | 886 | 83.1 | llama.cpp #4167 |
 | M3 Ultra | gpt-oss-20b | 2k | 2,816 | 115.5 | #15396 |
+| M4 Max 32c (36GB) | gpt-oss-20b | 2k | 1,277 | 92.4 | #15396 원글 b6123 (10-15 D81 — 옛 레코드는 40코어에 붙어 있었다) |
 | M3 Max 128GB | L3.3-70B Q4_K_M | — | — | 9.8 | Ollama 실측 블로그 |
 | Strix Halo | gpt-oss-120b MXFP4 | 짧음 | 707 | 50.2 | quozul.dev ROCm 7.0.2 (10-15 D80 — pp512/tg128) |
 | DGX Spark | gpt-oss-120b | 2k | 2,444 | 58.7 | llama.cpp 개발진 결과 파일 b7941 (10-15 D79 — 옛 1,717/~35 는 출처와 맞지 않았다) |

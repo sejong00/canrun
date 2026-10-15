@@ -93,12 +93,13 @@ export const CPU_OS_RESERVE_GB = 4;
 // source: https://github.com/ggml-org/llama.cpp/discussions/15013 · https://github.com/ggml-org/llama.cpp/discussions/15396 · https://www.localscore.ai · https://www.hardware-corner.net/gpu-ranking-local-llm/ — 실측 70여 점 도출 (docs/02 §3.2, research/hardware.md §6)
 // source(amd, 10-15 D79·D80): https://github.com/ggml-org/llama.cpp/discussions/10879 Vulkan 스코어보드 no-FA 4점, 값은 제출 댓글 fa 0 줄 — 7900 XTX b10868 182.63(https://github.com/ggml-org/llama.cpp/discussions/10879#discussioncomment-18386832)·9070 XT b7825 131.54(https://github.com/ggml-org/llama.cpp/discussions/10879#discussioncomment-15594467)·9070 b6188 119.71(https://github.com/ggml-org/llama.cpp/discussions/10879#discussioncomment-14129066)·7800 XT b7875 118.27(https://github.com/ggml-org/llama.cpp/discussions/10879#discussioncomment-15642964)이 같은 식에서 0.72~0.79 → 최대 오차를 가장 작게 하는 값(minimax) 0.76. D79 의 0.77 은 표가 9070 XT 의 FA 켬 줄(137.11)을 no-FA 칸에 넣은 값으로 구했었다(0.72~0.83)
 // source(dgx-spark, 10-15 D79): https://github.com/ggml-org/llama.cpp/blob/3795cc1e89e16fbc145f8a5457ea30abd86e0d1d/benches/dgx-spark/dgx-spark.md (b7941 llama-bench, 깊이 0·8192) — dense 2모델 0.72~0.89, MoE 3모델 0.60~0.83 → 각 점이 ±20% 밴드 안에 드는 범위에서 dense 0.78·MoE 0.68 (옛 0.4 는 출처와 맞지 않던 tg 35 한 점에 맞춘 값)
+// source(apple moe, 10-15 D81): https://github.com/ggml-org/llama.cpp/discussions/15396 gpt-oss 가이드의 Apple Metal gpt-oss-20b tg128(-fa 1 -ub 2048) 5점 — M4 Max 36GB(=32코어 GPU 410GB/s, https://support.apple.com/en-us/121553) b6123 92.36(가이드 본문)·b6293 95.88(https://github.com/ggml-org/llama.cpp/discussions/15396#discussioncomment-14225207), M4 Pro 64GB 63.34(https://github.com/ggml-org/llama.cpp/discussions/15396#discussioncomment-14226807), M1 Max 64GB 75.15(https://github.com/ggml-org/llama.cpp/discussions/15396#discussioncomment-14146721), M1 Pro 32GB 45.68(가이드 본문)이 같은 식에서 0.40~0.50 → minimax 0.445 를 내림한 0.44. 옛 0.30 은 M4 Max 36GB 값을 40코어(546GB/s)로 잘못 붙인 레코드와 Ultra 값(0.28~0.31)에 기댄 값이었다. 개발자가 열 스로틀링으로 본 M3 Max 64.26(https://github.com/ggml-org/llama.cpp/discussions/15396#discussioncomment-14224424)은 뺐다(0.34)
 // source(cpu moe): https://www.hardware-corner.net/guides/qwen3-hardware-requirements/ ("Dual-channel DDR5 5600 MHz · Qwen3 Q4 · 18–20" — 컨텍스트·CPU·백엔드 미기재라 10-15 D79 에 실측 레코드에서 뺐다, 값은 유지). 같은 쪽의 조건이 밝혀진 근거는 CPU_MOE_RAM_EFF 0.5(전문가를 RAM 에서 읽는 효율) — 0.43 은 그보다 낮은 보수값
 export const EFF: Readonly<Record<EffClass, { dense: number; moe?: number }>> = Object.freeze({
   nvidia: { dense: 0.7, moe: 0.45 }, // 0.62~0.80, 대역폭 클수록↓ (5090은 0.62, 3060은 0.80 → effOverride)
   amd: { dense: 0.76, moe: 0.5 }, // Vulkan no-FA 4점 minimax — 10-15 D80
   'intel-arc': { dense: 0.59 }, // MoE 미검증 (B580 실측)
-  apple: { dense: 0.6, moe: 0.3 },
+  apple: { dense: 0.6, moe: 0.44 }, // MoE: gpt-oss 가이드 5점 minimax — 10-15 D81
   'apple-ultra': { dense: 0.44, moe: 0.29 }, // 800GB/s급 비포화
   strix: { dense: 0.65, moe: 0.53 }, // ROCm7/Vulkan
   'dgx-spark': { dense: 0.78, moe: 0.68 }, // 개발진 결과 파일 b7941 (mmap 끔) — 10-15 D79
@@ -106,7 +107,7 @@ export const EFF: Readonly<Record<EffClass, { dense: number; moe?: number }>> = 
 });
 
 /** pp ≈ ppCoef × fp16Tflops (±40% "대략" 표기 전용, §3.5 — NVIDIA 140/TFLOP, Apple 45, AMD/Intel 30~40) */
-// source: https://github.com/ggml-org/llama.cpp/discussions/15013 (CUDA pp512) · https://github.com/ggml-org/llama.cpp/discussions/10879 (7900 XTX Vulkan — 10-15 D79 재확인: 현재 표 pp512 3727 = 30/TFLOP, 옛 3532 = 29. 같은 표 9070 XT 52·9070 44·7800 XT 27, 15396 의 7900 XT ROCm pp2048 41 → AMD 35 유지, ±40% "대략" 밴드 안)
+// source: https://github.com/ggml-org/llama.cpp/discussions/15013 (CUDA pp512) · https://github.com/ggml-org/llama.cpp/discussions/10879 (7900 XTX Vulkan — 10-15 D79 재확인: 현재 표 pp512 3727 = 30/TFLOP, 옛 3532 = 29. 같은 표 9070 XT 52·9070 44·7800 XT 27, 15396 의 7900 XT ROCm pp2048 41(직접 변환한 BF16 파일 — 10-15 D81) → AMD 35 유지, ±40% "대략" 밴드 안)
 export const PP_COEF: Readonly<Partial<Record<EffClass, number>>> = Object.freeze({
   nvidia: 140,
   apple: 45,

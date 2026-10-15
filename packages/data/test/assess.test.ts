@@ -113,11 +113,13 @@ describe('measured join (결정 D4)', () => {
     expect(c.baseline.result.confidence).toBe('calibrated');
   });
 
-  it('통합 메모리 조인 (M4 Max 40c × gpt-oss-20b @128GB, full-gpu)', () => {
-    const c = combo('apple-m4-max-40c', 'gpt-oss-20b', 2);
+  it('통합 메모리 조인 (M4 Max 32c × gpt-oss-20b @36GB, full-gpu)', () => {
+    // 10-15 D81: 출처의 "M4 Max (36GB)" 는 32코어 GPU 구성뿐 — 40코어에 붙어 있던 레코드를 옮겼다
+    const c = combo('apple-m4-max-32c', 'gpt-oss-20b', 0);
     expect(c.baseline.result.mode).toBe('full-gpu');
     expect(c.baseline.result.confidence).toBe('measured');
     expect(c.baseline.result.tgTokS.est).toBeCloseTo(92.4, 5);
+    expect(combo('apple-m4-max-40c', 'gpt-oss-20b', 2).baseline.result.confidence).toBe('calibrated');
   });
 
   it('CPU 프로필은 cpu-only 에서도 조인 (dGPU 와 달리 모드 무관)', () => {
@@ -135,10 +137,12 @@ describe('measured join (결정 D4)', () => {
 
 describe('통합 메모리 CPU 경로 (P1-1 리뷰 — 역전 방지)', () => {
   it('CPU측 대역폭은 기존 계수 비율로 깎인다 (새 상수 없음)', () => {
+    const m3u = gpu('apple-m3-ultra');
+    // apple-ultra: min(1, 0.44/0.5, 0.29/0.43) = 0.29/0.43
+    expect(unifiedCpuBandwidth(m3u)).toBeCloseTo((m3u.memBandwidthGBs * 0.29) / 0.43, 6);
+    // apple: min(1, 0.6/0.5, 0.44/0.43) = 1 (10-15 D81 — MoE 0.30 → 0.44) · strix: 계수가 cpu 보다 커서 깎지 않는다
     const m4 = gpu('apple-m4');
-    // apple: min(1, 0.6/0.5, 0.30/0.43) = 0.30/0.43
-    expect(unifiedCpuBandwidth(m4)).toBeCloseTo((m4.memBandwidthGBs * 0.3) / 0.43, 6);
-    // strix: 계수가 cpu 보다 커서 깎지 않는다
+    expect(unifiedCpuBandwidth(m4)).toBe(m4.memBandwidthGBs);
     const strix = gpu('amd-strix-halo');
     expect(unifiedCpuBandwidth(strix)).toBe(strix.memBandwidthGBs);
   });

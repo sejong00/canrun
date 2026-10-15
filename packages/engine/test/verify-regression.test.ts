@@ -9,7 +9,7 @@
  *  4) 판정 새너티: 4060 8GB 통념 일치
  *  5) cpu-moe(전문가 RAM) 3점: 각 ±20% 이내 + MAE < 12% (09-30 보정 — 이전 식은 ~2.5× 과소)
  *  6) 같은 GPU 여러 장 10점(D58) · 7) 서로 다른 GPU 섞기 3점(D67)
- *  8) 클래스 계수 재보정 14점(10-15 D79): AMD Vulkan 4점 각 ±12% · DGX Spark 10점 각 ±20%
+ *  8) 클래스 계수 재보정 22점(10-15 D79·D81): AMD Vulkan 4점 각 ±12% · DGX Spark 10점·Apple MoE 8점 각 ±20%
  */
 import { describe, expect, it } from 'vitest';
 import { fit } from '../src/fit';
@@ -195,7 +195,7 @@ describe('7) mixed GPUs layer split (§6 beta, 10-03 D67): 공개 실측 3점', 
   });
 });
 
-describe('8) class recalibration (10-15 D79): AMD Vulkan 4점 · DGX Spark 10점', () => {
+describe('8) class recalibration (10-15 D79·D81): AMD Vulkan 4점 · DGX Spark 10점 · Apple MoE 8점', () => {
   const errors = RECAL_1015_CASES.map(
     ({ hw, mq, ctx, measuredTg }) => (tgEstimate(hw, mq, { mode: 'full-gpu' }, { ctx }) - measuredTg) / measuredTg,
   );
@@ -215,5 +215,14 @@ describe('8) class recalibration (10-15 D79): AMD Vulkan 4점 · DGX Spark 10점
     const spark = group('DGX Spark');
     expect(spark).toHaveLength(10);
     expect(spark.reduce((a, b) => a + Math.abs(b), 0) / spark.length).toBeLessThan(0.12);
+  });
+
+  it('Apple MoE (gpt-oss 가이드 #15396): base/Pro/Max 5점 MAE < 12% · Ultra 3점 MAE < 7%', () => {
+    const base = [...group('Apple M4'), ...group('Apple M1')];
+    const ultra = [...group('Apple M3 Ultra'), ...group('Apple M2 Ultra')];
+    expect(base).toHaveLength(5);
+    expect(ultra).toHaveLength(3);
+    expect(base.reduce((a, b) => a + Math.abs(b), 0) / base.length).toBeLessThan(0.12);
+    expect(ultra.reduce((a, b) => a + Math.abs(b), 0) / ultra.length).toBeLessThan(0.07);
   });
 });
