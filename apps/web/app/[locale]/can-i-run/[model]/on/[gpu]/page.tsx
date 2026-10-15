@@ -258,19 +258,17 @@ export default async function ComboPage({ params }: Props) {
   // 메모리 열의 분모 — dGPU 는 VRAM 전체, 통합은 GPU 사용 가능량 (허브 표와 동일)
   const memTotal = gpu.kind === 'dgpu' ? (gpu.vramGB ?? 0) : q.memory.gpuUsableGB;
 
+  // FP16 연산 성능을 밝히지 않은 칩(M5 Ultra — 10-16 D85)은 FP16 구절을 뺀다
+  const fp16 = gpu.fp16Tflops;
   const spec =
     gpu.kind === 'dgpu'
-      ? t.combo('specDgpu', {
-          vram: formatInt(locale, gpu.vramGB ?? 0),
-          bandwidth: gb(gpu.memBandwidthGBs),
-          fp16: gb(gpu.fp16Tflops ?? 0),
-        })
+      ? fp16 !== undefined
+        ? t.combo('specDgpu', { vram: formatInt(locale, gpu.vramGB ?? 0), bandwidth: gb(gpu.memBandwidthGBs), fp16: gb(fp16) })
+        : t.combo('specDgpuNoFp16', { vram: formatInt(locale, gpu.vramGB ?? 0), bandwidth: gb(gpu.memBandwidthGBs) })
       : gpu.kind === 'unified'
-        ? t.combo('specUnified', {
-            ram: formatInt(locale, page.config.ramGB),
-            bandwidth: gb(gpu.memBandwidthGBs),
-            fp16: gb(gpu.fp16Tflops ?? 0),
-          })
+        ? fp16 !== undefined
+          ? t.combo('specUnified', { ram: formatInt(locale, page.config.ramGB), bandwidth: gb(gpu.memBandwidthGBs), fp16: gb(fp16) })
+          : t.combo('specUnifiedNoFp16', { ram: formatInt(locale, page.config.ramGB), bandwidth: gb(gpu.memBandwidthGBs) })
         : t.combo('specCpu', { ram: formatInt(locale, page.config.ramGB), bandwidth: gb(gpu.memBandwidthGBs) });
   const ramFloor = HUB_POLICY.comboRamGB[0]!;
   const ramCeil = HUB_POLICY.comboRamGB.at(-1)!;
@@ -538,7 +536,11 @@ export default async function ComboPage({ params }: Props) {
             </dd>
             <dt className="text-muted-foreground">{t.combo('pp')}</dt>
             <dd>
-              {page.pp ? ppText(page.pp) : t.combo('ppNone')}
+              {page.pp
+                ? ppText(page.pp)
+                : fp16 === undefined && q.fits && q.result.mode === 'full-gpu'
+                  ? t.combo('ppNoFp16')
+                  : t.combo('ppNone')}
             </dd>
           </dl>
           {reasonText(q) && (
