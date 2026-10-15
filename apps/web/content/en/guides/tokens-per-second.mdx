@@ -1,0 +1,170 @@
+Generation speed, the tokens per second a model writes, depends mostly on your card's memory bandwidth and on whether the whole model fits in VRAM. Llama 3.1 8B fits on an 8GB RTX 4060 and Runs great there, backed by a public benchmark.<Expect model="llama-3.1-8b" gpu="rtx-4060" verdict="S" confidence="measured" /> Qwen3 14B does not fit on that card, so part of it runs from system RAM and it Runs slowly, a calibrated estimate.<Expect model="qwen3-14b" gpu="rtx-4060" verdict="B" mode="partial-offload" confidence="calibrated" /> Prompt processing, how fast a model reads your input, is a second speed that depends on the GPU's compute instead.
+
+## How fast is fast enough: CanRun's verdict lines
+
+Local runtimes report two speeds. Generation speed (Ollama's `eval rate`, llama-bench's `tg`) is how fast the reply appears. Prompt processing (`prompt eval rate`, or `pp`) is how fast the model reads what you send, and it decides how long you wait before the first word. CanRun's verdicts use generation speed, estimated at an 8k context; prompt processing has its own section further down.
+
+The legend below shows where each verdict starts. CanRun set the top line above typical reading pace, so a reply appears faster than you can follow it. Between the two upper lines you can read along, though a long answer or a block of code takes a while. Under the bottom line a reply of a few paragraphs takes minutes, and CanRun rates the setup Won't run.
+
+<Threshold />
+
+Speed is not the only test. Runs great is kept for models that run fully on the GPU; the legend lists the limits for a model split between GPU and system RAM and for a CPU-only PC.
+
+Models with a thinking mode face lines 1.5 times higher. They write out their reasoning before the answer, so you wait for many more tokens per reply. That covers models that always think, such as gpt-oss, and models that can switch thinking on and off, such as Qwen3 14B, where it is on by default. On the RTX 3060 12GB, Qwen3 14B Runs well,<Expect model="qwen3-14b" gpu="rtx-3060-12gb" verdict="A" /> while <HubLink model="phi-4" />, a 14B model without a thinking mode and with about the same estimated speed, Runs great.<Expect model="phi-4" gpu="rtx-3060-12gb" verdict="S" /> How to turn thinking off, and what it costs to leave it on, is in <GuideLink slug="thinking-models" />.
+
+A token is a piece of a word. How much text one token holds depends on the model's tokenizer and on the language, so the same tok/s can put text on screen at different rates for two models.
+
+## What sets generation speed: memory bandwidth and bytes per token
+
+To write one token, the GPU reads every weight the model uses for that token, plus the KV cache, the memory that holds the conversation so far. Memory bandwidth, how many gigabytes per second the card can read from its VRAM, limits how often it can do that. CanRun's estimate is the card's bandwidth times an efficiency factor, divided by the bytes read per token. For a dense model fully on an NVIDIA card the factor is about seven-tenths of the rated bandwidth; it differs by hardware class and was fitted to public benchmarks.
+
+The rule of thumb follows from that division: double the bandwidth and the estimate roughly doubles; double the bytes per token and it halves. Bandwidth spans a wide range, from <Num kind="bandwidth" gpu="rtx-4060" /> on the RTX 4060 to <Num kind="bandwidth" gpu="rtx-5090" /> on the RTX 5090.
+
+For a dense model, the bytes read per token are nearly the whole set of weights on the GPU. These are the four models used in the grid further down, at their default quant:
+
+<ModelMemoryTable models="llama-3.1-8b,qwen3-14b,gemma-3-27b,qwen3-30b-a3b-2507" />
+
+The Parameters column shows why <HubLink model="qwen3-30b-a3b-2507" /> is the odd one out. It is a mixture-of-experts (MoE) model: a router picks a few expert blocks for each token, so only about a tenth of its parameters are active per token (the column gives both counts). It reads far fewer bytes per token than its file size suggests, but the whole file still has to fit in memory, because the router can pick any expert.
+
+Quantization works the same way. A Q8_0 file of Qwen3 14B is <Num kind="fileGB" model="qwen3-14b" quant="Q8_0" /> against <Num kind="fileGB" model="qwen3-14b" /> at Q4_K_M, so on a 24GB card where both fit, CanRun's Q8_0 estimate is about three-fifths of the Q4_K_M one. A smaller quant is faster as well as smaller, at some cost in quality; <GuideLink slug="gguf-quantization" /> compares the levels.
+
+### Longer chats get slower
+
+Each new token also reads the whole KV cache, and the cache grows with every token in the conversation. CanRun's speed figures assume the context is filled to the length in question. By that calculation a fresh chat runs faster than the 8k figure and a long one slower. The table for <ComboLink model="qwen3-30b-a3b-2507" gpu="rtx-3090" /> shows the effect on an MoE model, where it is larger:
+
+<CtxTable model="qwen3-30b-a3b-2507" gpu="rtx-3090" />
+
+With an f16 KV cache, the estimate at 32k is a little over half the 8k one. This model reads only a tenth of its weights per token, so the cache makes up a large share of each read. For a dense model such as Llama 3.1 8B, whose weights dominate the read, the drop over the same range is smaller. At 32k the model needs <Num kind="needGB" model="qwen3-30b-a3b-2507" ctx="32768" /> and still fits in the <Num kind="usableGB" gpu="rtx-3090" /> the card can use.<Expect model="qwen3-30b-a3b-2507" gpu="rtx-3090" ctx="32768" fits="true" mode="full-gpu" /> At 64k it needs <Num kind="needGB" model="qwen3-30b-a3b-2507" ctx="65536" />, so in CanRun's calculation part of the experts move to system RAM and the speed falls further, a theoretical estimate.<Expect model="qwen3-30b-a3b-2507" gpu="rtx-3090" ctx="65536" fits="true" mode="cpu-moe" confidence="theoretical" />
+
+The q8_0 and q4_0 columns come out faster because CanRun counts the smaller cache it reads. That part of the calculation has not been checked against public measurements, so read those columns mainly for memory. What they save is explained in <GuideLink slug="kv-cache-context" />.
+
+## The same model on different cards
+
+The grid puts four models on eight setups, ordered from the least memory bandwidth to the most: a PC with no graphics card (dual-channel DDR5-5600 system RAM), then seven NVIDIA cards. Every cell assumes an 8k context and an f16 KV cache, with 32GB of DDR5 system RAM on the graphics card rows. Where a cell is labelled measured, the first figure is a public benchmark and the line under it is CanRun's estimate.
+
+<ComboGrid grid="speed" />
+
+### When the model fits, bandwidth sets the order
+
+Llama 3.1 8B fits on every graphics card in the grid and Runs great on all of them.<Expect model="llama-3.1-8b" gpu="rtx-4060" verdict="S" /><Expect model="llama-3.1-8b" gpu="rtx-4060-ti-16gb" verdict="S" /><Expect model="llama-3.1-8b" gpu="rtx-3060-12gb" verdict="S" /><Expect model="llama-3.1-8b" gpu="rtx-5060-ti-16gb" verdict="S" /><Expect model="llama-3.1-8b" gpu="rtx-5070" verdict="S" /><Expect model="llama-3.1-8b" gpu="rtx-3090" verdict="S" /><Expect model="llama-3.1-8b" gpu="rtx-5090" verdict="S" /> CanRun's estimate for it climbs with bandwidth down the rows. The RTX 4060 row shows a higher first figure than the RTX 4060 Ti 16GB row only because the 4060's cell carries a public benchmark; its estimate, on the line below, is the lower one.
+
+Memory size does not change the speed of a model that already fits. The <HubLink gpu="rtx-4060-ti-16gb" /> and the <HubLink gpu="rtx-5060-ti-16gb" /> both have 16GB, but the newer card reads <Num kind="bandwidth" gpu="rtx-5060-ti-16gb" /> against <Num kind="bandwidth" gpu="rtx-4060-ti-16gb" />. Qwen3 14B Runs well on the older card<Expect model="qwen3-14b" gpu="rtx-4060-ti-16gb" verdict="A" mode="full-gpu" /> and Runs great on the newer one.<Expect model="qwen3-14b" gpu="rtx-5060-ti-16gb" verdict="S" mode="full-gpu" />
+
+The older RTX 3060 12GB has less memory than the RTX 4060 Ti 16GB but more bandwidth, <Num kind="bandwidth" gpu="rtx-3060-12gb" />, so CanRun estimates it quicker with Llama 3.1 8B and Qwen3 14B. The extra memory still counts for models that need it. gpt-oss-20b runs fully on the GPU of the RTX 4060 Ti 16GB and Runs great,<Expect model="gpt-oss-20b" gpu="rtx-4060-ti-16gb" verdict="S" mode="full-gpu" /> while on the RTX 3060 12GB part of its experts go to system RAM and it Runs well, a theoretical estimate.<Expect model="gpt-oss-20b" gpu="rtx-3060-12gb" verdict="A" mode="cpu-moe" confidence="theoretical" />
+
+### When it does not fit, bandwidth stops deciding
+
+<HubLink model="gemma-3-27b" /> needs <Num kind="needGB" model="gemma-3-27b" /> at 8k, more than a 16GB card can use. On the five graphics cards with 16GB or less, part of it runs from system RAM and it Runs slowly.<Expect model="gemma-3-27b" gpu="rtx-4060" verdict="B" mode="partial-offload" /><Expect model="gemma-3-27b" gpu="rtx-4060-ti-16gb" verdict="B" mode="partial-offload" /><Expect model="gemma-3-27b" gpu="rtx-3060-12gb" verdict="B" mode="partial-offload" /><Expect model="gemma-3-27b" gpu="rtx-5060-ti-16gb" verdict="B" mode="partial-offload" /><Expect model="gemma-3-27b" gpu="rtx-5070" verdict="B" mode="partial-offload" /> The order no longer follows bandwidth. The RTX 5070 reads <Num kind="bandwidth" gpu="rtx-5070" />, more than either 16GB card, yet its estimate is lower than both, because its 12GB keep less of the model on the GPU. On the RTX 3090 the whole model fits and Runs great.<Expect model="gemma-3-27b" gpu="rtx-3090" verdict="S" mode="full-gpu" />
+
+Qwen3 30B-A3B shows the MoE case. On the cards with 16GB or less, CanRun keeps the experts that do not fit in system RAM, and each token reads only the few it needs from there. It Runs well on all five of those cards, as theoretical estimates.<Expect model="qwen3-30b-a3b-2507" gpu="rtx-4060" verdict="A" mode="cpu-moe" confidence="theoretical" /><Expect model="qwen3-30b-a3b-2507" gpu="rtx-4060-ti-16gb" verdict="A" mode="cpu-moe" confidence="theoretical" /><Expect model="qwen3-30b-a3b-2507" gpu="rtx-3060-12gb" verdict="A" mode="cpu-moe" confidence="theoretical" /><Expect model="qwen3-30b-a3b-2507" gpu="rtx-5060-ti-16gb" verdict="A" mode="cpu-moe" confidence="theoretical" /><Expect model="qwen3-30b-a3b-2507" gpu="rtx-5070" verdict="A" mode="cpu-moe" confidence="theoretical" /> On the RTX 3090 it fits fully and Runs great,<Expect model="qwen3-30b-a3b-2507" gpu="rtx-3090" verdict="S" mode="full-gpu" /> and CanRun estimates it faster there than Qwen3 14B, although its file is about twice as large. The gain is smaller than the gap in bytes read, because CanRun applies a lower efficiency factor to MoE models, fitted to public benchmarks. On the RTX 5090 its estimate stops at a cap CanRun sets for small MoE models on top-end cards, where per-token overhead rather than bandwidth limits the speed.
+
+A CPU-only setup is rated Runs slowly at most, however high its estimate, so even Llama 3.1 8B Runs slowly on the CPU row.<Expect model="llama-3.1-8b" gpu="cpu-ddr5-5600-2ch" verdict="B" mode="cpu-only" /> Qwen3 30B-A3B on that row has a public benchmark behind it and is still rated Runs slowly for the same reason.<Expect model="qwen3-30b-a3b-2507" gpu="cpu-ddr5-5600-2ch" verdict="B" mode="cpu-only" confidence="measured" /> Which models fit on each memory size is covered in <GuideLink slug="vram-requirements" />.
+
+## Why a small spill costs so much speed
+
+When a model does not fit, the runtime keeps the layers that do not fit in system RAM, and every token has to pass through them. Dual-channel DDR5-5600, the system RAM CanRun assumes, reads <Num kind="bandwidth" gpu="cpu-ddr5-5600-2ch" />, about a third of the RTX 4060's <Num kind="bandwidth" gpu="rtx-4060" />. CanRun also counts on only about half of the RAM's rated bandwidth for that part, against about seven-tenths of a card's VRAM bandwidth. The time spent on the RAM part adds to the time on the GPU part, so the slow part sets the pace.
+
+Compare Qwen3 14B on two cards with almost the same bandwidth. On the RTX 4060 Ti 16GB it fits and Runs well.<Expect model="qwen3-14b" gpu="rtx-4060-ti-16gb" verdict="A" mode="full-gpu" /> On the 8GB RTX 4060 it needs <Num kind="needGB" model="qwen3-14b" /> against <Num kind="usableGB" gpu="rtx-4060" /> usable, so about two-fifths of its weights go to system RAM, and it Runs slowly, a calibrated estimate.<Expect model="qwen3-14b" gpu="rtx-4060" verdict="B" mode="partial-offload" confidence="calibrated" /> In CanRun's calculation that RAM share takes about three-quarters of the time for each token. The ladder for <ComboLink model="qwen3-14b" gpu="rtx-4060" /> shows the speed following the share left in RAM:
+
+<QuantLadder model="qwen3-14b" gpu="rtx-4060" />
+
+Q8_0 leaves the most in system RAM and is the slowest. IQ4_XS moves a little more onto the GPU but still Runs slowly.<Expect model="qwen3-14b" gpu="rtx-4060" quant="IQ4_XS" verdict="B" mode="partial-offload" /> Only Q2_K, which fits all but a sliver, gets past the line to Runs well,<Expect model="qwen3-14b" gpu="rtx-4060" quant="Q2_K" verdict="A" mode="partial-offload" /> and Q2_K belongs to the Heavy loss quality group. CanRun rates a dense model with less than nine-tenths of its weights on the GPU no higher than Runs slowly, whatever the estimate.
+
+MoE models lose less, because each token reads only the chosen experts from system RAM. That is why Qwen3 30B-A3B still Runs well on the RTX 4060, a theoretical estimate.<Expect model="qwen3-30b-a3b-2507" gpu="rtx-4060" verdict="A" mode="cpu-moe" confidence="theoretical" /> <GuideLink slug="moe-cpu-offload" /> covers that setup, and <GuideLink slug="gpu-offload-check" /> shows how to see where your runtime put the model and what to shrink first.
+
+## Prompt processing: why the first word can take a while
+
+Before it writes anything, the model reads the whole prompt: the system prompt, the chat history and your new message. It takes these tokens in large batches, so this step is limited by the GPU's compute rather than its memory bandwidth. Generation goes one token at a time and waits on memory.
+
+llama.cpp's public scoreboard for NVIDIA cards, which runs Llama 2 7B at Q4_0 through llama-bench, shows the split. The RTX 4090 has only a little more bandwidth than the RTX 3090 (<Num kind="bandwidth" gpu="rtx-4090" /> against <Num kind="bandwidth" gpu="rtx-3090" />). In that scoreboard it generates less than a fifth faster but processes prompts more than twice as fast. The RTX 3060 (12GB) generates nearly a fifth faster than the RTX 4060 Ti (8GB), while the RTX 4060 Ti reads prompts about one and a half times as fast.
+
+The wait before the first word is roughly the new prompt tokens divided by the prompt speed, plus loading time if the model was not in memory yet. In a chat it stays short, because runtimes reuse the part of the prompt they have already processed: Ollama reports those tokens as `prompt eval cached`, and llama-server as `cache_n`. It grows when you paste a long document or run an agent, whose instructions and tool descriptions alone are long; <GuideLink slug="local-coding-agents" /> covers that case.
+
+CanRun's combo pages show a prompt speed as a rough estimate (±40%), calculated from the card's FP16 compute and shown only when the whole model is on the GPU. It is fitted to a 7B model and is the same for every model on a card, so larger dense models read prompts more slowly than it shows.
+
+## Measuring speed on your own PC
+
+### Ollama
+
+Run a model with `--verbose`. The command is the same in PowerShell, macOS and Linux:
+
+```powershell
+ollama run llama3.1:8b --verbose
+```
+
+In a session that is already running, `/set verbose` turns on the same output. After each reply Ollama prints its timings:
+
+- `eval rate` is the generation speed, the figure to compare with CanRun's tables.
+- `prompt eval rate` is the prompt speed, counted only over the tokens it actually processed. `prompt eval cached` shows how many it reused.
+- `load duration` is the time spent loading the model. It counts toward `total duration` but not toward either rate.
+
+Ask for a reply of several paragraphs, since a very short reply gives a noisy rate. While the model is loaded, run `ollama ps` in a second window: PROCESSOR should read 100% GPU, and a CPU/GPU split explains a low rate. The rate also drifts down as a chat grows, for the reason in the context table above.
+
+### llama.cpp: llama-bench and llama-server
+
+llama-bench ships with llama.cpp and runs a fixed test. By default it reads a 512-token prompt (`pp512`) and generates 128 tokens (`tg128`), five times each, and reports the averages. Those tests start from an empty context, so for most models `tg128` comes out above CanRun's 8k figure. The `-d` option fills the KV cache first: `-d 0,8192` prints the empty-context rows plus rows marked `@ d8192`, which are the closest to CanRun's baseline. On Windows, in PowerShell from the llama.cpp folder:
+
+```powershell
+.\llama-bench.exe -hf unsloth/Qwen3-14B-GGUF:Q4_K_M -d 0,8192
+```
+
+On macOS and Linux, leave out `.\` and `.exe`; `-m` takes a local GGUF file instead of `-hf`. llama-bench leaves tokenization and sampling out of its timings, so real use can be slightly slower than it reports.
+
+llama-server returns a `timings` object with each response: `predicted_per_second` is the generation speed, `prompt_per_second` the prompt speed and `cache_n` the prompt tokens reused from the cache.
+
+### LM Studio
+
+LM Studio's REST API (`POST /api/v1/chat`) returns a `stats` object with `tokens_per_second`, the generation speed, and `time_to_first_token_seconds`. When the request had to load the model first, `model_load_time_seconds` appears too.
+
+### Comparing your number with CanRun's
+
+Match the conditions before you compare. Use the same quant (a Q4_K_XL file is not a Q4_K_M), the same context depth (CanRun's verdicts assume 8k), the same backend (CUDA, ROCm, Vulkan or Metal) and nothing else loaded on the card. Laptop GPUs can run below their desktop namesakes under power and heat limits. If your rate is far below the band in CanRun's table, check `ollama ps` for a CPU/GPU split first, since that costs the most speed.
+
+## How sure are these numbers?
+
+Every speed on CanRun is an estimate with a band and a label. Measured means a public benchmark of that card, model and quant; it is shown first, with CanRun's estimate next to it. Calibrated means ±12% for dense models fully on an NVIDIA or AMD card and ±20% for MoE models, partial offload and other hardware. Theoretical means ±30%, used where real speeds vary widely, such as MoE experts in system RAM. Against 12 reference benchmarks, the speed formula's mean error is 6.3% and its largest 17.1%.
+
+One efficiency factor per hardware class is a simplification. In the public results CanRun was fitted to, slower cards got closer to their rated bandwidth than top-end cards did. Two public results for Llama 3.1 8B from LocalScore, both at a 4k context, show it. The RTX 4090 has close to four times the RTX 4060's bandwidth, yet its result is less than two and a half times as high. The RTX 4060's result sits above CanRun's band and the RTX 4090's below it. Llama 3.1 8B Runs great on both cards either way.<Expect model="llama-3.1-8b" gpu="rtx-4060" verdict="S" confidence="measured" /><Expect model="llama-3.1-8b" gpu="rtx-4090" verdict="S" confidence="measured" />
+
+<Measured model="llama-3.1-8b" gpu="rtx-4060" />
+
+<Measured model="llama-3.1-8b" gpu="rtx-4090" />
+
+Each is one public result measured with LocalScore's own method, not a CanRun run, so treat any one number, ours or a benchmark's, as a point inside a range. Our page for <ComboLink model="llama-3.1-8b" gpu="rtx-4090" /> lists the commands for that setup.
+
+All estimates assume Windows with the card driving the display, 32GB of DDR5-5600 dual-channel system RAM, an 8k context filled to that length, an f16 KV cache, one model loaded, one request at a time and a llama.cpp-class runtime. Verdict names in this guide refer to that 8k baseline; for other contexts, read the tables. The verdict lines are in the legend near the top.
+
+## FAQ
+
+### How many tokens per second is good for a local LLM?
+
+For chat, a speed above the top line in CanRun's legend puts text on screen faster than you can read it, and the band between the two upper lines is usable if you read along. Thinking models need lines 1.5 times higher, because they write their reasoning before the answer. For agents and long documents, prompt speed matters as much as generation speed. On an 8GB RTX 4060, Llama 3.1 8B clears the top line and Runs great.<Expect model="llama-3.1-8b" gpu="rtx-4060" verdict="S" />
+
+### Why is my local model slower than the benchmarks I see online?
+
+Usually the conditions differ. Many published figures, including llama-bench's default `tg128`, start from an empty context, while a long chat makes each token read a larger KV cache. Other causes are a different quant, a different backend, laptop power limits and, costing the most, a model that spilled into system RAM. Check PROCESSOR in `ollama ps`, then compare the `eval rate` from `ollama run --verbose` with the band in CanRun's table.
+
+### Does more VRAM make a model run faster?
+
+Only when the extra memory stops a spill into system RAM. Once a model fits, bandwidth sets the speed: Qwen3 14B Runs well on the RTX 4060 Ti 16GB<Expect model="qwen3-14b" gpu="rtx-4060-ti-16gb" verdict="A" /> and Runs great on the RTX 5060 Ti 16GB,<Expect model="qwen3-14b" gpu="rtx-5060-ti-16gb" verdict="S" /> two 16GB cards with different bandwidth. On an 8GB RTX 4060 the same model spills and Runs slowly.<Expect model="qwen3-14b" gpu="rtx-4060" verdict="B" />
+
+### Why does the reply take so long to start?
+
+The model reads the whole new prompt before it writes, and that step depends on the GPU's compute. A long pasted document or an agent's instructions take the longest, and loading the model counts too (`load duration` in Ollama's verbose output). In a chat, runtimes reuse what they processed before, so later turns start faster unless something near the start of the prompt changes.
+
+### Why do MoE models like Qwen3 30B-A3B run faster than smaller dense models?
+
+They read only the experts the router picks for each token, about a tenth of the weights for Qwen3 30B-A3B, so each token costs fewer bytes. The whole file must still fit in memory. On a 24GB RTX 3090 it fits and Runs great,<Expect model="qwen3-30b-a3b-2507" gpu="rtx-3090" verdict="S" /> and CanRun estimates it faster there than the dense Qwen3 14B.
+
+## Sources
+
+- [Ollama source: api/types.go](https://github.com/ollama/ollama/blob/main/api/types.go): the verbose summary, with `eval rate` (generated tokens over generation time), `prompt eval rate` (uncached prompt tokens over prompt time), `prompt eval cached` and `load duration`.
+- [Ollama source: cmd/cmd.go](https://github.com/ollama/ollama/blob/main/cmd/cmd.go) and [cmd/interactive.go](https://github.com/ollama/ollama/blob/main/cmd/interactive.go): the `--verbose` flag of `ollama run` and the `/set verbose` command.
+- [llama.cpp: llama-bench README](https://github.com/ggml-org/llama.cpp/blob/master/tools/llama-bench/README.md): the `pp512` and `tg128` defaults, five repetitions, `-d` to prefill the KV cache, `-hf` and `-m`, and timings that leave out tokenization and sampling.
+- [llama.cpp: server README](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md): the `timings` object with `predicted_per_second`, `prompt_per_second` and `cache_n`.
+- [llama.cpp discussion #15013: performance on NVIDIA CUDA](https://github.com/ggml-org/llama.cpp/discussions/15013): `pp512` and `tg128` results for Llama 2 7B Q4_0 on the RTX 4090, RTX 3090, RTX 3060 and RTX 4060 Ti.
+- [LM Studio docs: chat with a model](https://lmstudio.ai/docs/developer/rest/chat): the `stats` fields of `POST /api/v1/chat`.
+- [LocalScore: RTX 4060](https://www.localscore.ai/accelerator/137) and [LocalScore: RTX 4090](https://www.localscore.ai/accelerator/77): the public Llama 3.1 8B results shown in the measured boxes.
+- [Qwen3-30B-A3B-Instruct-2507 model card](https://huggingface.co/Qwen/Qwen3-30B-A3B-Instruct-2507): total and activated parameters, 128 experts with 8 activated, non-thinking mode only.
+- [Qwen3-14B model card](https://huggingface.co/Qwen/Qwen3-14B): thinking mode on by default, with a switch to turn it off.
+- [Phi-4 model card](https://huggingface.co/microsoft/phi-4): a 14B model, used here as the example without a thinking mode.

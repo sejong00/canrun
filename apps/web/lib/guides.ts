@@ -56,6 +56,22 @@ const LOADERS: Readonly<Record<GuideSlug, Readonly<Record<Locale, () => Promise<
     en: () => import('@/content/en/guides/gpu-offload-check.mdx') as Promise<GuideModule>,
     ko: () => import('@/content/ko/guides/gpu-offload-check.mdx') as Promise<GuideModule>,
   },
+  'unified-memory-128gb': {
+    en: () => import('@/content/en/guides/unified-memory-128gb.mdx') as Promise<GuideModule>,
+    ko: () => import('@/content/ko/guides/unified-memory-128gb.mdx') as Promise<GuideModule>,
+  },
+  'ollama-vs-llama-cpp-lm-studio': {
+    en: () => import('@/content/en/guides/ollama-vs-llama-cpp-lm-studio.mdx') as Promise<GuideModule>,
+    ko: () => import('@/content/ko/guides/ollama-vs-llama-cpp-lm-studio.mdx') as Promise<GuideModule>,
+  },
+  'thinking-models': {
+    en: () => import('@/content/en/guides/thinking-models.mdx') as Promise<GuideModule>,
+    ko: () => import('@/content/ko/guides/thinking-models.mdx') as Promise<GuideModule>,
+  },
+  'tokens-per-second': {
+    en: () => import('@/content/en/guides/tokens-per-second.mdx') as Promise<GuideModule>,
+    ko: () => import('@/content/ko/guides/tokens-per-second.mdx') as Promise<GuideModule>,
+  },
 };
 
 export function isGuideSlug(slug: string): slug is GuideSlug {

@@ -41,6 +41,11 @@ export const GUIDE_SLUGS = [
   'moe-cpu-offload',
   'local-coding-agents',
   'gpu-offload-check',
+  // 10-15 D76: 배치 2 새 가이드 초안 4편 — 사용자 감수 대기(draft = noindex·미링크)
+  'unified-memory-128gb',
+  'ollama-vs-llama-cpp-lm-studio',
+  'thinking-models',
+  'tokens-per-second',
 ] as const;
 
 export type GuideSlug = (typeof GUIDE_SLUGS)[number];
@@ -51,7 +56,7 @@ const BATCH1_MODELS = ['llama-3.1-8b', 'gemma-3-12b', 'qwen3-14b', 'gpt-oss-20b'
 /** 09-30 사용자가 채팅으로 6편 모두 게시 승인 (D40) */
 const PUBLISHED = { status: 'published', reviewedAt: '2026-09-30', datePublished: '2026-09-30', dateModified: '2026-09-30', author: 'CanRun' } as const;
 
-/** 10-15 D75 배치 1 초안 — 게시 전환은 사용자가 슬러그별로 승인한 뒤(D40, reviewedAt·날짜 갱신과 함께) */
+/** 10-15 D75·D76 배치 1·2 초안 — 게시 전환은 사용자가 슬러그별로 승인한 뒤(D40, reviewedAt·날짜 갱신과 함께) */
 const DRAFT_1015 = { status: 'draft', datePublished: '2026-10-15', dateModified: '2026-10-15', author: 'CanRun' } as const;
 
 export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
@@ -271,6 +276,98 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
         title: 'Ollama·LM Studio가 GPU를 안 쓸 때 — 100% GPU 확인과 오프로드 설정',
         description:
           'Ollama·LM Studio가 모델을 GPU와 CPU에 어떻게 나눠 올렸는지 확인하는 법을 정리했습니다. GPU를 아예 못 잡을 때 볼 드라이버·백엔드 설정과, 메모리 필요량을 줄이는 순서도 다룹니다.',
+      },
+    },
+  },
+  'unified-memory-128gb': {
+    ...DRAFT_1015,
+    grids: {
+      // 128GB급 통합 메모리 3종 + 맥 스튜디오 Ultra 2종 + 비교용 RTX 5090(시스템 RAM 32GB 기준) × MoE·dense·대형 MoE 5종.
+      // 통합 메모리 칸은 "가장 좋은 판정이 나는 가장 작은 구성"이라 본문이 그 점을 설명한다. llama-3.3-70b 는 Strix·M4 Max·M2 Ultra
+      // 칸이 64GB CPU 전용으로 그려져 일부러 뺐다(본문에서 ram="128" Expect 로 다룬다)
+      unified128: {
+        gpus: ['amd-strix-halo', 'nvidia-dgx-spark', 'apple-m4-max-40c', 'apple-m3-ultra', 'apple-m2-ultra', 'rtx-5090'],
+        models: ['qwen3.5-35b-a3b', 'gemma-4-31b', 'gpt-oss-120b', 'qwen3.5-122b-a10b', 'solar-open2-250b'],
+      },
+    },
+    related: ['mac-local-llm', 'moe-cpu-offload', 'kv-cache-context'],
+    locales: {
+      en: {
+        title: 'Strix Halo vs DGX Spark vs Mac Studio for local LLMs: what 128 GB gets you',
+        description:
+          'What fits on a 128GB Strix Halo, DGX Spark or Mac Studio, how much memory each GPU can use, and why bandwidth sets the speed, with public gpt-oss-120b results.',
+      },
+      ko: {
+        title: '128GB 통합 메모리 기기 비교 — 스트릭스 헤일로·DGX Spark·맥 스튜디오',
+        description:
+          '128GB 스트릭스 헤일로·DGX Spark·맥 스튜디오에 들어가는 큰 모델과 GPU가 실제로 쓸 수 있는 메모리를 정리했습니다. 속도를 가르는 대역폭과 gpt-oss-120b 공개 벤치마크도 함께 봅니다.',
+      },
+    },
+  },
+  'ollama-vs-llama-cpp-lm-studio': {
+    ...DRAFT_1015,
+    // 그리드 없음 — KvPerTokenTable·CtxTable(qwen3-32b × rtx-4090)·MemoryBreakdown·Measured 로 기본값의 메모리 차이를 보인다
+    grids: {},
+    related: ['ollama-context-length', 'kv-cache-context', 'gpu-offload-check'],
+    locales: {
+      en: {
+        title: 'Ollama vs llama.cpp vs LM Studio: same engine, different defaults',
+        description:
+          'Ollama and LM Studio run GGUF models on llama.cpp. How each tool’s default context, parallel slots and GPU split change memory and speed, and how to match them.',
+      },
+      ko: {
+        title: 'Ollama·llama.cpp·LM Studio 차이 — 같은 엔진, 다른 기본값',
+        description:
+          'Ollama와 LM Studio는 모두 llama.cpp로 GGUF 모델을 돌립니다. 세 도구의 기본 컨텍스트, 동시 요청, GPU 배치가 메모리와 속도를 어떻게 바꾸는지, 같은 조건으로 맞추는 법을 정리했습니다.',
+      },
+    },
+  },
+  'thinking-models': {
+    ...DRAFT_1015,
+    grids: {
+      // 생각 모드 갈래별 모델 6(없음: phi-4·gemma-3-27b · 기본 켜짐: qwen3-14b·qwen3-32b · 기본 꺼짐: gemma-4-26b-a4b · 늘 켜짐: gpt-oss-20b)
+      // × NVIDIA 5장. 본문이 말하는 칸은 전부 <Expect> 로 고정
+      thinking: {
+        gpus: ['rtx-4060', 'rtx-3060-12gb', 'rtx-5060-ti-16gb', 'rtx-3090', 'rtx-4090'],
+        models: ['phi-4', 'qwen3-14b', 'gemma-3-27b', 'qwen3-32b', 'gemma-4-26b-a4b', 'gpt-oss-20b'],
+      },
+    },
+    related: ['ollama-context-length', 'kv-cache-context', 'vram-requirements'],
+    locales: {
+      en: {
+        title: 'Thinking models on local hardware: the speed cost and how to turn thinking off',
+        description:
+          'Why thinking models such as Qwen3 and gpt-oss feel slower on the same GPU, why CanRun rates them 1.5× stricter, and how to turn thinking off in Ollama and llama.cpp.',
+      },
+      ko: {
+        title: '생각 모드(리즈닝) 모델의 속도 비용 — 켜고 끄는 법',
+        description:
+          'Qwen3·gpt-oss 같은 생각 모드 모델이 같은 GPU에서 더 느리게 느껴지는 이유와 CanRun이 속도 기준을 1.5배 엄격하게 잡는 이유를 정리했습니다. Ollama·llama.cpp에서 끄는 법도 다룹니다.',
+      },
+    },
+  },
+  'tokens-per-second': {
+    ...DRAFT_1015,
+    grids: {
+      // 모델 4 × 대역폭 작은 순 8칸(CPU 89.6 → RTX 5090 1792 GB/s). 본문이 이 순서("least memory bandwidth to the most" /
+      // "위에서부터 메모리 대역폭이 작은 순서")와 "RTX 4060 행 첫 칸이 4060 Ti 16GB 보다 높은 건 실측이라서"를 말한다 —
+      // 카드나 순서를 바꾸면 두 문장을 다시 확인한다
+      speed: {
+        gpus: ['cpu-ddr5-5600-2ch', 'rtx-4060', 'rtx-4060-ti-16gb', 'rtx-3060-12gb', 'rtx-5060-ti-16gb', 'rtx-5070', 'rtx-3090', 'rtx-5090'],
+        models: ['llama-3.1-8b', 'qwen3-14b', 'gemma-3-27b', 'qwen3-30b-a3b-2507'],
+      },
+    },
+    related: ['vram-requirements', 'kv-cache-context', 'gpu-offload-check'],
+    locales: {
+      en: {
+        title: "Tokens per second for local LLMs: what's fast enough and what sets the speed",
+        description:
+          'What generation and prompt speed mean for local LLMs, the speed each CanRun verdict needs, why bandwidth and VRAM spills set the pace, and how to measure your own.',
+      },
+      ko: {
+        title: '로컬 LLM 속도 읽는 법 — 초당 토큰, 생성과 프롬프트 처리, 몇이면 쓸 만한가',
+        description:
+          '로컬 LLM의 생성 속도와 프롬프트 처리 속도가 무엇인지, 판정마다 필요한 속도와 메모리 대역폭·VRAM 초과가 속도를 정하는 이유, 내 PC에서 재는 법을 정리했습니다.',
       },
     },
   },
