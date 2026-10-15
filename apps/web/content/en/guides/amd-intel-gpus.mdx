@@ -1,4 +1,4 @@
-In CanRun's calculation, a Radeon or Arc card fits the same models as an NVIDIA card with the same VRAM. gpt-oss-20b runs fully on the GPU and Runs great on the RX 9060 XT 16GB, as on the RTX 5060 Ti 16GB.<Expect model="gpt-oss-20b" gpu="rx-9060-xt-16gb" mode="full-gpu" verdict="S" /><Expect model="gpt-oss-20b" gpu="rtx-5060-ti-16gb" mode="full-gpu" verdict="S" /> Qwen3 14B fits fully on the 12GB Arc B580, as on the RTX 3060 12GB.<Expect model="qwen3-14b" gpu="arc-b580" fits="true" mode="full-gpu" /><Expect model="qwen3-14b" gpu="rtx-3060-12gb" fits="true" mode="full-gpu" /> Speed and software are where the brands part: on Windows, Ollama uses ROCm only for RX 7000 cards and runs RX 9000 and Arc cards through Vulkan.
+In CanRun's calculation, a Radeon or Arc card fits the same models as an NVIDIA card with the same VRAM. gpt-oss-20b runs fully on the GPU and Runs great on the RX 9060 XT 16GB, as on the RTX 5060 Ti 16GB.<Expect model="gpt-oss-20b" gpu="rx-9060-xt-16gb" mode="full-gpu" verdict="S" /><Expect model="gpt-oss-20b" gpu="rtx-5060-ti-16gb" mode="full-gpu" verdict="S" /> Qwen3 14B fits fully on the 12GB Arc B580, as on the RTX 3060 12GB.<Expect model="qwen3-14b" gpu="arc-b580" fits="true" mode="full-gpu" /><Expect model="qwen3-14b" gpu="rtx-3060-12gb" fits="true" mode="full-gpu" /> Speed and software support differ: on Windows, Ollama uses ROCm only for the RX 7000 cards on its list and runs RX 9000 and Arc cards through Vulkan.
 
 ## Radeon and Arc next to NVIDIA cards of the same size
 
@@ -42,7 +42,7 @@ The table counts every model in CanRun's catalog by verdict for each card (the c
 
 ## ROCm, Vulkan and SYCL: what runs on Windows and Linux
 
-Ollama and LM Studio both run GGUF models through llama.cpp, and llama.cpp reaches AMD and Intel cards mainly through three backends. ROCm is AMD's compute platform, which llama.cpp uses through its HIP backend. Vulkan is a graphics and compute API that works across vendors; Ollama's documentation notes that most Windows graphics drivers already include it. SYCL is the backend llama.cpp's documentation describes as designed primarily for Intel GPUs. The GGUF file is the same whichever backend runs it, so the memory figures above do not change.
+Ollama and LM Studio both run GGUF models through llama.cpp, and llama.cpp reaches AMD and Intel cards mainly through three backends. ROCm is AMD's compute platform, which llama.cpp uses through its HIP backend. Vulkan is a graphics and compute API that works across vendors; Ollama's documentation notes that most Windows graphics drivers already include it. SYCL is the backend llama.cpp's documentation describes as designed primarily for Intel GPUs. The weights and KV cache are the same size whichever backend runs them, so CanRun's memory figures do not change. The runtime's own working memory can differ a little by backend, so near the limit, check `ollama ps`.
 
 ### Ollama
 
@@ -57,18 +57,18 @@ To see what Ollama picked, look for the `inference compute` line in its server l
 
 ### llama.cpp
 
-Each llama.cpp release on GitHub carries separate Windows builds for Vulkan, ROCm and SYCL, next to the CUDA, CPU and other builds (checked on release b11630, October 2026). The Windows ROCm build is compiled for RDNA 4 as well as RDNA 3 chips: its release workflow lists `gfx1200` and `gfx1201`, which LLVM's processor table maps to the RX 9060 and RX 9070 families. So on Windows, llama.cpp offers RX 9000 owners a ROCm build, which Ollama's Windows list does not.
+Each llama.cpp release on GitHub carries separate Windows builds for Vulkan, ROCm and SYCL, next to the CUDA, CPU and other builds (checked on release b11630, October 2026). The Windows ROCm build covers more Radeon generations than Ollama's Windows list. Its release workflow targets RDNA 2 (RX 6000), RDNA 3 and RDNA 4 chips, including `gfx1030` and `gfx1031`, which LLVM's processor table maps to the RX 6800 to RX 6900 XT and to the RX 6700 XT, and `gfx1200` and `gfx1201`, the RX 9060 and RX 9070 families. Ollama runs RX 6000 and RX 9000 cards through Vulkan on Windows, so llama.cpp's ROCm build is the other option for them, though in llama.cpp's public results Vulkan generated faster on the RX 9070 XT (see "Which backend is faster?" below).
 
 For Intel, llama.cpp's SYCL page lists the Arc B580 among its verified devices and Windows 11 as supported. Its Windows package includes the oneAPI libraries it depends on; you install Intel's GPU driver yourself. The releases also carry an OpenVINO build for Intel hardware, a backend llama.cpp's README lists as in progress.
 
-Unzip a build, open PowerShell in that folder, and check which devices the build can see before you load a model. The second line is the command our combo pages print for gpt-oss-20b on a 16GB card. On macOS or Linux, type `llama-server` instead of `.\llama-server.exe`.
+Unzip a build, open PowerShell in that folder, and check which devices the build can see before you load a model. The second line is the command our combo pages print for gpt-oss-20b on a 16GB card. On Linux, run `./llama-server` from that folder instead.
 
 ```powershell
 .\llama-server.exe --list-devices
 .\llama-server.exe -hf ggml-org/gpt-oss-20b-GGUF:MXFP4 -c 8192 -ngl all -fa on
 ```
 
-If `--list-devices` shows no GPU, that build cannot use your card, and the Vulkan build is the next one to try.
+If `--list-devices` shows no GPU, that build cannot use your card; try the Vulkan build instead. If it lists more than one device, for example Radeon graphics built into the processor as well as your card, add `-dev` with your card's name from that list (such as `-dev Vulkan1`).
 
 ### LM Studio
 
@@ -76,7 +76,7 @@ LM Studio ships its llama.cpp engine as separate runtimes for the CPU, CUDA, Vul
 
 ### Which backend is faster?
 
-CanRun does not model the backend. Its dense-model efficiency figures for Radeon and Arc cards come from public llama-bench results run through Vulkan, and the one ROCm result in our data (gpt-oss-20b on the RX 7900 XT, in the last section) came out below CanRun's estimate. To settle it for your own card, load the same GGUF with each build and compare the `eval time` line that llama-server prints after each reply. For which figures to compare, see <GuideLink slug="tokens-per-second" />.
+CanRun does not model the backend; its dense-model efficiency figures for Radeon and Arc cards come from public llama-bench results run through Vulkan. llama.cpp's own scoreboards give a rough answer for Llama 2 7B: on the RX 9070 XT, Vulkan generated about a third faster than ROCm, and on the RX 7900 XTX about a tenth faster, while prompt speed was about the same on both cards. The runs come from different builds and machines, so measure your own card: load the same GGUF with each build and compare the `eval time` line that llama-server prints after each reply. For which figures to compare, see <GuideLink slug="tokens-per-second" />. The one ROCm result for a catalog model in CanRun's data, gpt-oss-20b on the RX 7900 XT, is shown under "How sure are these numbers?".
 
 ## Same VRAM, different speed: RX 9070 XT vs RTX 5070 Ti, RX 7900 XTX vs RTX 3090
 
@@ -86,17 +86,17 @@ Once a model fits, generation speed follows memory bandwidth, because every new 
 
 The RX 9070 XT has <Num kind="bandwidth" gpu="rx-9070-xt" /> against <Num kind="bandwidth" gpu="rtx-5070-ti" /> on the RTX 5070 Ti, so CanRun expects it to generate about four-fifths as fast. Neither card sits near a verdict line for Qwen3 14B or gpt-oss-20b, and both models Run great on each.<Expect model="qwen3-14b" gpu="rx-9070-xt" verdict="S" /><Expect model="qwen3-14b" gpu="rtx-5070-ti" verdict="S" /><Expect model="gpt-oss-20b" gpu="rx-9070-xt" verdict="S" /><Expect model="gpt-oss-20b" gpu="rtx-5070-ti" verdict="S" />
 
-llama.cpp's public scoreboards point the same way. In llama-bench runs of Llama 2 7B at Q4_0, a model outside our catalog, the RX 9070 XT on Vulkan reached about three-quarters of the RTX 5070 Ti's speed on CUDA, both in generation and in prompt processing. The two results come from different threads, builds and backends, so read them as a rough sign rather than a head-to-head test.
+llama.cpp's public benchmark results agree. In llama-bench runs of Llama 2 7B at Q4_0, a model outside our catalog, the RX 9070 XT on Vulkan reached about three-quarters of the RTX 5070 Ti's speed on CUDA, both in generation and in prompt processing. These scoreboards come from different threads, builds and backends, so here and below, read them as a rough sign rather than a head-to-head test.
 
 ### RX 9060 XT 16GB and RTX 5060 Ti 16GB
 
-The gap is wider in the cheaper pair: <Num kind="bandwidth" gpu="rx-9060-xt-16gb" /> on the RX 9060 XT 16GB against <Num kind="bandwidth" gpu="rtx-5060-ti-16gb" /> on the RTX 5060 Ti 16GB. Qwen3 14B Runs well on the RX 9060 XT 16GB and Runs great on the RTX 5060 Ti 16GB.<Expect model="qwen3-14b" gpu="rx-9060-xt-16gb" verdict="A" /><Expect model="qwen3-14b" gpu="rtx-5060-ti-16gb" verdict="S" /> Qwen3 14B can think before it answers, which costs many more tokens per reply, so CanRun holds it to 1.5× stricter speed thresholds. The RTX 5060 Ti 16GB's estimate only just clears that line, and the RX 9060 XT 16GB's falls below it. Phi-4, a 14B model without a thinking mode, Runs great on both.<Expect model="phi-4" gpu="rx-9060-xt-16gb" verdict="S" /><Expect model="phi-4" gpu="rtx-5060-ti-16gb" verdict="S" />
+The gap is wider in the cheaper pair: <Num kind="bandwidth" gpu="rx-9060-xt-16gb" /> on the RX 9060 XT 16GB against <Num kind="bandwidth" gpu="rtx-5060-ti-16gb" /> on the RTX 5060 Ti 16GB. Qwen3 14B Runs well on the RX 9060 XT 16GB and Runs great on the RTX 5060 Ti 16GB.<Expect model="qwen3-14b" gpu="rx-9060-xt-16gb" verdict="A" /><Expect model="qwen3-14b" gpu="rtx-5060-ti-16gb" verdict="S" /> Qwen3 14B can think before it answers, which costs many more tokens per reply, so CanRun holds it, like every model with a thinking mode, to speed thresholds 1.5× higher than the legend at the end shows. The RTX 5060 Ti 16GB's estimate only just clears that line, and the RX 9060 XT 16GB's falls below it. Phi-4, a 14B model without a thinking mode, Runs great on both.<Expect model="phi-4" gpu="rx-9060-xt-16gb" verdict="S" /><Expect model="phi-4" gpu="rtx-5060-ti-16gb" verdict="S" />
 
 ### RX 7900 XTX and RTX 3090
 
 These two have nearly the same bandwidth (<Num kind="bandwidth" gpu="rx-7900-xtx" /> and <Num kind="bandwidth" gpu="rtx-3090" />), so the vendor efficiency figure decides the order. Qwen3 32B Runs great on the RX 7900 XTX and Runs well on the RTX 3090.<Expect model="qwen3-32b" gpu="rx-7900-xtx" verdict="S" /><Expect model="qwen3-32b" gpu="rtx-3090" verdict="A" /> Here too the thinking-mode line falls between the two estimates, and their ±12% bands overlap. Read the split as two cards on either side of a line, not as a measured difference.
 
-The public scoreboards agree on generation and disagree on prompts. In the same Llama 2 7B runs, the RX 7900 XTX on Vulkan generated about a fifth faster than the RTX 3090 on CUDA, but processed the prompt about a third slower. The next two sections look at prompts and at MoE models, where the Radeon picture is less settled.
+The public results agree on generation and disagree on prompts. In the same Llama 2 7B runs, the RX 7900 XTX on Vulkan generated about a sixth faster than the RTX 3090 on CUDA, but processed the prompt nearly a third slower. Results for Radeon cards are still thin on two points: prompt speed, covered two sections down, and MoE models, whose one Radeon result is shown under "How sure are these numbers?".
 
 ## Intel Arc B580: 12GB and the limits of the MoE estimate
 
@@ -104,13 +104,13 @@ The <HubLink gpu="arc-b580" /> has 12GB like the <HubLink gpu="rtx-3060-12gb" />
 
 CanRun's Arc efficiency figure, fitted to the B580's public Vulkan result, is lower than the NVIDIA one. The two effects nearly cancel, so the B580's dense estimates land close to the RTX 3060 12GB's.
 
-Phi-4 Runs great on the B580.<Expect model="phi-4" gpu="arc-b580" verdict="S" /> It needs <Num kind="needGB" model="phi-4" /> at 8k, which fits with little margin, so check `ollama ps`. Qwen3 14B Runs well, held back by the thinking-mode thresholds.<Expect model="qwen3-14b" gpu="arc-b580" verdict="A" /> At 16k with an f16 KV cache it no longer fits fully, and part of it runs from system RAM;<Expect model="qwen3-14b" gpu="arc-b580" ctx="16384" mode="partial-offload" verdict="B" /> a q8_0 (8-bit) KV cache brings 16k back onto the GPU.<Expect model="qwen3-14b" gpu="arc-b580" ctx="16384" kv="q8_0" mode="full-gpu" verdict="A" /> That trade is covered in <GuideLink slug="kv-cache-context" />.
+Phi-4 Runs great on the B580.<Expect model="phi-4" gpu="arc-b580" verdict="S" /> It needs <Num kind="needGB" model="phi-4" /> at 8k, which fits with little margin, so check `ollama ps`. Qwen3 14B Runs well, held back by the same thinking-mode line.<Expect model="qwen3-14b" gpu="arc-b580" verdict="A" /> At 16k with an f16 KV cache it no longer fits fully, and part of it runs from system RAM;<Expect model="qwen3-14b" gpu="arc-b580" ctx="16384" mode="partial-offload" verdict="B" /> a q8_0 (8-bit) KV cache brings 16k back onto the GPU.<Expect model="qwen3-14b" gpu="arc-b580" ctx="16384" kv="q8_0" mode="full-gpu" verdict="A" /> That trade is covered in <GuideLink slug="kv-cache-context" />.
 
 ### MoE models on Arc
 
 CanRun has no public measurement of an MoE model on an Arc card. For NVIDIA and AMD cards it uses a separate efficiency figure for MoE models, about two-thirds of the dense one. For Arc it falls back to the dense figure, so its MoE estimates on the B580 may run high. Every MoE cell on the B580 is therefore labelled theoretical (±30%), even when the whole model is on the GPU.
 
-Kanana 1.5 15.7B-A3B, a Korean MoE model, shows the effect. At IQ4_XS it fits fully on the B580 and Runs great, a theoretical estimate.<Expect model="kanana-1.5-15.7b-a3b" gpu="arc-b580" quant="IQ4_XS" mode="full-gpu" verdict="S" confidence="theoretical" /> The same file on the RTX 3060 12GB also Runs great, as a calibrated estimate with a lower speed.<Expect model="kanana-1.5-15.7b-a3b" gpu="rtx-3060-12gb" quant="IQ4_XS" mode="full-gpu" verdict="S" confidence="calibrated" />
+Kanana 1.5 15.7B-A3B, a Korean MoE model, shows the effect. At IQ4_XS it fits fully on the B580 and Runs great, a theoretical estimate.<Expect model="kanana-1.5-15.7b-a3b" gpu="arc-b580" quant="IQ4_XS" mode="full-gpu" verdict="S" confidence="theoretical" /> The same file on the RTX 3060 12GB also Runs great, as a calibrated estimate.<Expect model="kanana-1.5-15.7b-a3b" gpu="rtx-3060-12gb" quant="IQ4_XS" mode="full-gpu" verdict="S" confidence="calibrated" /> CanRun's B580 estimate for it comes out about two-thirds higher than the RTX 3060 12GB's, although the two cards' dense estimates differ by less than a tenth. Most of that gap comes from the missing MoE figure, not from anything measured.
 
 gpt-oss-20b needs <Num kind="needGB" model="gpt-oss-20b" />, a little more than the B580 can use, so CanRun keeps the expert weights that do not fit in system RAM:
 
@@ -126,9 +126,9 @@ The B580's weaker side is reading the prompt. In llama.cpp's public Vulkan runs 
 
 Generation reads memory one token at a time. Prompt processing reads the whole prompt in large batches, so the GPU's compute sets its pace instead (see <GuideLink slug="tokens-per-second" />). It matters most when the model reads a lot before it answers: a pasted document, a chat whose cache was cleared, or the instructions and tool definitions of a coding agent.
 
-CanRun's combo pages show a rough prompt speed (±40%) when the whole model is on the GPU, calculated from the card's FP16 compute. For AMD and Intel cards the calculation assumes about a quarter of the prompt speed per unit of compute that it assumes for NVIDIA cards, a figure set from the RX 7900 XTX's public Vulkan result. In that rough estimate the RX 9070 XT reads prompts at a little over half the RTX 5070 Ti's speed, while it generates at about four-fifths.
+CanRun's combo pages show a rough prompt speed (±40%) when the whole model is on the GPU, calculated from the card's FP16 compute. For AMD and Intel cards the calculation assumes about a quarter of the prompt speed per unit of compute that it assumes for NVIDIA cards, a figure based on public Vulkan results and set a little above the RX 7900 XTX's. In that rough estimate the RX 9070 XT reads prompts at a little over half the RTX 5070 Ti's speed, while it generates at about four-fifths.
 
-Public results land on both sides of that rule. The RX 9070 XT's Vulkan result for prompts is well above CanRun's figure for that card, and the one ROCm result in our data, gpt-oss-20b on the RX 7900 XT, is above it too. The RX 7900 XTX and the Arc B580 came out below it. So treat the prompt figures on Radeon and Arc pages as a rough range. If long prompts matter to you, measure: `ollama run` with `--verbose` prints a `prompt eval rate`, and llama-server prints a `prompt eval time` line after each reply.
+Public results land on both sides of that figure: above it for the RX 9070 XT on Vulkan and for gpt-oss-20b on the RX 7900 XT through ROCm, below it for the RX 7900 XTX and the Arc B580. So treat the prompt figures on Radeon and Arc pages as a rough range. If long prompts matter to you, measure: `ollama run` with `--verbose` prints a `prompt eval rate`, and llama-server prints a `prompt eval time` line after each reply.
 
 ## How sure are these numbers?
 
@@ -144,7 +144,7 @@ The measured speed is well below the estimate band, even though a 2k run reads l
 
 All of this assumes Windows with the card driving the display, 32GB of DDR5-5600 dual-channel system RAM, an 8k context, an f16 KV cache, one model loaded, one request slot and a llama.cpp-class runtime. The backend (ROCm, Vulkan or SYCL) is not part of the calculation. On your PC, the PROCESSOR column of `ollama ps` shows what actually happened: 100% GPU, or a CPU/GPU split.
 
-Verdict names in the text refer to the 8k, f16 KV baseline. Models with a thinking mode, such as Qwen3 14B, Qwen3 32B and gpt-oss, face 1.5× stricter speed thresholds than the legend shows. The thresholds:
+Verdict names in the text refer to the 8k, f16 KV baseline. Models with a thinking mode, such as Qwen3 14B, Qwen3 32B and gpt-oss, face the 1.5× higher thresholds described in the speed section, which the legend does not show. The thresholds:
 
 <Threshold />
 
@@ -154,34 +154,35 @@ Verdict names in the text refer to the 8k, f16 KV baseline. Models with a thinki
 
 Yes, at the same memory size, in CanRun's calculation: fit depends only on the VRAM a card can use. gpt-oss-20b fits fully on the RX 9070 XT as on the RTX 5070 Ti,<Expect model="gpt-oss-20b" gpu="rx-9070-xt" fits="true" mode="full-gpu" /><Expect model="gpt-oss-20b" gpu="rtx-5070-ti" fits="true" mode="full-gpu" /> and Qwen3 30B-A3B fits fully on the 24GB RX 7900 XTX as on the RTX 3090.<Expect model="qwen3-30b-a3b-2507" gpu="rx-7900-xtx" fits="true" mode="full-gpu" /><Expect model="qwen3-30b-a3b-2507" gpu="rtx-3090" fits="true" mode="full-gpu" /> Speed and software support differ, as the sections above show.
 
-### Does Ollama use ROCm for the RX 9070 XT on Windows?
+### Does Ollama use ROCm for Radeon RX 9000 cards on Windows?
 
-No. As checked in October 2026, Ollama's Windows ROCm list covers only seven RX 7000 cards, from the RX 7600 to the RX 7900 XTX, and Radeon PRO W7000 cards. On Windows, Ollama runs the RX 9070 XT and the RX 9060 XT through Vulkan, which is on by default; on Linux, both are on its ROCm list. llama.cpp's own Windows ROCm build does target RX 9000 chips.
+No. As checked in October 2026, Ollama's Windows ROCm list covers only seven RX 7000 cards, from the RX 7600 to the RX 7900 XTX, and Radeon PRO W7000 cards. On Windows, Ollama runs RX 9000 cards such as the RX 9070 XT and RX 9060 XT through Vulkan, which is on by default; on Linux, they are on its ROCm list. llama.cpp's own Windows ROCm build does target RX 9000 chips.
 
 ### Should I use ROCm or Vulkan?
 
-Start with whatever your tool supports for your card, then measure if speed matters. Ollama supports the cards on its ROCm list through ROCm and reaches others through Vulkan; llama.cpp and LM Studio let you choose the build. CanRun's estimates are the same for both, because the backend is not part of the calculation, so the only reliable comparison is your own: load the same GGUF with each build and compare the speeds it prints. On Arc, add the SYCL build if your prompts are long.
+Start with whatever your tool supports for your card, then measure if speed matters. In llama.cpp's public Llama 2 7B results, Vulkan generated faster than ROCm on the RX 9070 XT and the RX 7900 XTX, with about the same prompt speed. Ollama picks the backend for you; llama.cpp and LM Studio let you choose the build. CanRun's estimates are the same for both, so compare on your own card: load the same GGUF with each build and compare the speeds it prints. On Arc, add the SYCL build if your prompts are long.
 
-### Is the RX 7900 XTX faster than the RTX 3090 for local LLMs?
+### Is a Radeon card faster than an NVIDIA card with the same memory bandwidth?
 
-For generation they are close: both have 24GB and nearly the same memory bandwidth. Qwen3 32B Runs great on the RX 7900 XTX and Runs well on the RTX 3090,<Expect model="qwen3-32b" gpu="rx-7900-xtx" verdict="S" /><Expect model="qwen3-32b" gpu="rtx-3090" verdict="A" /> but the two estimates sit just either side of a verdict line, and their error bands overlap. In public llama-bench runs of Llama 2 7B, the RX 7900 XTX on Vulkan generated about a fifth faster than the RTX 3090 on CUDA and processed the prompt about a third slower. Both fit the same models.
+Slightly, for generation, in CanRun's calculation: its efficiency figure for Radeon cards is about a tenth higher, so Qwen3 32B Runs great on the RX 7900 XTX and Runs well on the RTX 3090, two estimates on either side of the thinking-mode line.<Expect model="qwen3-32b" gpu="rx-7900-xtx" verdict="S" /><Expect model="qwen3-32b" gpu="rtx-3090" verdict="A" /> In public Llama 2 7B results, the RX 7900 XTX generated about a sixth faster than the RTX 3090 but read prompts nearly a third slower.
 
-### Is the 12GB Arc B580 enough for 14B models?
+### Is 12GB enough for 14B models on an Arc or Radeon card?
 
-Yes at Q4_K_M with an 8k context, with little margin: Qwen3 14B needs <Num kind="needGB" model="qwen3-14b" /> against <Num kind="usableGB" gpu="arc-b580" /> usable and Runs well.<Expect model="qwen3-14b" gpu="arc-b580" verdict="A" /> For 16k, a q8_0 KV cache keeps it on the GPU.<Expect model="qwen3-14b" gpu="arc-b580" ctx="16384" kv="q8_0" fits="true" mode="full-gpu" /> MoE models on the B580 carry theoretical estimates, because CanRun has no MoE measurement on Arc yet.
+For the 14B models named here, yes at Q4_K_M with an 8k context, with little margin. On the Arc B580, Qwen3 14B, Phi-4 and HyperCLOVA X SEED Think 14B all fit fully on the GPU,<Expect model="qwen3-14b" gpu="arc-b580" fits="true" mode="full-gpu" /><Expect model="phi-4" gpu="arc-b580" fits="true" mode="full-gpu" /><Expect model="hyperclovax-seed-think-14b" gpu="arc-b580" fits="true" mode="full-gpu" /> Phi-4 with the least room, so check `ollama ps`. CanRun keeps the same amount back on any 12GB card, so a 12GB Radeon fits the same models. For 16k, a q8_0 KV cache keeps Qwen3 14B on the B580's GPU.<Expect model="qwen3-14b" gpu="arc-b580" ctx="16384" kv="q8_0" fits="true" mode="full-gpu" />
 
 ## Sources
 
 - [Ollama docs: hardware support](https://docs.ollama.com/gpu): the ROCm lists for Linux and Windows and their driver requirements, Vulkan enabled by default once installed on Windows and Linux, Vulkan included with most Windows drivers, and the link to Intel's Linux driver instructions.
 - [llama.cpp README](https://github.com/ggml-org/llama.cpp/blob/master/README.md): the supported backends, including HIP for AMD GPUs, SYCL for Intel GPUs and Vulkan.
 - [llama.cpp release b11630](https://github.com/ggml-org/llama.cpp/releases/tag/b11630): Windows builds for Vulkan, ROCm, SYCL, CUDA and the CPU.
-- [llama.cpp release workflow at b11630](https://github.com/ggml-org/llama.cpp/blob/6868a52cb337450658006ad2f9281c2eb63f1666/.github/workflows/release.yml#L940-L950): the GPU targets of the Windows ROCm build, including `gfx1200` and `gfx1201`.
-- [LLVM: AMDGPU processors](https://llvm.org/docs/AMDGPUUsage.html): `gfx1200` for the RX 9060 and RX 9060 XT, `gfx1201` for the RX 9070, RX 9070 XT and RX 9070 GRE.
+- [llama.cpp release workflow at b11630](https://github.com/ggml-org/llama.cpp/blob/6868a52cb337450658006ad2f9281c2eb63f1666/.github/workflows/release.yml#L940-L950): the GPU targets of the Windows ROCm build, including `gfx1030`, `gfx1031`, `gfx1200` and `gfx1201`.
+- [LLVM: AMDGPU processors](https://llvm.org/docs/AMDGPUUsage.html): `gfx1030` for the RX 6800, RX 6800 XT and RX 6900 XT, `gfx1031` for the RX 6700 XT, `gfx1200` for the RX 9060 and RX 9060 XT, `gfx1201` for the RX 9070, RX 9070 XT and RX 9070 GRE.
 - [llama.cpp: SYCL backend](https://github.com/ggml-org/llama.cpp/blob/master/docs/backend/SYCL.md): designed primarily for Intel GPUs, the Arc B580 among verified devices, Windows 11 support, the Windows package with its oneAPI libraries, and the oneAPI 2026.1 prompt-speed note for the Arc B570.
-- [llama.cpp: server README](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md): `--list-devices` and `-dev`.
+- [llama.cpp: server README](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md): `--list-devices` and `-dev` (`--device`).
 - [llama.cpp source: server-context.cpp](https://github.com/ggml-org/llama.cpp/blob/6868a52cb337450658006ad2f9281c2eb63f1666/tools/server/server-context.cpp#L685-L689): the `prompt eval time` and `eval time` lines printed after each reply.
 - [LM Studio 0.3.9 release notes](https://lmstudio.ai/blog/lmstudio-v0.3.9): the CPU, CUDA, Vulkan, ROCm and Metal llama.cpp runtimes and the runtimes tab.
 - [llama.cpp: performance with Vulkan](https://github.com/ggml-org/llama.cpp/discussions/10879): llama-bench results for Llama 2 7B at Q4_0 on the RX 7900 XTX, RX 9070 XT and Arc B580, the basis of CanRun's Radeon and Arc figures.
+- [llama.cpp: performance on AMD ROCm (HIP)](https://github.com/ggml-org/llama.cpp/discussions/15021): the same benchmark on the RX 9070 XT and RX 7900 XTX through ROCm, compared here with the Vulkan results.
 - [llama.cpp: performance on NVIDIA CUDA](https://github.com/ggml-org/llama.cpp/discussions/15013): the same benchmark on the RTX 5070 Ti, RTX 3090 and RTX 3060 12GB.
 - [llama.cpp: guide to running gpt-oss](https://github.com/ggml-org/llama.cpp/discussions/15396): the gpt-oss-20b result on the RX 7900 XT through ROCm.
 - [gpt-oss-20b model card](https://huggingface.co/openai/gpt-oss-20b): total and active parameters, runs within 16GB of memory.

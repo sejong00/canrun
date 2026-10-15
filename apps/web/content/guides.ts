@@ -395,7 +395,7 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
           'Which local LLMs fit on Radeon RX 9000 and RX 7000 cards and the Intel Arc B580, how ROCm, Vulkan and SYCL differ on Windows and Linux, and why the speeds differ.',
       },
       ko: {
-        title: '라데온·인텔 Arc로 로컬 LLM — ROCm·Vulkan과 돌아가는 모델',
+        title: '라데온·인텔 Arc로 로컬 LLM 돌리기 — ROCm·Vulkan과 돌아가는 모델',
         description:
           '라데온 RX 9000·7000 계열과 인텔 Arc B580에서 돌아가는 로컬 LLM을 같은 용량의 NVIDIA 카드와 비교했습니다. Windows·Linux에서 ROCm·Vulkan·SYCL 중 무엇을 쓸 수 있는지도 정리했습니다.',
       },
@@ -457,12 +457,12 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
       en: {
         title: "Two GPUs for local LLMs: memory adds up, speed doesn't",
         description:
-          'What a second GPU adds for local LLMs: room for bigger models, not faster tokens. Two RTX 3060 12GB vs one RTX 3090, mixing cards, and llama.cpp and Ollama setup.',
+          'A second GPU adds room for bigger local LLMs, and speed only when a model stops spilling into RAM. Two RTX 3060 12GB vs one RTX 3090, mixed cards, and setup.',
       },
       ko: {
         title: '그래픽카드 2장으로 로컬 LLM — 메모리는 더해지고 속도는 더해지지 않는다',
         description:
-          '그래픽카드를 두 장 꽂으면 로컬 LLM에서 무엇이 달라지는지 정리했습니다. 더 큰 모델이 들어가도 생성 속도는 빨라지지 않는 이유, RTX 3060 12GB 두 장과 RTX 3090 비교, llama.cpp·Ollama 설정을 다룹니다.',
+          '그래픽카드를 두 장 꽂으면 로컬 LLM에서 무엇이 달라지는지 정리했습니다. 한 장에 들어가는 모델은 빨라지지 않는 이유, RTX 3060 12GB 두 장과 RTX 3090 비교, llama.cpp·Ollama 설정을 다룹니다.',
       },
     },
   },
