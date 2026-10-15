@@ -131,7 +131,7 @@ describe('ppEstimate (§3.5)', () => {
     expect(ppEstimate({ effClass: 'apple', fp16Tflops: 34 })).toBeCloseTo(PP_COEF.apple! * 34, 3);
   });
 
-  it('Neural Accelerator 칩(M5 계열)은 클래스 계수 대신 PP_COEF_NEURAL_ACCEL (10-16 D85)', () => {
+  it('Neural Accelerator 칩(M5 계열)은 클래스 계수 대신 PP_COEF_NEURAL_ACCEL (10-16 D86)', () => {
     expect(ppEstimate({ effClass: 'apple', fp16Tflops: 38, neuralAccel: true })).toBeCloseTo(PP_COEF_NEURAL_ACCEL * 38, 3);
     expect(ppEstimate({ effClass: 'apple', fp16Tflops: 38, neuralAccel: false })).toBeCloseTo(PP_COEF.apple! * 38, 3);
     expect(ppEstimate({ effClass: 'apple', neuralAccel: true })).toBeUndefined();

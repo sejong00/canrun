@@ -21,7 +21,7 @@ export const GPU_CORE_KEYS = [
   'memBandwidthGBs',
   'fp16Tflops',
   'effClass',
-  // 계산기의 pp 추정(10-16 D85 — M5 계열 Neural Accelerator 계수)
+  // 계산기의 pp 추정(10-16 D86 — M5 계열 Neural Accelerator 계수)
   'neuralAccelerators',
   'popular',
   'streetUSD',

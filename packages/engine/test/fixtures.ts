@@ -521,7 +521,7 @@ export const RECAL_1015_CASES: readonly SourcedSpeedCase[] = [
   { label: 'Apple Ultra dense M5 Ultra 80c L2-7B Q4_0 (b10621)', hw: unified(256, 1228, 'apple-ultra'), mq: L2_7B_HF, ctx: 512, measuredTg: 179.1, band: 0.2, source: `${APPLE_4167_COMMENT}18683605` },
 ];
 
-/** pp 대조점 — Llama 2 7B Q4_0 pp512(llama-bench 기본), 토론 #4167. hw 는 카탈로그 행의 fp16Tflops·neuralAccel 그대로 (10-16 D85) */
+/** pp 대조점 — Llama 2 7B Q4_0 pp512(llama-bench 기본), 토론 #4167. hw 는 카탈로그 행의 fp16Tflops·neuralAccel 그대로 (10-16 D86) */
 export type PpCase = {
   label: string;
   hw: Pick<Hardware, 'effClass' | 'fp16Tflops' | 'neuralAccel'>;

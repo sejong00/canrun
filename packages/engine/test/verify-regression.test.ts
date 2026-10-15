@@ -10,7 +10,7 @@
  *  5) cpu-moe(전문가 RAM) 3점: 각 ±20% 이내 + MAE < 12% (09-30 보정 — 이전 식은 ~2.5× 과소)
  *  6) 같은 GPU 여러 장 10점(D58) · 7) 서로 다른 GPU 섞기 3점(D67)
  *  8) 클래스 계수 재보정 31점(10-15 D79·D81·D83): AMD Vulkan 4점 각 ±12% · DGX Spark 10점·Apple MoE 8점·Apple dense 9점 각 ±20%
- *  9) pp(§3.5) Apple 12점(10-16 D85): 각 ±40%(PP_BAND) · M5 계열 5점 각 ±12% · 그 밖의 칩 새 빌드 2점 각 ±5%
+ *  9) pp(§3.5) Apple 12점(10-16 D86): 각 ±40%(PP_BAND) · M5 계열 5점 각 ±12% · 그 밖의 칩 새 빌드 2점 각 ±5%
  */
 import { describe, expect, it } from 'vitest';
 import { fit } from '../src/fit';
@@ -240,7 +240,7 @@ describe('8) class recalibration (10-15 D79·D81·D83): AMD Vulkan 4점 · DGX S
   });
 });
 
-describe('9) pp: Apple #4167 Llama 2 7B Q4_0 pp512 (10-16 D85, docs/02 §3.5)', () => {
+describe('9) pp: Apple #4167 Llama 2 7B Q4_0 pp512 (10-16 D86, docs/02 §3.5)', () => {
   // 표시 밴드 = 데이터 레이어 PP_BAND 0.4 (docs/02 §3.5 policy) — 엔진 테스트라 값으로 둔다
   const PP_BAND = 0.4;
   const errors = APPLE_PP_CASES.map(({ hw, measuredPp }) => (ppEstimate(hw)! - measuredPp) / measuredPp);

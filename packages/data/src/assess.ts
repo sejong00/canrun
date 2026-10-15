@@ -252,7 +252,7 @@ export function hardwareConfigs(
       os,
       memBandwidthGBs: gpu.memBandwidthGBs,
       fp16Tflops: gpu.fp16Tflops,
-      // M5 계열 — pp 는 Neural Accelerator 계수(10-16 D85)
+      // M5 계열 — pp 는 Neural Accelerator 계수(10-16 D86)
       ...(gpu.neuralAccelerators ? { neuralAccel: true } : {}),
       ramGB,
       // 통합 메모리·CPU 프로필은 시스템 RAM 이 곧 메모리 풀이다

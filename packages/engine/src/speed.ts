@@ -131,7 +131,7 @@ export function tgEstimate(
 
 /**
  * pp ≈ ppCoef × fp16Tflops (§3.5). 계수 미정 클래스나 Tflops 미제공 시 undefined.
- * GPU 코어마다 행렬곱 가속기가 있는 칩(Apple M5 계열)은 클래스 계수 대신 `PP_COEF_NEURAL_ACCEL` (10-16 D85).
+ * GPU 코어마다 행렬곱 가속기가 있는 칩(Apple M5 계열)은 클래스 계수 대신 `PP_COEF_NEURAL_ACCEL` (10-16 D86).
  */
 export function ppEstimate(
   hw: Pick<Hardware, 'effClass' | 'fp16Tflops' | 'neuralAccel'>,
