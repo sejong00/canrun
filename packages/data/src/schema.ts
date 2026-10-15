@@ -74,6 +74,11 @@ export const GpuSchema = z
     /** GTX 10 시리즈처럼 FP16 크리플이면 실효값(예: 0.18) */
     fp16Tflops: z.number().positive().optional(),
     effClass: EffClassSchema,
+    /**
+     * GPU 코어마다 행렬곱 가속기가 있는 칩(Apple M5 계열의 Neural Accelerator — 애플 뉴스룸) — pp 추정이 클래스 계수 대신
+     * 엔진 `PP_COEF_NEURAL_ACCEL` 을 쓴다(10-16 D85). 생성 속도(tg)는 대역폭이 정하므로 영향 없음
+     */
+    neuralAccelerators: z.boolean().optional(),
     launchYear: z.number().int().min(2015).max(2026),
     msrpUSD: z.number().positive().optional(),
     streetUSD: z.number().positive().optional(),

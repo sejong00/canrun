@@ -30,7 +30,7 @@ Every speed on CanRun is a range with a label:
 - **Calibrated**: our estimate, checked against benchmarks of similar setups. The range is ±12% for dense models running fully on an NVIDIA or AMD card, and ±20% for other hardware, mixture-of-experts (MoE) models and setups that spill into system RAM.
 - **Theoretical**: an estimate for a setup we have not been able to check against benchmarks yet, shown with a ±30% range.
 
-Prompt processing speed, the time before the first token, is shown as a rough ±40% range.
+Prompt processing speed, the time before the first token, is shown as a rough ±40% range. It is estimated from the GPU's FP16 compute; Apple's M5-series chips, which have a matrix accelerator in each GPU core, get their own factor, fitted to their public benchmarks.
 
 ## How accurate it has been
 

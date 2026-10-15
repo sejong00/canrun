@@ -2,6 +2,14 @@ CanRun changes often. New models arrive, the calculator gains features, and now 
 
 ## Changes to the site
 
+<Update id="apple-prompt-speed">
+
+### Prompt speed estimates for Macs
+
+We had estimated prompt processing on every Apple chip with one factor per unit of GPU compute. M5-series chips have a matrix accelerator in each GPU core, and in llama.cpp's public Apple benchmark they read prompts about three times as fast for their compute as earlier chips, so one factor ran too low for the M5 series and too high for the rest. M5-series chips now get their own factor, which raised their prompt estimates by about 70%; for M4-series and Ultra chips the estimates fell by about 40%. On an <SiteLink to="/gpu/apple-m5-max-40c">Apple M5 Max (40-core GPU)</SiteLink> the estimate is now close to that benchmark's result. Generation speeds and verdicts did not change.
+
+</Update>
+
 <Update id="apple-dense-speed">
 
 ### Higher speed estimates for Macs

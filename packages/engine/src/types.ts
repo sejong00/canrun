@@ -57,6 +57,11 @@ export type Hardware = {
   memBandwidthGBs: number;
   /** pp 추정용 (선택) */
   fp16Tflops?: number;
+  /**
+   * GPU 코어마다 행렬곱 가속기(Apple M5 계열 Neural Accelerator) — pp 추정이 클래스 계수 대신 `PP_COEF_NEURAL_ACCEL` 을 쓴다
+   * (§3.5, 10-16 D85). tg 는 대역폭 식 그대로
+   */
+  neuralAccel?: boolean;
   /** 시스템 RAM (cpu-moe/오프로드) */
   ramGB: number;
   ramBandwidthGBs: number;

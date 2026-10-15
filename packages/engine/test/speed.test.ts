@@ -5,7 +5,7 @@ import { fit } from '../src/fit';
 import { gpuSharesOf, gpuUnitsOf } from '../src/memory';
 import { bytesPerTokenGB, gpuThroughputGBs, ppEstimate, resolveEff, tgEstimate } from '../src/speed';
 import type { Hardware } from '../src/types';
-import { CPU_MOE_RAM_EFF, MULTI_GPU_TG_FACTOR } from '../src/constants';
+import { CPU_MOE_RAM_EFF, MULTI_GPU_TG_FACTOR, PP_COEF, PP_COEF_NEURAL_ACCEL } from '../src/constants';
 import { GPT_OSS_20B, QWEN3_8B_Q4, QWEN35_35B_A3B_Q4, QWEN36_35B_A3B_Q4_SPLIT, RTX_3060_12GB, RTX_4090 } from './fixtures';
 
 describe('resolveEff (§3.2)', () => {
@@ -128,7 +128,13 @@ describe('tgEstimate (§3.1~3.4)', () => {
 describe('ppEstimate (§3.5)', () => {
   it('ppCoef × fp16Tflops for known classes', () => {
     expect(ppEstimate({ effClass: 'nvidia', fp16Tflops: 82.6 })).toBeCloseTo(140 * 82.6, 3);
-    expect(ppEstimate({ effClass: 'apple', fp16Tflops: 34 })).toBeCloseTo(45 * 34, 3);
+    expect(ppEstimate({ effClass: 'apple', fp16Tflops: 34 })).toBeCloseTo(PP_COEF.apple! * 34, 3);
+  });
+
+  it('Neural Accelerator 칩(M5 계열)은 클래스 계수 대신 PP_COEF_NEURAL_ACCEL (10-16 D85)', () => {
+    expect(ppEstimate({ effClass: 'apple', fp16Tflops: 38, neuralAccel: true })).toBeCloseTo(PP_COEF_NEURAL_ACCEL * 38, 3);
+    expect(ppEstimate({ effClass: 'apple', fp16Tflops: 38, neuralAccel: false })).toBeCloseTo(PP_COEF.apple! * 38, 3);
+    expect(ppEstimate({ effClass: 'apple', neuralAccel: true })).toBeUndefined();
   });
 
   it('undefined when Tflops missing or class unverified', () => {

@@ -520,3 +520,32 @@ export const RECAL_1015_CASES: readonly SourcedSpeedCase[] = [
   { label: 'Apple Ultra dense M1 Ultra 64c L2-7B Q4_0 (b10621)', hw: unified(128, 800, 'apple-ultra'), mq: L2_7B_HF, ctx: 512, measuredTg: 113.79, band: 0.2, source: `${APPLE_4167_COMMENT}18191340` },
   { label: 'Apple Ultra dense M5 Ultra 80c L2-7B Q4_0 (b10621)', hw: unified(256, 1228, 'apple-ultra'), mq: L2_7B_HF, ctx: 512, measuredTg: 179.1, band: 0.2, source: `${APPLE_4167_COMMENT}18683605` },
 ];
+
+/** pp 대조점 — Llama 2 7B Q4_0 pp512(llama-bench 기본), 토론 #4167. hw 는 카탈로그 행의 fp16Tflops·neuralAccel 그대로 (10-16 D85) */
+export type PpCase = {
+  label: string;
+  hw: Pick<Hardware, 'effClass' | 'fp16Tflops' | 'neuralAccel'>;
+  measuredPp: number;
+  /** m5: Neural Accelerator 칩 지금 빌드(계수 근거) · current: 그 밖의 칩 새 빌드(계수 근거) · b1550: 요약 표의 2023 빌드(밴드 확인만) */
+  group: 'm5' | 'current' | 'b1550';
+  source: string;
+};
+
+const M5_HW = (fp16Tflops: number) => ({ effClass: 'apple' as const, fp16Tflops, neuralAccel: true });
+const APPLE_HW = (fp16Tflops: number, effClass: EffClass = 'apple') => ({ effClass, fp16Tflops });
+
+export const APPLE_PP_CASES: readonly PpCase[] = [
+  { label: 'M5 10c (b10621)', hw: M5_HW(10), measuredPp: 722.79, group: 'm5', source: `${APPLE_4167_COMMENT}18210351` },
+  // 카탈로그 M5 Pro 는 16·20코어를 한 행(19 TFLOPS)으로 둔다
+  { label: 'M5 Pro 16c (b11046)', hw: M5_HW(19), measuredPp: 1340.44, group: 'm5', source: `${APPLE_4167_COMMENT}18583406` },
+  { label: 'M5 Pro 20c (c1d0e7a)', hw: M5_HW(19), measuredPp: 1620.64, group: 'm5', source: `${APPLE_4167_COMMENT}18213344` },
+  { label: 'M5 Max 40c (b10621)', hw: M5_HW(38), measuredPp: 3219.99, group: 'm5', source: `${APPLE_4167_COMMENT}18152504` },
+  { label: 'M5 Max 40c (b9754)', hw: M5_HW(38), measuredPp: 3347.44, group: 'm5', source: `${APPLE_4167_COMMENT}17386908` },
+  { label: 'M2 Ultra 76c (c1d0e7a00+FA)', hw: APPLE_HW(54, 'apple-ultra'), measuredPp: 1488.81, group: 'current', source: APPLE_4167 },
+  { label: 'M4 Max 32c (b5440, FA 끔)', hw: APPLE_HW(27.2), measuredPp: 762.81, group: 'current', source: `${APPLE_4167_COMMENT}13218715` },
+  { label: 'M4 10c (b1550)', hw: APPLE_HW(8.5), measuredPp: 221.29, group: 'b1550', source: APPLE_4167 },
+  { label: 'M4 Pro 20c (b1550)', hw: APPLE_HW(17), measuredPp: 439.78, group: 'b1550', source: APPLE_4167 },
+  { label: 'M4 Max 40c (b1550)', hw: APPLE_HW(34.1), measuredPp: 885.68, group: 'b1550', source: APPLE_4167 },
+  { label: 'M3 Ultra 80c (b1550)', hw: APPLE_HW(57, 'apple-ultra'), measuredPp: 1471.24, group: 'b1550', source: APPLE_4167 },
+  { label: 'M2 Ultra 76c (b1550)', hw: APPLE_HW(54, 'apple-ultra'), measuredPp: 1238.48, group: 'b1550', source: APPLE_4167 },
+];

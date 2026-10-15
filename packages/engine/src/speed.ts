@@ -1,6 +1,6 @@
 /** 속도 모델 — docs/02-engine-spec.md §3. */
 
-import { CPU_MOE_RAM_EFF, EFF, MOE_TG_CAP_TOKS, MULTI_GPU_TG_FACTOR, PP_COEF } from './constants';
+import { CPU_MOE_RAM_EFF, EFF, MOE_TG_CAP_TOKS, MULTI_GPU_TG_FACTOR, PP_COEF, PP_COEF_NEURAL_ACCEL } from './constants';
 import type { FitResult } from './fit';
 import { expertGBFor, gpuCountOf, gpuSharesOf, isUniformGpus, kvGB, nonExpertGBFor, weightsGB } from './memory';
 import type { Hardware, KvQuant, ModelQuant } from './types';
@@ -129,11 +129,14 @@ export function tgEstimate(
   }
 }
 
-/** pp ≈ ppCoef × fp16Tflops (§3.5). 계수 미정 클래스나 Tflops 미제공 시 undefined. */
+/**
+ * pp ≈ ppCoef × fp16Tflops (§3.5). 계수 미정 클래스나 Tflops 미제공 시 undefined.
+ * GPU 코어마다 행렬곱 가속기가 있는 칩(Apple M5 계열)은 클래스 계수 대신 `PP_COEF_NEURAL_ACCEL` (10-16 D85).
+ */
 export function ppEstimate(
-  hw: Pick<Hardware, 'effClass' | 'fp16Tflops'>,
+  hw: Pick<Hardware, 'effClass' | 'fp16Tflops' | 'neuralAccel'>,
 ): number | undefined {
-  const coef = PP_COEF[hw.effClass];
+  const coef = hw.neuralAccel ? PP_COEF_NEURAL_ACCEL : PP_COEF[hw.effClass];
   if (coef === undefined || hw.fp16Tflops === undefined) return undefined;
   return coef * hw.fp16Tflops;
 }

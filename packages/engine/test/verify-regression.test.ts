@@ -10,13 +10,15 @@
  *  5) cpu-moe(전문가 RAM) 3점: 각 ±20% 이내 + MAE < 12% (09-30 보정 — 이전 식은 ~2.5× 과소)
  *  6) 같은 GPU 여러 장 10점(D58) · 7) 서로 다른 GPU 섞기 3점(D67)
  *  8) 클래스 계수 재보정 31점(10-15 D79·D81·D83): AMD Vulkan 4점 각 ±12% · DGX Spark 10점·Apple MoE 8점·Apple dense 9점 각 ±20%
+ *  9) pp(§3.5) Apple 12점(10-16 D85): 각 ±40%(PP_BAND) · M5 계열 5점 각 ±12% · 그 밖의 칩 새 빌드 2점 각 ±5%
  */
 import { describe, expect, it } from 'vitest';
 import { fit } from '../src/fit';
 import { evaluate } from '../src/index';
 import { kvBytesPerToken, kvGB, weightsGBFromBpw } from '../src/memory';
-import { tgEstimate } from '../src/speed';
+import { ppEstimate, tgEstimate } from '../src/speed';
 import {
+  APPLE_PP_CASES,
   CPU_MOE_CASES,
   RECAL_1015_CASES,
   HETERO_GPU_CASES,
@@ -235,5 +237,29 @@ describe('8) class recalibration (10-15 D79·D81·D83): AMD Vulkan 4점 · DGX S
     expect(ultra.reduce((a, b) => a + Math.abs(b), 0) / ultra.length).toBeLessThan(0.05);
     // 가이드 mac-local-llm '얼마나 확실한가'의 "각 11% 안쪽" 문장을 고정한다
     expect(Math.max(...base.map(Math.abs))).toBeLessThan(0.11);
+  });
+});
+
+describe('9) pp: Apple #4167 Llama 2 7B Q4_0 pp512 (10-16 D85, docs/02 §3.5)', () => {
+  // 표시 밴드 = 데이터 레이어 PP_BAND 0.4 (docs/02 §3.5 policy) — 엔진 테스트라 값으로 둔다
+  const PP_BAND = 0.4;
+  const errors = APPLE_PP_CASES.map(({ hw, measuredPp }) => (ppEstimate(hw)! - measuredPp) / measuredPp);
+  const group = (g: (typeof APPLE_PP_CASES)[number]['group']) => errors.filter((_, i) => APPLE_PP_CASES[i]!.group === g);
+
+  it.each(APPLE_PP_CASES.map((c, i) => [c.label, i] as const))('%s within ±40% rough band', (_label, i) => {
+    expect(Math.abs(errors[i]!)).toBeLessThanOrEqual(PP_BAND);
+  });
+
+  it('M5 계열(Neural Accelerator) 지금 빌드 5점: 각 ±12% · MAE < 10%', () => {
+    const m5 = group('m5');
+    expect(m5).toHaveLength(5);
+    expect(Math.max(...m5.map(Math.abs))).toBeLessThan(0.12);
+    expect(m5.reduce((a, b) => a + Math.abs(b), 0) / m5.length).toBeLessThan(0.1);
+  });
+
+  it('그 밖의 칩 새 빌드 2점(M2 Ultra·M4 Max 32코어): 각 ±5%', () => {
+    const current = group('current');
+    expect(current).toHaveLength(2);
+    expect(Math.max(...current.map(Math.abs))).toBeLessThan(0.05);
   });
 });

@@ -16,6 +16,7 @@ Gpu { id, name, aliases[],  // 검색 별칭 + P1-3 계산기 콤보박스·GPU 
      ramOptionsGB?: number[],   // unified/cpu 필수 — 선택 가능한 RAM 구성 GB (min 1)
      memBandwidthGBs, fp16Tflops?,   // FP16 크리플(GTX 10)이면 실효값
      effClass:'nvidia'|'amd'|'intel-arc'|'apple'|'apple-ultra'|'strix'|'dgx-spark'|'cpu',
+     neuralAccelerators?: true,   // GPU 코어마다 행렬곱 가속기(Apple M5 계열 — 애플 뉴스룸) → pp 계수 PP_COEF_NEURAL_ACCEL (docs/02 §3.5, 10-16 D85)
      launchYear:2015..2026, msrpUSD?, streetUSD?, streetKRW?,
      priceAsOf?,         // streetUSD/KRW 존재 시 필수 (CLAUDE.md 규칙 2)
      popular:boolean, note?, sources[] }
@@ -118,7 +119,7 @@ Submission (P2, D1 — 미구현) { BenchPoint + submitterHash, ip rate-limit fi
 | id | BW | RAM 구성 | 비고 |
 |---|---|---|---|
 | apple-m4 / m4-pro / m4-max | 120 / 273 / 410~546 | 16-32 / 24-64 / 36-128 | m4-max GPU 코어수로 BW 분기 |
-| apple-m5 / m5-pro / m5-max | 153.6 / 307 / 460~614 | 12-32 / 24-64 / 36-128 | M5 Pro/Max 2026-03 출시 |
+| apple-m5 / m5-pro / m5-max | 153.6 / 307 / 460~614 | 12-32 / 24-64 / 36-128 | M5 Pro/Max 2026-03 출시 · `neuralAccelerators` (pp 계수 78 — 10-16 D85) |
 | apple-m3-ultra / m2-ultra | 819 / 800 | 96-512 / 64-192 | effClass 'apple-ultra' |
 | amd-strix-halo (Ryzen AI Max+ 395) | 256 | ~128 | Framework Desktop $1,999 |
 | nvidia-dgx-spark | 273 | 128 | $3,999 |
