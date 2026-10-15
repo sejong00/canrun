@@ -5,11 +5,11 @@
  * AC (docs/06 P0-2):
  *  1) 가중치 11종: MAE < 1% (검증값 0.7%), 케이스별 |err| ≤ 1.6%
  *  2) KV 7종: 공식값 전수 일치 (±0.5 KiB)
- *  3) 속도 12점: 각 점이 클래스 밴드(±12%/±20%) 이내 + MAE < 7% (검증값 6.3%)
+ *  3) 속도 12점: 각 점이 클래스 밴드(±12%/±20%) 이내 + MAE < 7% (검증값 6.3% → 10-15 D83 Apple 2점을 지금 빌드 값으로 바꿔 5.6%)
  *  4) 판정 새너티: 4060 8GB 통념 일치
  *  5) cpu-moe(전문가 RAM) 3점: 각 ±20% 이내 + MAE < 12% (09-30 보정 — 이전 식은 ~2.5× 과소)
  *  6) 같은 GPU 여러 장 10점(D58) · 7) 서로 다른 GPU 섞기 3점(D67)
- *  8) 클래스 계수 재보정 22점(10-15 D79·D81): AMD Vulkan 4점 각 ±12% · DGX Spark 10점·Apple MoE 8점 각 ±20%
+ *  8) 클래스 계수 재보정 31점(10-15 D79·D81·D83): AMD Vulkan 4점 각 ±12% · DGX Spark 10점·Apple MoE 8점·Apple dense 9점 각 ±20%
  */
 import { describe, expect, it } from 'vitest';
 import { fit } from '../src/fit';
@@ -82,7 +82,7 @@ describe('3) speed: tg = eff × BW / (weightsRead + kvRead) vs measured (12 poin
     },
   );
 
-  it('MAE < 7% (verified 6.3%)', () => {
+  it('MAE < 7% (verified 6.3% → 5.6% after the 10-15 D83 Apple swap)', () => {
     const mae = errors.reduce((a, b) => a + Math.abs(b), 0) / errors.length;
     expect(mae).toBeLessThan(0.07);
   });
@@ -195,7 +195,7 @@ describe('7) mixed GPUs layer split (§6 beta, 10-03 D67): 공개 실측 3점', 
   });
 });
 
-describe('8) class recalibration (10-15 D79·D81): AMD Vulkan 4점 · DGX Spark 10점 · Apple MoE 8점', () => {
+describe('8) class recalibration (10-15 D79·D81·D83): AMD Vulkan 4점 · DGX Spark 10점 · Apple MoE 8점 · Apple dense 9점', () => {
   const errors = RECAL_1015_CASES.map(
     ({ hw, mq, ctx, measuredTg }) => (tgEstimate(hw, mq, { mode: 'full-gpu' }, { ctx }) - measuredTg) / measuredTg,
   );
@@ -224,5 +224,16 @@ describe('8) class recalibration (10-15 D79·D81): AMD Vulkan 4점 · DGX Spark 
     expect(ultra).toHaveLength(3);
     expect(base.reduce((a, b) => a + Math.abs(b), 0) / base.length).toBeLessThan(0.12);
     expect(ultra.reduce((a, b) => a + Math.abs(b), 0) / ultra.length).toBeLessThan(0.07);
+  });
+
+  it('Apple dense (#4167 새 빌드 — 10-15 D83): base/Pro/Max 6점 MAE < 7% · Ultra 3점 MAE < 5%', () => {
+    const base = group('Apple dense');
+    const ultra = group('Apple Ultra dense');
+    expect(base).toHaveLength(6);
+    expect(ultra).toHaveLength(3);
+    expect(base.reduce((a, b) => a + Math.abs(b), 0) / base.length).toBeLessThan(0.07);
+    expect(ultra.reduce((a, b) => a + Math.abs(b), 0) / ultra.length).toBeLessThan(0.05);
+    // 가이드 mac-local-llm '얼마나 확실한가'의 "각 11% 안쪽" 문장을 고정한다
+    expect(Math.max(...base.map(Math.abs))).toBeLessThan(0.11);
   });
 });

@@ -2,6 +2,14 @@ CanRun은 자주 바뀝니다. 새 모델이 들어오고, 계산기에 기능�
 
 ## 바뀐 기능과 고친 계산
 
+<Update id="apple-dense-speed">
+
+### 맥의 속도 추정을 올렸습니다
+
+애플 칩에서 dense 모델의 속도 추정은 예전 llama.cpp 빌드로 잰 공개 벤치마크에 맞춰져 있었는데, 그 빌드는 지금 빌드보다 눈에 띄게 느립니다. 이제는 M5 계열과 Ultra 칩을 지금 빌드로 잰 결과에 맞춰, dense 모델 추정이 기본·Pro·Max 칩은 4분의 1쯤, Ultra 칩은 3분의 1 가까이 올랐습니다. 128GB <SiteLink to="/gpu/apple-m4-max-40c">애플 M4 Max(40코어 GPU)</SiteLink>에서 Q4_K_M Llama 3.3 70B는 '겨우 가능'에서 '원활'로 올라갔고, 16GB M4의 Qwen3 8B도 마찬가지였습니다. 맥의 MoE 모델 추정은 그대로입니다.
+
+</Update>
+
 <Update id="hub-intros">
 
 ### 많이 찾는 GPU·모델 페이지에 소개 글을 붙였습니다

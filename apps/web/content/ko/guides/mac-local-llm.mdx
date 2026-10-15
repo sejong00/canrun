@@ -10,7 +10,7 @@
 
 <MemoryBreakdown model="qwen3-14b" gpu="apple-m4" />
 
-16GB 맥이라고 14B급 모델이 다 들어가지는 않습니다. <HubLink model="phi-4" />(<Num kind="params" model="phi-4" />)는 Q4_K_M, 8k 컨텍스트에서 <Num kind="needGB" model="phi-4" gpu="apple-m4" />가 필요해 16GB M4의 GPU 몫을 넘습니다. CanRun은 맥에서 모델 일부만 GPU에 올리는 경우를 계산하지 않습니다. 그래서 이 조합은 CPU 전용으로 계산되고, 이론 추정으로 겨우 돌아가는 수준입니다<Expect model="phi-4" gpu="apple-m4" verdict="B" />. 실제 Ollama는 모델의 층을 나눠 GPU와 CPU에 올릴 수 있으니, `ollama ps`의 PROCESSOR 열로 확인합니다. 참고로 Phi-4의 모델 페이지와 조합 페이지는 CPU 전용으로 계산한 필요 메모리에서 연산 버퍼를 빼고 표시합니다. 그래서 필요 메모리가 GPU 몫보다 작아 보입니다.
+16GB 맥이라고 14B급 모델이 다 들어가지는 않습니다. <HubLink model="phi-4" />(<Num kind="params" model="phi-4" />)는 Q4_K_M, 8k 컨텍스트에서 <Num kind="needGB" model="phi-4" gpu="apple-m4" />가 필요해 16GB M4의 GPU 몫을 넘습니다. CanRun은 맥에서 모델 일부만 GPU에 올리는 경우를 계산하지 않습니다. 그래서 이 조합은 CPU 전용으로 계산되고, 이론 추정으로 겨우 돌아가는 수준입니다<Expect model="phi-4" gpu="apple-m4" ram="16" mode="cpu-only" verdict="B" />. 실제 Ollama는 모델의 층을 나눠 GPU와 CPU에 올릴 수 있으니, `ollama ps`의 PROCESSOR 열로 확인합니다. 24GB 구성이면 Phi-4가 GPU에 다 올라가고 원활하게 돌아갑니다<Expect model="phi-4" gpu="apple-m4" ram="24" mode="full-gpu" verdict="A" />. 그래서 Phi-4의 모델 페이지와 조합 페이지는 M4를 24GB 구성으로 보여 줍니다.
 
 macOS가 실제로 정해 둔 기본 한도는 메모리 용량에 따라 다릅니다. llama.cpp 토론 #2182에 올라온 코드를 보면, 32GB 이하 맥은 약 3분의 1을 GPU가 쓰지 못하게 남겨 둡니다. 그보다 큰 맥은 약 4분의 1을 남깁니다. 또 애플이 16GB라고 적는 메모리는 이진 단위라서, CanRun이 쓰는 십진 GB로 바꾸면 약 7% 더 큽니다. 이 두 가지를 따지면, 70% 하나로 어림한 CanRun 수치는 32GB 이하 구성에서 실제 기본 한도와 거의 같거나 조금 작습니다. 36GB 이상 구성에서는 실제보다 작게 잡힐 수 있습니다.
 
@@ -55,7 +55,7 @@ gpt-oss-120b는 <Num kind="needGB" model="gpt-oss-120b" gpu="apple-m4-pro" />가
 - <HubLink gpu="apple-m4-max-40c" />: <Num kind="bandwidth" gpu="apple-m4-max-40c" />
 - <HubLink gpu="apple-m5-max-40c" />: <Num kind="bandwidth" gpu="apple-m5-max-40c" />
 
-M4 Pro의 대역폭은 M4의 두 배가 넘고, 40코어 GPU M4 Max는 다시 M4 Pro의 두 배입니다. 같은 모델이라도 대역폭이 큰 칩에서는 판정이 오르기도 합니다. <ComboLink model="llama-3.1-8b" gpu="apple-m4-pro" />는 쾌적하게 돌아가지만<Expect model="llama-3.1-8b" gpu="apple-m4-pro" verdict="S" />, 같은 모델이 M4에서는 원활하게 돌아가는 데 그칩니다<Expect model="llama-3.1-8b" gpu="apple-m4" verdict="A" />. Qwen3 8B는 M4에서는 겨우 돌아가지만<Expect model="qwen3-8b" gpu="apple-m4" verdict="B" />, 대역폭이 더 큰 기본 M5에서는 같은 16GB로도 원활하게 돌아갑니다<Expect model="qwen3-8b" gpu="apple-m5" verdict="A" />. Qwen3 14B는 16GB M4와 M5에서 모두 겨우 돌아가고<Expect model="qwen3-14b" gpu="apple-m4" verdict="B" /><Expect model="qwen3-14b" gpu="apple-m5" verdict="B" />, M4 Pro에서는 원활하게 돌아갑니다<Expect model="qwen3-14b" gpu="apple-m4-pro" verdict="A" />.
+M4 Pro의 대역폭은 M4의 두 배가 넘고, 40코어 GPU M4 Max는 다시 M4 Pro의 두 배입니다. 같은 모델이라도 대역폭이 큰 칩에서는 판정이 오르기도 합니다. <ComboLink model="llama-3.1-8b" gpu="apple-m4-pro" />는 쾌적하게 돌아가지만<Expect model="llama-3.1-8b" gpu="apple-m4-pro" verdict="S" />, 같은 모델이 M4에서는 원활하게 돌아가는 데 그칩니다<Expect model="llama-3.1-8b" gpu="apple-m4" verdict="A" />. 기본 M5는 대역폭이 M4보다 크지만, 판정이 오르는 모델은 일부입니다. Qwen3 30B-A3B (2507)은 32GB M4에서 원활하게 돌아가고<Expect model="qwen3-30b-a3b-2507" gpu="apple-m4" ram="32" verdict="A" />, 같은 32GB M5에서는 쾌적하게 돌아갑니다<Expect model="qwen3-30b-a3b-2507" gpu="apple-m5" ram="32" verdict="S" />. Qwen3 14B는 16GB M4와 M5에서 모두 겨우 돌아가고<Expect model="qwen3-14b" gpu="apple-m4" verdict="B" /><Expect model="qwen3-14b" gpu="apple-m5" verdict="B" />, M4 Pro에서는 원활하게 돌아갑니다<Expect model="qwen3-14b" gpu="apple-m4-pro" verdict="A" />.
 
 반면 모델이 GPU에 모두 올라가기만 하면, CanRun 계산에서 메모리 용량은 속도를 바꾸지 않습니다. 같은 칩이라면 메모리 구성이 달라도 속도 추정이 같습니다. 판정표의 네 칩에서 여섯 모델로 확인한 결과입니다. 애플도 M4 Pro의 대역폭을 메모리 용량과 상관없이 한 가지로 적습니다.
 
@@ -63,7 +63,7 @@ M4 Pro의 대역폭은 M4의 두 배가 넘고, 40코어 GPU M4 Max는 다시 M4
 
 메모리에 들어간다고 다 빠른 것도 아닙니다. 48GB M4 Pro에서 MoE 모델인 Qwen3 30B-A3B (2507)은 쾌적하게 돌아갑니다<Expect model="qwen3-30b-a3b-2507" gpu="apple-m4-pro" verdict="S" />. 반면 필요 메모리가 비슷한 dense 모델 <HubLink model="qwen3-32b" />(<Num kind="needGB" model="qwen3-32b" gpu="apple-m4-pro" />)는 GPU에 전부 올라가는데도 겨우 돌아갑니다<Expect model="qwen3-32b" gpu="apple-m4-pro" verdict="B" />. dense 모델은 토큰마다 가중치 전체를 읽지만, MoE는 활성 전문가의 가중치만 읽어서 메모리에서 읽는 양이 훨씬 적습니다. M4 Pro에서 MoE인 gpt-oss-20b는 dense인 Qwen3 14B보다 파일이 큰데도 쾌적하게 돌아갑니다<Expect model="gpt-oss-20b" gpu="apple-m4-pro" verdict="S" />. 같은 칩에서 Qwen3 14B는 원활하게 돌아가는 데 그칩니다<Expect model="qwen3-14b" gpu="apple-m4-pro" verdict="A" />. 두 모델 모두 생각 모드가 있어서 똑같이 엄격한 기준으로 판정합니다. 다만 MoE라도 GPU 몫을 넘으면 CanRun은 CPU 전용으로 계산합니다. 그래서 24GB M4 Pro에서는 Qwen3 30B-A3B (2507)의 판정이 내려갑니다.
 
-새 세대라고 판정이 늘 오르는 것도, 늘 같은 것도 아닙니다. 판정표의 여섯 모델은 M5 Pro와 M4 Pro에서 판정이 같습니다. 48GB 구성의 Qwen3 32B도 두 칩에서 모두 겨우 돌아갑니다<Expect model="qwen3-32b" gpu="apple-m4-pro" verdict="B" /><Expect model="qwen3-32b" gpu="apple-m5-pro" verdict="B" />. 그런데 <HubLink model="deepseek-r1-distill-8b" />는 M4 Pro에서는 원활하게 돌아가고<Expect model="deepseek-r1-distill-8b" gpu="apple-m4-pro" verdict="A" />, M5 Pro에서는 쾌적하게 돌아갑니다<Expect model="deepseek-r1-distill-8b" gpu="apple-m5-pro" verdict="S" />. M4와 M5의 세대 차이는 모델마다 따로 확인해야 합니다.
+새 세대라고 판정이 늘 오르는 것도, 늘 같은 것도 아닙니다. 판정표의 여섯 모델은 M5 Pro와 M4 Pro에서 판정이 같습니다. 48GB 구성의 Qwen3 32B도 두 칩에서 모두 겨우 돌아갑니다<Expect model="qwen3-32b" gpu="apple-m4-pro" verdict="B" /><Expect model="qwen3-32b" gpu="apple-m5-pro" verdict="B" />. 그런데 Phi-4는 M4 Pro에서는 원활하게 돌아가고<Expect model="phi-4" gpu="apple-m4-pro" verdict="A" />, M5 Pro에서는 쾌적하게 돌아갑니다<Expect model="phi-4" gpu="apple-m5-pro" verdict="S" />. M4와 M5의 세대 차이는 모델마다 따로 확인해야 합니다.
 
 긴 프롬프트를 읽어 들이는 속도(프롬프트 처리 속도)는 대역폭보다 연산 성능에 좌우됩니다. 이 값은 조합 페이지에만 대략적인 추정(±40%)으로 나옵니다.
 
@@ -108,7 +108,9 @@ M4 Pro의 대역폭은 M4의 두 배가 넘고, 40코어 GPU M4 Max는 다시 M4
 
 속도는 추정치이고, 신뢰 라벨과 오차 범위를 함께 붙입니다. 맥에서 모델을 GPU에 전부 올리는 조합 가운데 공개 벤치마크 결과가 없는 것에는 ‘보정된 추정 ±20%’를 붙입니다. ±12%는 NVIDIA·AMD 그래픽카드의 dense 모델에만 씁니다. 맥에서 CPU 전용으로 돌리는 조합은 실제로 잰 속도와 맞춰 본 적이 없어서 ‘이론 추정 ±30%’를 붙입니다.
 
-CanRun은 애플의 기본·Pro·Max 칩에 같은 효율 계수를 씁니다. 그래서 추정 속도가 대역폭에 비례해 오릅니다. 그런데 llama.cpp 토론 #4167의 공개 측정은 다릅니다. M4 Pro에서 40코어 GPU M4 Max로 대역폭이 두 배가 돼도, 생성 속도는 두 배에 뚜렷이 못 미칩니다. 그러니 Max 칩의 추정치는 오차 범위의 아래쪽까지 염두에 두고 읽는 것이 좋습니다. 생각 모드가 있는 모델은 답하기 전에 생각하는 데 토큰을 더 씁니다. 그래서 판정 기준을 1.5배 엄격하게 적용합니다. gpt-oss처럼 늘 생각하는 모델과, Qwen3처럼 생각 모드를 켜고 끌 수 있는 모델이 모두 해당합니다.
+CanRun은 애플의 기본·Pro·Max 칩에 같은 효율 계수를 씁니다. 그래서 추정 속도가 대역폭에 비례해 오릅니다. 그런데 llama.cpp 토론 #4167의 공개 측정은 다릅니다. M5 Max는 대역폭이 M5 Pro의 두 배인데, 생성 속도는 두 배에 뚜렷이 못 미쳤습니다. 그러니 기본·Pro 칩의 추정치는 낮게, Max 칩의 추정치는 높게 나왔을 수 있다고 보고 오차 범위와 함께 읽으세요. 생각 모드가 있는 모델은 답하기 전에 생각하는 데 토큰을 더 씁니다. 그래서 판정 기준을 1.5배 엄격하게 적용합니다. gpt-oss처럼 늘 생각하는 모델과, Qwen3처럼 생각 모드를 켜고 끌 수 있는 모델이 모두 해당합니다.
+
+dense 모델에 쓰는 계수는 같은 토론에서 지금 llama.cpp 빌드로 잰 Llama 2 7B 결과에 맞췄습니다. M5·M5 Pro·M5 Max, 그리고 2025년 빌드로 잰 32코어 GPU M4 Max 결과입니다. CanRun 추정은 그 결과 하나하나와 11% 안쪽으로 맞습니다. 이 토론의 M1~M4 요약 표는 2023년 기준 빌드로 잰 값이라 지금 빌드보다 눈에 띄게 느립니다. 같은 M2 Ultra에서 지금 빌드가 3분의 1쯤 빨랐습니다. 그래서 CanRun은 이 표에 계수를 맞추지 않습니다. 다만 M4 칩은 아직 지금 빌드로 잰 결과가 토론에 없어서, M4의 추정은 새 칩들의 결과에 기대고 있습니다.
 
 MoE 모델에 쓰는 계수는 llama.cpp의 gpt-oss 안내 토론 글에 올라온 M1 Pro·M1 Max·M4 Pro·M4 Max 맥의 gpt-oss-20b 결과에 맞췄습니다. CanRun 추정은 그 결과 하나하나와 12% 안쪽으로 맞습니다. 같은 토론에는 훨씬 느린 M3 Max 결과도 있습니다. llama.cpp 개발자가 열 때문에 속도가 떨어진 것 같다고 답해서, CanRun은 이 결과를 계산에서 뺐습니다.
 
@@ -148,7 +150,7 @@ GPU가 쓸 수 있는 몫과 고를 수 있는 최대 용량이 다릅니다. Ca
 
 - [llama.cpp 토론 #2182: Apple Silicon의 VRAM/RAM 분할 조정](https://github.com/ggml-org/llama.cpp/discussions/2182): 용량별 기본 한도, `iogpu.wired_limit_mb`, 재시동하면 초기화된다는 점, 스왑 경고
 - [Apple Metal 문서: recommendedMaxWorkingSetSize](https://developer.apple.com/documentation/metal/mtldevice/recommendedmaxworkingsetsize): GPU가 성능에 영향 없이 할당할 수 있는 메모리의 근삿값
-- [llama.cpp 토론 #4167: Apple Silicon M 시리즈 성능](https://github.com/ggml-org/llama.cpp/discussions/4167): 칩별 공개 생성 속도 측정, CanRun의 dense 모델용 애플 계수 근거
+- [llama.cpp 토론 #4167: Apple Silicon M 시리즈 성능](https://github.com/ggml-org/llama.cpp/discussions/4167): 칩별 Llama 2 7B 생성 속도, M2 Ultra 한 대의 빌드별 결과, CanRun의 dense 모델용 애플 계수 근거(요약 표의 2023년 기준 빌드 값이 아니라 지금 빌드로 잰 결과)
 - [llama.cpp 토론 #15396: llama.cpp로 gpt-oss 돌리기](https://github.com/ggml-org/llama.cpp/discussions/15396): CanRun이 MoE 모델용 애플 계수를 맞춘 M1 Pro·M1 Max·M4 Pro·M4 Max 맥의 gpt-oss-20b 결과, 개발자가 열 때문에 느려진 것 같다고 본 M3 Max 결과
 - [llama.cpp 빌드 문서](https://github.com/ggml-org/llama.cpp/blob/master/docs/build.md): macOS에서 Metal이 기본으로 켜진다는 점, `--n-gpu-layers 0`
 - [llama.cpp README](https://github.com/ggml-org/llama.cpp): 애플 실리콘 우선 지원

@@ -2,6 +2,14 @@ CanRun changes often. New models arrive, the calculator gains features, and now 
 
 ## Changes to the site
 
+<Update id="apple-dense-speed">
+
+### Higher speed estimates for Macs
+
+Our speed estimates for dense models on Apple chips had been fitted to public benchmarks from an old llama.cpp build, which generates noticeably slower than current builds. They now follow results measured with current builds on M5-series and Ultra chips, so dense-model estimates rose by about a quarter on base, Pro and Max chips and by nearly a third on Ultra chips. At Q4_K_M, Llama 3.3 70B on a 128GB <SiteLink to="/gpu/apple-m4-max-40c">Apple M4 Max (40-core GPU)</SiteLink> moved from Runs slowly to Runs well, and so did Qwen3 8B on a 16GB M4. Estimates for MoE models on Macs did not change.
+
+</Update>
+
 <Update id="hub-intros">
 
 ### Written introductions on popular GPU and model pages

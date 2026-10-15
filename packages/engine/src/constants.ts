@@ -94,13 +94,14 @@ export const CPU_OS_RESERVE_GB = 4;
 // source(amd, 10-15 D79·D80): https://github.com/ggml-org/llama.cpp/discussions/10879 Vulkan 스코어보드 no-FA 4점, 값은 제출 댓글 fa 0 줄 — 7900 XTX b10868 182.63(https://github.com/ggml-org/llama.cpp/discussions/10879#discussioncomment-18386832)·9070 XT b7825 131.54(https://github.com/ggml-org/llama.cpp/discussions/10879#discussioncomment-15594467)·9070 b6188 119.71(https://github.com/ggml-org/llama.cpp/discussions/10879#discussioncomment-14129066)·7800 XT b7875 118.27(https://github.com/ggml-org/llama.cpp/discussions/10879#discussioncomment-15642964)이 같은 식에서 0.72~0.79 → 최대 오차를 가장 작게 하는 값(minimax) 0.76. D79 의 0.77 은 표가 9070 XT 의 FA 켬 줄(137.11)을 no-FA 칸에 넣은 값으로 구했었다(0.72~0.83)
 // source(dgx-spark, 10-15 D79): https://github.com/ggml-org/llama.cpp/blob/3795cc1e89e16fbc145f8a5457ea30abd86e0d1d/benches/dgx-spark/dgx-spark.md (b7941 llama-bench, 깊이 0·8192) — dense 2모델 0.72~0.89, MoE 3모델 0.60~0.83 → 각 점이 ±20% 밴드 안에 드는 범위에서 dense 0.78·MoE 0.68 (옛 0.4 는 출처와 맞지 않던 tg 35 한 점에 맞춘 값)
 // source(apple moe, 10-15 D81): https://github.com/ggml-org/llama.cpp/discussions/15396 gpt-oss 가이드의 Apple Metal gpt-oss-20b tg128(-fa 1 -ub 2048) 5점 — M4 Max 36GB(=32코어 GPU 410GB/s, https://support.apple.com/en-us/121553) b6123 92.36(가이드 본문)·b6293 95.88(https://github.com/ggml-org/llama.cpp/discussions/15396#discussioncomment-14225207), M4 Pro 64GB 63.34(https://github.com/ggml-org/llama.cpp/discussions/15396#discussioncomment-14226807), M1 Max 64GB 75.15(https://github.com/ggml-org/llama.cpp/discussions/15396#discussioncomment-14146721), M1 Pro 32GB 45.68(가이드 본문)이 같은 식에서 0.40~0.50 → minimax 0.445 를 내림한 0.44. 옛 0.30 은 M4 Max 36GB 값을 40코어(546GB/s)로 잘못 붙인 레코드와 Ultra 값(0.28~0.31)에 기댄 값이었다. 개발자가 열 스로틀링으로 본 M3 Max 64.26(https://github.com/ggml-org/llama.cpp/discussions/15396#discussioncomment-14224424)은 뺐다(0.34)
+// source(apple·apple-ultra dense, 10-15 D83): https://github.com/ggml-org/llama.cpp/discussions/4167 Apple 스코어보드의 Llama 2 7B Q4_0 tg128. 요약 표의 M1~M4 행은 토론 기준 빌드 b1550(2023-11, FA 없음)이라 지금 빌드보다 느리다(같은 M2 Ultra 94.27 → 2026-08 c1d0e7a00+FA 125.21, 본문 빌드별 표). 지금 빌드(llama-bench 기본 FA auto 인 b9754 이후) 값 — M5 10코어 b10621 31.88(https://github.com/ggml-org/llama.cpp/discussions/4167#discussioncomment-18210351)·M5 Pro 20코어 66.33(https://github.com/ggml-org/llama.cpp/discussions/4167#discussioncomment-18213344)·M5 Pro 16코어 b11046 67.59(https://github.com/ggml-org/llama.cpp/discussions/4167#discussioncomment-18583406)·M5 Max 40코어 b10621 119.92(https://github.com/ggml-org/llama.cpp/discussions/4167#discussioncomment-18152504)·b9754 119.08(https://github.com/ggml-org/llama.cpp/discussions/4167#discussioncomment-17386908) — 과 M4 계열의 유일한 새 빌드 값 M4 Max 32코어 b5440(FA 끔) 72.26(https://github.com/ggml-org/llama.cpp/discussions/4167#discussioncomment-13218715)이 같은 식에서 0.69~0.85 → minimax 0.768 을 내림한 apple 0.76. Ultra 는 M2 Ultra c1d0e7a00+FA 125.21(본문)·M1 Ultra b10621 113.79(https://github.com/ggml-org/llama.cpp/discussions/4167#discussioncomment-18191340)·M5 Ultra b10621 179.10(https://github.com/ggml-org/llama.cpp/discussions/4167#discussioncomment-18683605)이 0.55~0.61 → minimax 0.580 을 내림한 apple-ultra 0.57. 옛 0.60·0.44 는 b1550 값(M4 Max 40코어 0.59·M4 Pro 0.72, Ultra 0.44~0.46)에 맞춘 값이었다. M4 칩은 지금 빌드 값이 없다 — 같은 칩의 b1550 → 지금 빌드는 M5 가 1.08배·M5 Pro 1.13배·M5 Max 1.17배, Ultra 1.33~1.36배라 b1550 에서 비포화가 컸던 칩일수록 많이 빨라졌다
 // source(cpu moe): https://www.hardware-corner.net/guides/qwen3-hardware-requirements/ ("Dual-channel DDR5 5600 MHz · Qwen3 Q4 · 18–20" — 컨텍스트·CPU·백엔드 미기재라 10-15 D79 에 실측 레코드에서 뺐다, 값은 유지). 같은 쪽의 조건이 밝혀진 근거는 CPU_MOE_RAM_EFF 0.5(전문가를 RAM 에서 읽는 효율) — 0.43 은 그보다 낮은 보수값
 export const EFF: Readonly<Record<EffClass, { dense: number; moe?: number }>> = Object.freeze({
   nvidia: { dense: 0.7, moe: 0.45 }, // 0.62~0.80, 대역폭 클수록↓ (5090은 0.62, 3060은 0.80 → effOverride)
   amd: { dense: 0.76, moe: 0.5 }, // Vulkan no-FA 4점 minimax — 10-15 D80
   'intel-arc': { dense: 0.59 }, // MoE 미검증 (B580 실측)
-  apple: { dense: 0.6, moe: 0.44 }, // MoE: gpt-oss 가이드 5점 minimax — 10-15 D81
-  'apple-ultra': { dense: 0.44, moe: 0.29 }, // 800GB/s급 비포화
+  apple: { dense: 0.76, moe: 0.44 }, // dense: #4167 새 빌드 6점 minimax — 10-15 D83 · MoE: gpt-oss 가이드 5점 minimax — 10-15 D81
+  'apple-ultra': { dense: 0.57, moe: 0.29 }, // dense: #4167 새 빌드 3점 minimax — 10-15 D83 · MoE 는 gpt-oss 가이드 2025-08 빌드 3점
   strix: { dense: 0.65, moe: 0.53 }, // ROCm7/Vulkan
   'dgx-spark': { dense: 0.78, moe: 0.68 }, // 개발진 결과 파일 b7941 (mmap 끔) — 10-15 D79
   cpu: { dense: 0.5, moe: 0.43 }, // ≥8코어 전제, 코어 부족 시 ×0.7 은 UI 안내
@@ -164,9 +165,9 @@ export const PARTIAL_OFFLOAD_B_CAP_GPU_FRAC = 0.9;
 /**
  * 신뢰 밴드 (§4). calibrated 는 클래스 의존:
  * NVIDIA·AMD dGPU dense ±12% / 그 외 클래스·모든 MoE·부분 오프로드 ±20%.
- * 검증 최대 오차 17.1%(M4 Pro)를 상회하도록 설정 — 밴드가 검증값보다 좁으면 안 됨.
+ * 검증 최대 오차(속도 12점 15.4% 5060 Ti MoE — 10-15 D83 전에는 17.1% M4 Pro b1550)를 상회하도록 설정 — 밴드가 검증값보다 좁으면 안 됨.
  */
-// source: docs/02 §4 (policy) — 검증 근거는 §7 (속도 12점 MAE 6.3% / max 17.1%, verify-regression.test.ts)
+// source: docs/02 §4 (policy) — 검증 근거는 §7 (속도 12점 MAE 5.6% / max 15.4%, verify-regression.test.ts)
 export const BANDS = Object.freeze({
   calibratedDgpuDense: 0.12,
   calibratedOther: 0.2,

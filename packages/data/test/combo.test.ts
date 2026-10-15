@@ -216,8 +216,9 @@ describe('alternatives (docs/04 §4 ⑥, D4)', () => {
   });
 
   it('unified page prefers the next chip of the same vendor over a dGPU (apple-m4 × qwen3-14b)', () => {
-    // 10-01 D59: 생각 모드 임계로 Q2_K 대안이 원활에 못 미쳐 빠지고, 다음 칩이 M4 Pro
-    expect(altsFor('apple-m4', 'qwen3-14b').map(label)).toEqual(['smaller-model:gemma-3-12b', 'chip:apple-m4-pro']);
+    // 10-01 D59: 생각 모드 임계로 Q2_K 대안이 원활에 못 미쳐 빠졌다가, 10-15 D83(apple dense 0.60 → 0.76)에
+    // Q2_K 가 원활(생각 모드 기준 12 tok/s 이상)에 들어 다시 들어온다. 다음 칩은 여전히 dGPU 가 아니라 M4 Pro
+    expect(altsFor('apple-m4', 'qwen3-14b').map(label)).toEqual(['smaller-model:gemma-3-12b', 'lower-quant:Q2_K', 'chip:apple-m4-pro']);
   });
 
   it('CPU profile falls back to a faster model at the same verdict', () => {

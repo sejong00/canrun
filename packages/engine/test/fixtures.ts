@@ -111,6 +111,8 @@ const dense = (fileGB: number, kvKiB: number, paramsB: number): ModelQuant => ({
 
 // llama-2-7b Q4_0: 3.83GB / 128 KiB — llama.cpp 공식 벤치 스레드의 표준 케이스
 const L2_7B = dense(3.83, 128, 6.74);
+// 같은 모델의 ggml-org/Llama-2-7B-GGUF Q4_0 — 토론 #4167 의 2026-08-25 안내(-hf)로 받는 파일, llama-bench 표기 3.53 GiB (10-15 D83)
+const L2_7B_HF = dense(3.53 * 1.073741824, 128, 6.74);
 const QWEN3_8B = dense(5.03, 144, 8.2);
 const MISTRAL_7B = dense(4.37, 128, 7.25);
 
@@ -146,9 +148,10 @@ export const SPEED_CASES: readonly SpeedCase[] = [
   { label: '5090 Qwen3-8B Q4 @16k', hw: dgpu(32, 1792, 'nvidia', 0.62), mq: QWEN3_8B, ctx: 16384, measuredTg: 145.3, band: 0.12 },
   { label: '4090 Qwen3-8B Q4 @16k', hw: dgpu(24, 1008, 'nvidia'), mq: QWEN3_8B, ctx: 16384, measuredTg: 104.3, band: 0.12 },
   { label: '3090 Qwen3-8B Q4 @16k', hw: dgpu(24, 936, 'nvidia'), mq: QWEN3_8B, ctx: 16384, measuredTg: 87.5, band: 0.12 },
-  // Apple unified — 밴드 ±20% (검증 max 17.1% 가 M4 Pro)
-  { label: 'M4 Max 7B Q4_0 short', hw: unified(128, 546, 'apple'), mq: L2_7B, ctx: 512, measuredTg: 83.1, band: 0.2 },
-  { label: 'M4 Pro 7B Q4_0 short', hw: unified(48, 273, 'apple'), mq: L2_7B, ctx: 512, measuredTg: 50.7, band: 0.2 },
+  // Apple unified — 밴드 ±20%. 10-15 D83: 옛 2점(M4 Max 40코어 83.1·M4 Pro 50.7)은 토론 #4167 기준 빌드 b1550(2023-11)의 값이라
+  // 지금 빌드 값으로 바꿨다. M4 는 지금 빌드 값이 없어 같은 자리(Max·Pro)의 M5 — 회귀 8 의 Apple dense 점과 같은 값
+  { label: 'M5 Max 40c 7B Q4_0 (b10621)', hw: unified(128, 614, 'apple'), mq: L2_7B_HF, ctx: 512, measuredTg: 119.92, band: 0.2 },
+  { label: 'M5 Pro 16c 7B Q4_0 (b11046)', hw: unified(64, 307, 'apple'), mq: L2_7B_HF, ctx: 512, measuredTg: 67.59, band: 0.2 },
   // CPU — 밴드 ±20%
   {
     label: 'CPU DDR5-5600 Mistral-7B Q4',
@@ -460,13 +463,22 @@ const GEMMA3_4B_Q40: ModelQuant = { ...dense(2.35 * GIB, 20, 3.88), attnType: 's
 const OSS_GUIDE = 'https://github.com/ggml-org/llama.cpp/discussions/15396';
 const OSS_GUIDE_COMMENT = `${OSS_GUIDE}#discussioncomment-`;
 
+// Apple 스코어보드 토론(#4167) — Llama 2 7B Q4_0 tg128(-p 512 -n 128 -ngl 99, ctx 512 는 s3 레코드 관례). 10-15 D83.
+// 요약 표의 M1~M4 행은 기준 빌드 b1550(2023-11, FA 없음) 값이라 쓰지 않고, 새 빌드로 잰 값만 쓴다. llama-bench 기본 FA 는
+// b9754(2026-06) 이후 auto(Metal 에선 켬), 그 전 빌드는 끔. 지금 빌드는 c1d0e7a00(b10621, 2026-08-25 안내)
+const APPLE_4167 = 'https://github.com/ggml-org/llama.cpp/discussions/4167';
+const APPLE_4167_COMMENT = `${APPLE_4167}#discussioncomment-`;
+
 /**
  * AMD dense(Vulkan no-FA 표 4점, ±12%) · DGX Spark(b7941 llama-bench, 깊이 0 은 ctx 2048·깊이 8192 는 ctx 8192, ±20%) ·
- * Apple MoE(gpt-oss 가이드 8점, ±20% — 10-15 D81).
+ * Apple MoE(gpt-oss 가이드 8점, ±20% — 10-15 D81) · Apple dense(토론 #4167 새 빌드 9점, ±20% — 10-15 D83).
  * 계수는 이 점들이 모두 밴드 안에 들도록 정했다 — constants.ts EFF 주석.
  * Apple 반례(범위 밖, 회귀에 넣지 않음): MacBook Pro M3 Max 128GB(400GB/s) gpt-oss-20b b6250 tg128 64.26
  * (https://github.com/ggml-org/llama.cpp/discussions/15396#discussioncomment-14224424) — 계수 0.44 로 +28%. pp 를 32k 까지 9분 돌린 뒤의 값이고,
  * 개발자가 답글에서 열 스로틀링으로 보인다며 tg 만 다시 재 보라고 했다(#discussioncomment-14225207).
+ * Apple dense 회귀 밖 참고점: M3 Max 원글에 단 답글의 c1d0e7a00 값 81.57
+ * (https://github.com/ggml-org/llama.cpp/discussions/4167#discussioncomment-18201257) — 기기 설명이 없어 원글의 40코어(400GB/s)로 보면
+ * 계수 0.76 으로 −3.4%. 답글 쓴 사람이 직접 잰 b1550 값은 없다.
  */
 export const RECAL_1015_CASES: readonly SourcedSpeedCase[] = [
   { label: 'RX 7900 XTX L2-7B Q4_0 Vulkan (b10868)', hw: dgpu(24, 960, 'amd'), mq: L2_7B, ctx: 512, measuredTg: 182.63, band: 0.12, source: VULKAN_7900XTX },
@@ -494,4 +506,17 @@ export const RECAL_1015_CASES: readonly SourcedSpeedCase[] = [
   { label: 'Apple M3 Ultra 80c gpt-oss-20b (b6310)', hw: unified(512, 819, 'apple-ultra'), mq: GPT_OSS_20B, ctx: 2048, measuredTg: 115.52, band: 0.2, source: `${OSS_GUIDE_COMMENT}14249698` },
   { label: 'Apple M2 Ultra 76c gpt-oss-20b (b6123)', hw: unified(192, 800, 'apple-ultra'), mq: GPT_OSS_20B, ctx: 2048, measuredTg: 116.08, band: 0.2, source: OSS_GUIDE },
   { label: 'Apple M2 Ultra 76c gpt-oss-120b (b6123)', hw: unified(192, 800, 'apple-ultra'), mq: GPT_OSS_120B, ctx: 2048, measuredTg: 79.68, band: 0.2, source: OSS_GUIDE },
+  // Apple(base/Pro/Max) dense — 지금 빌드 5점 + M4 계열의 유일한 새 빌드 값(M4 Max 32코어 b5440, FA 끔). 10-15 D83
+  { label: 'Apple dense M5 10c L2-7B Q4_0 (b10621)', hw: unified(16, 153.6, 'apple'), mq: L2_7B_HF, ctx: 512, measuredTg: 31.88, band: 0.2, source: `${APPLE_4167_COMMENT}18210351` },
+  // 제출에 빌드 줄이 없다 — 3.53 GiB 파일(바뀐 안내)이고 요약 표는 c1d0e7a 로 적었다
+  { label: 'Apple dense M5 Pro 20c L2-7B Q4_0 (c1d0e7a)', hw: unified(64, 307, 'apple'), mq: L2_7B_HF, ctx: 512, measuredTg: 66.33, band: 0.2, source: `${APPLE_4167_COMMENT}18213344` },
+  { label: 'Apple dense M5 Pro 16c L2-7B Q4_0 (b11046)', hw: unified(64, 307, 'apple'), mq: L2_7B_HF, ctx: 512, measuredTg: 67.59, band: 0.2, source: `${APPLE_4167_COMMENT}18583406` },
+  { label: 'Apple dense M5 Max 40c L2-7B Q4_0 (b10621)', hw: unified(128, 614, 'apple'), mq: L2_7B_HF, ctx: 512, measuredTg: 119.92, band: 0.2, source: `${APPLE_4167_COMMENT}18152504` },
+  { label: 'Apple dense M5 Max 40c L2-7B Q4_0 (b9754)', hw: unified(128, 614, 'apple'), mq: L2_7B, ctx: 512, measuredTg: 119.08, band: 0.2, source: `${APPLE_4167_COMMENT}17386908` },
+  // 같은 제출의 b1550 값은 69.24 — 1.04배
+  { label: 'Apple dense M4 Max 32c L2-7B Q4_0 (b5440, FA 끔)', hw: unified(36, 410, 'apple'), mq: L2_7B, ctx: 512, measuredTg: 72.26, band: 0.2, source: `${APPLE_4167_COMMENT}13218715` },
+  // Apple Ultra dense — M2 Ultra 는 본문 빌드별 표(ggerganov, 같은 기기 b1550 94.27 — 1.33배, 파일 크기 표기 없음 → 옛 파일)
+  { label: 'Apple Ultra dense M2 Ultra 76c L2-7B Q4_0 (c1d0e7a00+FA)', hw: unified(192, 800, 'apple-ultra'), mq: L2_7B, ctx: 512, measuredTg: 125.21, band: 0.2, source: APPLE_4167 },
+  { label: 'Apple Ultra dense M1 Ultra 64c L2-7B Q4_0 (b10621)', hw: unified(128, 800, 'apple-ultra'), mq: L2_7B_HF, ctx: 512, measuredTg: 113.79, band: 0.2, source: `${APPLE_4167_COMMENT}18191340` },
+  { label: 'Apple Ultra dense M5 Ultra 80c L2-7B Q4_0 (b10621)', hw: unified(256, 1228, 'apple-ultra'), mq: L2_7B_HF, ctx: 512, measuredTg: 179.1, band: 0.2, source: `${APPLE_4167_COMMENT}18683605` },
 ];

@@ -38,9 +38,9 @@ We check the calculation against real data, and the check runs automatically eve
 
 - **Model file sizes**: an average error of 0.7% and at most 1.6% across 11 real GGUF files.
 - **KV cache**: an exact match with the formula for all 7 architectures we checked.
-- **Speed**: an average error of 6.3% and at most 17.1% across 12 reference benchmarks. The largest misses were an Apple M4 Pro, about 17% too low, and an MoE model on an RTX 5060 Ti 16GB, about 15% too low.
+- **Speed**: an average error of 5.6% and at most 15.4% across 12 reference benchmarks. The largest misses were an MoE model on an RTX 5060 Ti 16GB, about 15% too low, and an Apple M5 Pro, about 11% too low.
 
-These figures date from August 9, 2026, and the automated check keeps them from getting worse.
+We first checked these figures on August 9, 2026. On October 15, 2026, we replaced the two Apple speed benchmarks, which came from a 2023 llama.cpp build, with results from current builds. The automated check keeps the figures from getting worse.
 
 ## Known limits
 
