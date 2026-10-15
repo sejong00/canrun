@@ -102,10 +102,12 @@ export type ModelQuant = {
   nonExpertGB?: number;
   /** MoE: 라우팅 전문가 텐서 합 GB (GGUF 헤더 실측, MTP 블록 제외) — 있으면 nonExpertGB 도 실측값 */
   expertGB?: number;
-  /** MoE: 토큰당 쓰는 전문가 비율 topK/experts — 전문가 읽기량 = expertGB × 이 값 (§3.3) */
+  /** MoE: 토큰당 쓰는 전문가 비율 topK/experts — 전문가 읽기량 = expertGB × 이 값 (§3.1·§3.3) */
   activeExpertFrac?: number;
   /** MoE: 전문가가 있는 층 수 — `--n-cpu-moe` 층 단위 배치(§2.4-2). 없으면 전문가 전부 RAM 가정 */
   moeLayers?: number;
+  /** MoE: 토큰당 쓰는 라우팅 전문가 수(arch.topK) — 토큰당 고정 시간 = moeLayers × topK × 클래스 값 (§3.1, 10-16 D88) */
+  topK?: number;
   /**
    * dense: 파일 중 llama.cpp 가 그래픽카드에 올리지 않는 GB (GGUF 헤더 실측, §2.4-1·§3.3, 10-03 D62) —
    * 입력 임베딩 token_embd(입력층은 항상 CPU: https://github.com/ggml-org/llama.cpp/blob/cb7934c/src/llama-model.cpp#L1605-L1607,

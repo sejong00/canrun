@@ -10,6 +10,7 @@
 export type SiteUpdate = { readonly id: string; readonly date: string };
 
 export const SITE_UPDATES = [
+  { id: 'moe-fixed-cost', date: '2026-10-15' },
   { id: 'apple-prompt-speed', date: '2026-10-15' },
   { id: 'm5-ultra', date: '2026-10-15' },
   { id: 'new-guides', date: '2026-10-15' },

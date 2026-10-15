@@ -70,7 +70,7 @@ Gemma 4 12B는 <Num kind="needGB" model="gemma-4-12b" />가 필요해 8GB 카드
 
 <Measured model="llama-3.1-8b" gpu="rtx-4060" />
 
-전문가를 시스템 RAM에 두는 MoE 모델에서는 RTX 5060의 빠른 메모리가 추정 속도를 끌어올립니다. Gemma 4 26B-A4B는 RTX 4060에서 원활 기준 바로 아래라 겨우 돌아가고, RTX 5060에서는 기준을 넘어 원활하게 돌아갑니다<Expect model="gemma-4-26b-a4b" gpu="rtx-4060" mode="cpu-moe" verdict="B" confidence="theoretical" /><Expect model="gemma-4-26b-a4b" gpu="rtx-5060" mode="cpu-moe" verdict="A" confidence="theoretical" />. 둘 다 이론 추정입니다. Gemma 4는 생각 모드가 기본으로 꺼져 있지만 CanRun은 엄격한 기준을 적용합니다. 그래도 12B·14B급 dense 모델을 쓸 생각이라면 VRAM 12GB 이상을 목표로 잡으세요.
+전문가를 시스템 RAM에 두는 MoE 모델에서는 RTX 5060의 빠른 메모리가 추정 속도를 끌어올립니다. Gemma 4 26B-A4B는 RTX 4060에서 원활 기준을 간신히 넘고, RTX 5060에서는 여유 있게 넘어 둘 다 원활하게 돌아갑니다<Expect model="gemma-4-26b-a4b" gpu="rtx-4060" mode="cpu-moe" verdict="A" confidence="theoretical" /><Expect model="gemma-4-26b-a4b" gpu="rtx-5060" mode="cpu-moe" verdict="A" confidence="theoretical" />. 둘 다 이론 추정입니다. Gemma 4는 생각 모드가 기본으로 꺼져 있지만 CanRun은 엄격한 기준을 적용합니다. 그래도 12B·14B급 dense 모델을 쓸 생각이라면 VRAM 12GB 이상을 목표로 잡으세요.
 
 NVIDIA 사양표에는 RTX 3060이 두 가지로 나옵니다. 192비트 버스의 12GB 모델과 128비트 버스의 8GB 모델입니다. 이 글의 표는 12GB 모델 기준이니, 제품 상자에서 메모리 용량을 확인하세요. RTX 5060 Ti도 위 목록처럼 8GB 모델과 16GB 모델이 따로 있습니다.
 

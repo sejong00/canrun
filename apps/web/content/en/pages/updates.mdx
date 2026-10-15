@@ -2,6 +2,14 @@ CanRun changes often. New models arrive, the calculator gains features, and now 
 
 ## Changes to the site
 
+<Update id="moe-fixed-cost">
+
+### More accurate speeds for MoE models
+
+Our speed estimate for mixture-of-experts (MoE) models used a separate efficiency factor for each class of hardware and a rough count of the bytes each token reads, which left out most of the shared layers. We now count those bytes from each file's header and add a fixed cost that each token pays for every expert it runs in every layer, fitted to public benchmarks from recent llama.cpp builds. Small MoE models on top-end NVIDIA cards are no longer held under a fixed ceiling, and large MoE models on Macs came out faster than before. At Q4_K_M, gpt-oss-20b on a 24GB <SiteLink to="/gpu/apple-m4">Apple M4</SiteLink> moved from Runs well to Runs great. A few 8GB-card combinations that keep MoE experts in system RAM moved from Runs slowly to Runs well.
+
+</Update>
+
 <Update id="apple-prompt-speed">
 
 ### Prompt speed estimates for Macs

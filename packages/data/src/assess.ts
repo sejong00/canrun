@@ -12,6 +12,7 @@ import {
   computeBufferGB,
   EFF,
   evaluate,
+  MOE_EXPERT_OVERHEAD_US,
   fit,
   gpuCountOf,
   gpuResidentGBFor,
@@ -265,15 +266,13 @@ export function hardwareConfigs(
 
 /**
  * 통합 메모리 칩의 CPU 경로 실효 대역폭 — 엔진 cpu-only 는 `EFF.cpu × ramBandwidthGBs` 라서
- * 통합 대역폭 전체를 넣으면 CPU 계수(dense 0.5·MoE 0.43)가 같은 칩의 GPU 계수(apple-ultra MoE 0.29 등)보다
- * 커져, wired limit 를 넘어 CPU 로 떨어진 구성이 더 빠르게 추정되는 역전이 생긴다(P1-1 리뷰).
- * 같은 메모리에서 CPU 경로가 GPU 경로를 넘지 않도록 기존 계수 비율로 깎는다 — 새 상수 없음.
- * 10-15 D81 에 apple MoE 가 0.30 → 0.44 가 되어 apple 은 깎이지 않는다(비율 1) — 지금 깎이는 것은 apple-ultra 뿐.
+ * 통합 대역폭 전체를 넣으면 CPU 계수가 같은 칩의 GPU 계수보다 커질 때 wired limit 를 넘어 CPU 로 떨어진 구성이
+ * 더 빠르게 추정되는 역전이 생긴다(P1-1 리뷰). 같은 메모리에서 CPU 경로가 GPU 경로를 넘지 않도록 dense 계수 비율로 깎는다.
+ * 지금은 모든 클래스의 dense 계수가 cpu(0.5)보다 커서 깎이는 클래스가 없다. MoE 몫(옛 MoE 계수 비율 — apple-ultra 를 0.67배로
+ * 깎던 것)은 10-16 D88 에 GPU 클래스 MoE 계수가 없어지면서 엔진(cpu-only 가 통합 메모리에서 full-gpu 추정을 넘지 않음)으로 옮겼다.
  */
 export function unifiedCpuBandwidth(gpu: Pick<Gpu, 'effClass' | 'memBandwidthGBs'>): number {
-  const cls = EFF[gpu.effClass];
-  const cpu = EFF.cpu;
-  const ratio = Math.min(1, cls.dense / cpu.dense, (cls.moe ?? cls.dense) / (cpu.moe ?? cpu.dense));
+  const ratio = Math.min(1, EFF[gpu.effClass].dense / EFF.cpu.dense);
   return gpu.memBandwidthGBs * ratio;
 }
 
@@ -289,6 +288,7 @@ export type QuantRowInput = Pick<ModelQuantCore, 'quant' | 'fileGB'> &
  * MoE: 행 실측 분할이 있으면 그 값(모델 수준 유도값보다 우선), 토큰당 전문가 비율 = topK/experts,
  * 전문가 층 수 = arch.expertLayers 길이(전문가가 일부 층에만 있을 때 — 10-03 D63) 또는 arch.layers — 엔진이 VRAM 여유만큼
  * 전문가 층을 GPU 에 둔다 (10-01 D56). 엔진의 cpuMoeLayers 는 이 단위라 명령 값은 `cpuMoeFlagLayers`(snippet.ts)로 바꾼다.
+ * topK 는 MoE 토큰당 고정 시간(전문가 층 수 × topK × 클래스 값 — 10-16 D88)에 쓴다.
  */
 export function toModelQuant(model: ModelCore, row?: QuantRowInput): ModelQuant {
   const measured = row?.expertGB !== undefined && row.nonExpertGB !== undefined;
@@ -303,6 +303,7 @@ export function toModelQuant(model: ModelCore, row?: QuantRowInput): ModelQuant 
     ...(measured ? { expertGB: row.expertGB } : {}),
     ...(moe && experts !== undefined && topK !== undefined ? { activeExpertFrac: topK / experts } : {}),
     ...(moe ? { moeLayers: model.arch.expertLayers?.length ?? model.arch.layers } : {}),
+    ...(moe && topK !== undefined ? { topK } : {}),
     maxContext: model.maxContext,
     quant: row?.quant ?? 'Q4_K_M',
     fileGB: row?.fileGB,
@@ -348,8 +349,11 @@ export function baselineRow<R extends Pick<ModelQuantCore, 'quant' | 'fileGB'>>(
 
 /** 이론 추정(±30%) 판정 — docs/02 §4 "검증 밖 조합", 데이터 레이어 규칙 (결정 D4). */
 export function isTheoretical(gpu: GpuCore, model: ModelCore, mode: Mode): boolean {
-  // MoE 계수가 검증되지 않은 클래스 (constants.ts EFF: intel-arc)
-  if (model.moe && EFF[gpu.effClass].moe === undefined) return true;
+  // MoE 토큰당 고정 시간이 검증되지 않은 GPU 클래스 (constants.ts MOE_EXPERT_OVERHEAD_US: intel-arc — 10-16 D88).
+  // CPU 프로필의 MoE 는 cpu 클래스 계수(EFF.cpu.moe)로 계산한다
+  if (model.moe && gpu.effClass !== 'cpu' && MOE_EXPERT_OVERHEAD_US[gpu.effClass] === undefined) return true;
+  // 전문가 수·topK 가 없는 MoE 는 엔진이 토큰당 고정 시간을 0 으로 계산한다(과대 쪽) — 10-16 D88
+  if (model.moe && model.arch.topK === undefined) return true;
   // cpu-moe: 공개 실측(NVIDIA 35점) 평균 오차 10.3%·±20% 안 89% 지만 최대 40% — 보정 추정(±20%) 근거가 안 되어
   // 가장 넓은 라벨 ±30% 를 쓴다. 표시 범위 밖 4점은 모두 과소 추정(실제가 더 빠름, 회귀가 강제) (10-01 D56)
   if (mode === 'cpu-moe') return true;

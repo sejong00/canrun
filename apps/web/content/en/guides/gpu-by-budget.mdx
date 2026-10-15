@@ -64,7 +64,7 @@ For a model that fits, speed follows memory bandwidth. The RTX 3060 12GB has <Nu
 
 <Measured model="llama-3.1-8b" gpu="rtx-4060" />
 
-With experts in system RAM, the RTX 5060's faster memory raises the estimate: Gemma 4 26B-A4B lands just under the stricter Runs well line on the RTX 4060 (Runs slowly) and just over it on the RTX 5060 (Runs well), both theoretical.<Expect model="gemma-4-26b-a4b" gpu="rtx-4060" mode="cpu-moe" verdict="B" confidence="theoretical" /><Expect model="gemma-4-26b-a4b" gpu="rtx-5060" mode="cpu-moe" verdict="A" confidence="theoretical" /> Gemma 4 gets the thinking-mode thresholds even though its thinking is off by default. If 12B and 14B dense models are on your list, aim for 12GB or more.
+With experts in system RAM, the RTX 5060's faster memory raises the estimate: Gemma 4 26B-A4B only just clears the stricter Runs well line on the RTX 4060 and clears it more comfortably on the RTX 5060, so both Run well as theoretical estimates.<Expect model="gemma-4-26b-a4b" gpu="rtx-4060" mode="cpu-moe" verdict="A" confidence="theoretical" /><Expect model="gemma-4-26b-a4b" gpu="rtx-5060" mode="cpu-moe" verdict="A" confidence="theoretical" /> Gemma 4 gets the thinking-mode thresholds even though its thinking is off by default. If 12B and 14B dense models are on your list, aim for 12GB or more.
 
 NVIDIA's specifications list the RTX 3060 in two memory versions, 12GB on a 192-bit bus and 8GB on a 128-bit bus. The 8GB version is not the card in these tables, so check the memory on the box. The RTX 5060 Ti has the same trap, with 8GB and 16GB versions in the list above.
 

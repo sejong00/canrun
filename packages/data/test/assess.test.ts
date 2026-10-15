@@ -103,8 +103,9 @@ describe('measured join (결정 D4)', () => {
     expect(hint.mode).toBe('cpu-moe');
     expect(hint.result.confidence).toBe('theoretical');
     expect(hint.result.cpuMoeLayers).toBe(21);
-    // 09-30 22.18(전문가 전부 RAM) → 10-01 전문가 15층 GPU 배치. 공개 실측 5090 + DDR5-6400 --n-cpu-moe 24 = 37.59
-    expect(hint.result.tgTokS.est).toBeCloseTo(35.33, 1);
+    // 09-30 22.18(전문가 전부 RAM) → 10-01 전문가 15층 GPU 배치 35.33 → 10-16 D88 GPU 몫 dense 계수 + MoE 고정 시간 35.49.
+    // 공개 실측 5090 + DDR5-6400 --n-cpu-moe 24 = 37.59
+    expect(hint.result.tgTokS.est).toBeCloseTo(35.49, 1);
   });
 
   it('Q4_K_XL 실측은 Q4_K_M 에 조인되지 않는다', () => {
@@ -136,15 +137,13 @@ describe('measured join (결정 D4)', () => {
 });
 
 describe('통합 메모리 CPU 경로 (P1-1 리뷰 — 역전 방지)', () => {
-  it('CPU측 대역폭은 기존 계수 비율로 깎인다 (새 상수 없음)', () => {
-    const m3u = gpu('apple-m3-ultra');
-    // apple-ultra: min(1, 0.44/0.5, 0.29/0.43) = 0.29/0.43
-    expect(unifiedCpuBandwidth(m3u)).toBeCloseTo((m3u.memBandwidthGBs * 0.29) / 0.43, 6);
-    // apple: min(1, 0.6/0.5, 0.44/0.43) = 1 (10-15 D81 — MoE 0.30 → 0.44) · strix: 계수가 cpu 보다 커서 깎지 않는다
-    const m4 = gpu('apple-m4');
-    expect(unifiedCpuBandwidth(m4)).toBe(m4.memBandwidthGBs);
-    const strix = gpu('amd-strix-halo');
-    expect(unifiedCpuBandwidth(strix)).toBe(strix.memBandwidthGBs);
+  it('CPU측 대역폭은 dense 계수 비율로만 깎는다 — 지금은 깎이는 클래스가 없다 (새 상수 없음)', () => {
+    // 10-16 D88: GPU 클래스 MoE 계수가 없어져 apple-ultra 를 0.29/0.43 로 깎던 MoE 몫은 엔진으로 옮겼다
+    // (cpu-only 가 통합 메모리에서 full-gpu 추정을 넘지 않음 — 아래 역전 방지 테스트가 지킨다)
+    for (const id of ['apple-m3-ultra', 'apple-m4', 'amd-strix-halo', 'nvidia-dgx-spark']) {
+      const g = gpu(id);
+      expect(unifiedCpuBandwidth(g), id).toBe(g.memBandwidthGBs);
+    }
   });
 
   it('같은 칩에서 RAM 이 적은 구성이 더 빠르게 추정되지 않는다', () => {
@@ -191,9 +190,10 @@ describe('판정 사유 = 실제로 걸린 규칙 (P1-1 리뷰)', () => {
   });
 
   // 기본 구성(RAM 32GB)의 비-리즈닝 cpu-moe 는 전부 20 이상 — 리즈닝(기준 ×1.5 = 30)으로 규칙을 고정.
-  // 10-01 D56 부분 배치로 rtx-4060 × gpt-oss-20b 는 30.8 → A, 남은 B 는 8GB 급 노트북·3050
-  it('cpu-moe 는 원활 기준 미만이면 B — 리즈닝은 30 (rtx-3050-8gb × gpt-oss-20b)', () => {
-    const c = combo('rtx-3050-8gb', 'gpt-oss-20b');
+  // 10-01 D56 부분 배치로 rtx-4060 × gpt-oss-20b 는 30.8 → A. 10-16 D88(GPU 몫 dense 계수 + MoE 고정 시간)에 3050 × gpt-oss-20b 도
+  // 27.7 → 34 로 A — 남은 B 는 8GB 급 노트북·3050 의 gemma-4-26b-a4b
+  it('cpu-moe 는 원활 기준 미만이면 B — 리즈닝은 30 (rtx-3050-8gb × gemma-4-26b-a4b)', () => {
+    const c = combo('rtx-3050-8gb', 'gemma-4-26b-a4b');
     expect(c.baseline.result.mode).toBe('cpu-moe');
     expect(c.baseline.result.verdict).toBe('B');
     expect(c.baseline.verdictReason).toBe('cap-cpu-moe');
@@ -377,7 +377,8 @@ describe('summaries', () => {
     // 09-30 cpu-moe 보정: qwen3-30b-a3b-2507·kanana-1.5-15.7b-a3b 가 4060 에서 B → A (20 tok/s 이상)
     // 10-01 전문가 부분 배치(D56): gpt-oss-20b(리즈닝 30 → 30.8)·gemma-4-26b-a4b(부분 오프로드 B → cpu-moe) B → A
     // 10-01 D59 생각 모드 모델 ×1.5(qwen3·qwen3.5·gemma-4·exaone-4·minicpm5 등): A 7→6, B 11→10, F 8→10
-    expect(c).toMatchObject({ S: 11, A: 6, B: 10, F: 10, otherQuant: 5 });
+    // 10-16 D88 MoE 고정 시간(cpu-moe GPU 몫 dense 계수): gemma-4-26b-a4b 25.3 → 30.6 으로 리즈닝 기준 30 을 넘어 B → A
+    expect(c).toMatchObject({ S: 11, A: 7, B: 9, F: 10, otherQuant: 5 });
     expect(hub.faq.referenceLarge?.baseline.fReason).toBe('no-fit');
     expect(hub.benchmarks.every((bp) => bp.gpuId === 'rtx-4060')).toBe(true);
     // 정렬: 기준 판정 비증가, 같은 판정 안에서는 표시 tok/s 비증가

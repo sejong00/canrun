@@ -5,12 +5,15 @@
  * AC (docs/06 P0-2):
  *  1) 가중치 11종: MAE < 1% (검증값 0.7%), 케이스별 |err| ≤ 1.6%
  *  2) KV 7종: 공식값 전수 일치 (±0.5 KiB)
- *  3) 속도 12점: 각 점이 클래스 밴드(±12%/±20%) 이내 + MAE < 7% (검증값 6.3% → 10-15 D83 Apple 2점을 지금 빌드 값으로 바꿔 5.6%)
+ *  3) 속도 12점: 각 점이 클래스 밴드(±12%/±20%) 이내 + MAE < 7% (검증값 6.3% → 10-15 D83 Apple 2점을 지금 빌드 값으로 바꿔 5.6%
+ *     → 10-16 D88 MoE 고정 시간으로 4.7%)
  *  4) 판정 새너티: 4060 8GB 통념 일치
  *  5) cpu-moe(전문가 RAM) 3점: 각 ±20% 이내 + MAE < 12% (09-30 보정 — 이전 식은 ~2.5× 과소)
  *  6) 같은 GPU 여러 장 10점(D58) · 7) 서로 다른 GPU 섞기 3점(D67)
- *  8) 클래스 계수 재보정 31점(10-15 D79·D81·D83): AMD Vulkan 4점 각 ±12% · DGX Spark 10점·Apple MoE 8점·Apple dense 9점 각 ±20%
+ *  8) 클래스 계수 재보정 23점(10-15 D79·D83): AMD Vulkan 4점 각 ±12% · DGX Spark 10점·Apple dense 9점 각 ±20%
+ *     (Apple MoE 8점(#15396 2025-08 빌드)은 10-16 D88 에 회귀 밖 참고점 — 10 의 MOE_OLD_BUILD_CASES)
  *  9) pp(§3.5) Apple 12점(10-16 D86): 각 ±40%(PP_BAND) · M5 계열 5점 각 ±12% · 그 밖의 칩 새 빌드 2점 각 ±5%
+ * 10) MoE 토큰당 고정 시간(§3.1, 10-16 D88): 2026 빌드 45점 각 ±20% · MAE < 10%(검증값 8.9%) · 클래스별 MAE < 12%
  */
 import { describe, expect, it } from 'vitest';
 import { fit } from '../src/fit';
@@ -20,6 +23,9 @@ import { ppEstimate, tgEstimate } from '../src/speed';
 import {
   APPLE_PP_CASES,
   CPU_MOE_CASES,
+  MOE_OLD_BUILD_CASES,
+  MOE_OVERHEAD_CASES,
+  MOE_OVERHEAD_SPARK_B7941,
   RECAL_1015_CASES,
   HETERO_GPU_CASES,
   MULTI_GPU_CASES,
@@ -84,7 +90,7 @@ describe('3) speed: tg = eff × BW / (weightsRead + kvRead) vs measured (12 poin
     },
   );
 
-  it('MAE < 7% (verified 6.3% → 5.6% after the 10-15 D83 Apple swap)', () => {
+  it('MAE < 7% (verified 6.3% → 5.6% after the 10-15 D83 Apple swap → 4.7% with the 10-16 D88 MoE fixed time)', () => {
     const mae = errors.reduce((a, b) => a + Math.abs(b), 0) / errors.length;
     expect(mae).toBeLessThan(0.07);
   });
@@ -197,7 +203,7 @@ describe('7) mixed GPUs layer split (§6 beta, 10-03 D67): 공개 실측 3점', 
   });
 });
 
-describe('8) class recalibration (10-15 D79·D81·D83): AMD Vulkan 4점 · DGX Spark 10점 · Apple MoE 8점 · Apple dense 9점', () => {
+describe('8) class recalibration (10-15 D79·D83): AMD Vulkan 4점 · DGX Spark 10점 · Apple dense 9점', () => {
   const errors = RECAL_1015_CASES.map(
     ({ hw, mq, ctx, measuredTg }) => (tgEstimate(hw, mq, { mode: 'full-gpu' }, { ctx }) - measuredTg) / measuredTg,
   );
@@ -217,15 +223,6 @@ describe('8) class recalibration (10-15 D79·D81·D83): AMD Vulkan 4점 · DGX S
     const spark = group('DGX Spark');
     expect(spark).toHaveLength(10);
     expect(spark.reduce((a, b) => a + Math.abs(b), 0) / spark.length).toBeLessThan(0.12);
-  });
-
-  it('Apple MoE (gpt-oss 가이드 #15396): base/Pro/Max 5점 MAE < 12% · Ultra 3점 MAE < 7%', () => {
-    const base = [...group('Apple M4'), ...group('Apple M1')];
-    const ultra = [...group('Apple M3 Ultra'), ...group('Apple M2 Ultra')];
-    expect(base).toHaveLength(5);
-    expect(ultra).toHaveLength(3);
-    expect(base.reduce((a, b) => a + Math.abs(b), 0) / base.length).toBeLessThan(0.12);
-    expect(ultra.reduce((a, b) => a + Math.abs(b), 0) / ultra.length).toBeLessThan(0.07);
   });
 
   it('Apple dense (#4167 새 빌드 — 10-15 D83): base/Pro/Max 6점 MAE < 7% · Ultra 3점 MAE < 5%', () => {
@@ -261,5 +258,56 @@ describe('9) pp: Apple #4167 Llama 2 7B Q4_0 pp512 (10-16 D86, docs/02 §3.5)', 
     const current = group('current');
     expect(current).toHaveLength(2);
     expect(Math.max(...current.map(Math.abs))).toBeLessThan(0.05);
+  });
+});
+
+describe('10) MoE 토큰당 고정 시간 (§3.1, 10-16 D88): 2026 llama.cpp 빌드 45점', () => {
+  const cases = [...MOE_OVERHEAD_CASES, ...MOE_OVERHEAD_SPARK_B7941];
+  const err = (c: (typeof cases)[number]) => (tgEstimate(c.hw, c.mq, { mode: 'full-gpu' }, { ctx: c.ctx }) - c.measuredTg) / c.measuredTg;
+  const errors = cases.map(err);
+  const mae = (xs: readonly number[]) => xs.reduce((a, b) => a + Math.abs(b), 0) / xs.length;
+
+  it('has the 45 points the constants were fitted to', () => {
+    expect(cases).toHaveLength(45);
+    for (const c of cases) expect(c.source, c.label).toMatch(/^https:\/\//);
+  });
+
+  it.each(cases.map((c, i) => [c.label, i] as const))('%s within ±20% (MoE band)', (_label, i) => {
+    expect(Math.abs(errors[i]!)).toBeLessThanOrEqual(0.2);
+  });
+
+  it('MAE < 10% over all 45 (verified 8.9%) and < 12% in every class', () => {
+    expect(mae(errors)).toBeLessThan(0.1);
+    for (const cls of ['apple', 'apple-ultra', 'dgx-spark', 'nvidia', 'amd', 'strix'] as const) {
+      const xs = errors.filter((_, i) => cases[i]!.hw.effClass === cls);
+      expect(xs.length, cls).toBeGreaterThanOrEqual(3);
+      expect(mae(xs), cls).toBeLessThan(0.12);
+    }
+  });
+
+  it('같은 모델의 Q4·Q8 비(바이트만 다른 쌍)를 옛 식보다 가깝게 낸다 — M5 Max·M2 Ultra Qwen3.5-35B-A3B, M2 Ultra Gemma 4 (D86 ①)', () => {
+    const tg = (label: string) => {
+      const c = cases.find((x) => x.label.startsWith(label))!;
+      return { est: tgEstimate(c.hw, c.mq, { mode: 'full-gpu' }, { ctx: c.ctx }), meas: c.measuredTg };
+    };
+    for (const [q4, q8] of [
+      ['Apple M5 Max 40c Qwen3.5-35B-A3B Q4_K_M', 'Apple M5 Max 40c Qwen3.5-35B-A3B Q8_0'],
+      ['Apple M2 Ultra Qwen3.5-35B-A3B Q4_K_M', 'Apple M2 Ultra Qwen3.5-35B-A3B Q8_0'],
+      ['Apple M2 Ultra Gemma 4 26B-A4B Q4_0', 'Apple M2 Ultra Gemma 4 26B-A4B Q8_0'],
+    ] as const) {
+      const a = tg(q4);
+      const b = tg(q8);
+      const measured = a.meas / b.meas; // 1.09 ~ 1.26
+      const estimated = a.est / b.est;
+      expect(Math.abs(estimated / measured - 1), q4).toBeLessThan(0.17);
+    }
+  });
+
+  it('회귀 밖 참고: 2025-08 빌드(#15396) Apple 8점은 지금 식이 모두 높게 본다(+10~+40%, 빌드가 빨라졌다)', () => {
+    for (const c of MOE_OLD_BUILD_CASES) {
+      const e = err(c);
+      expect(e, c.label).toBeGreaterThan(0.1);
+      expect(e, c.label).toBeLessThan(0.4);
+    }
   });
 });

@@ -1,24 +1,27 @@
 /** 속도 모델 유닛 — docs/02 §3. */
 import { describe, expect, it } from 'vitest';
-import { MOE_TG_CAP_TOKS } from '../src/constants';
 import { fit } from '../src/fit';
 import { gpuSharesOf, gpuUnitsOf } from '../src/memory';
-import { bytesPerTokenGB, gpuThroughputGBs, ppEstimate, resolveEff, tgEstimate } from '../src/speed';
-import type { Hardware } from '../src/types';
-import { CPU_MOE_RAM_EFF, MULTI_GPU_TG_FACTOR, PP_COEF, PP_COEF_NEURAL_ACCEL } from '../src/constants';
+import { bytesPerTokenGB, gpuThroughputGBs, moeOverheadSeconds, ppEstimate, resolveEff, tgEstimate } from '../src/speed';
+import type { Hardware, ModelQuant } from '../src/types';
+import { CPU_MOE_RAM_EFF, MOE_EXPERT_OVERHEAD_US, MULTI_GPU_TG_FACTOR, PP_COEF, PP_COEF_NEURAL_ACCEL } from '../src/constants';
 import { GPT_OSS_20B, QWEN3_8B_Q4, QWEN35_35B_A3B_Q4, QWEN36_35B_A3B_Q4_SPLIT, RTX_3060_12GB, RTX_4090 } from './fixtures';
 
 describe('resolveEff (§3.2)', () => {
-  it('uses class defaults (nvidia dense 0.70, moe 0.45)', () => {
+  it('uses class defaults — GPU classes have one (dense) value since 10-16 D88, MoE reads with it too', () => {
     expect(resolveEff({ effClass: 'nvidia' }, false)).toBe(0.7);
-    expect(resolveEff({ effClass: 'nvidia' }, true)).toBe(0.45);
+    expect(resolveEff({ effClass: 'nvidia' }, true)).toBe(0.7);
+  });
+
+  it('the cpu class keeps its MoE value (cpu-only path, 0.43)', () => {
+    expect(resolveEff({ effClass: 'cpu' }, true)).toBe(0.43);
   });
 
   it('effOverride wins over class defaults', () => {
     expect(resolveEff({ effClass: 'nvidia', effOverride: 0.62 }, false)).toBe(0.62);
   });
 
-  it('falls back to dense when class has no verified MoE coefficient (intel-arc)', () => {
+  it('intel-arc reads MoE bytes with its dense value', () => {
     expect(resolveEff({ effClass: 'intel-arc' }, true)).toBe(0.59);
   });
 });
@@ -29,10 +32,15 @@ describe('bytesPerTokenGB (§3.1)', () => {
     expect(bytesPerTokenGB(QWEN3_8B_Q4, 16384)).toBeCloseTo(5.03 + kvRead, 4);
   });
 
-  it('MoE: weightsRead scaled by activeParamsB / paramsB', () => {
-    const weightsRead = 12.11 * (3.6 / 20.9);
+  it('MoE with a header split: non-expert + routed experts × topK/experts (10-16 D88)', () => {
     const kvRead = (24 * 1024 * 2048) / 1e9;
-    expect(bytesPerTokenGB(GPT_OSS_20B, 2048)).toBeCloseTo(weightsRead + kvRead, 4);
+    expect(bytesPerTokenGB(GPT_OSS_20B, 2048)).toBeCloseTo(1.3 + 10.18 * (4 / 32) + kvRead, 6);
+  });
+
+  it('MoE without a split falls back to the active slice (file × active / total)', () => {
+    const noSplit: ModelQuant = { ...GPT_OSS_20B, nonExpertGB: undefined, expertGB: undefined };
+    const kvRead = (24 * 1024 * 2048) / 1e9;
+    expect(bytesPerTokenGB(noSplit, 2048)).toBeCloseTo(12.11 * (3.6 / 20.9) + kvRead, 6);
   });
 });
 
@@ -47,9 +55,24 @@ describe('tgEstimate (§3.1~3.4)', () => {
     expect(tg16k).toBeLessThan(95 * 1.15);
   });
 
-  it('caps fast small-MoE at the bandwidth-model ceiling (§9: 235 tok/s)', () => {
-    const monster: Hardware = { ...RTX_4090, memBandwidthGBs: 3000 };
-    expect(tgEstimate(monster, GPT_OSS_20B, { mode: 'full-gpu' }, { ctx: 2048 })).toBe(MOE_TG_CAP_TOKS);
+  it('MoE full-gpu: read time at the dense value + MoE layers × topK × class overhead (10-16 D88)', () => {
+    const read = bytesPerTokenGB(GPT_OSS_20B, 2048) / (0.7 * 1008);
+    const overhead = 24 * 4 * MOE_EXPERT_OVERHEAD_US.nvidia! * 1e-6;
+    expect(moeOverheadSeconds(RTX_4090, GPT_OSS_20B)).toBeCloseTo(overhead, 12);
+    expect(tgEstimate(RTX_4090, GPT_OSS_20B, { mode: 'full-gpu' }, { ctx: 2048 })).toBeCloseTo(1 / (read + overhead), 6);
+  });
+
+  it('the fixed time sets a ceiling for small MoE on very fast cards (replaces the old 235 tok/s cap)', () => {
+    const monster: Hardware = { ...RTX_4090, memBandwidthGBs: 1e9 };
+    const ceiling = 1 / moeOverheadSeconds(RTX_4090, GPT_OSS_20B);
+    expect(tgEstimate(monster, GPT_OSS_20B, { mode: 'full-gpu' }, { ctx: 2048 })).toBeLessThan(ceiling);
+    expect(tgEstimate(monster, GPT_OSS_20B, { mode: 'full-gpu' }, { ctx: 2048 })).toBeGreaterThan(ceiling * 0.999);
+  });
+
+  it('a class without its own value (intel-arc) takes the largest class value; no structure → no fixed time', () => {
+    const largest = Math.max(...Object.values(MOE_EXPERT_OVERHEAD_US));
+    expect(moeOverheadSeconds({ effClass: 'intel-arc' }, GPT_OSS_20B)).toBeCloseTo(24 * 4 * largest * 1e-6, 12);
+    expect(moeOverheadSeconds({ effClass: 'nvidia' }, { moeLayers: 24 })).toBe(0);
   });
 
   it('cpu-moe: RAM bandwidth dominated, bounded above by full-gpu estimate (§3.3)', () => {
@@ -69,7 +92,8 @@ describe('tgEstimate (§3.1~3.4)', () => {
       const f = n / mq.moeLayers!;
       const t =
         (routed * f) / (CPU_MOE_RAM_EFF * RTX_3060_12GB.ramBandwidthGBs) +
-        (mq.nonExpertGB! + routed * (1 - f) + kv) / (resolveEff(RTX_3060_12GB, true) * RTX_3060_12GB.memBandwidthGBs);
+        (mq.nonExpertGB! + routed * (1 - f) + kv) / (resolveEff(RTX_3060_12GB, false) * RTX_3060_12GB.memBandwidthGBs) +
+        moeOverheadSeconds(RTX_3060_12GB, mq);
       return 1 / t;
     };
     expect(at(40)).toBeCloseTo(manual(40), 6);
@@ -169,17 +193,17 @@ describe('§6 mixed GPUs speed (beta, 10-03 D67)', () => {
 
   it('identical cards: the throughput is eff × bandwidth exactly, list or gpuCount', () => {
     const two: Hardware = { ...RTX_4090, gpuCount: 2 };
-    expect(gpuThroughputGBs({ ...two, gpus: gpuUnitsOf(two) }, false)).toBe(0.7 * MULTI_GPU_TG_FACTOR * 1008);
-    expect(gpuThroughputGBs(two, true)).toBe(0.45 * MULTI_GPU_TG_FACTOR * 1008);
-    expect(gpuThroughputGBs(RTX_4090, false)).toBe(0.7 * 1008);
+    expect(gpuThroughputGBs({ ...two, gpus: gpuUnitsOf(two) })).toBe(0.7 * MULTI_GPU_TG_FACTOR * 1008);
+    expect(gpuThroughputGBs(two)).toBe(0.7 * MULTI_GPU_TG_FACTOR * 1008);
+    expect(gpuThroughputGBs(RTX_4090)).toBe(0.7 * 1008);
   });
 
   it('mixed cards: 1 GB takes Σ share_i ÷ (eff_i × BW_i) — the slower card drags the whole token', () => {
     const [a, b] = gpuSharesOf(mixed);
     const expected = MULTI_GPU_TG_FACTOR / (a! / (0.7 * 936) + b! / (0.7 * 360));
-    expect(gpuThroughputGBs(mixed, false)).toBeCloseTo(expected, 9);
-    expect(gpuThroughputGBs(mixed, false)).toBeLessThan(0.7 * 936);
-    expect(gpuThroughputGBs(mixed, false)).toBeGreaterThan(0.7 * 360);
+    expect(gpuThroughputGBs(mixed)).toBeCloseTo(expected, 9);
+    expect(gpuThroughputGBs(mixed)).toBeLessThan(0.7 * 936);
+    expect(gpuThroughputGBs(mixed)).toBeGreaterThan(0.7 * 360);
     // Qwen3 8B: 3090 한 장이면 약 105, 기본 분할로 두 카드에 나누면 약 68 tok/s
     const tgPair = tgEstimate(mixed, QWEN3_8B_Q4, fit(mixed, QWEN3_8B_Q4), { ctx: 8192 });
     const tgOne = tgEstimate(one3090, QWEN3_8B_Q4, fit(one3090, QWEN3_8B_Q4), { ctx: 8192 });
@@ -187,7 +211,7 @@ describe('§6 mixed GPUs speed (beta, 10-03 D67)', () => {
     expect(tgPair).toBeCloseTo(68, 0);
   });
 
-  it('cpu-moe and partial offload read their GPU share at the mixed throughput; the MoE cap stays', () => {
+  it('cpu-moe and partial offload read their GPU share at the mixed throughput; the MoE fixed time stays', () => {
     const r = { mode: 'cpu-moe' as const, cpuMoeLayers: 10 };
     const moe = { ...QWEN36_35B_A3B_Q4_SPLIT };
     const slowerPair = tgEstimate(mixed, moe, r, { ctx: 8192 });
@@ -195,8 +219,9 @@ describe('§6 mixed GPUs speed (beta, 10-03 D67)', () => {
     expect(slowerPair).toBeLessThan(fast);
     const partial = { mode: 'partial-offload' as const, gpuFrac: 0.7 };
     expect(tgEstimate(mixed, QWEN3_8B_Q4, partial, { ctx: 8192 })).toBeLessThan(tgEstimate(one3090, QWEN3_8B_Q4, partial, { ctx: 8192 }));
-    const tiny = { ...QWEN35_35B_A3B_Q4, fileGB: 0.5 };
-    const hugeBw: Hardware = { ...mixed, gpus: mixed.gpus!.map((u) => ({ ...u, memBandwidthGBs: 100_000 })) };
-    expect(tgEstimate({ ...hugeBw, gpus: [hugeBw.gpus![0]!, { ...hugeBw.gpus![1]!, vramGB: 48 }] }, tiny, { mode: 'full-gpu' }, { ctx: 512 })).toBe(MOE_TG_CAP_TOKS);
+    const tiny = { ...QWEN36_35B_A3B_Q4_SPLIT, fileGB: 0.5, expertGB: 0.4, nonExpertGB: 0.05 };
+    const hugeBw: Hardware = { ...mixed, gpus: mixed.gpus!.map((u) => ({ ...u, memBandwidthGBs: 1e9 })) };
+    const tg = tgEstimate({ ...hugeBw, gpus: [hugeBw.gpus![0]!, { ...hugeBw.gpus![1]!, vramGB: 48 }] }, tiny, { mode: 'full-gpu' }, { ctx: 512 });
+    expect(tg).toBeCloseTo(1 / moeOverheadSeconds(mixed, tiny), 0);
   });
 });

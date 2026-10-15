@@ -116,7 +116,9 @@ const L2_7B_HF = dense(3.53 * 1.073741824, 128, 6.74);
 const QWEN3_8B = dense(5.03, 144, 8.2);
 const MISTRAL_7B = dense(4.37, 128, 7.25);
 
-// gpt-oss-20b: MXFP4 12.11GB, 20.9B(3.6B active), KV 24 KiB (SWA 반영 사전 계산값) — docs/03 §3
+// gpt-oss-20b: MXFP4 12.11GB, 20.9B(3.6B active), KV 24 KiB (SWA 반영 사전 계산값) — docs/03 §3.
+// 10-16 D88: 카탈로그 행과 같은 GGUF 헤더 분할(전문가 10.18 · 비전문가 1.30)과 24층 32E top-4 — MoE 속도식이 읽는 바이트·고정 시간에 쓴다
+// source: https://huggingface.co/ggml-org/gpt-oss-20b-GGUF/resolve/main/gpt-oss-20b-mxfp4.gguf
 export const GPT_OSS_20B: ModelQuant = {
   paramsB: 20.9,
   activeParamsB: 3.6,
@@ -124,11 +126,16 @@ export const GPT_OSS_20B: ModelQuant = {
   quant: 'MXFP4',
   kvBytesPerToken: 24 * 1024,
   attnType: 'swa',
-  nonExpertGB: 0.65, // P0-3 확정 — 32E top-4 유도 (packages/data/src/derive.ts, data/models.json)
+  nonExpertGB: 1.3,
+  expertGB: 10.18,
+  activeExpertFrac: 4 / 32,
+  moeLayers: 24,
+  topK: 4,
   maxContext: 131072,
 };
 
-// gpt-oss-120b: MXFP4 63.39GB, 116.8B(5.1B active), KV 36 KiB — docs/03 §3
+// gpt-oss-120b: MXFP4 63.39GB, 116.8B(5.1B active), KV 36 KiB — docs/03 §3. 헤더 분할(전문가 61.07 · 비전문가 1.69), 36층 128E top-4 (10-16 D88)
+// source: https://huggingface.co/ggml-org/gpt-oss-120b-GGUF
 export const GPT_OSS_120B: ModelQuant = {
   paramsB: 116.8,
   activeParamsB: 5.1,
@@ -136,7 +143,11 @@ export const GPT_OSS_120B: ModelQuant = {
   quant: 'MXFP4',
   kvBytesPerToken: 36 * 1024,
   attnType: 'swa',
-  nonExpertGB: 0.81, // P0-3 확정 — 128E top-4 유도 (packages/data/src/derive.ts)
+  nonExpertGB: 1.69,
+  expertGB: 61.07,
+  activeExpertFrac: 4 / 128,
+  moeLayers: 36,
+  topK: 4,
   maxContext: 131072,
 };
 
@@ -164,8 +175,9 @@ export const SPEED_CASES: readonly SpeedCase[] = [
   // MoE — 밴드 ±20%
   { label: '4090 gpt-oss-20b MoE', hw: dgpu(24, 1008, 'nvidia'), mq: GPT_OSS_20B, ctx: 2048, measuredTg: 225.2, band: 0.2 },
   { label: '5060Ti gpt-oss-20b MoE', hw: dgpu(16, 448, 'nvidia'), mq: GPT_OSS_20B, ctx: 2048, measuredTg: 111.6, band: 0.2 },
-  // quozul.dev llama-bench 기본 pp512/tg128 (ROCm 7.0.2, mmap 끔) — 10-15 D80 에 ctx 2048 → 512 (출처와 맞춤)
-  { label: 'StrixHalo gpt-oss-120b MoE', hw: { ...unified(128, 256, 'strix', 0.54), os: 'linux' }, mq: GPT_OSS_120B, ctx: 512, measuredTg: 50.2, band: 0.2 },
+  // quozul.dev llama-bench 기본 pp512/tg128 (ROCm 7.0.2, mmap 끔) — 10-15 D80 에 ctx 2048 → 512 (출처와 맞춤).
+  // 10-16 D88: 옛 effOverride 0.54(이 기기의 MoE 계수)를 뗐다 — MoE 도 클래스 dense 계수 + 토큰당 고정 시간
+  { label: 'StrixHalo gpt-oss-120b MoE', hw: { ...unified(128, 256, 'strix'), os: 'linux' }, mq: GPT_OSS_120B, ctx: 512, measuredTg: 50.2, band: 0.2 },
 ];
 
 // ---------- 4) 판정 새너티 (verify_engine.py §4 + docs/02 §8 시드) ----------
@@ -224,6 +236,7 @@ export const QWEN36_35B_A3B_Q4_SPLIT: ModelQuant = {
   expertGB: 19.5,
   activeExpertFrac: 8 / 256,
   moeLayers: 40,
+  topK: 8,
   maxContext: 262144,
 };
 
@@ -256,10 +269,10 @@ const moeFile = (
 ): ModelQuant => ({ ...base, fileGB, expertGB, nonExpertGB });
 
 type MoeBase = Omit<ModelQuant, 'fileGB' | 'expertGB' | 'nonExpertGB'>;
-const OSS120: MoeBase = { paramsB: 116.8, activeParamsB: 5.1, quant: 'MXFP4', kvBytesPerToken: 36 * 1024, attnType: 'swa', activeExpertFrac: 4 / 128, moeLayers: 36, maxContext: 131072 };
-const OSS20: MoeBase = { paramsB: 20.9, activeParamsB: 3.6, quant: 'MXFP4', kvBytesPerToken: 24 * 1024, attnType: 'swa', activeExpertFrac: 4 / 32, moeLayers: 24, maxContext: 131072 };
-const Q30: MoeBase = { paramsB: 30.5, activeParamsB: 3.3, quant: 'Q4_K_M', kvBytesPerToken: 96 * 1024, attnType: 'full', activeExpertFrac: 8 / 128, moeLayers: 48, maxContext: 262144 };
-const Q35: MoeBase = { paramsB: 35.95, activeParamsB: 3, quant: 'Q4_K_M', kvBytesPerToken: 20 * 1024, attnType: 'hybrid', activeExpertFrac: 8 / 256, moeLayers: 40, maxContext: 262144 };
+const OSS120: MoeBase = { paramsB: 116.8, activeParamsB: 5.1, quant: 'MXFP4', kvBytesPerToken: 36 * 1024, attnType: 'swa', activeExpertFrac: 4 / 128, moeLayers: 36, topK: 4, maxContext: 131072 };
+const OSS20: MoeBase = { paramsB: 20.9, activeParamsB: 3.6, quant: 'MXFP4', kvBytesPerToken: 24 * 1024, attnType: 'swa', activeExpertFrac: 4 / 32, moeLayers: 24, topK: 4, maxContext: 131072 };
+const Q30: MoeBase = { paramsB: 30.5, activeParamsB: 3.3, quant: 'Q4_K_M', kvBytesPerToken: 96 * 1024, attnType: 'full', activeExpertFrac: 8 / 128, moeLayers: 48, topK: 8, maxContext: 262144 };
+const Q35: MoeBase = { paramsB: 35.95, activeParamsB: 3, quant: 'Q4_K_M', kvBytesPerToken: 20 * 1024, attnType: 'hybrid', activeExpertFrac: 8 / 256, moeLayers: 40, topK: 8, maxContext: 262144 };
 
 // https://huggingface.co/ggml-org/gpt-oss-120b-GGUF (카탈로그 행과 같은 MXFP4 파일)
 const OSS120_MX = moeFile(OSS120, 63.39, 61.07, 1.69);
@@ -442,7 +455,7 @@ export const HETERO_GPU_CASES: readonly HeteroGpuCase[] = [
   { label: 'RTX 3060 12GB + Tesla P100 16GB, Qwen3.8-27B Q4_K_M 층 분할', kind: 'formula', hw: hetero([RTX3060_FIT, P100_FIT]), mq: Q38_27B_Q4, ctx: 128, measuredTg: 13.81, source: SPLIT_BENCH },
 ];
 
-// ---------- 8) 클래스 계수 재보정 (10-15 D79·D81): AMD Vulkan 스코어보드 · DGX Spark 개발진 결과 파일 · Apple gpt-oss 가이드 ----------
+// ---------- 8) 클래스 계수 재보정 (10-15 D79·D83): AMD Vulkan 스코어보드 · DGX Spark 개발진 결과 파일 · Apple #4167 ----------
 export type SourcedSpeedCase = SpeedCase & { source: string };
 
 // Vulkan 스코어보드(토론 #10879) no-FA 표 — 값은 각 제출 댓글의 fa 0 줄(10-15 D80 에 댓글로 고정)
@@ -452,16 +465,13 @@ const VULKAN_7900XTX = `${VULKAN_COMMENT}18386832`;
 const SPARK_RESULTS = 'https://github.com/ggml-org/llama.cpp/blob/3795cc1e89e16fbc145f8a5457ea30abd86e0d1d/benches/dgx-spark/dgx-spark.md';
 const SPARK: Hardware = { ...unified(128, 273, 'dgx-spark'), os: 'linux' };
 const GIB = 1.073741824;
-// 결과 파일의 모델(크기는 llama-bench 표의 GiB). Qwen3 30B-A3B Q8_0 은 카탈로그 행(32.48GB)과 같은 크기
-const Q30_Q8: ModelQuant = { ...QWEN3_30B_A3B_Q4, quant: 'Q8_0', fileGB: 30.25 * GIB };
+// 결과 파일의 모델(크기는 llama-bench 표의 GiB). Qwen3 30B-A3B Q8_0 은 카탈로그 행(32.48GB)과 같은 크기 — 10-16 D88 에 헤더 분할을 붙였다
+// (Coder 판과 텐서 모양·양자화가 같다) https://huggingface.co/ggml-org/Qwen3-30B-A3B-GGUF/resolve/main/Qwen3-30B-A3B-Q8_0.gguf
+const Q30_Q8 = moeFile({ ...Q30, quant: 'Q8_0' }, 32.48, 30.8, 1.34);
 // Qwen2.5-Coder-7B Q8_0: 28층 · KV 헤드 4 · head 128 → 56 KiB/tok
 const QWEN25_7B_Q8: ModelQuant = { ...dense(7.54 * GIB, 56, 7.62), quant: 'Q8_0' };
 // Gemma 3 4B QAT Q4_0: 34층 중 전체 어텐션 5층 · KV 헤드 4 · head 256 → 20 KiB/tok (카탈로그 Gemma 3 와 같은 SWA 사전 계산 방식)
 const GEMMA3_4B_Q40: ModelQuant = { ...dense(2.35 * GIB, 20, 3.88), attnType: 'swa' }; // quant 표기는 속도식에 안 쓰인다(fileGB 사용)
-
-// gpt-oss 가이드 토론(#15396) Apple Metal — llama-bench -fa 1 -b 2048 -ub 2048, tg128 깊이 0(ctx 2048 은 s2 레코드 관례). 10-15 D81
-const OSS_GUIDE = 'https://github.com/ggml-org/llama.cpp/discussions/15396';
-const OSS_GUIDE_COMMENT = `${OSS_GUIDE}#discussioncomment-`;
 
 // Apple 스코어보드 토론(#4167) — Llama 2 7B Q4_0 tg128(-p 512 -n 128 -ngl 99, ctx 512 는 s3 레코드 관례). 10-15 D83.
 // 요약 표의 M1~M4 행은 기준 빌드 b1550(2023-11, FA 없음) 값이라 쓰지 않고, 새 빌드로 잰 값만 쓴다. llama-bench 기본 FA 는
@@ -471,11 +481,9 @@ const APPLE_4167_COMMENT = `${APPLE_4167}#discussioncomment-`;
 
 /**
  * AMD dense(Vulkan no-FA 표 4점, ±12%) · DGX Spark(b7941 llama-bench, 깊이 0 은 ctx 2048·깊이 8192 는 ctx 8192, ±20%) ·
- * Apple MoE(gpt-oss 가이드 8점, ±20% — 10-15 D81) · Apple dense(토론 #4167 새 빌드 9점, ±20% — 10-15 D83).
- * 계수는 이 점들이 모두 밴드 안에 들도록 정했다 — constants.ts EFF 주석.
- * Apple 반례(범위 밖, 회귀에 넣지 않음): MacBook Pro M3 Max 128GB(400GB/s) gpt-oss-20b b6250 tg128 64.26
- * (https://github.com/ggml-org/llama.cpp/discussions/15396#discussioncomment-14224424) — 계수 0.44 로 +28%. pp 를 32k 까지 9분 돌린 뒤의 값이고,
- * 개발자가 답글에서 열 스로틀링으로 보인다며 tg 만 다시 재 보라고 했다(#discussioncomment-14225207).
+ * Apple dense(토론 #4167 새 빌드 9점, ±20% — 10-15 D83). 계수는 이 점들이 모두 밴드 안에 들도록 정했다 — constants.ts EFF 주석.
+ * DGX Spark 의 MoE 6점은 10-16 D88 부터 MoE 고정 시간(MOE_EXPERT_OVERHEAD_US) 근거이기도 하다. 옛 Apple MoE 8점(#15396 2025-08 빌드)은
+ * 10-16 D88 에 MOE_OLD_BUILD_CASES(회귀 밖 참고)로 옮겼다.
  * Apple dense 회귀 밖 참고점: M3 Max 원글에 단 답글의 c1d0e7a00 값 81.57
  * (https://github.com/ggml-org/llama.cpp/discussions/4167#discussioncomment-18201257) — 기기 설명이 없어 원글의 40코어(400GB/s)로 보면
  * 계수 0.76 으로 −3.4%. 답글 쓴 사람이 직접 잰 b1550 값은 없다.
@@ -496,16 +504,6 @@ export const RECAL_1015_CASES: readonly SourcedSpeedCase[] = [
   { label: 'DGX Spark Qwen2.5-Coder-7B Q8_0 tg32 d8192', hw: SPARK, mq: QWEN25_7B_Q8, ctx: 8192, measuredTg: 27.38, band: 0.2, source: SPARK_RESULTS },
   { label: 'DGX Spark Gemma 3 4B QAT Q4_0 tg32 d0', hw: SPARK, mq: GEMMA3_4B_Q40, ctx: 2048, measuredTg: 81.05, band: 0.2, source: SPARK_RESULTS },
   { label: 'DGX Spark Gemma 3 4B QAT Q4_0 tg32 d8192', hw: SPARK, mq: GEMMA3_4B_Q40, ctx: 8192, measuredTg: 71.61, band: 0.2, source: SPARK_RESULTS },
-  // Apple(base/Pro/Max) MoE — 36GB M4 Max 는 32코어 GPU(410GB/s) 구성뿐이다(https://support.apple.com/en-us/121553). 옛 레코드는 이 값을 40코어(546GB/s)에 붙였었다
-  { label: 'Apple M4 Max 32c 36GB gpt-oss-20b (b6123)', hw: unified(36, 410, 'apple'), mq: GPT_OSS_20B, ctx: 2048, measuredTg: 92.36, band: 0.2, source: OSS_GUIDE },
-  { label: 'Apple M4 Max 32c 36GB gpt-oss-20b (b6293)', hw: unified(36, 410, 'apple'), mq: GPT_OSS_20B, ctx: 2048, measuredTg: 95.88, band: 0.2, source: `${OSS_GUIDE_COMMENT}14225207` },
-  { label: 'Apple M4 Pro 64GB gpt-oss-20b (b6280)', hw: unified(64, 273, 'apple'), mq: GPT_OSS_20B, ctx: 2048, measuredTg: 63.34, band: 0.2, source: `${OSS_GUIDE_COMMENT}14226807` },
-  { label: 'Apple M1 Max 64GB gpt-oss-20b (b6180)', hw: unified(64, 400, 'apple'), mq: GPT_OSS_20B, ctx: 2048, measuredTg: 75.15, band: 0.2, source: `${OSS_GUIDE_COMMENT}14146721` },
-  { label: 'Apple M1 Pro 32GB gpt-oss-20b (b6123)', hw: unified(32, 200, 'apple'), mq: GPT_OSS_20B, ctx: 2048, measuredTg: 45.68, band: 0.2, source: OSS_GUIDE },
-  // Apple Ultra MoE(계수 0.29 유지 — 같은 가이드로 재확인)
-  { label: 'Apple M3 Ultra 80c gpt-oss-20b (b6310)', hw: unified(512, 819, 'apple-ultra'), mq: GPT_OSS_20B, ctx: 2048, measuredTg: 115.52, band: 0.2, source: `${OSS_GUIDE_COMMENT}14249698` },
-  { label: 'Apple M2 Ultra 76c gpt-oss-20b (b6123)', hw: unified(192, 800, 'apple-ultra'), mq: GPT_OSS_20B, ctx: 2048, measuredTg: 116.08, band: 0.2, source: OSS_GUIDE },
-  { label: 'Apple M2 Ultra 76c gpt-oss-120b (b6123)', hw: unified(192, 800, 'apple-ultra'), mq: GPT_OSS_120B, ctx: 2048, measuredTg: 79.68, band: 0.2, source: OSS_GUIDE },
   // Apple(base/Pro/Max) dense — 지금 빌드 5점 + M4 계열의 유일한 새 빌드 값(M4 Max 32코어 b5440, FA 끔). 10-15 D83
   { label: 'Apple dense M5 10c L2-7B Q4_0 (b10621)', hw: unified(16, 153.6, 'apple'), mq: L2_7B_HF, ctx: 512, measuredTg: 31.88, band: 0.2, source: `${APPLE_4167_COMMENT}18210351` },
   // 제출에 빌드 줄이 없다 — 3.53 GiB 파일(바뀐 안내)이고 요약 표는 c1d0e7a 로 적었다
@@ -519,6 +517,124 @@ export const RECAL_1015_CASES: readonly SourcedSpeedCase[] = [
   { label: 'Apple Ultra dense M2 Ultra 76c L2-7B Q4_0 (c1d0e7a00+FA)', hw: unified(192, 800, 'apple-ultra'), mq: L2_7B, ctx: 512, measuredTg: 125.21, band: 0.2, source: APPLE_4167 },
   { label: 'Apple Ultra dense M1 Ultra 64c L2-7B Q4_0 (b10621)', hw: unified(128, 800, 'apple-ultra'), mq: L2_7B_HF, ctx: 512, measuredTg: 113.79, band: 0.2, source: `${APPLE_4167_COMMENT}18191340` },
   { label: 'Apple Ultra dense M5 Ultra 80c L2-7B Q4_0 (b10621)', hw: unified(256, 1228, 'apple-ultra'), mq: L2_7B_HF, ctx: 512, measuredTg: 179.1, band: 0.2, source: `${APPLE_4167_COMMENT}18683605` },
+];
+
+// ---------- 10) MoE 토큰당 고정 시간 (§3.1, 10-16 D88) — 2026 llama.cpp 빌드 공개 실측 ----------
+// 토큰 시간 = (비전문가 + 라우팅 전문가 × topK/experts + KV) ÷ (클래스 dense 계수 × 대역폭) + MoE 층 × topK × MOE_EXPERT_OVERHEAD_US.
+// 행은 GGUF 헤더 분할(전문가·비전문가 GB) — 출처 글에 파일이 없는 행은 크기가 맞는 파일이나 기본 레시피 파일로 가정했다(행 주석).
+// 깊이 0 의 tgN 은 ctx 512(s3 레코드 관례), DGX Spark b7941 결과 파일 6점은 회귀 8 과 같은 값(ctx 2048·8192)을 함께 쓴다.
+// 머지된 PR 의 비교 표는 PR 열(= 지금 master), 머지 안 된 PR·이슈는 master 열.
+
+const G4: MoeBase = { paramsB: 26.54, activeParamsB: 4, quant: 'Q4_K_M', kvBytesPerToken: 20 * 1024, attnType: 'swa', activeExpertFrac: 8 / 128, moeLayers: 30, topK: 8, maxContext: 262144 };
+const NEMO: MoeBase = { paramsB: 31.58, activeParamsB: 3, quant: 'Q4_K_M', kvBytesPerToken: 6 * 1024, attnType: 'hybrid', activeExpertFrac: 6 / 128, moeLayers: 23, topK: 6, maxContext: 262144 };
+// https://huggingface.co/bartowski/Qwen_Qwen3.5-35B-A3B-GGUF/resolve/main/Qwen_Qwen3.5-35B-A3B-Q4_K_M.gguf — 파일이 적히지 않은 Q4_K_M 의 가정
+// (같은 기본 레시피 lmstudio-community 판 비전문가 1.37 · unsloth 판 2.00 사이)
+const Q35_Q4_BART = moeFile(Q35, 22.27, 19.5, 1.59);
+// https://huggingface.co/unsloth/Qwen3.5-35B-A3B-GGUF/resolve/main/Qwen3.5-35B-A3B-Q6_K.gguf (출처 파일 27.98GiB 와 크기가 달라 근사)
+const Q35_Q6 = moeFile({ ...Q35, quant: 'Q6_K' }, 28.84, 26.42, 1.88);
+// https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF/resolve/main/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf (20.82GiB — 출처 20.81GiB)
+const Q36_UDXL = moeFile(Q35, 22.35, 19.67, 2.14);
+// https://huggingface.co/ggml-org/gemma-4-26B-A4B-it-GGUF (Q4_0 14.60 · Q8_0 26.86, 임베딩 공유 — 출력층 사본은 비전문가에 들어 있다)
+const G4_Q40 = moeFile(G4, 14.6, 12.85, 1.76); // quant 표기는 속도식에 안 쓰인다(fileGB 사용)
+const G4_Q80 = moeFile({ ...G4, quant: 'Q8_0' }, 26.86, 24.27, 2.58);
+// https://huggingface.co/bartowski/google_gemma-4-26B-A4B-it-GGUF (Q4_K_M 15.87GiB — 출처 15.90GiB · Q6_K — 출처 파일 미기재)
+const G4_Q4KM = moeFile(G4, 17.02, 15.13, 1.89);
+const G4_Q6 = moeFile({ ...G4, quant: 'Q6_K' }, 22.85, 20.58, 2.27);
+// https://huggingface.co/unsloth/Nemotron-3-Nano-30B-A3B-GGUF/resolve/main/Nemotron-3-Nano-30B-A3B-Q4_K_M.gguf (52층 중 MoE 23층, 128E top-6)
+const NEMO_Q4 = moeFile(NEMO, 24.57, 22.83, 1.49);
+
+const PR = (n: number, comment?: string) => `https://github.com/ggml-org/llama.cpp/pull/${n}${comment ? `#issuecomment-${comment}` : ''}`;
+const M2_ULTRA_BENCH = 'https://github.com/ggml-org/llama.cpp/blob/3795cc1e89e16fbc145f8a5457ea30abd86e0d1d/benches/mac-m2-ultra/mac-m2-ultra.md';
+const QUOZUL = 'https://quozul.dev/posts/2025-10-27-gpt-oss-120b-on-ryzen-ai-max-395/';
+const moeCase = (label: string, hw: Hardware, mq: ModelQuant, measuredTg: number, source: string, ctx = 512): SourcedSpeedCase => ({
+  label,
+  hw,
+  mq,
+  ctx,
+  measuredTg,
+  band: 0.2,
+  source,
+});
+const NV = (bw: number) => dgpu(32, bw, 'nvidia');
+const AMD = (bw: number) => dgpu(32, bw, 'amd');
+const STRIX: Hardware = { ...unified(128, 256, 'strix'), os: 'linux' };
+
+/**
+ * 2026 빌드 39점 + 회귀 8 의 DGX Spark MoE 6점(MOE_OVERHEAD_SPARK_B7941) = 45점. 클래스 값은 클래스별로 점의 최대 오차를 가장 작게 하는
+ * 값(minimax) — 모두 ±20%(MoE 밴드) 안
+ */
+export const MOE_OVERHEAD_CASES: readonly SourcedSpeedCase[] = [
+  // Apple base/Pro/Max (ggerganov M5 Max 40코어 128GB · forforever73 M4 Max 40코어)
+  moeCase('Apple M5 Max 40c gpt-oss-20b tg32 (#29770)', unified(128, 614, 'apple'), OSS20_MX, 157.46, PR(29770)),
+  moeCase('Apple M5 Max 40c Qwen3.5-35B-A3B Q4_K_M tg128 (#28948)', unified(128, 614, 'apple'), Q35_Q4_BART, 117.75, PR(28948)),
+  moeCase('Apple M5 Max 40c Qwen3.5-35B-A3B Q8_0 tg128 (#28948)', unified(128, 614, 'apple'), Q35_Q8, 106.73, PR(28948)),
+  moeCase('Apple M5 Max 40c Gemma 4 26B-A4B Q8_0 tg128 (#28948)', unified(128, 614, 'apple'), G4_Q80, 97.25, PR(28948)),
+  moeCase('Apple M4 Max 40c Qwen3-30B-A3B-2507 Q4_K_M tg32 (#28439 master)', unified(128, 546, 'apple'), Q30_Q4, 116.69, PR(28439, '5585850026')),
+  // Apple Ultra (ggerganov M2 Ultra 76코어)
+  moeCase('Apple M2 Ultra gpt-oss-20b tg32 (#29770)', unified(192, 800, 'apple-ultra'), OSS20_MX, 126.59, PR(29770)),
+  moeCase('Apple M2 Ultra Qwen3.5-35B-A3B Q4_K_M tg32 (#28948)', unified(192, 800, 'apple-ultra'), Q35_Q4_BART, 104.87, PR(28948)),
+  moeCase('Apple M2 Ultra Qwen3.5-35B-A3B Q8_0 tg32 (#28948)', unified(192, 800, 'apple-ultra'), Q35_Q8, 96.62, PR(28948)),
+  moeCase('Apple M2 Ultra Gemma 4 26B-A4B Q4_0 tg32 (#28948)', unified(192, 800, 'apple-ultra'), G4_Q40, 115.71, PR(28948)),
+  moeCase('Apple M2 Ultra Gemma 4 26B-A4B Q8_0 tg32 (#28948)', unified(192, 800, 'apple-ultra'), G4_Q80, 92.19, PR(28948)),
+  moeCase('Apple M2 Ultra Qwen3-30B-A3B Q8_0 tg32 (#28439 master)', unified(192, 800, 'apple-ultra'), Q30_Q8, 94.35, PR(28439, '5585270736')),
+  moeCase('Apple M2 Ultra gpt-oss-120b tg32 (b7948)', unified(192, 800, 'apple-ultra'), OSS120_MX, 85.6, M2_ULTRA_BENCH),
+  // DGX Spark — PDL(#22522, Hopper 이후 GPU 에서 기본 켬) 머지 열
+  moeCase('DGX Spark gpt-oss-20b tg128 (#22522)', SPARK, OSS20_MX, 84.05, PR(22522)),
+  moeCase('DGX Spark Nemotron 3 Nano Q4_K_M tg128 (#22522)', SPARK, NEMO_Q4, 76.68, PR(22522)),
+  moeCase('DGX Spark Qwen3.5-35B-A3B Q4_K_M tg128 (#22522)', SPARK, Q35_Q4_BART, 62.98, PR(22522)),
+  // NVIDIA CUDA
+  moeCase('RTX 3090 gpt-oss-20b tg128 (b9867)', NV(936), OSS20_MX, 210.37, PR(25319)),
+  moeCase('RTX 4090 gpt-oss-20b tg128 (b9867)', NV(1008), OSS20_MX, 264.26, PR(25319)),
+  moeCase('RTX 5090 gpt-oss-20b tg128 (b9867)', NV(1792), OSS20_MX, 411.96, PR(25319)),
+  moeCase('RTX PRO 6000 Blackwell gpt-oss-20b tg128 (#19053)', NV(1792), OSS20_MX, 353.16, PR(19053)),
+  moeCase('RTX 6000 Ada gpt-oss-20b tg128 (#19053)', NV(960), OSS20_MX, 253.9, PR(19053)),
+  moeCase('RTX PRO 6000 Blackwell gpt-oss-20b tg128 (#22522 PDL)', NV(1792), OSS20_MX, 376.31, PR(22522)),
+  moeCase('RTX PRO 6000 Blackwell Nemotron 3 Nano Q4_K_M tg128 (#22522 PDL)', NV(1792), NEMO_Q4, 325.74, PR(22522)),
+  moeCase('RTX PRO 6000 Blackwell Qwen3.5-35B-A3B Q4_K_M tg128 (#22522 PDL)', NV(1792), Q35_Q4_BART, 233.26, PR(22522)),
+  moeCase('RTX PRO 6000 Max-Q Qwen3.6-35B-A3B UD-Q4_K_M tg128 (#24706)', NV(1792), Q36_UD4, 246.5, PR(24706, '4789353680')),
+  moeCase('RTX PRO 6000 Max-Q Gemma 4 26B-A4B Q4_K_M tg128 (#24706)', NV(1792), G4_Q4KM, 214.47, PR(24706, '4789353680')),
+  moeCase('RTX 3090 Gemma 4 26B-A4B Q4_0 tg128 (#23615)', NV(936), G4_Q40, 148.73, PR(23615, '4534473995')),
+  moeCase('RTX 4090 Gemma 4 26B-A4B Q4_0 tg128 (#23615)', NV(1008), G4_Q40, 186.33, PR(23615, '4534473995')),
+  moeCase('RTX 5090 Gemma 4 26B-A4B Q4_0 tg128 (#23615)', NV(1792), G4_Q40, 258.06, PR(23615, '4534473995')),
+  moeCase('RTX 3090 Qwen3-30B-A3B UD-Q4_K_XL tg128 (#20831 master)', NV(936), Q30_UDXL, 202.26, PR(20831, '4285435222')),
+  // AMD — ROCm(HIP)와 Vulkan 이 섞여 있다(클래스 dense 계수는 Vulkan no-FA 4점)
+  moeCase('RX 7900 XTX ROCm gpt-oss-20b tg128 (#29478)', AMD(960), OSS20_MX, 172.41, PR(29478, '5854628298')),
+  moeCase('RX 7900 XTX ROCm Gemma 4 26B-A4B Q6_K tg128 (#29478)', AMD(960), G4_Q6, 96.9, PR(29478, '5854628298')),
+  moeCase('Radeon AI PRO R9700 ROCm gpt-oss-20b tg128 (#29478)', AMD(640), OSS20_MX, 150.79, PR(29478, '5854628298')),
+  moeCase('Radeon AI PRO R9700 ROCm Gemma 4 26B-A4B Q6_K tg128 (#29478)', AMD(640), G4_Q6, 87.97, PR(29478, '5854628298')),
+  moeCase('RX 9060 XT ROCm gpt-oss-20b tg128 (b9867)', AMD(322), OSS20_MX, 84.81, PR(25319)),
+  moeCase('Radeon AI PRO R9700 Vulkan Qwen3.6-35B-A3B UD-Q4_K_XL tg128', AMD(640), Q36_UDXL, 117.34, 'https://github.com/ggml-org/llama.cpp/issues/26795#issuecomment-5247488002'),
+  moeCase('RX 9070 XT Vulkan gpt-oss-20b tg128 (#21024 master)', AMD(645), OSS20_MX, 177.89, PR(21024, '4460661536')),
+  // Strix Halo (Radeon 8060S) — Q8_0 파일은 35.80GiB(카탈로그 Q8_0 34.37GiB 보다 크다 — 같은 분할로 근사)
+  moeCase('Strix Halo Vulkan Qwen3.5-35B-A3B Q8_0 tg128', STRIX, Q35_Q8, 46.17, 'https://github.com/ggml-org/llama.cpp/issues/22375#issuecomment-4321102370'),
+  moeCase('Strix Halo Vulkan Qwen3.5-35B-A3B Q6_K tg128 (#24966 master)', STRIX, Q35_Q6, 53.77, PR(24966, '4787851707')),
+  moeCase('Strix Halo ROCm gpt-oss-120b tg128', STRIX, OSS120_MX, 50.2, QUOZUL),
+];
+
+/** 회귀 8 의 DGX Spark MoE 6점(b7941) — 위 39점과 합쳐 45점으로 집계한다 */
+export const MOE_OVERHEAD_SPARK_B7941: readonly SourcedSpeedCase[] = RECAL_1015_CASES.filter(
+  (c) => c.label.startsWith('DGX Spark') && c.mq.activeParamsB !== undefined,
+);
+
+/**
+ * 회귀 밖 참고점 — gpt-oss 가이드(#15396)의 Apple Metal 2025-08 빌드(b6123~b6310, -fa 1 -ub 2048 tg128, ctx 2048 은 s2 레코드 관례).
+ * 10-15 D81 의 apple MoE 계수 0.44 근거였다. 지금 식은 2026 빌드에 맞춰 이 점들을 +10~+39% 높게 본다(같은 M2 Ultra gpt-oss-20b 가 b6123
+ * 116.08 → 2026-09 126.59 — 빌드가 빨라졌다). 칩별 지금 빌드 값이 없어(M1·M3·M4 Pro) 참고로만 둔다.
+ * 36GB M4 Max 는 32코어 GPU(410GB/s) 구성뿐(https://support.apple.com/en-us/121553).
+ * 반례: MacBook Pro M3 Max 128GB(400GB/s) b6250 64.26(https://github.com/ggml-org/llama.cpp/discussions/15396#discussioncomment-14224424)은
+ * 개발자가 열 스로틀링으로 봤다(#discussioncomment-14225207).
+ */
+const OSS_GUIDE = 'https://github.com/ggml-org/llama.cpp/discussions/15396';
+const OSS_GUIDE_COMMENT = `${OSS_GUIDE}#discussioncomment-`;
+export const MOE_OLD_BUILD_CASES: readonly SourcedSpeedCase[] = [
+  moeCase('Apple M4 Max 32c 36GB gpt-oss-20b (b6123)', unified(36, 410, 'apple'), GPT_OSS_20B, 92.36, OSS_GUIDE, 2048),
+  moeCase('Apple M4 Max 32c 36GB gpt-oss-20b (b6293)', unified(36, 410, 'apple'), GPT_OSS_20B, 95.88, `${OSS_GUIDE_COMMENT}14225207`, 2048),
+  moeCase('Apple M4 Pro 64GB gpt-oss-20b (b6280)', unified(64, 273, 'apple'), GPT_OSS_20B, 63.34, `${OSS_GUIDE_COMMENT}14226807`, 2048),
+  moeCase('Apple M1 Max 64GB gpt-oss-20b (b6180)', unified(64, 400, 'apple'), GPT_OSS_20B, 75.15, `${OSS_GUIDE_COMMENT}14146721`, 2048),
+  moeCase('Apple M1 Pro 32GB gpt-oss-20b (b6123)', unified(32, 200, 'apple'), GPT_OSS_20B, 45.68, OSS_GUIDE, 2048),
+  moeCase('Apple M3 Ultra 80c gpt-oss-20b (b6310)', unified(512, 819, 'apple-ultra'), GPT_OSS_20B, 115.52, `${OSS_GUIDE_COMMENT}14249698`, 2048),
+  moeCase('Apple M2 Ultra 76c gpt-oss-20b (b6123)', unified(192, 800, 'apple-ultra'), GPT_OSS_20B, 116.08, OSS_GUIDE, 2048),
+  moeCase('Apple M2 Ultra 76c gpt-oss-120b (b6123)', unified(192, 800, 'apple-ultra'), GPT_OSS_120B, 79.68, OSS_GUIDE, 2048),
 ];
 
 /** pp 대조점 — Llama 2 7B Q4_0 pp512(llama-bench 기본), 토론 #4167. hw 는 카탈로그 행의 fp16Tflops·neuralAccel 그대로 (10-16 D86) */

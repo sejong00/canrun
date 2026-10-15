@@ -24,7 +24,7 @@ RTX 3060 12GB에서 Qwen3.6 35B-A3B를 돌리면 메모리가 이렇게 나뉩�
 
 ### 컨텍스트를 늘리면 먼저 느려진다
 
-이 배치에서 KV 캐시는 GPU에 있습니다. 그래서 컨텍스트를 늘려도 모델이 GPU에서 밀려나지 않습니다. 대신 전문가가 조금씩 더 RAM으로 옮겨 가고, 속도가 단계적으로 떨어집니다. RTX 3060 12GB에서 Qwen3.6 35B-A3B는 f16 KV 캐시로 64k까지 원활하게 돌아갑니다<Expect model="qwen3.6-35b-a3b" gpu="rtx-3060-12gb" ctx="65536" verdict="A" />. 128k에서는 겨우 돌아갑니다<Expect model="qwen3.6-35b-a3b" gpu="rtx-3060-12gb" ctx="131072" verdict="B" />. 둘 다 이론 추정입니다. KV 캐시를 q8_0(8비트)으로 두면 128k도 원활하게 돌아갑니다<Expect model="qwen3.6-35b-a3b" gpu="rtx-3060-12gb" ctx="131072" kv="q8_0" verdict="A" />. 이 속도도 이론 추정입니다.
+이 배치에서 KV 캐시는 GPU에 있습니다. 그래서 컨텍스트를 늘려도 모델이 GPU에서 밀려나지 않습니다. 대신 전문가가 조금씩 더 RAM으로 옮겨 가고, 속도가 단계적으로 떨어집니다. RTX 3060 12GB에서 Qwen3.6 35B-A3B는 f16 KV 캐시로 64k와 128k까지 원활하게 돌아갑니다<Expect model="qwen3.6-35b-a3b" gpu="rtx-3060-12gb" ctx="65536" verdict="A" /><Expect model="qwen3.6-35b-a3b" gpu="rtx-3060-12gb" ctx="131072" verdict="A" />. 256k에서는 겨우 돌아갑니다<Expect model="qwen3.6-35b-a3b" gpu="rtx-3060-12gb" ctx="262144" verdict="B" />. 모두 이론 추정입니다. KV 캐시를 q8_0(8비트)으로 두면 256k도 원활하게 돌아갑니다<Expect model="qwen3.6-35b-a3b" gpu="rtx-3060-12gb" ctx="262144" kv="q8_0" verdict="A" />. 이 속도도 이론 추정입니다.
 
 설정 파일을 보면 Qwen3.6 35B-A3B는 네 층에 한 층만 전체 어텐션을 씁니다. 나머지 층은 컨텍스트가 길어져도 크기가 늘지 않는 상태값만 저장합니다. 그래서 KV 캐시가 천천히 늘어납니다. 모든 층이 전체 어텐션인 모델은 더 짧은 컨텍스트에서 속도가 떨어지기 시작합니다. 자세한 원리는 ‘<GuideLink slug="kv-cache-context" />’ 가이드에 있습니다. RAM이 모자라면 얘기가 다릅니다. RAM이 64GB인 RTX 3060 12GB에서 gpt-oss-120b는 f16 KV 캐시로 128k를 쓰면 들어가지 않습니다<Expect model="gpt-oss-120b" gpu="rtx-3060-12gb" ram="64" ctx="131072" fits="false" />.
 
@@ -60,7 +60,7 @@ RAM이 64GB일 때 RTX 3060 12GB·RTX 5060 Ti 16GB·RTX 3090에서는 겨우 돌
 
 RAM이 16GB면 RTX 4060에는 두 모델 모두 들어가지 않습니다<Expect model="qwen3-30b-a3b-2507" gpu="rtx-4060" ram="16" fits="false" /><Expect model="qwen3.6-35b-a3b" gpu="rtx-4060" ram="16" fits="false" />. RTX 3060 12GB에는 Qwen3 30B-A3B만 들어갑니다<Expect model="qwen3-30b-a3b-2507" gpu="rtx-3060-12gb" ram="16" fits="true" /><Expect model="qwen3.6-35b-a3b" gpu="rtx-3060-12gb" ram="16" fits="false" />. RTX 5060 Ti 16GB는 GPU에 전문가를 더 많이 두므로 두 모델이 다 들어갑니다<Expect model="qwen3-30b-a3b-2507" gpu="rtx-5060-ti-16gb" ram="16" fits="true" /><Expect model="qwen3.6-35b-a3b" gpu="rtx-5060-ti-16gb" ram="16" fits="true" />.
 
-파일 크기만으로 속도가 정해지지는 않습니다. <HubLink model="gemma-4-26b-a4b" />는 파일이 더 작지만, 토큰마다 읽는 양은 Qwen3.6 35B-A3B보다 많습니다. 활성 파라미터가 4B로 3B보다 많고, 공유 부분도 더 크기 때문입니다. 그래서 RTX 4060에서 Gemma 4 26B-A4B는 겨우 돌아가고<Expect model="gemma-4-26b-a4b" gpu="rtx-4060" verdict="B" mode="cpu-moe" />, Qwen3.6 35B-A3B는 원활하게 돌아갑니다<Expect model="qwen3.6-35b-a3b" gpu="rtx-4060" verdict="A" mode="cpu-moe" />. 둘 다 이론 추정이고, 두 모델 모두 생각 모드 기준을 적용했습니다.
+파일 크기만으로 속도가 정해지지는 않습니다. <HubLink model="gemma-4-26b-a4b" />는 파일이 더 작지만, 토큰마다 읽는 양은 Qwen3.6 35B-A3B보다 많습니다. 활성 파라미터가 4B로 3B보다 많고, 공유 부분도 더 크기 때문입니다. 그래서 8GB인 RTX 3050에서 Gemma 4 26B-A4B는 겨우 돌아가고<Expect model="gemma-4-26b-a4b" gpu="rtx-3050-8gb" verdict="B" mode="cpu-moe" />, Qwen3.6 35B-A3B는 원활하게 돌아갑니다<Expect model="qwen3.6-35b-a3b" gpu="rtx-3050-8gb" verdict="A" mode="cpu-moe" />. 둘 다 이론 추정이고, 두 모델 모두 생각 모드 기준을 적용했습니다.
 
 ## RAM 속도가 생성 속도를 정한다
 
