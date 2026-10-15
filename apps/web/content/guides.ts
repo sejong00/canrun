@@ -435,7 +435,7 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
           'Which local LLMs run on RTX 40 and RTX 50 laptop GPUs, why a laptop chip can have less VRAM than its desktop namesake, and what power limits and system RAM change.',
       },
       ko: {
-        title: '노트북으로 로컬 LLM — 노트북 GPU는 이름이 같아도 VRAM이 다르다',
+        title: '노트북으로 로컬 LLM — 노트북 GPU는 이름이 같아도 VRAM이 다를 수 있다',
         description:
           'RTX 40·50 노트북 GPU에서 돌아가는 로컬 LLM을 정리했습니다. 이름이 같은 데스크톱 카드보다 VRAM이 적은 경우와, 전력 제한·시스템 RAM에 따라 달라지는 점도 함께 다룹니다.',
       },
