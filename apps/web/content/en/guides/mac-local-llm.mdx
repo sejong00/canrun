@@ -54,7 +54,7 @@ Qwen3 14B Runs slowly on a 16GB <HubLink gpu="apple-m4" /> and on a 16GB <HubLin
 
 In CanRun's calculation, once a model fits fully on the GPU, every memory size of that chip gets the same estimate. More memory changes which models and contexts fit on the GPU, not the speed of a model already there, and Apple lists a single bandwidth for the M4 Pro at every memory size.
 
-The exception: the M4 Max and M5 Max each come with a 32-core or a 40-core GPU of different bandwidth, <Num kind="bandwidth" gpu="apple-m4-max-32c" /> against <Num kind="bandwidth" gpu="apple-m4-max-40c" /> for the M4 Max and <Num kind="bandwidth" gpu="apple-m5-max-32c" /> against <Num kind="bandwidth" gpu="apple-m5-max-40c" /> for the M5 Max. Apple sells the 36GB configuration only with the 32-core GPU; this guide uses the 40-core versions.
+The exception: the M4 Max and M5 Max each come with a 32-core or a 40-core GPU of different bandwidth, <Num kind="bandwidth" gpu="apple-m4-max-32c" /> against <Num kind="bandwidth" gpu="apple-m4-max-40c" /> for the M4 Max and <Num kind="bandwidth" gpu="apple-m5-max-32c" /> against <Num kind="bandwidth" gpu="apple-m5-max-40c" /> for the M5 Max. Apple sells the 32-core versions only with 36GB, and 48GB or more only with the 40-core GPU; this guide uses the 40-core versions.
 
 ### MoE and dense models on a Mac
 
@@ -157,7 +157,7 @@ In CanRun's calculation, a 16GB Mac's GPU gets about as much memory as a GeForce
 - [Apple newsroom: M4 Pro and M4 Max](https://www.apple.com/newsroom/2024/10/apple-introduces-m4-pro-and-m4-max/): memory bandwidth of the M4, M4 Pro and M4 Max, and their maximum memory sizes.
 - [Apple tech specs: MacBook Pro 14-inch, M4 Pro or M4 Max, 2024](https://support.apple.com/en-us/121553): 36GB only with the 32-core GPU M4 Max, the 40-core version with 48GB, 64GB or 128GB, and the 410GB/s and 546GB/s bandwidth of the two versions.
 - [Apple newsroom: M5](https://www.apple.com/newsroom/2025/10/apple-unleashes-m5-the-next-big-leap-in-ai-performance-for-apple-silicon/): M5 unified memory bandwidth and maximum memory.
-- [Apple tech specs: MacBook Pro 16-inch, M5 Pro or M5 Max](https://support.apple.com/en-us/126319): M5 Pro bandwidth, the M5 Max with a 32-core GPU (36GB option) or a 40-core GPU (48GB, 64GB or 128GB), and the bandwidth of both M5 Max versions.
+- [Apple tech specs: MacBook Pro 16-inch, M5 Pro or M5 Max](https://support.apple.com/en-us/126319): M5 Pro bandwidth, the M5 Max with a 32-core GPU (36GB only) or a 40-core GPU (48GB, 64GB or 128GB), and the bandwidth of both M5 Max versions.
 - [gpt-oss-20b model card](https://huggingface.co/openai/gpt-oss-20b): total and active parameters of gpt-oss-20b and gpt-oss-120b, and the statement that gpt-oss-20b runs within 16GB of memory.
 - [Qwen3-30B-A3B-Instruct-2507 model card](https://huggingface.co/Qwen/Qwen3-30B-A3B-Instruct-2507): total and activated parameters, number of experts, native context.
 - [MLX](https://github.com/ml-explore/mlx): Apple's array framework for machine learning on Apple silicon, which CanRun does not model.

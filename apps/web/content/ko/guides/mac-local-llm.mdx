@@ -59,7 +59,7 @@ M4 Pro의 대역폭은 M4의 두 배가 넘고, 40코어 GPU M4 Max는 다시 M4
 
 반면 모델이 GPU에 모두 올라가기만 하면, CanRun 계산에서 메모리 용량은 속도를 바꾸지 않습니다. 같은 칩이라면 메모리 구성이 달라도 속도 추정이 같습니다. 판정표의 네 칩에서 여섯 모델로 확인한 결과입니다. 애플도 M4 Pro의 대역폭을 메모리 용량과 상관없이 한 가지로 적습니다.
 
-예외는 GPU 코어 수가 두 가지인 Max 칩입니다. <HubLink gpu="apple-m4-max-32c" />는 <Num kind="bandwidth" gpu="apple-m4-max-32c" />, <HubLink gpu="apple-m4-max-40c" />는 <Num kind="bandwidth" gpu="apple-m4-max-40c" />입니다. <HubLink gpu="apple-m5-max-32c" />는 <Num kind="bandwidth" gpu="apple-m5-max-32c" />, <HubLink gpu="apple-m5-max-40c" />는 <Num kind="bandwidth" gpu="apple-m5-max-40c" />입니다. 애플 사양표를 보면 36GB 구성은 32코어판에만 있습니다. 이 글의 표는 40코어판을 기준으로 합니다.
+예외는 GPU 코어 수가 두 가지인 Max 칩입니다. <HubLink gpu="apple-m4-max-32c" />는 <Num kind="bandwidth" gpu="apple-m4-max-32c" />, <HubLink gpu="apple-m4-max-40c" />는 <Num kind="bandwidth" gpu="apple-m4-max-40c" />입니다. <HubLink gpu="apple-m5-max-32c" />는 <Num kind="bandwidth" gpu="apple-m5-max-32c" />, <HubLink gpu="apple-m5-max-40c" />는 <Num kind="bandwidth" gpu="apple-m5-max-40c" />입니다. 애플 사양표를 보면 32코어판은 36GB 구성뿐이고, 48GB 이상은 40코어판에만 있습니다. 이 글의 표는 40코어판을 기준으로 합니다.
 
 메모리에 들어간다고 다 빠른 것도 아닙니다. 48GB M4 Pro에서 MoE 모델인 Qwen3 30B-A3B (2507)은 쾌적하게 돌아갑니다<Expect model="qwen3-30b-a3b-2507" gpu="apple-m4-pro" verdict="S" />. 반면 필요 메모리가 비슷한 dense 모델 <HubLink model="qwen3-32b" />(<Num kind="needGB" model="qwen3-32b" gpu="apple-m4-pro" />)는 GPU에 전부 올라가는데도 겨우 돌아갑니다<Expect model="qwen3-32b" gpu="apple-m4-pro" verdict="B" />. dense 모델은 토큰마다 가중치 전체를 읽지만, MoE는 활성 전문가의 가중치만 읽어서 메모리에서 읽는 양이 훨씬 적습니다. M4 Pro에서 MoE인 gpt-oss-20b는 dense인 Qwen3 14B보다 파일이 큰데도 쾌적하게 돌아갑니다<Expect model="gpt-oss-20b" gpu="apple-m4-pro" verdict="S" />. 같은 칩에서 Qwen3 14B는 원활하게 돌아가는 데 그칩니다<Expect model="qwen3-14b" gpu="apple-m4-pro" verdict="A" />. 두 모델 모두 생각 모드가 있어서 똑같이 엄격한 기준으로 판정합니다. 다만 MoE라도 GPU 몫을 넘으면 CanRun은 CPU 전용으로 계산합니다. 그래서 24GB M4 Pro에서는 Qwen3 30B-A3B (2507)의 판정이 내려갑니다.
 
@@ -138,7 +138,7 @@ CanRun 계산으로는 8B~12B 모델을 Q4_K_M으로 돌릴 수 있습니다. Ll
 
 ### 통합 메모리가 크면 모델이 더 빨리 도나요?
 
-모델이 이미 GPU에 모두 올라간다면, 메모리가 커져도 빨라지지 않습니다. CanRun 계산에서 풀 GPU 속도는 칩의 메모리 대역폭이 정합니다. 같은 칩이라면 모델이 GPU에 다 들어가는 메모리 구성끼리는 속도 추정이 같습니다. 메모리가 크면 달라지는 것은 들어가는 모델과 컨텍스트 길이입니다. 예를 들어 Qwen3 30B-A3B (2507)은 48GB M4 Pro에서는 GPU에 모두 올라가 쾌적하게 돌아갑니다<Expect model="qwen3-30b-a3b-2507" gpu="apple-m4-pro" verdict="S" />. 하지만 24GB에서는 CPU 전용으로 계산돼 겨우 돌아가는 수준에 그칩니다. 예외는 GPU 32코어판과 40코어판의 대역폭이 다른 M4 Max와 M5 Max입니다. M4 Max는 32코어판이 <Num kind="bandwidth" gpu="apple-m4-max-32c" />, 40코어판이 <Num kind="bandwidth" gpu="apple-m4-max-40c" />입니다. 애플 사양표를 보면 36GB 구성은 32코어판에만 있습니다.
+모델이 이미 GPU에 모두 올라간다면, 메모리가 커져도 빨라지지 않습니다. CanRun 계산에서 풀 GPU 속도는 칩의 메모리 대역폭이 정합니다. 같은 칩이라면 모델이 GPU에 다 들어가는 메모리 구성끼리는 속도 추정이 같습니다. 메모리가 크면 달라지는 것은 들어가는 모델과 컨텍스트 길이입니다. 예를 들어 Qwen3 30B-A3B (2507)은 48GB M4 Pro에서는 GPU에 모두 올라가 쾌적하게 돌아갑니다<Expect model="qwen3-30b-a3b-2507" gpu="apple-m4-pro" verdict="S" />. 하지만 24GB에서는 CPU 전용으로 계산돼 겨우 돌아가는 수준에 그칩니다. 예외는 GPU 32코어판과 40코어판의 대역폭이 다른 M4 Max와 M5 Max입니다. M4 Max는 32코어판이 <Num kind="bandwidth" gpu="apple-m4-max-32c" />, 40코어판이 <Num kind="bandwidth" gpu="apple-m4-max-40c" />입니다. 애플 사양표를 보면 32코어판은 36GB 구성뿐입니다.
 
 ### 맥의 통합 메모리는 그래픽카드 VRAM과 어떻게 다른가요?
 
