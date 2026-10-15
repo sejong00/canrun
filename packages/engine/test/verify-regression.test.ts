@@ -9,6 +9,7 @@
  *  4) 판정 새너티: 4060 8GB 통념 일치
  *  5) cpu-moe(전문가 RAM) 3점: 각 ±20% 이내 + MAE < 12% (09-30 보정 — 이전 식은 ~2.5× 과소)
  *  6) 같은 GPU 여러 장 10점(D58) · 7) 서로 다른 GPU 섞기 3점(D67)
+ *  8) 클래스 계수 재보정 14점(10-15 D79): AMD Vulkan 4점 각 ±12% · DGX Spark 10점 각 ±20%
  */
 import { describe, expect, it } from 'vitest';
 import { fit } from '../src/fit';
@@ -17,6 +18,7 @@ import { kvBytesPerToken, kvGB, weightsGBFromBpw } from '../src/memory';
 import { tgEstimate } from '../src/speed';
 import {
   CPU_MOE_CASES,
+  RECAL_1015_CASES,
   HETERO_GPU_CASES,
   MULTI_GPU_CASES,
   GPT_OSS_20B,
@@ -190,5 +192,28 @@ describe('7) mixed GPUs layer split (§6 beta, 10-03 D67): 공개 실측 3점', 
     for (const { error } of formula) expect(Math.abs(error)).toBeLessThanOrEqual(0.1);
     expect(formula[0]!.error).toBeCloseTo(0.026, 2);
     expect(formula[1]!.error).toBeCloseTo(-0.015, 2);
+  });
+});
+
+describe('8) class recalibration (10-15 D79): AMD Vulkan 4점 · DGX Spark 10점', () => {
+  const errors = RECAL_1015_CASES.map(
+    ({ hw, mq, ctx, measuredTg }) => (tgEstimate(hw, mq, { mode: 'full-gpu' }, { ctx }) - measuredTg) / measuredTg,
+  );
+  const group = (prefix: string) => errors.filter((_, i) => RECAL_1015_CASES[i]!.label.startsWith(prefix));
+
+  it.each(RECAL_1015_CASES.map((c, i) => [c.label, c, i] as const))('%s within class band', (_label, c, i) => {
+    expect(Math.abs(errors[i]!)).toBeLessThanOrEqual(c.band);
+  });
+
+  it('AMD dense (Vulkan no-FA 표): MAE < 7%', () => {
+    const amd = group('RX ');
+    expect(amd).toHaveLength(4);
+    expect(amd.reduce((a, b) => a + Math.abs(b), 0) / amd.length).toBeLessThan(0.07);
+  });
+
+  it('DGX Spark (b7941 결과 파일): MAE < 12%', () => {
+    const spark = group('DGX Spark');
+    expect(spark).toHaveLength(10);
+    expect(spark.reduce((a, b) => a + Math.abs(b), 0) / spark.length).toBeLessThan(0.12);
   });
 });

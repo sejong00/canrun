@@ -121,10 +121,15 @@ describe('measured join (결정 D4)', () => {
   });
 
   it('CPU 프로필은 cpu-only 에서도 조인 (dGPU 와 달리 모드 무관)', () => {
-    const c = combo('cpu-ddr5-5600-2ch', 'qwen3-30b-a3b-2507', 1);
+    // 시드에는 조건이 밝혀진 CPU × 카탈로그 모델 실측이 없다(10-15 D79 에 s21 을 뺐다) — 조인 규칙만 가상의 점으로 확인
+    const g = gpu('cpu-ddr5-5600-2ch');
+    const config = hardwareConfigs(g, seed.gpus)[1]!;
+    const point = { ...seed.benchmarks[0]!, id: 'test-cpu', gpuId: g.id, modelId: 'qwen3-30b-a3b-2507', quant: 'Q4_K_M', ctx: 512, tgTokS: 19 };
+    const c = assessCombo({ ...seed, benchmarks: [point] }, g, config, model('qwen3-30b-a3b-2507'));
     expect(c.baseline.result.mode).toBe('cpu-only');
     expect(c.baseline.result.confidence).toBe('measured');
     expect(c.baseline.measured?.values).toEqual([19]);
+    expect(combo('cpu-ddr5-5600-2ch', 'qwen3-30b-a3b-2507', 1).baseline.result.confidence).toBe('calibrated');
   });
 });
 

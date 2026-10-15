@@ -144,13 +144,13 @@ tg = eff × memBandwidthGBs / bytesPerToken
 | effClass | dense | MoE | 근거 범위 |
 |---|---|---|---|
 | nvidia (CUDA) | **0.70** | **0.45** | 0.62~0.80 (대역폭 클수록↓: 5090은 0.62, 3060은 0.80) |
-| amd (RDNA3/4) | **0.78** | 0.50 | 0.76~0.82 |
+| amd (RDNA3/4) | **0.77** | 0.50 | 0.72~0.83 (Vulkan no-FA 표 4점 — 10-15 D79 에 0.78 에서 재보정) |
 | intel-arc | 0.59 | — | B580 실측 |
 | apple (base/Pro/Max) | **0.60** | 0.30 | 0.55~0.72 |
 | apple-ultra | 0.44 | 0.29 | 800GB/s급 비포화 |
 | strix (Ryzen AI Max) | 0.65 | **0.53** | ROCm7/Vulkan |
-| dgx-spark | 0.40 | 0.40 | |
-| cpu | 0.50 | 0.43 | ≥8코어 전제, 코어 부족 시 ×0.7 |
+| dgx-spark | **0.78** | **0.68** | dense 0.72~0.89 · MoE 0.60~0.83 (개발진 결과 파일 b7941, 깊이 0·8192 — 10-15 D79. 옛 0.40 은 출처와 맞지 않던 한 점에 맞춘 값) |
+| cpu | 0.50 | 0.43 | ≥8코어 전제, 코어 부족 시 ×0.7. MoE 0.43 의 근거(hardware-corner "DDR5-5600 · Qwen3 Q4 · 18–20")는 컨텍스트·CPU 미기재라 10-15 D79 에 실측 레코드에서 뺐다 — 값은 유지 |
 - Phase 2: 기기×모델급 실측이 n≥3 쌓이면 `effOverride`로 대체(주간 배치 재학습). 그때까지 위 표 = 클래스 기본값.
 
 ### 3.3 cpu-moe 모드 속도
@@ -173,7 +173,7 @@ tg = min(1 / t, full-gpu 값)
 주의(10-03 D62): full-gpu 경계는 상주량(파일 − 입력 임베딩·MTP)으로 판정하지만 gpuFrac 분모는 파일 전체라, 경계 바로 바깥 셀의 gpuFrac 상한은 `resident / file` 이다(Qwen3.5-9B Q4 0.872·Q8_0 0.862, MiniCPM5-1B 0.826, MiniCPM5-2B Q8_0 0.89 — 0.9 미만). 이런 모델은 S(full-gpu)에서 A 를 건너뛰고 B(cap-partial)로 바로 떨어진다. 실제로는 층 대부분이 GPU 에 있는 상태라 보수 쪽이며, 스니펫 `-ngl floor(gpuFrac × layers)` 도 그만큼 덜 올린다. 분모를 상주량으로 바꾸는 안(판정 41건 변화)은 부분 오프로드 실측 검증이 없어 보류. UI에 "dense 모델 부분 오프로드는 급감" 고정 경고 + 실측 예시(gpt-oss-120b: 5090 naive 3.4 vs cpu-moe 9.6 tok/s).
 
 ### 3.5 프롬프트 처리(pp) — 연산 지배
-`pp ≈ ppCoef × fp16Tflops` — NVIDIA 140/TFLOP, Apple 45, AMD/Intel 30~40 (Vulkan 페널티, 7900 XTX 실측 근거). 표기는 "대략" 수준으로만(±40%) — P1-2부터 **범위 est×0.6~1.4 + 4번째 신뢰 라벨 `rough`(pp 전용, §4)**로 표시한다. 식이 fp16 연산 전제라 **full-gpu(통합 메모리 포함) fit일 때만** 표시하고 부분 오프로드·cpu-moe·cpu-only에선 생략(사유 한 줄). 밴드 상수는 데이터 레이어 정책(`packages/data` `PP_BAND = 0.4`, `// source: docs/02 §3.5 (policy)`) — 엔진 `Result.ppTokS`는 est만 반환(무변경, PROGRESS §4 09-29 D13). 장문 RAG 유저용 참고치.
+`pp ≈ ppCoef × fp16Tflops` — NVIDIA 140/TFLOP, Apple 45, AMD/Intel 30~40 (Vulkan 페널티, 7900 XTX 실측 근거 — 10-15 D79 재확인: 현재 표 pp512 3727 = 30/TFLOP, AMD 35 유지). 표기는 "대략" 수준으로만(±40%) — P1-2부터 **범위 est×0.6~1.4 + 4번째 신뢰 라벨 `rough`(pp 전용, §4)**로 표시한다. 식이 fp16 연산 전제라 **full-gpu(통합 메모리 포함) fit일 때만** 표시하고 부분 오프로드·cpu-moe·cpu-only에선 생략(사유 한 줄). 밴드 상수는 데이터 레이어 정책(`packages/data` `PP_BAND = 0.4`, `// source: docs/02 §3.5 (policy)`) — 엔진 `Result.ppTokS`는 est만 반환(무변경, PROGRESS §4 09-29 D13). 장문 RAG 유저용 참고치.
 
 ### 3.6 컨텍스트 감쇠
 kvRead 항이 자연 반영 (예: 4090 Qwen3-8B: 8k에서 118 → 16k에서 95 → 32k에서 68 tok/s). tg128 단문 실측과 비교 시 이 항 제외 조건 일치 확인.
@@ -216,6 +216,7 @@ F: tg < 2 || 모든 quant 미탑재
 - KV: 아키텍처 7종 공식값 **전수 일치**
 - 속도: 실측 12점 대조 **MAE 6.3% / max 17.1%** (worst: M4 Pro −17%, 5060Ti MoE −15% → 클래스 계수 한계, Phase 2 기기별 보정 대상)
 - cpu-moe(09-30 → 10-01): 전문가 전부 RAM 공개 실측 3점(3060 Ti+DDR5-6800 gpt-oss-120b 24.85 · 5080+DDR5-4800 Qwen3.5-35B-A3B Q4_K_M 51.0·Q8_0 35.7) 각 ±20% 이내 + 전문가 일부 GPU 배치(`--n-cpu-moe N`)를 포함한 공개 실측 전체 MAE < 12%·±20% 안 ≥ 80%·전부 ±40% 안 (verify-regression 5)
+- 클래스 계수 재보정(10-15 D79, verify-regression 8): AMD Vulkan no-FA 표 4점(7900 XTX b10868 182.63 · 9070 XT · 9070 · 7800 XT) 각 ±12% 안·MAE 5.4%(최대 7.1%) — amd dense 0.78 → 0.77. DGX Spark 개발진 결과 파일(b7941, `-fa 1 -mmp 0`) 5모델 × 깊이 0·8192 10점 각 ±20% 안·MAE 10.0%(최대 −18.2% Qwen3-30B-A3B Q8_0 깊이 0) — dgx-spark 0.40/0.40 → dense 0.78·MoE 0.68
 - 멀티 GPU(§6): 같은 카드 2~4장 공개 실측 10점 전부 ±30% 안·과대 5% 이하·MAE < 15%(verify-regression 6) + 서로 다른 카드 3점(5070 Ti + 3060 −6.8% · 3060 + P100 카드별 계수 +2.6%·−1.5%, verify-regression 7 — 10-03 D67)
 - 판정: RTX 4060 8GB에서 8B Q4_K_M "가능"(실측 38~42 tok/s로 확인) / 14B Q4_K_M "풀 오프로드 불가" — 커뮤니티 통념과 일치
 - CI 이식 시 print 스크립트가 아닌 **assertion 테스트로 변환**할 것 (Windows cp949 콘솔 인코딩 이슈가 외부 리뷰에서 재현됨)

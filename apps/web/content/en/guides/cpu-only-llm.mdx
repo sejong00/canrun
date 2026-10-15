@@ -8,8 +8,6 @@ The grid puts six models on CanRun's three CPU-only profiles, ordered from the l
 
 Two rules shape this grid. First, CanRun caps every CPU-only setup at Runs slowly, however high its estimate; Runs great and Runs well need a GPU. The badge therefore says only whether a model runs, and the speed band tells the cells apart. Llama 3.2 3B on DDR5-5600 has an estimate well above the speed Runs well asks of a graphics card, and it is still rated Runs slowly.<Expect model="llama-3.2-3b" gpu="cpu-ddr5-5600-2ch" verdict="B" mode="cpu-only" /> Second, a model is rated Won't run when it does not fit in RAM or when its estimate falls under the floor in the legend at the end of this guide. Models with a thinking mode face a floor 1.5× higher, because they write many more tokens per answer.
 
-One cell breaks the pattern. Qwen3 30B-A3B on DDR5-5600 shows a public benchmark rather than an estimate, which is why it reads higher than the DDR5-6000 cell; CanRun's own estimate there sits a little below DDR5-6000's.
-
 ### Small dense models: 3B to 12B
 
 Llama 3.2 3B, Llama 3.1 8B and Gemma 3 12B fit in 16GB of RAM and run on all three profiles, rated Runs slowly.<Expect model="llama-3.2-3b" gpu="cpu-ddr4-3200-2ch" verdict="B" /><Expect model="llama-3.2-3b" gpu="cpu-ddr5-6000-2ch" verdict="B" /><Expect model="llama-3.1-8b" gpu="cpu-ddr4-3200-2ch" verdict="B" /><Expect model="llama-3.1-8b" gpu="cpu-ddr5-6000-2ch" verdict="B" /><Expect model="gemma-3-12b" gpu="cpu-ddr4-3200-2ch" verdict="B" /><Expect model="gemma-3-12b" gpu="cpu-ddr5-5600-2ch" verdict="B" /><Expect model="gemma-3-12b" gpu="cpu-ddr5-6000-2ch" verdict="B" /><Expect model="gemma-3-12b" gpu="cpu-ddr5-5600-2ch" ram="16" fits="true" /><Expect model="llama-3.2-3b" gpu="cpu-ddr5-5600-2ch" ram="16" fits="true" /> Their speed bands are what differ. A dense model reads its whole file for every token, so the Gemma 3 12B file, at <Num kind="fileGB" model="gemma-3-12b" />, makes it slower than Llama 3.1 8B at <Num kind="fileGB" model="llama-3.1-8b" />, and Llama 3.2 3B, the smallest of the three, is the quickest.
@@ -50,7 +48,7 @@ A mixture-of-experts (MoE) model splits most of each layer into many expert bloc
 
 <ModelFacts models="llama-3.1-8b,kanana-1.5-15.7b-a3b,gpt-oss-20b,qwen3-30b-a3b-2507,gpt-oss-120b" />
 
-On dual-channel DDR5-5600, CanRun's estimate for gpt-oss-20b is more than twice the estimate for Llama 3.1 8B, although its file, <Num kind="fileGB" model="gpt-oss-20b" />, is about two and a half times as large. Both are rated Runs slowly, gpt-oss-20b because of the CPU-only cap.<Expect model="gpt-oss-20b" gpu="cpu-ddr5-5600-2ch" verdict="B" mode="cpu-only" confidence="calibrated" /><Expect model="llama-3.1-8b" gpu="cpu-ddr5-5600-2ch" verdict="B" mode="cpu-only" /> The <HubLink model="qwen3-30b-a3b-2507" /> file, <Num kind="fileGB" model="qwen3-30b-a3b-2507" />, is nearly four times the size of Llama 3.1 8B's, and CanRun's estimate for it is close to double. A public benchmark on this profile, shown in the last section, came out higher still.<Expect model="qwen3-30b-a3b-2507" gpu="cpu-ddr5-5600-2ch" verdict="B" confidence="measured" />
+On dual-channel DDR5-5600, CanRun's estimate for gpt-oss-20b is more than twice the estimate for Llama 3.1 8B, although its file, <Num kind="fileGB" model="gpt-oss-20b" />, is about two and a half times as large. Both are rated Runs slowly, gpt-oss-20b because of the CPU-only cap.<Expect model="gpt-oss-20b" gpu="cpu-ddr5-5600-2ch" verdict="B" mode="cpu-only" confidence="calibrated" /><Expect model="llama-3.1-8b" gpu="cpu-ddr5-5600-2ch" verdict="B" mode="cpu-only" /> The <HubLink model="qwen3-30b-a3b-2507" /> file, <Num kind="fileGB" model="qwen3-30b-a3b-2507" />, is nearly four times the size of Llama 3.1 8B's, and CanRun's estimate for it is close to double. A community figure for this profile, discussed in the last section, is higher still.<Expect model="qwen3-30b-a3b-2507" gpu="cpu-ddr5-5600-2ch" verdict="B" confidence="calibrated" />
 
 ### gpt-oss-120b with 96GB of RAM
 
@@ -108,11 +106,7 @@ The memory figures are calculated by formula from real GGUF file sizes and each 
 
 The speeds are estimates with a band and a label. CPU-only cells are calibrated, ±20%, the band CanRun uses everywhere except dense models fully on NVIDIA and AMD graphics cards. Models with layer types CanRun's speed formula has not been checked against, such as LFM2.5 and Ling 3.0, are theoretical, ±30%. The CPU factor assumes a processor with eight or more cores and desktop DDR4 or DDR5 in dual channel. CanRun does not model core count, so a processor with fewer cores can land below the band.
 
-Below is one public measurement, for Qwen3 30B-A3B on dual-channel DDR5-5600. It is a community result collected on hardware-corner.net, not a CanRun run, shown next to CanRun's 8k estimate band.
-
-<Measured model="qwen3-30b-a3b-2507" gpu="cpu-ddr5-5600-2ch" />
-
-The public figure is above CanRun's band, and above CanRun's estimate for a 4k context too, so for this model CanRun's CPU estimate may be on the low side. CanRun's data records it as a single run at a 2k context. The source itself gives a range for a Q4 file of the original Qwen3 30B-A3B, which has the same architecture as the 2507 update, and names neither the processor nor the context length. Even the low end of that range is above the 4k estimate.
+CanRun's data has no CPU-only measurement with stated conditions for the models in this guide. The nearest public figure is a community result collected on hardware-corner.net: a range for a Q4 file of the original Qwen3 30B-A3B, which has the same architecture as the 2507 update, on dual-channel DDR5-5600. It names neither the processor, the runtime nor the context length, so CanRun does not count it as a measurement. Even the low end of that range is above CanRun's 8k estimate band for Qwen3 30B-A3B and above its 4k estimate, so for this model CanRun's CPU estimate may be on the low side.
 
 CanRun gives no prompt-processing estimate for CPU-only setups. Reading the prompt depends on compute rather than bandwidth, so the rates here do not tell you how long a long prompt or a pasted document takes to read. `llama-bench` measures both: prompt processing with `-p` and generation with `-n`.
 
@@ -158,4 +152,4 @@ MoE models with a small active part, as long as they fit in your RAM: with 32GB,
 - [Qwen3-30B-A3B-Instruct-2507 model card](https://huggingface.co/Qwen/Qwen3-30B-A3B-Instruct-2507): total and activated parameters, experts per token.
 - [Qwen3-14B model card](https://huggingface.co/Qwen/Qwen3-14B): thinking mode on by default.
 - [Kanana 1.5 15.7B-A3B Instruct model card](https://huggingface.co/kakaocorp/kanana-1.5-15.7b-a3b-instruct): the first MoE model in Kakao's Kanana family, for Korean and English.
-- [hardware-corner.net: Qwen3 hardware requirements](https://www.hardware-corner.net/guides/qwen3-hardware-requirements/): community results for the original Qwen3 30B-A3B on CPU and system RAM, the source of the measured point on dual-channel DDR5-5600.
+- [hardware-corner.net: Qwen3 hardware requirements](https://www.hardware-corner.net/guides/qwen3-hardware-requirements/): community results for the original Qwen3 30B-A3B on CPU and system RAM, including the dual-channel DDR5-5600 range discussed above (no processor, runtime or context length given).

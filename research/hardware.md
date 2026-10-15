@@ -90,7 +90,7 @@
 M3 Ultra 80c 1,471/92.1 · M2 Ultra 76c 1,238/94.3 · M4 Max 40c 886/83.1 · M3 Max 40c 760/66.3 · M4 Pro 20c 440/50.7 · M4 10c 221/24.1
 
 ### 5.4 Vulkan 스레드 — 7B Q4_0 [S4]
-7900XTX 3,532/191.3 · 9070XT 5,036/137.1 · 9070 3,164/119.7 · 7800XT 2,017/118.3 · B580 621/70.1 · A770 1,074/52.6 · 3060(Vulkan) 1,816/75.9 · 4060 Laptop 2,136/59.5
+7900XTX 3,727/182.6(10-15 D79 갱신 — 표의 현재 값 b10868. 옛 3,532/191.3 은 b6957) · 9070XT 5,036/137.1 · 9070 3,164/119.7 · 7800XT 2,017/118.3 · B580 621/70.1 · A770 1,074/52.6 · 3060(Vulkan) 1,816/75.9 · 4060 Laptop 2,136/59.5
 
 ### 5.5 8B급 Q4_K_M·대형·MoE 혼합
 | HW | 모델·quant·ctx | pp / tg | 출처 |
@@ -119,17 +119,17 @@ M3 Ultra 80c 1,471/92.1 · M2 Ultra 76c 1,238/94.3 · M4 Max 40c 886/83.1 · M3 
 | Strix Halo (Evo-X2) | gpt-oss-120b / 20b / Qwen3-Coder-30B Q8 | 818/46.1 · 1,622/65.7 · 773/50.2 | [S16] |
 | Strix Halo (Vulkan) | Qwen3-30B-A3B / 7B Q4_0 / 70B dense Q4 | 605/66.3 · 998/46.5 · 94.7/4.5 | [S17] |
 | Strix Halo (Framework) | gpt-oss-120b LM Studio | — / ~45 | [S18] |
-| DGX Spark | gpt-oss-120b / 20b / Qwen3-Coder-30B Q8 | 1,717/~35 · 2,008/~60 · 1,654/~44 | [S19] |
+| DGX Spark | gpt-oss-120b / 20b / Qwen3-30B-A3B Q8 (개발진 결과 파일 b7941, 깊이 0 — 10-15 D79 갱신) | 2,444/58.7 · 4,506/83.4 · 2,987/61.1 | [S19] |
 | Ryzen 9 7940HS DDR5-5600 CPU | Mistral-7B Q4_K_M | ~103(bf16 pp) / 11.2 | [S20] |
-| 데스크톱 DDR5-5600 / 6000 CPU | Qwen3-30B-A3B Q4 / Q8 | — / 18~20 · ~25 | [S21] |
+| 데스크톱 DDR5-5600 / 6000 CPU | Qwen3-30B-A3B Q4 / Q8 (컨텍스트·CPU 미기재 범위값 — 10-15 D79 에 실측 레코드에서 뺌) | — / 18~20 · ~25 | [S21] |
 | RTX 3060 12GB + DDR5 | Qwen3.6-35B-A3B cpu-moe | — / 51~53 | [S22] |
 
 ## 6. 효율 계수 도출 (tg × bytes/tok ÷ 스펙 BW)
 
 dense bytes/tok = 파일 크기, MoE = 파일 × active/total (gpt-oss-20b 2.08GB, 120b 2.76GB, Qwen3-30B-A3B Q4 2.01GB).
 
-주요 관측: 5090 0.62 · 4090 0.71 · 3090 0.65 · 3060 0.80 · 4060 0.69 · 7900XTX 0.76 · 9070XT 0.82 · B580 0.59 · M4 Max 0.58 · M4 Pro 0.71 · M3 Ultra 0.43 · MoE: 4090 0.47 · 5060Ti 0.52 · M3 Ultra 0.29 · M2 Ultra(120b) 0.28 · Strix(120b) 0.54 · DGX Spark(120b) 0.35 · CPU 7B 0.55 · CPU 30B-A3B 0.43 · 멀티GPU 70B ~0.68(단일 BW 기준).
-채택 클래스 기본값: NVIDIA 0.70(MoE 0.45) · AMD 0.78(0.50) · Arc 0.59 · Apple 0.60(0.30) · Apple Ultra 0.44(0.29) · Strix 0.65(0.53) · Spark 0.40 · CPU 0.50(0.43).
+주요 관측: 5090 0.62 · 4090 0.71 · 3090 0.65 · 3060 0.80 · 4060 0.69 · 7900XTX 0.76 · 9070XT 0.82 · B580 0.59 · M4 Max 0.58 · M4 Pro 0.71 · M3 Ultra 0.43 · MoE: 4090 0.47 · 5060Ti 0.52 · M3 Ultra 0.29 · M2 Ultra(120b) 0.28 · Strix(120b) 0.54 · DGX Spark(120b) 0.35(옛 값 — 10-15 재보정 후 b7941 기준 MoE 0.60~0.83·dense 0.72~0.89) · CPU 7B 0.55 · CPU 30B-A3B 0.43 · 멀티GPU 70B ~0.68(단일 BW 기준).
+채택 클래스 기본값: NVIDIA 0.70(MoE 0.45) · AMD 0.78(0.50)(→ 10-15 dense 0.77) · Arc 0.59 · Apple 0.60(0.30) · Apple Ultra 0.44(0.29) · Strix 0.65(0.53) · Spark 0.40(→ 10-15 dense 0.78·MoE 0.68) · CPU 0.50(0.43).
 pp 보조 규칙: NVIDIA ≈ 135~145 tok/s per FP16 TFLOP (4090 145, 5090 134, 3090 145). Apple·AMD Vulkan은 크게 낮음(7900XTX pp 3,532 vs 122 TFLOPS).
 주의: ①tg128 단문은 베스트케이스 — 16~32k에서 25~50% 감소 ②LocalScore 페이지는 제출 평균이라 이상치 포함(5090 66.3 사례) — 캘리브레이션은 llama-bench 스레드 우선 ③partial offload 절벽(120b: 5090 naive 3.4 vs cpu-moe 9.6).
 

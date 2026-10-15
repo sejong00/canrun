@@ -96,7 +96,7 @@ The gap is wider in the cheaper pair: <Num kind="bandwidth" gpu="rx-9060-xt-16gb
 
 These two have nearly the same bandwidth (<Num kind="bandwidth" gpu="rx-7900-xtx" /> and <Num kind="bandwidth" gpu="rtx-3090" />), so the vendor efficiency figure decides the order. Qwen3 32B Runs great on the RX 7900 XTX and Runs well on the RTX 3090.<Expect model="qwen3-32b" gpu="rx-7900-xtx" verdict="S" /><Expect model="qwen3-32b" gpu="rtx-3090" verdict="A" /> Here too the thinking-mode line falls between the two estimates, and their ±12% bands overlap. Read the split as two cards on either side of a line, not as a measured difference.
 
-The public results agree on generation and disagree on prompts. In the same Llama 2 7B runs, the RX 7900 XTX on Vulkan generated about a sixth faster than the RTX 3090 on CUDA, but processed the prompt nearly a third slower. Results for Radeon cards are still thin on two points: prompt speed, covered two sections down, and MoE models, whose one Radeon result is shown under "How sure are these numbers?".
+The public results agree on generation and disagree on prompts. In the same Llama 2 7B runs, the RX 7900 XTX on Vulkan generated about a sixth faster than the RTX 3090 on CUDA, but processed the prompt more than a quarter slower. Results for Radeon cards are still thin on two points: prompt speed, covered two sections down, and MoE models, whose one Radeon result is shown under "How sure are these numbers?".
 
 ## Intel Arc B580: 12GB and the limits of the MoE estimate
 
@@ -164,7 +164,7 @@ Start with whatever your tool supports for your card, then measure if speed matt
 
 ### Is a Radeon card faster than an NVIDIA card with the same memory bandwidth?
 
-Slightly, for generation, in CanRun's calculation: its efficiency figure for Radeon cards is about a tenth higher, so Qwen3 32B Runs great on the RX 7900 XTX and Runs well on the RTX 3090, two estimates on either side of the thinking-mode line.<Expect model="qwen3-32b" gpu="rx-7900-xtx" verdict="S" /><Expect model="qwen3-32b" gpu="rtx-3090" verdict="A" /> In public Llama 2 7B results, the RX 7900 XTX generated about a sixth faster than the RTX 3090 but read prompts nearly a third slower.
+Slightly, for generation, in CanRun's calculation: its efficiency figure for Radeon cards is about a tenth higher, so Qwen3 32B Runs great on the RX 7900 XTX and Runs well on the RTX 3090, two estimates on either side of the thinking-mode line.<Expect model="qwen3-32b" gpu="rx-7900-xtx" verdict="S" /><Expect model="qwen3-32b" gpu="rtx-3090" verdict="A" /> In public Llama 2 7B results, the RX 7900 XTX generated about a sixth faster than the RTX 3090 but read prompts more than a quarter slower.
 
 ### Is 12GB enough for 14B models on an Arc or Radeon card?
 

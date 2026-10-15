@@ -437,3 +437,40 @@ export const HETERO_GPU_CASES: readonly HeteroGpuCase[] = [
   { label: 'RTX 3060 12GB + Tesla P100 16GB, Qwen3.5-9B Q4_K_M 층 분할', kind: 'formula', hw: hetero([RTX3060_FIT, P100_FIT]), mq: Q35_9B_Q4, ctx: 128, measuredTg: 39.2, source: SPLIT_BENCH },
   { label: 'RTX 3060 12GB + Tesla P100 16GB, Qwen3.8-27B Q4_K_M 층 분할', kind: 'formula', hw: hetero([RTX3060_FIT, P100_FIT]), mq: Q38_27B_Q4, ctx: 128, measuredTg: 13.81, source: SPLIT_BENCH },
 ];
+
+// ---------- 8) 클래스 계수 재보정 (10-15 D79): AMD Vulkan 스코어보드 · DGX Spark 개발진 결과 파일 ----------
+export type SourcedSpeedCase = SpeedCase & { source: string };
+
+const VULKAN_BOARD = 'https://github.com/ggml-org/llama.cpp/discussions/10879';
+// 7900 XTX 는 표의 현재 값(b10868, 2026-09-10 제출) — 옛 b6957 값 191.3 은 표에서 바뀌었다
+const VULKAN_7900XTX = 'https://github.com/ggml-org/llama.cpp/discussions/10879#discussioncomment-18386832';
+const SPARK_RESULTS = 'https://github.com/ggml-org/llama.cpp/blob/3795cc1e89e16fbc145f8a5457ea30abd86e0d1d/benches/dgx-spark/dgx-spark.md';
+const SPARK: Hardware = { ...unified(128, 273, 'dgx-spark'), os: 'linux' };
+const GIB = 1.073741824;
+// 결과 파일의 모델(크기는 llama-bench 표의 GiB). Qwen3 30B-A3B Q8_0 은 카탈로그 행(32.48GB)과 같은 크기
+const Q30_Q8: ModelQuant = { ...QWEN3_30B_A3B_Q4, quant: 'Q8_0', fileGB: 30.25 * GIB };
+// Qwen2.5-Coder-7B Q8_0: 28층 · KV 헤드 4 · head 128 → 56 KiB/tok
+const QWEN25_7B_Q8: ModelQuant = { ...dense(7.54 * GIB, 56, 7.62), quant: 'Q8_0' };
+// Gemma 3 4B QAT Q4_0: 34층 중 전체 어텐션 5층 · KV 헤드 4 · head 256 → 20 KiB/tok (카탈로그 Gemma 3 와 같은 SWA 사전 계산 방식)
+const GEMMA3_4B_Q40: ModelQuant = { ...dense(2.35 * GIB, 20, 3.88), attnType: 'swa' }; // quant 표기는 속도식에 안 쓰인다(fileGB 사용)
+
+/**
+ * AMD dense(Vulkan no-FA 표 4점, ±12%) · DGX Spark(b7941 llama-bench, 깊이 0 은 ctx 2048·깊이 8192 는 ctx 8192, ±20%).
+ * 계수는 이 점들이 모두 밴드 안에 들도록 정했다 — constants.ts EFF 주석.
+ */
+export const RECAL_1015_CASES: readonly SourcedSpeedCase[] = [
+  { label: 'RX 7900 XTX L2-7B Q4_0 Vulkan (b10868)', hw: dgpu(24, 960, 'amd'), mq: L2_7B, ctx: 512, measuredTg: 182.63, band: 0.12, source: VULKAN_7900XTX },
+  { label: 'RX 9070 XT L2-7B Q4_0 Vulkan', hw: dgpu(16, 645, 'amd'), mq: L2_7B, ctx: 512, measuredTg: 137.11, band: 0.12, source: VULKAN_BOARD },
+  { label: 'RX 9070 L2-7B Q4_0 Vulkan', hw: dgpu(16, 645, 'amd'), mq: L2_7B, ctx: 512, measuredTg: 119.71, band: 0.12, source: VULKAN_BOARD },
+  { label: 'RX 7800 XT L2-7B Q4_0 Vulkan', hw: dgpu(16, 624, 'amd'), mq: L2_7B, ctx: 512, measuredTg: 118.27, band: 0.12, source: VULKAN_BOARD },
+  { label: 'DGX Spark gpt-oss-120b tg32 d0', hw: SPARK, mq: GPT_OSS_120B, ctx: 2048, measuredTg: 58.72, band: 0.2, source: SPARK_RESULTS },
+  { label: 'DGX Spark gpt-oss-120b tg32 d8192', hw: SPARK, mq: GPT_OSS_120B, ctx: 8192, measuredTg: 52.87, band: 0.2, source: SPARK_RESULTS },
+  { label: 'DGX Spark gpt-oss-20b tg32 d0', hw: SPARK, mq: GPT_OSS_20B, ctx: 2048, measuredTg: 83.43, band: 0.2, source: SPARK_RESULTS },
+  { label: 'DGX Spark gpt-oss-20b tg32 d8192', hw: SPARK, mq: GPT_OSS_20B, ctx: 8192, measuredTg: 75.22, band: 0.2, source: SPARK_RESULTS },
+  { label: 'DGX Spark Qwen3-30B-A3B Q8_0 tg32 d0', hw: SPARK, mq: Q30_Q8, ctx: 2048, measuredTg: 61.06, band: 0.2, source: SPARK_RESULTS },
+  { label: 'DGX Spark Qwen3-30B-A3B Q8_0 tg32 d8192', hw: SPARK, mq: Q30_Q8, ctx: 8192, measuredTg: 48.02, band: 0.2, source: SPARK_RESULTS },
+  { label: 'DGX Spark Qwen2.5-Coder-7B Q8_0 tg32 d0', hw: SPARK, mq: QWEN25_7B_Q8, ctx: 2048, measuredTg: 29.43, band: 0.2, source: SPARK_RESULTS },
+  { label: 'DGX Spark Qwen2.5-Coder-7B Q8_0 tg32 d8192', hw: SPARK, mq: QWEN25_7B_Q8, ctx: 8192, measuredTg: 27.38, band: 0.2, source: SPARK_RESULTS },
+  { label: 'DGX Spark Gemma 3 4B QAT Q4_0 tg32 d0', hw: SPARK, mq: GEMMA3_4B_Q40, ctx: 2048, measuredTg: 81.05, band: 0.2, source: SPARK_RESULTS },
+  { label: 'DGX Spark Gemma 3 4B QAT Q4_0 tg32 d8192', hw: SPARK, mq: GEMMA3_4B_Q40, ctx: 8192, measuredTg: 71.61, band: 0.2, source: SPARK_RESULTS },
+];

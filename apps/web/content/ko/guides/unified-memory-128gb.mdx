@@ -14,7 +14,7 @@ Llama 3.3 70B와 gpt-oss-120b는 세 기기 모두 GPU 몫 안에 들어갑니�
 
 <UnifiedTierTable gpus="amd-strix-halo,nvidia-dgx-spark,apple-m4-max-40c,apple-m3-ultra,apple-m2-ultra" />
 
-표에서 128GB 구성은 스트릭스 헤일로·DGX Spark·M4 Max·M2 Ultra의 네 줄입니다. 네 줄은 GPU가 쓸 수 있는 메모리가 같아서, 들어가지 않는 모델도 같습니다. 나머지 판정은 대체로 대역폭이 클수록 좋아집니다. 다만 DGX Spark는 대역폭이 스트릭스 헤일로보다 조금 큰데도 쾌적하게 돌아가는 모델이 더 적습니다. 초기 결과 하나에 맞춘 효율 계수 때문입니다(‘이 숫자는 얼마나 확실한가’ 참고).
+표에서 128GB 구성은 스트릭스 헤일로·DGX Spark·M4 Max·M2 Ultra의 네 줄입니다. 네 줄은 GPU가 쓸 수 있는 메모리가 같아서, 들어가지 않는 모델도 같습니다. 나머지는 대역폭이 큰 칩일수록 쾌적하게 돌아가는 모델이 많습니다. DGX Spark는 대역폭이 스트릭스 헤일로보다 조금 클 뿐인데 쾌적하게 돌아가는 모델은 눈에 띄게 많습니다. CanRun이 DGX Spark에 더 높은 효율 계수를 쓰기 때문입니다(‘이 숫자는 얼마나 확실한가’ 참고).
 
 맥 스튜디오(2025)에서 128GB 구성이 있는 칩은 40코어 GPU M4 Max뿐입니다. 애플의 현재 사양 페이지를 보면 M3 Ultra는 96GB에서 시작해 256GB까지 올릴 수 있고, 128GB 구성은 없습니다. 표의 512GB 줄은 이 페이지에 더는 나오지 않는 구성입니다. 2023년 맥 스튜디오의 M2 Ultra는 64GB·128GB·192GB 구성이었습니다. 애플은 40코어 GPU M5 Max에 128GB를 단 MacBook Pro도 판매합니다. CanRun 추정으로는 이 기기에서도 gpt-oss-120b가 쾌적하게 돌아갑니다<Expect model="gpt-oss-120b" gpu="apple-m5-max-40c" ram="128" verdict="S" mode="full-gpu" />.
 
@@ -54,7 +54,7 @@ gpt-oss-120b는 MoE(전문가 혼합) 모델이라 토큰마다 전체 파라미
 
 공개 벤치마크 결과로 보면 세 기기 모두 쾌적하게 돌아갑니다<Expect model="gpt-oss-120b" gpu="amd-strix-halo" ram="128" verdict="S" confidence="measured" /><Expect model="gpt-oss-120b" gpu="nvidia-dgx-spark" ram="128" verdict="S" confidence="measured" /><Expect model="gpt-oss-120b" gpu="apple-m2-ultra" ram="128" verdict="S" confidence="measured" />. 생각한 뒤 답하는 모델에 쓰는 더 엄격한 기준으로도 그렇습니다. M4 Max는 CanRun 데이터에 gpt-oss-120b 공개 결과가 없습니다. 보정된 추정으로는 여기서도 쾌적하게 돌아갑니다<Expect model="gpt-oss-120b" gpu="apple-m4-max-40c" ram="128" verdict="S" confidence="calibrated" />.
 
-DGX Spark 결과는 언제 잰 값인지 함께 봐야 합니다. CanRun 데이터의 이 값은 2025년 10월에 열린 llama.cpp의 DGX Spark 토론에서 가져왔습니다. 이 토론의 결과는 소프트웨어와 설정에 따라 달라졌습니다. 한 참여자는 같은 llama.cpp 빌드로 DGX Spark와 스트릭스 헤일로를 함께 쟀습니다. 기본 설정에서는 두 기기의 생성 속도가 거의 같았습니다. mmap은 모델 파일을 읽어 들이지 않고 메모리에 매핑하는 방식입니다. 이 mmap을 끄자 DGX Spark만 빨라졌습니다. 스트릭스 헤일로보다 대화 첫머리에서 약 5분의 1, 32k 토큰이 쌓인 뒤에는 약 10분의 1 더 빨랐습니다. 새 Linux 커널은 모델을 불러오는 시간을 줄였을 뿐, 생성 속도는 거의 그대로였습니다. llama.cpp 개발진이 새 빌드로 다시 잰 결과 파일도 위 값보다 한참 높습니다. CanRun의 DGX Spark 추정은 위 값에 맞춘 것이라 실제보다 낮게 나올 수 있습니다. DGX Spark에서 llama.cpp를 쓴다면 mmap을 끄세요. 지금 빌드에서는 `--load-mode none`, 예전 빌드에서는 `--no-mmap`입니다.
+DGX Spark 결과는 어느 빌드로 잰 값인지 함께 봐야 합니다. CanRun 데이터의 이 값은 llama.cpp 개발진의 DGX Spark 결과 파일에서 가져왔고, 이 파일은 2026년 2월에 마지막으로 다시 쟀습니다. 2025년 10월에 열린 llama.cpp의 DGX Spark 토론을 보면 결과가 소프트웨어와 설정에 따라 달라져 왔습니다. 개발진이 처음 잰 gpt-oss-120b 생성 속도는 지금 파일의 3분의 2쯤이었습니다. 이 토론에서 한 참여자는 같은 llama.cpp 빌드로 DGX Spark와 스트릭스 헤일로를 함께 쟀습니다. 기본 설정에서는 두 기기의 생성 속도가 거의 같았습니다. mmap은 모델 파일을 읽어 들이지 않고 메모리에 매핑하는 방식입니다. 이 mmap을 끄자 DGX Spark만 빨라졌습니다. 스트릭스 헤일로보다 대화 첫머리에서 약 5분의 1, 32k 토큰이 쌓인 뒤에는 약 10분의 1 더 빨랐습니다. 새 Linux 커널은 모델을 불러오는 시간을 줄였을 뿐, 생성 속도는 거의 그대로였습니다. CanRun의 DGX Spark 추정은 개발진 결과 파일에 맞춘 것이고, 이 파일은 mmap을 끄고 잰 값입니다. 그러니 추정도 mmap을 끈 상태를 전제로 합니다. DGX Spark에서 llama.cpp를 쓴다면 mmap을 끄세요. 지금 빌드에서는 `--load-mode none`, 예전 빌드에서는 `--no-mmap`입니다. mmap을 켜 두면 생성 속도가 CanRun 추정보다 낮게 나올 것으로 예상합니다.
 
 ## dense 모델에서 드러나는 대역폭 차이
 
@@ -64,7 +64,7 @@ DGX Spark 결과는 언제 잰 값인지 함께 봐야 합니다. CanRun 데이�
 
 Qwen3.5 35B-A3B는 토큰마다 파라미터를 약 3B만 쓰는 MoE 모델이라, 여섯 기기 모두에서 쾌적하게 돌아갑니다<Expect model="qwen3.5-35b-a3b" gpu="amd-strix-halo" verdict="S" /><Expect model="qwen3.5-35b-a3b" gpu="nvidia-dgx-spark" verdict="S" /><Expect model="qwen3.5-35b-a3b" gpu="apple-m4-max-40c" verdict="S" /><Expect model="qwen3.5-35b-a3b" gpu="apple-m3-ultra" verdict="S" /><Expect model="qwen3.5-35b-a3b" gpu="apple-m2-ultra" verdict="S" /><Expect model="qwen3.5-35b-a3b" gpu="rtx-5090" verdict="S" />.
 
-dense 모델은 토큰마다 가중치를 전부 읽으므로 여기서 차이가 벌어집니다. Gemma 4 31B는 스트릭스 헤일로와 DGX Spark에서 겨우 돌아갑니다<Expect model="gemma-4-31b" gpu="amd-strix-halo" verdict="B" /><Expect model="gemma-4-31b" gpu="nvidia-dgx-spark" verdict="B" />. M4 Max와 두 Ultra 칩에서는 원활하게 돌아가고<Expect model="gemma-4-31b" gpu="apple-m4-max-40c" verdict="A" /><Expect model="gemma-4-31b" gpu="apple-m3-ultra" verdict="A" /><Expect model="gemma-4-31b" gpu="apple-m2-ultra" verdict="A" />, RTX 5090에서는 쾌적하게 돌아갑니다<Expect model="gemma-4-31b" gpu="rtx-5090" verdict="S" />. 모두 보정된 추정입니다. 스트릭스 헤일로에서는 엄격한 기준이 결과를 가릅니다. 이 기기의 Gemma 4 31B 추정 속도는 ‘원활’ 기준선의 일반 값과 1.5배 값 사이에 있습니다. 비슷한 크기에 생각 모드가 없는 dense 모델 Gemma 3 27B는 스트릭스 헤일로에서 원활하게 돌아갑니다<Expect model="gemma-3-27b" gpu="amd-strix-halo" verdict="A" />. DGX Spark에서는 겨우 돌아갑니다<Expect model="gemma-3-27b" gpu="nvidia-dgx-spark" verdict="B" />.
+dense 모델은 토큰마다 가중치를 전부 읽으므로 여기서 차이가 벌어집니다. Gemma 4 31B는 스트릭스 헤일로와 DGX Spark에서 겨우 돌아갑니다<Expect model="gemma-4-31b" gpu="amd-strix-halo" verdict="B" /><Expect model="gemma-4-31b" gpu="nvidia-dgx-spark" verdict="B" />. M4 Max와 두 Ultra 칩에서는 원활하게 돌아가고<Expect model="gemma-4-31b" gpu="apple-m4-max-40c" verdict="A" /><Expect model="gemma-4-31b" gpu="apple-m3-ultra" verdict="A" /><Expect model="gemma-4-31b" gpu="apple-m2-ultra" verdict="A" />, RTX 5090에서는 쾌적하게 돌아갑니다<Expect model="gemma-4-31b" gpu="rtx-5090" verdict="S" />. 모두 보정된 추정입니다. 스트릭스 헤일로와 DGX Spark에서는 엄격한 기준이 결과를 가릅니다. 두 기기의 Gemma 4 31B 추정 속도는 ‘원활’ 기준선의 일반 값과 1.5배 값 사이에 있습니다. 비슷한 크기에 생각 모드가 없는 dense 모델 Gemma 3 27B는 두 기기 모두에서 원활하게 돌아갑니다<Expect model="gemma-3-27b" gpu="amd-strix-halo" verdict="A" /><Expect model="gemma-3-27b" gpu="nvidia-dgx-spark" verdict="A" />.
 
 표에는 없지만, 더 큰 dense 모델인 Llama 3.3 70B도 마찬가지입니다. Q4_K_M이면 128GB 기기 모두에서 GPU에 전부 올라갑니다. 하지만 어느 기기에서나 겨우 돌아갑니다<Expect model="llama-3.3-70b" gpu="amd-strix-halo" ram="128" verdict="B" mode="full-gpu" /><Expect model="llama-3.3-70b" gpu="nvidia-dgx-spark" ram="128" verdict="B" mode="full-gpu" /><Expect model="llama-3.3-70b" gpu="apple-m4-max-40c" ram="128" verdict="B" mode="full-gpu" /><Expect model="llama-3.3-70b" gpu="apple-m2-ultra" ram="128" verdict="B" mode="full-gpu" />. 96GB M3 Ultra에서도 추정 속도가 원활하게 돌아가는 기준에 조금 못 미칩니다<Expect model="llama-3.3-70b" gpu="apple-m3-ultra" ram="96" verdict="B" mode="full-gpu" />. dense 70B 모델을 주로 돌리려 한다면, CanRun 추정으로는 이 글의 기기 가운데 빠르게 돌려 주는 것이 없습니다.
 
@@ -108,7 +108,7 @@ PC 쪽이 앞서는 것은 전체 메모리 크기입니다. 시스템 RAM이 12
 
 속도는 신뢰 라벨이 ‘실측’인 칸만 공개 벤치마크 결과입니다. 이 글에서 GPU에 전부 올라가는 나머지 칸은 ‘보정된 추정’이고, 오차 범위는 ±20%입니다. ±12%는 NVIDIA·AMD 그래픽카드의 dense 모델에만 씁니다. CPU 전용 칸과 전문가를 RAM에 둔 RTX 5090 칸은 ‘이론 추정(±30%)’입니다.
 
-CanRun은 기기 종류마다 효율 계수로 대역폭을 속도로 바꿉니다. 계수는 공개 벤치마크 결과에 맞춰 정합니다. 그런데 CanRun 데이터에 있는 DGX Spark 결과는 위의 gpt-oss-120b 하나뿐이고, 여기에 맞춘 계수를 모든 모델에 씁니다. 그래서 CanRun 추정은 이 글의 모든 모델에서 DGX Spark를 스트릭스 헤일로보다 느리게 봅니다. MoE 모델도 마찬가지입니다. 이 차이는 모두 초기 결과 하나에서 비롯됩니다. 애플 칩의 공개 결과를 보면 Ultra 칩은 Max 칩보다 대역폭을 속도로 덜 살립니다. 그래서 CanRun은 Ultra 칩에 더 낮은 계수를 씁니다.
+CanRun은 기기 종류마다 효율 계수로 대역폭을 속도로 바꿉니다. 계수는 공개 벤치마크 결과에 맞춰 정합니다. DGX Spark 계수는 llama.cpp 개발진의 결과 파일에서 나왔습니다. 같은 빌드로 다섯 모델을 대화 첫머리와 8k 토큰이 쌓인 뒤에 잰 결과이고, CanRun 추정은 그 결과 하나하나와 5분의 1 안쪽으로 맞습니다. 다만 모두 mmap을 끈 기기 한 대의 결과입니다. 스트릭스 헤일로 계수는 다른 공개 결과에서 나왔습니다. 그래서 CanRun 추정은 이 글의 모든 모델에서 DGX Spark를 스트릭스 헤일로보다 빠르게 보고, 그 차이는 앞의 같은 빌드 비교보다 큽니다. 차이의 크기는 조심해서 봐야 합니다. 애플 칩의 공개 결과를 보면 Ultra 칩은 Max 칩보다 대역폭을 속도로 덜 살립니다. 그래서 CanRun은 Ultra 칩에 더 낮은 계수를 씁니다.
 
 소프트웨어도 결과를 바꿉니다. 스트릭스 헤일로는 llama.cpp를 ROCm이나 Vulkan으로 돌립니다. DGX Spark 결과는 llama.cpp 빌드와 mmap 설정에 따라 달라졌습니다. 맥에서는 MLX 형식 모델도 돌릴 수 있습니다. CanRun의 추정은 llama.cpp에서 GGUF 파일을 돌리는 경우를 기준으로 합니다.
 
@@ -134,7 +134,7 @@ CanRun 계산에 넣지 않는 것도 있습니다.
 
 ### 스트릭스 헤일로와 DGX Spark 가운데 어느 쪽이 빠른가요?
 
-답을 생성하는 속도는 큰 차이가 없습니다. 한 참여자가 같은 llama.cpp 빌드로 잰 결과에서, 기본 설정으로는 두 기기가 거의 같았습니다. DGX Spark에서 mmap을 끄자 대화 첫머리에서 약 5분의 1, 32k 토큰이 쌓인 뒤에는 약 10분의 1 더 빨랐습니다. DGX Spark가 크게 앞서는 것은 프롬프트 처리이고, 프롬프트가 길수록 차이가 커집니다. CanRun 추정은 이 글의 모든 모델에서 DGX Spark를 스트릭스 헤일로보다 느리게 봅니다. MoE 모델도 마찬가지입니다. 하지만 초기 결과 하나에 맞춘 효율 계수에서 나온 차이라, 조심해서 봐야 합니다. 메모리는 둘 다 128GB이고, CanRun 계산의 GPU 몫도 같습니다.
+답을 생성하는 속도는 큰 차이가 없습니다. 한 참여자가 같은 llama.cpp 빌드로 잰 결과에서, 기본 설정으로는 두 기기가 거의 같았습니다. DGX Spark에서 mmap을 끄자 대화 첫머리에서 약 5분의 1, 32k 토큰이 쌓인 뒤에는 약 10분의 1 더 빨랐습니다. DGX Spark가 크게 앞서는 것은 프롬프트 처리이고, 프롬프트가 길수록 차이가 커집니다. CanRun 추정은 이 글의 모든 모델에서 DGX Spark를 스트릭스 헤일로보다 빠르게 봅니다. MoE 모델도 마찬가지이고, 차이는 그 비교보다 큽니다. 두 기기의 효율 계수가 서로 다른 공개 결과에서 나왔으니, 차이의 크기는 조심해서 봐야 합니다. 메모리는 둘 다 128GB이고, CanRun 계산의 GPU 몫도 같습니다.
 
 ### 맥 스튜디오가 스트릭스 헤일로나 DGX Spark보다 빠른가요?
 
@@ -142,12 +142,12 @@ CanRun 계산에 넣지 않는 것도 있습니다.
 
 ### 128GB로 gpt-oss-120b를 긴 컨텍스트로 돌릴 수 있나요?
 
-CanRun 계산으로는 돌릴 수 있습니다. 128k 컨텍스트를 f16 KV 캐시로 잡아도 필요량이 <Num kind="needGB" model="gpt-oss-120b" ctx="131072" gpu="nvidia-dgx-spark" />라서, 128GB 기기의 GPU 몫 안에 들어갑니다<Expect model="gpt-oss-120b" gpu="nvidia-dgx-spark" ctx="131072" fits="true" />. 다만 긴 컨텍스트에서는 판정이 한 단계 내려갑니다. 스트릭스 헤일로는 64k부터(위 표)<Expect model="gpt-oss-120b" gpu="amd-strix-halo" ctx="65536" verdict="A" />, DGX Spark는 32k부터입니다<Expect model="gpt-oss-120b" gpu="nvidia-dgx-spark" ctx="32768" verdict="A" />. Linux에서 스트릭스 헤일로를 쓴다면, 둘째 절에서 설명한 대로 GPU 메모리 한도부터 올리세요.
+CanRun 계산으로는 돌릴 수 있습니다. 128k 컨텍스트를 f16 KV 캐시로 잡아도 필요량이 <Num kind="needGB" model="gpt-oss-120b" ctx="131072" gpu="nvidia-dgx-spark" />라서, 128GB 기기의 GPU 몫 안에 들어갑니다<Expect model="gpt-oss-120b" gpu="nvidia-dgx-spark" ctx="131072" fits="true" />. 다만 긴 컨텍스트에서는 판정이 한 단계 내려갑니다. 스트릭스 헤일로는 64k부터(위 표)<Expect model="gpt-oss-120b" gpu="amd-strix-halo" ctx="65536" verdict="A" />, DGX Spark는 128k에서입니다<Expect model="gpt-oss-120b" gpu="nvidia-dgx-spark" ctx="65536" verdict="S" /><Expect model="gpt-oss-120b" gpu="nvidia-dgx-spark" ctx="131072" verdict="A" />. Linux에서 스트릭스 헤일로를 쓴다면, 둘째 절에서 설명한 대로 GPU 메모리 한도부터 올리세요.
 
 ## 출처
 
-- [llama.cpp 토론 #16578: DGX Spark 성능](https://github.com/ggml-org/llama.cpp/discussions/16578): CanRun 데이터의 DGX Spark gpt-oss-120b 결과, 한 참여자가 같은 빌드로 잰 DGX Spark·스트릭스 헤일로 결과(대화 첫머리와 32k), mmap을 끄고 다시 잰 결과, 새 커널에서 불러오는 시간만 줄고 생성 속도는 같았던 결과
-- [llama.cpp DGX Spark 결과 파일](https://github.com/ggml-org/llama.cpp/blob/master/benches/dgx-spark/dgx-spark.md): llama.cpp 개발진이 새 빌드로 잰 gpt-oss-120b 결과
+- [llama.cpp 토론 #16578: DGX Spark 성능](https://github.com/ggml-org/llama.cpp/discussions/16578): 2025년 10월부터 개발진이 다시 잰 결과의 이력, 한 참여자가 같은 빌드로 잰 DGX Spark·스트릭스 헤일로 결과(대화 첫머리와 32k), mmap을 끄고 다시 잰 결과, 새 커널에서 불러오는 시간만 줄고 생성 속도는 같았던 결과
+- [llama.cpp DGX Spark 결과 파일(2026년 2월)](https://github.com/ggml-org/llama.cpp/blob/3795cc1e89e16fbc145f8a5457ea30abd86e0d1d/benches/dgx-spark/dgx-spark.md): CanRun 데이터의 DGX Spark gpt-oss-120b 결과와 DGX Spark 효율 계수를 맞춘 다섯 결과(mmap 끔)
 - [llama.cpp 서버 README](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md): 기본으로 mmap을 쓰고 `none`이면 mmap 없이 불러오는 `--load-mode`
 - [quozul.dev: Ryzen AI Max+ 395에서 gpt-oss-120b 돌리기](https://quozul.dev/posts/2025-10-27-gpt-oss-120b-on-ryzen-ai-max-395/): CanRun 데이터의 스트릭스 헤일로 결과(128GB Framework Desktop, ROCm)
 - [llama.cpp 토론 #15396: llama.cpp로 gpt-oss 돌리기](https://github.com/ggml-org/llama.cpp/discussions/15396): M2 Ultra의 gpt-oss-120b 생성·프롬프트 처리 결과(192GB M2 Ultra에서 측정)

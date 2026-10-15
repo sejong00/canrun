@@ -373,6 +373,8 @@ export const BenchPointSchema = z
     ppTokS: z.number().positive().optional(),
     tgTokS: z.number().positive(),
     flags: z.string().optional(),
+    /** 내부 기록 — 어느 빌드·조건·날짜의 값인지, 출처가 바뀐 이력 (화면에 안 나온다, 10-15 D79) */
+    note: z.string().min(1).optional(),
     sourceUrl: z.string().url(),
     sourceType: z.enum(['official-thread', 'localscore', 'community', 'own']),
     verified: z.boolean(),
