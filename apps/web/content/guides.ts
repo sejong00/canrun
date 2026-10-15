@@ -270,7 +270,7 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
       ko: {
         title: 'Ollama·LM Studio가 GPU를 안 쓸 때 — 100% GPU 확인과 오프로드 설정',
         description:
-          'Ollama·LM Studio가 모델을 GPU와 CPU에 어떻게 나눠 올렸는지 확인하는 법을 정리했습니다. GPU를 아예 못 잡을 때 볼 드라이버·백엔드 설정과 줄이는 순서도 다룹니다.',
+          'Ollama·LM Studio가 모델을 GPU와 CPU에 어떻게 나눠 올렸는지 확인하는 법을 정리했습니다. GPU를 아예 못 잡을 때 볼 드라이버·백엔드 설정과, 메모리 필요량을 줄이는 순서도 다룹니다.',
       },
     },
   },

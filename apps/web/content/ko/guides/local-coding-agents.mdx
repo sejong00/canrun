@@ -1,16 +1,14 @@
-OpenClaw(오픈클로), OpenCode, Claude Code 같은 에이전트는 채팅보다 훨씬 긴 프롬프트를 보냅니다. Ollama 문서도 이런 도구를 로컬 모델로 쓸 때 컨텍스트를 64k 이상으로 잡으라고 권합니다. 이 길이에서는 모델 파일보다 KV 캐시가 GPU에 다 올라갈지를 가르는 경우가 많습니다. 24GB인 RTX 3090에서 Qwen3.8 27B는 기본 f16 KV 캐시로도 64k가 GPU에 전부 올라갑니다<Expect model="qwen3.8-27b" gpu="rtx-3090" ctx="65536" fits="true" mode="full-gpu" />. Qwen3.6 35B-A3B는 64k에서 <Num kind="needGB" model="qwen3.6-35b-a3b" ctx="65536" />가 필요해 사용 가능 메모리 <Num kind="usableGB" gpu="rtx-3090" />를 조금 넘습니다. CanRun 계산으로는 전문가 일부가 시스템 RAM으로 갑니다<Expect model="qwen3.6-35b-a3b" gpu="rtx-3090" ctx="65536" fits="true" mode="cpu-moe" />. KV 캐시를 q8_0으로 두면 다시 GPU에 다 올라갑니다<Expect model="qwen3.6-35b-a3b" gpu="rtx-3090" ctx="65536" kv="q8_0" fits="true" mode="full-gpu" />. 모델이 들어간 다음에는 프롬프트 처리 속도를 봐야 합니다. 모델은 매 턴 에이전트가 보낸 내용을 다 읽은 뒤에야 답을 쓰기 시작합니다.
+OpenClaw(오픈클로), OpenCode, Claude Code 같은 에이전트는 채팅보다 훨씬 긴 프롬프트를 보냅니다. Ollama 문서도 이런 도구를 로컬 모델로 쓸 때 컨텍스트를 64k 이상으로 잡으라고 권합니다. 이 길이에서는 모델이 GPU에 다 올라갈지를 모델 파일보다 KV 캐시가 가르는 경우가 많습니다. 24GB인 RTX 3090에서 Qwen3.8 27B는 기본 f16 KV 캐시로 64k를 써도 GPU에 전부 올라갑니다<Expect model="qwen3.8-27b" gpu="rtx-3090" ctx="65536" fits="true" mode="full-gpu" />. Qwen3.6 35B-A3B는 KV 캐시를 q8_0으로 둬야 GPU에 다 올라갑니다<Expect model="qwen3.6-35b-a3b" gpu="rtx-3090" ctx="65536" fits="true" mode="cpu-moe" /><Expect model="qwen3.6-35b-a3b" gpu="rtx-3090" ctx="65536" kv="q8_0" fits="true" mode="full-gpu" />. 모델이 들어간 다음에는 프롬프트 처리 속도를 봐야 합니다. 모델은 매 턴 에이전트가 보낸 내용을 다 읽은 뒤에야 답을 씁니다.
 
 ## 에이전트가 컨텍스트를 많이 쓰는 이유
 
-에이전트는 한 번 요청할 때 채팅보다 훨씬 많은 내용을 보냅니다. 에이전트의 지시문, 호출할 수 있는 도구마다의 설명, 지금까지의 대화가 들어갑니다. 열어 본 파일과 실행한 명령의 출력, 답을 쓸 자리까지 한꺼번에 컨텍스트에 담겨야 합니다. OpenClaw의 로컬 모델 문서도 이 모두가 들어갈 자리를 남기라고 안내합니다. 짧은 질문에 답하는 모델도 에이전트 작업 한 턴은 실패할 수 있다고 적어 두었습니다.
+에이전트는 한 번 요청할 때 채팅보다 훨씬 많은 내용을 보냅니다. 에이전트의 지시문, 호출할 수 있는 도구 하나하나의 설명, 지금까지의 대화가 들어갑니다. 열어 본 파일과 실행한 명령의 출력, 답을 쓸 자리까지 한꺼번에 컨텍스트에 담겨야 합니다. OpenClaw의 로컬 모델 문서도 이 모두가 들어갈 자리를 남기라고 안내합니다. 짧은 질문에는 잘 답하는 모델도 에이전트 작업 한 턴에서는 실패할 수 있다고 적어 두었습니다.
 
-Ollama 컨텍스트 길이 문서는 에이전트, 웹 검색, 코딩 도구에 64k 이상을 권합니다. OpenCode·OpenClaw·Claude Code 연동 문서에도 같은 권고가 있습니다. Ollama는 도구마다 한 줄짜리 설정 명령도 안내합니다. `ollama launch opencode`, `ollama launch openclaw`, `ollama launch claude`입니다. 다만 로컬 모델을 쓸 때 컨텍스트 길이는 직접 정해야 합니다.
+Ollama 컨텍스트 길이 문서는 에이전트, 웹 검색, 코딩 도구에 64k 이상을 권합니다. OpenCode·OpenClaw·Claude Code 연동 문서에도 같은 권고가 있습니다. Ollama는 `ollama launch opencode`, `ollama launch openclaw`, `ollama launch claude`처럼 도구마다 한 줄로 설정하는 명령도 안내합니다. 다만 로컬 모델을 쓸 때 컨텍스트 길이는 직접 정해야 합니다.
 
-정작 런타임 기본값은 대부분의 카드에서 훨씬 짧습니다. <RuntimeFact id="ollama-default-ctx" />. 그래서 16GB 카드는 따로 정하지 않으면 4k로 시작합니다. 컨텍스트가 차면 Ollama는 오류 없이 오래된 메시지부터 버립니다. 이 동작은 ‘<GuideLink slug="ollama-context-length" />’ 가이드에서 자세히 다룹니다.
+그런데 Ollama 기본값은 대부분의 카드에서 이보다 훨씬 짧습니다. <RuntimeFact id="ollama-default-ctx" />. 그래서 16GB 카드는 따로 정하지 않으면 4k로 시작합니다. 컨텍스트가 차면 Ollama는 오류 없이 오래된 메시지부터 버립니다. 이 동작은 ‘<GuideLink slug="ollama-context-length" />’ 가이드에서 자세히 다룹니다. 길이를 정하는 방식은 도구마다 다르며, OpenClaw·OpenCode·Claude Code는 아래 설정 절에서 다룹니다.
 
-길이를 누가 정하는지는 도구마다 다릅니다. OpenClaw는 Ollama 고유 API로 요청하면서 컨텍스트 길이를 함께 보냅니다. 문서에 따르면 스스로 찾아낸 로컬 모델에는 보통 32k 상한을 둡니다. OpenCode 문서의 Ollama 예시는 OpenAI 호환 주소를 씁니다. Ollama의 OpenCode 문서는 로컬 모델이면 컨텍스트를 직접 정하라고 하니, Ollama 쪽에서 설정합니다.
-
-생각 모드 모델은 추론 과정도 같은 컨텍스트에 씁니다. 모델 카드에 따르면 Qwen3.6 35B-A3B와 Qwen3.8 27B는 생각 모드가 기본으로 켜져 있습니다. Qwen3.6 모델 카드는 생각 능력을 지키려면 컨텍스트를 128k 이상으로 두라고 권합니다. 컨텍스트에 들어간 토큰은 모두 KV 캐시를 차지합니다. f16 KV 캐시로 64k를 쓰면 Qwen3 30B-A3B (2507)에는 <Num kind="kvGB" model="qwen3-30b-a3b-2507" ctx="65536" />가 더 듭니다. Qwen3.6 35B-A3B는 <Num kind="kvGB" model="qwen3.6-35b-a3b" ctx="65536" />에 그칩니다.
+생각 모드 모델은 추론 과정도 같은 컨텍스트에 씁니다. 모델 카드에 따르면 Qwen3.6 35B-A3B와 Qwen3.8 27B는 생각 모드가 기본으로 켜져 있습니다. Qwen3.6 모델 카드는 생각 능력을 지키려면 컨텍스트를 128k 이상으로 두라고 권합니다.
 
 ## 16GB·24GB 카드에서 32k·64k에 들어가는 코딩 모델
 
@@ -26,9 +24,9 @@ Ollama 컨텍스트 길이 문서는 에이전트, 웹 검색, 코딩 도구에 
 
 <CtxTable model="qwen3.6-35b-a3b" gpu="rtx-3090" />
 
-이 모델은 128k 행도 눈여겨봐야 합니다. 모델 카드가 생각 능력을 지키려면 128k 이상을 권하기 때문입니다. 24GB 카드에서는 128k에서 KV 캐시를 q4_0으로 줄여도 전문가 일부가 시스템 RAM에 남습니다. 표에서도 128k·q4_0 칸은 이론 추정입니다<Expect model="qwen3.6-35b-a3b" gpu="rtx-3090" ctx="131072" kv="q4_0" fits="true" mode="cpu-moe" confidence="theoretical" />. RTX 4090도 사용 가능 메모리가 같아서 결과가 같습니다. 64k에서 q8_0을 쓰면 GPU에 다 올라갑니다<Expect model="qwen3.6-35b-a3b" gpu="rtx-4090" ctx="65536" kv="q8_0" fits="true" mode="full-gpu" />.
+이 모델은 128k 행도 눈여겨봐야 합니다. 모델 카드가 생각 능력을 지키려면 128k 이상을 권하기 때문입니다. 24GB 카드에서는 128k에서 KV 캐시를 q4_0으로 줄여도 전문가 일부가 시스템 RAM에 남습니다. 표에서도 128k·q4_0 칸은 이론 추정입니다<Expect model="qwen3.6-35b-a3b" gpu="rtx-3090" ctx="131072" kv="q4_0" fits="true" mode="cpu-moe" confidence="theoretical" />. RTX 4090도 사용 가능 메모리가 같아서, GPU에 들어가는지는 똑같이 나옵니다. 64k에서 q8_0을 쓰면 GPU에 다 올라갑니다<Expect model="qwen3.6-35b-a3b" gpu="rtx-4090" ctx="65536" kv="q8_0" fits="true" mode="full-gpu" />.
 
-<HubLink model="qwen3.8-27b" />는 dense 모델이라 토큰마다 가중치 전체를 읽습니다. 대신 KV 캐시를 두는 층이 네 층에 하나뿐입니다. RTX 3090에서 8k로 쾌적하게 돌아갑니다<Expect model="qwen3.8-27b" gpu="rtx-3090" verdict="S" />. f16 KV 캐시로 64k를 써도 <Num kind="needGB" model="qwen3.8-27b" ctx="65536" />라서 1GB 넘게 여유가 남습니다<Expect model="qwen3.8-27b" gpu="rtx-3090" ctx="65536" fits="true" mode="full-gpu" />. 128k에서 f16이면 <Num kind="needGB" model="qwen3.8-27b" ctx="131072" />가 필요해 가중치 일부가 시스템 RAM으로 갑니다. 부분 오프로드가 되는 셈입니다<Expect model="qwen3.8-27b" gpu="rtx-3090" ctx="131072" fits="true" mode="partial-offload" />. q8_0이면 <Num kind="needGB" model="qwen3.8-27b" ctx="131072" kv="q8_0" />로 GPU에 아슬아슬하게 들어갑니다<Expect model="qwen3.8-27b" gpu="rtx-3090" ctx="131072" kv="q8_0" fits="true" mode="full-gpu" />.
+<HubLink model="qwen3.8-27b" />는 dense 모델이라 토큰마다 가중치 전체를 읽습니다. 대신 KV 캐시를 두는 층이 네 층에 하나뿐입니다. RTX 3090에서 8k로 쾌적하게 돌아갑니다<Expect model="qwen3.8-27b" gpu="rtx-3090" verdict="S" />. f16 KV 캐시로 64k를 써도 <Num kind="needGB" model="qwen3.8-27b" ctx="65536" />라서 1GB 넘게 여유가 남습니다<Expect model="qwen3.8-27b" gpu="rtx-3090" ctx="65536" fits="true" mode="full-gpu" />. 128k에서 f16이면 <Num kind="needGB" model="qwen3.8-27b" ctx="131072" />가 필요해, 가중치 일부를 시스템 RAM에 두는 부분 오프로드로 넘어갑니다<Expect model="qwen3.8-27b" gpu="rtx-3090" ctx="131072" fits="true" mode="partial-offload" />. q8_0이면 <Num kind="needGB" model="qwen3.8-27b" ctx="131072" kv="q8_0" />로 GPU에 아슬아슬하게 들어갑니다<Expect model="qwen3.8-27b" gpu="rtx-3090" ctx="131072" kv="q8_0" fits="true" mode="full-gpu" />.
 
 <CtxTable model="qwen3.8-27b" gpu="rtx-3090" />
 
@@ -37,8 +35,8 @@ Ollama 컨텍스트 길이 문서는 에이전트, 웹 검색, 코딩 도구에 
 24GB 카드에서 다른 모델은 이렇습니다.
 
 - <HubLink model="gemma-4-26b-a4b" />는 f16으로 64k를 써도 <Num kind="needGB" model="gemma-4-26b-a4b" ctx="65536" />라서 GPU에 다 올라갑니다<Expect model="gemma-4-26b-a4b" gpu="rtx-3090" ctx="65536" fits="true" mode="full-gpu" />.
-- Qwen3 30B-A3B (2507)과 <HubLink model="mistral-small-3.2-24b" />는 8k에서 둘 다 쾌적하게 돌아갑니다<Expect model="qwen3-30b-a3b-2507" gpu="rtx-3090" verdict="S" /><Expect model="mistral-small-3.2-24b" gpu="rtx-3090" verdict="S" />. 하지만 f16으로 64k를 쓰면 각각 <Num kind="needGB" model="qwen3-30b-a3b-2507" ctx="65536" />, <Num kind="needGB" model="mistral-small-3.2-24b" ctx="65536" />가 필요합니다. CanRun 계산으로 Qwen3 30B-A3B는 전문가 일부를 시스템 RAM에 둡니다<Expect model="qwen3-30b-a3b-2507" gpu="rtx-3090" ctx="65536" fits="true" mode="cpu-moe" />. dense 모델인 Mistral Small 3.2 24B는 가중치 일부를 시스템 RAM으로 보냅니다<Expect model="mistral-small-3.2-24b" gpu="rtx-3090" ctx="65536" fits="true" mode="partial-offload" />. q8_0 KV 캐시를 쓰면 둘 다 64k에서 GPU에 다 올라갑니다. 필요량은 <Num kind="needGB" model="qwen3-30b-a3b-2507" ctx="65536" kv="q8_0" />(여유 1GB 미만)와 <Num kind="needGB" model="mistral-small-3.2-24b" ctx="65536" kv="q8_0" />입니다<Expect model="qwen3-30b-a3b-2507" gpu="rtx-3090" ctx="65536" kv="q8_0" fits="true" mode="full-gpu" /><Expect model="mistral-small-3.2-24b" gpu="rtx-3090" ctx="65536" kv="q8_0" fits="true" mode="full-gpu" />. 컨텍스트별 결과는 <ComboLink model="qwen3-30b-a3b-2507" gpu="rtx-3090" /> 페이지에 있습니다.
-- <HubLink model="nemotron-3.5-lightning-30b-a3b" />는 8k에서도 <Num kind="needGB" model="nemotron-3.5-lightning-30b-a3b" />가 필요해 24GB 카드에 다 들어가지 않습니다. 그래서 어느 길이에서든 전문가 일부를 시스템 RAM에 두고, 이론 추정으로 원활하게 돌아갑니다<Expect model="nemotron-3.5-lightning-30b-a3b" gpu="rtx-3090" verdict="A" mode="cpu-moe" confidence="theoretical" />. KV 캐시가 아주 작아서 64k로 늘려도 <Num kind="needGB" model="nemotron-3.5-lightning-30b-a3b" ctx="65536" />로 거의 늘지 않습니다.
+- Qwen3 30B-A3B (2507)과 <HubLink model="mistral-small-3.2-24b" />는 8k에서 둘 다 쾌적하게 돌아갑니다<Expect model="qwen3-30b-a3b-2507" gpu="rtx-3090" verdict="S" /><Expect model="mistral-small-3.2-24b" gpu="rtx-3090" verdict="S" />. 하지만 f16으로 64k를 쓰면 각각 <Num kind="needGB" model="qwen3-30b-a3b-2507" ctx="65536" />, <Num kind="needGB" model="mistral-small-3.2-24b" ctx="65536" />가 필요합니다. CanRun 계산으로 Qwen3 30B-A3B는 전문가 일부를 시스템 RAM에 둡니다<Expect model="qwen3-30b-a3b-2507" gpu="rtx-3090" ctx="65536" fits="true" mode="cpu-moe" />. dense 모델인 Mistral Small 3.2 24B는 가중치 일부를 시스템 RAM으로 보냅니다<Expect model="mistral-small-3.2-24b" gpu="rtx-3090" ctx="65536" fits="true" mode="partial-offload" />. q8_0 KV 캐시를 쓰면 둘 다 64k에서 GPU에 다 올라갑니다. 필요량은 <Num kind="needGB" model="qwen3-30b-a3b-2507" ctx="65536" kv="q8_0" />(여유 1GB 미만)와 <Num kind="needGB" model="mistral-small-3.2-24b" ctx="65536" kv="q8_0" />입니다<Expect model="qwen3-30b-a3b-2507" gpu="rtx-3090" ctx="65536" kv="q8_0" fits="true" mode="full-gpu" /><Expect model="mistral-small-3.2-24b" gpu="rtx-3090" ctx="65536" kv="q8_0" fits="true" mode="full-gpu" />. Qwen3-Coder-30B-A3B-Instruct는 설정 파일상 구조가 Qwen3 30B-A3B (2507)과 같아서, 이 수치를 거의 그대로 참고할 수 있습니다. 컨텍스트별 결과는 ‘<ComboLink model="qwen3-30b-a3b-2507" gpu="rtx-3090" />’ 페이지에 있습니다.
+- <HubLink model="nemotron-3.5-lightning-30b-a3b" />는 8k에서도 <Num kind="needGB" model="nemotron-3.5-lightning-30b-a3b" />가 필요해 24GB 카드에 다 들어가지 않습니다. 그래서 어느 길이에서든 전문가 일부를 시스템 RAM에 두고, 이론 추정으로는 원활하게 돌아갑니다<Expect model="nemotron-3.5-lightning-30b-a3b" gpu="rtx-3090" verdict="A" mode="cpu-moe" confidence="theoretical" />. KV 캐시가 아주 작아서 64k로 늘려도 <Num kind="needGB" model="nemotron-3.5-lightning-30b-a3b" ctx="65536" />로 거의 늘지 않습니다.
 
 ### 16GB: RTX 5060 Ti 16GB
 
@@ -50,13 +48,15 @@ Qwen3.6 35B-A3B는 8k에서도 <Num kind="needGB" model="qwen3.6-35b-a3b" />가 
 
 Qwen3.8 27B는 8k에서도 <Num kind="needGB" model="qwen3.8-27b" />가 필요해 이 카드에 들어가지 않습니다. 가중치 일부를 시스템 RAM에서 돌려야 합니다. dense 모델은 토큰마다 가중치를 전부 읽으므로 겨우 돌아갑니다<Expect model="qwen3.8-27b" gpu="rtx-5060-ti-16gb" verdict="B" mode="partial-offload" />.
 
-<HubLink model="qwen3.5-9b" />는 Qwen3.8 27B와 같은 구조라서 KV 캐시를 두는 층이 네 층에 하나입니다. 작은 모델이라 에이전트에 쓸 길이에서도 GPU에 남습니다. f16으로 64k를 쓰면 <Num kind="needGB" model="qwen3.5-9b" ctx="65536" />가 필요하고, 이 카드에 다 들어갑니다<Expect model="qwen3.5-9b" gpu="rtx-5060-ti-16gb" ctx="65536" fits="true" mode="full-gpu" />. 12GB인 RTX 3060 12GB에도 들어갑니다<Expect model="qwen3.5-9b" gpu="rtx-3060-12gb" ctx="65536" fits="true" mode="full-gpu" />. 다만 에이전트 작업을 얼마나 잘 해내는지는 이 표들로 알 수 없습니다.
+<HubLink model="qwen3.5-9b" />는 Qwen3.8 27B와 같은 구조라서 KV 캐시를 두는 층이 네 층에 하나입니다. 작은 모델이라 에이전트에 쓸 길이에서도 GPU에 남습니다. f16으로 64k를 쓰면 <Num kind="needGB" model="qwen3.5-9b" ctx="65536" />가 필요하고, 이 카드에 다 들어갑니다<Expect model="qwen3.5-9b" gpu="rtx-5060-ti-16gb" ctx="65536" fits="true" mode="full-gpu" />. RTX 3060 12GB에도 들어갑니다<Expect model="qwen3.5-9b" gpu="rtx-3060-12gb" ctx="65536" fits="true" mode="full-gpu" />. 다만 에이전트 작업을 얼마나 잘 해내는지는 이 표들로 알 수 없습니다.
 
-### 8GB·32GB 카드
+### 8GB·12GB·32GB 카드
 
 <HubLink gpu="rtx-4060" /> 같은 8GB 카드에서는 Qwen3.5 9B도 64k가 빠듯합니다. f16이면 일부가 시스템 RAM으로 넘어갑니다<Expect model="qwen3.5-9b" gpu="rtx-4060" ctx="65536" fits="true" mode="partial-offload" />. q8_0이면 <Num kind="needGB" model="qwen3.5-9b" ctx="65536" kv="q8_0" />가 필요하고, 사용 가능 메모리는 <Num kind="usableGB" gpu="rtx-4060" />입니다. CanRun 계산으로는 GPU에 남지만 여유가 거의 없습니다<Expect model="qwen3.5-9b" gpu="rtx-4060" ctx="65536" kv="q8_0" fits="true" mode="full-gpu" />. 실제로 쓰기 전에 `ollama ps`로 확인하세요.
 
-<HubLink gpu="rtx-5090" /> 같은 32GB 카드는 Qwen3.6 모델 카드가 권하는 길이까지 담습니다. CanRun 계산으로는 Qwen3.6 35B-A3B를 f16 KV 캐시로 128k까지 늘려도 GPU에 전부 올라갑니다<Expect model="qwen3.6-35b-a3b" gpu="rtx-5090" ctx="131072" fits="true" mode="full-gpu" />. 이때 필요량은 <Num kind="needGB" model="qwen3.6-35b-a3b" ctx="131072" />입니다. Qwen3.8 27B도 f16으로 128k에서 <Num kind="needGB" model="qwen3.8-27b" ctx="131072" />가 필요하고, GPU에 다 올라갑니다<Expect model="qwen3.8-27b" gpu="rtx-5090" ctx="131072" fits="true" mode="full-gpu" />.
+<HubLink gpu="rtx-3060-12gb" /> 같은 12GB 카드에서 gpt-oss-20b는 64k를 쓰면 전문가 일부를 시스템 RAM에 둡니다. 이때 이론 추정으로는 원활하게 돌아갑니다<Expect model="gpt-oss-20b" gpu="rtx-3060-12gb" ctx="65536" fits="true" mode="cpu-moe" verdict="A" confidence="theoretical" />.
+
+<HubLink gpu="rtx-5090" /> 같은 32GB 카드라면 Qwen3.6 모델 카드가 권하는 128k까지 쓸 수 있습니다. CanRun 계산으로는 Qwen3.6 35B-A3B를 f16 KV 캐시로 128k까지 늘려도 GPU에 전부 올라갑니다<Expect model="qwen3.6-35b-a3b" gpu="rtx-5090" ctx="131072" fits="true" mode="full-gpu" />. 이때 필요량은 <Num kind="needGB" model="qwen3.6-35b-a3b" ctx="131072" />입니다. Qwen3.8 27B도 f16으로 128k에서 <Num kind="needGB" model="qwen3.8-27b" ctx="131072" />가 필요하고, GPU에 다 올라갑니다<Expect model="qwen3.8-27b" gpu="rtx-5090" ctx="131072" fits="true" mode="full-gpu" />.
 
 ## 토큰당 KV 캐시가 작은 모델이 유리한 이유
 
@@ -64,30 +64,30 @@ KV 캐시는 컨텍스트 전체를 보는 층마다 토큰 하나당 키와 값
 
 <KvPerTokenTable models="mistral-small-3.2-24b,qwen3-30b-a3b-2507,qwen3.8-27b,qwen3.5-9b,gpt-oss-20b,gemma-4-26b-a4b,qwen3.6-35b-a3b,nemotron-3.5-lightning-30b-a3b" ctxs="32768,65536,131072" />
 
-차이는 파라미터 수가 아니라 캐시를 두는 층의 수에서 납니다.
+차이는 파라미터 수가 아니라 캐시를 두는 층의 수에서 납니다. 각 모델의 설정 파일이나 모델 카드를 보면 이렇습니다.
 
-- **모든 층이 전체 어텐션**: Mistral Small 3.2 24B는 설정 파일상 이런 층이 40개입니다. 층마다 KV 헤드가 8개이고 슬라이딩 윈도는 없습니다. 모델 카드에 따르면 Qwen3 30B-A3B (2507)은 48층이고 KV 헤드는 4개입니다.
-- **하이브리드 선형 어텐션**: Qwen3.6 35B-A3B와 Qwen3.8 27B 모델 카드는 구조를 이렇게 설명합니다. Gated DeltaNet 세 층 뒤에 Gated Attention 한 층이 오는 묶음을 되풀이합니다. 선형 층은 크기가 정해진 상태만 들고 있어서, 컨텍스트에 따라 커지는 층은 네 층에 하나입니다. Qwen3.5 9B도 같은 구조입니다.
-- **슬라이딩 윈도**: gpt-oss-20b는 최근 토큰 일부만 보는 슬라이딩 윈도 층과 전체 어텐션 층을 번갈아 둡니다. Gemma 4 26B-A4B는 설정 파일상 30층 가운데 25층이 1024토큰 슬라이딩 윈도입니다.
-- **대부분 Mamba**: 설정 파일을 보면 Nemotron 3.5 Lightning 30B-A3B는 어텐션 층이 6개뿐입니다. 전체 52층 가운데 나머지는 토큰마다 캐시를 쌓지 않는 Mamba 층과 MoE 층입니다.
+- **모든 층이 전체 어텐션**: Mistral Small 3.2 24B는 이런 층이 40개이고, 층마다 KV 헤드가 8개이며 슬라이딩 윈도는 없습니다. Qwen3 30B-A3B (2507)은 48층이고 KV 헤드는 4개입니다.
+- **하이브리드 선형 어텐션**: Qwen3.6 35B-A3B·Qwen3.8 27B·Qwen3.5 9B는 Gated DeltaNet 세 층 뒤에 Gated Attention 한 층이 오는 묶음을 되풀이합니다. 선형 층은 크기가 정해진 상태만 들고 있어서, 컨텍스트에 따라 커지는 층은 네 층에 하나입니다.
+- **슬라이딩 윈도**: gpt-oss-20b는 최근 토큰 일부만 보는 슬라이딩 윈도 층과 전체 어텐션 층을 번갈아 둡니다. Gemma 4 26B-A4B는 30층 가운데 25층이 1024토큰 슬라이딩 윈도입니다.
+- **대부분 Mamba**: Nemotron 3.5 Lightning 30B-A3B는 52층 가운데 어텐션 층이 6개뿐입니다. 나머지는 토큰마다 캐시를 쌓지 않는 Mamba 층과 MoE 층입니다.
 
-64k·f16에서 Mistral Small 3.2 24B의 KV 캐시는 <Num kind="kvGB" model="mistral-small-3.2-24b" ctx="65536" />입니다. Qwen3.6 35B-A3B는 <Num kind="kvGB" model="qwen3.6-35b-a3b" ctx="65536" />입니다. 8k에서 둘 다 들어가는 모델이라면, 토큰당 캐시가 작은 쪽이 64k에서도 들어갈 가능성이 큽니다. 슬라이딩 윈도·하이브리드 모델은 컨텍스트에 따라 커지는 층만 셉니다. 크기가 고정된 부분(짧은 윈도, 선형 층의 상태)은 빼므로 실제보다 조금 작게 나옵니다. 원리는 ‘<GuideLink slug="kv-cache-context" />’ 가이드에서 자세히 다룹니다.
+8k에서 둘 다 들어가는 모델이라면, 토큰당 캐시가 작은 쪽이 64k에서도 들어갈 가능성이 큽니다. CanRun은 슬라이딩 윈도·하이브리드 모델에서 컨텍스트에 따라 커지는 층만 셉니다. 크기가 고정된 부분(짧은 윈도, 선형 층의 상태)은 빼므로, 이 모델들의 KV 캐시 수치는 실제보다 조금 작게 나옵니다. 원리는 ‘<GuideLink slug="kv-cache-context" />’ 가이드에서 자세히 다룹니다.
 
 ## 답이 늦게 시작되는 이유 — 프롬프트 처리 속도
 
 로컬 모델의 속도는 두 가지입니다. 보낸 내용을 읽는 프롬프트 처리 속도와, 답을 쓰는 생성 속도입니다. CanRun의 판정과 속도 범위는 생성 속도 추정입니다. 에이전트는 프롬프트가 깁니다. 세션 첫 턴에는 에이전트 지시문과 도구 설명이 모두 들어갑니다. 이후 턴에는 파일 전체나 긴 명령 출력이 붙기도 합니다. 모델은 이 내용을 다 읽은 뒤에야 답의 첫 단어를 씁니다.
 
-읽기는 쓰기보다 토큰당 훨씬 빠릅니다. GPU가 프롬프트는 여러 토큰을 한꺼번에 처리하고, 답은 한 토큰씩 차례로 쓰기 때문입니다. llama.cpp의 NVIDIA 카드 성능 모음을 보면 프롬프트 처리(pp512)가 생성(tg128)보다 몇십 배 빠릅니다. <HubLink gpu="rtx-5060-ti-16gb" /> 페이지에 있는 gpt-oss-20b 공개 벤치마크도 같은 모습입니다. CanRun은 프롬프트 처리 속도를 카드의 FP16 연산 성능으로 추정합니다. 생성 속도는 메모리 대역폭으로 추정합니다. 프롬프트 처리 추정은 대략값(±40%)이라서, 조합 페이지는 모델 전체가 GPU에 올라갈 때만 이 값을 보여 줍니다. 전문가나 층 일부가 시스템 RAM에 있으면 추정하지 않습니다.
+읽기는 쓰기보다 토큰당 훨씬 빠릅니다. GPU가 프롬프트는 여러 토큰을 한꺼번에 처리하고, 답은 한 토큰씩 차례로 쓰기 때문입니다. llama.cpp의 NVIDIA 카드 성능 모음을 보면 프롬프트 처리(pp512)가 생성(tg128)보다 몇십 배 빠릅니다. CanRun은 프롬프트 처리 속도를 카드의 FP16 연산 성능으로, 생성 속도는 메모리 대역폭으로 추정합니다. 프롬프트 처리 추정은 대략값(±40%)입니다. 조합 페이지는 모델 전체가 GPU에 올라갈 때만 이 값을 보여 주고, 전문가나 층 일부가 시스템 RAM에 있으면 추정하지 않습니다. 이 추정은 카드만 보고 계산합니다. llama.cpp 성능 모음의 7B 모델에 맞춘 값이라 같은 카드면 모델이 달라도 같습니다. Qwen3.8 27B처럼 큰 dense 모델은 이보다 느리게 읽습니다.
 
-런타임은 바뀌지 않은 부분을 다시 읽지 않습니다. llama-server는 앞 요청과 앞부분이 같으면 그 KV 캐시를 다시 씁니다. 그래서 달라진 뒷부분만 처리합니다(`cache_prompt`, 기본으로 켜짐). Ollama API 문서도 `prompt_eval_duration`을 캐시되지 않은 프롬프트 토큰을 처리한 시간으로 설명합니다. 에이전트가 대화 끝에 내용을 덧붙이기만 하면, 턴마다 새로 붙은 부분을 주로 읽습니다. 프롬프트 앞쪽이 바뀌면 그 지점부터 뒤는 전부 다시 읽습니다.
+런타임은 바뀌지 않은 부분을 다시 읽지 않습니다. llama-server는 앞 요청과 앞부분이 같으면 그 부분의 KV 캐시를 그대로 재사용합니다. 그래서 달라진 뒷부분만 처리합니다(`cache_prompt`, 기본으로 켜짐). Ollama API 문서도 `prompt_eval_duration`을 캐시되지 않은 프롬프트 토큰을 처리한 시간으로 설명합니다. 에이전트가 대화 끝에 내용을 덧붙이기만 하면, 턴마다 새로 붙은 부분을 주로 읽습니다. 프롬프트 앞쪽이 바뀌면 그 지점부터 뒤는 전부 다시 읽습니다. 슬라이딩 윈도·하이브리드 모델(이 글의 8개 중 6개)은 llama-server가 저장해 둔 체크포인트(`--ctx-checkpoints`)로만 되돌아갈 수 있습니다. 그래서 중간이 바뀌면 더 앞에서부터, 심하면 처음부터 다시 읽습니다.
 
-직접 재 보려면 Ollama API 응답을 봅니다. `prompt_eval_count`를 `prompt_eval_duration`으로 나누면 됩니다. 시간 값은 나노초 단위입니다. 모델을 올리는 데 걸린 시간은 `load_duration`에 나옵니다. llama-server는 `timings_per_token`을 켜면 같은 정보를 응답에 붙입니다.
+Ollama에서 프롬프트를 읽는 속도는 `prompt_eval_count`에서 `prompt_eval_cached_count`를 뺀 값을 `prompt_eval_duration`으로 나눠 구합니다. 시간 값은 나노초 단위입니다. `ollama run <모델> --verbose`로 실행하면 같은 값을 ‘prompt eval rate’로 보여 주고, 모델을 올리는 데 걸린 시간은 `load_duration`에 나옵니다. llama-server는 응답의 `timings` 객체에 `prompt_per_second`와 캐시에서 다시 쓴 토큰 수(`cache_n`)를 기본으로 넣어 줍니다. 이후 턴에서 `cache_n`이 0에 가까우면 프롬프트 전체를 다시 읽은 것입니다.
 
-답이 아예 오지 않는다면 모델을 아직 올리는 중일 수 있습니다. OpenClaw 로컬 모델 문서는 멈춘 것처럼 보이는 흔한 원인으로 콜드 스타트를 꼽습니다. 느린 서버라면 두 가지 타임아웃을 늘리라고 안내합니다. 하나는 제공자 쪽 `models.providers.<id>.timeoutSeconds`입니다. 다른 하나는 실행 쪽 `agents.defaults.timeoutSeconds`입니다. Ollama는 기본 설정에서 모델을 5분 동안만 메모리에 두고 내립니다. 이 시간은 `OLLAMA_KEEP_ALIVE`로 바꿀 수 있습니다(Ollama FAQ). `ollama ps`의 PROCESSOR 열에 CPU/GPU 분할이 보이면, 모든 턴이 표의 오프로드 칸처럼 느려집니다.
+답이 아예 오지 않는다면 모델을 아직 올리는 중일 수 있습니다. OpenClaw 로컬 모델 문서는 멈춘 것처럼 보이는 흔한 원인으로 콜드 스타트를 꼽습니다. 느린 서버라면 두 가지 타임아웃을 늘리라고 안내합니다. 하나는 제공자 쪽 `models.providers.<id>.timeoutSeconds`입니다. 다른 하나는 실행 쪽 `agents.defaults.timeoutSeconds`입니다. Ollama는 기본 설정에서 모델을 5분 동안만 메모리에 두고 내립니다. 이 시간은 `OLLAMA_KEEP_ALIVE`로 바꿀 수 있습니다(Ollama FAQ). `ollama ps`의 PROCESSOR 열에 CPU와 GPU가 나뉘어 나오면, 모든 턴이 표의 오프로드 칸처럼 느려집니다.
 
-## 설정 — Ollama·llama.cpp·OpenClaw·OpenCode
+## 설정 — Ollama·llama.cpp·OpenClaw·OpenCode·Claude Code
 
-이 설정들은 자주 바뀌므로 각 도구의 공식 문서(출처 참고)를 기준으로 삼으세요. 아래에는 메모리를 좌우하는 부분만 정리했습니다.
+이 설정들은 자주 바뀌므로 각 도구의 공식 문서(출처 참고)를 기준으로 삼으세요. 아래에는 메모리를 좌우하는 부분만 정리했습니다. CanRun 조합 페이지도 표에서 고른 컨텍스트와 KV 캐시 종류에 맞춘 Ollama·llama.cpp 명령을 보여 줍니다. 예시는 ‘<ComboLink model="gpt-oss-20b" gpu="rtx-5060-ti-16gb" />’ 페이지에서 볼 수 있습니다.
 
 ### Ollama
 
@@ -117,19 +117,15 @@ llama-server -m model.gguf -c 65536 -ctk q8_0 -ctv q8_0 -fa on
 
 ### OpenClaw
 
-OpenClaw는 `/v1`을 붙이지 않은 Ollama 고유 주소(`http://localhost:11434`)로 연결하세요. 문서에 따르면 OpenAI 호환 `/v1` 주소를 쓰면 도구 호출이 깨집니다. 그러면 모델이 도구 호출을 일반 텍스트로 써 버릴 수 있습니다. OpenClaw는 스스로 찾아낸 로컬 모델에 보통 32k를 보내므로, 64k를 쓰려면 설정을 바꿔야 합니다. 모델별 `contextTokens`와 `params.num_ctx` 설정은 Ollama 고급 설정 문서에 나옵니다. OpenClaw가 직접 관리하는 llama.cpp 설치에서는 추천 구성이 64k 컨텍스트를 씁니다.
+OpenClaw에서는 `/v1`을 붙이지 않은 Ollama 기본 주소(`http://localhost:11434`)로 연결하세요. 문서에 따르면 OpenAI 호환 `/v1` 주소를 쓰면 도구 호출이 깨집니다. 그러면 모델이 도구 호출을 일반 텍스트로 써 버릴 수 있습니다. OpenClaw는 스스로 찾아낸 로컬 모델에 보통 32k를 보내고, 이 값이 서버 설정보다 우선합니다. `OLLAMA_CONTEXT_LENGTH`를 64k로 정해도, 그 모델의 `contextTokens`나 `params.num_ctx`를 올리기 전에는 32k로 올라갑니다. 두 설정은 Ollama 고급 설정 문서에 나오고, 어느 값이 적용됐는지는 `ollama ps`의 CONTEXT 열에서 확인합니다. OpenClaw가 직접 관리하는 llama.cpp 설치에서는 추천 구성이 64k 컨텍스트를 씁니다.
 
 ### OpenCode
 
 OpenCode 문서는 Ollama와 llama-server를 OpenAI 호환 제공자로 연결합니다. 이때 `baseURL`은 `/v1`로 끝납니다. 로컬 모델마다 `limit.context`를 서버에 실제로 잡힌 컨텍스트와 같게 적으세요. 그래야 OpenCode가 남은 자리를 제대로 셉니다. 문서는 도구 호출이 안 될 때 Ollama의 `num_ctx`를 늘려 보라고도 안내합니다.
 
-CanRun 조합 페이지는 표에서 고른 컨텍스트와 KV 캐시 종류에 맞춘 Ollama·llama.cpp 명령을 보여 줍니다. 예시는 <ComboLink model="gpt-oss-20b" gpu="rtx-5060-ti-16gb" /> 페이지에서 볼 수 있습니다.
+### Claude Code
 
-더 읽을거리:
-
-- Ollama 기본 컨텍스트와 설정 방법: <GuideLink slug="ollama-context-length" />
-- KV 캐시가 커지는 원리와 q8_0·q4_0: <GuideLink slug="kv-cache-context" />
-- 8k에서 VRAM 구간별로 들어가는 모델: <GuideLink slug="vram-requirements" />
+`ollama launch claude`는 Ollama의 Anthropic 호환 API로 Claude Code를 연결합니다. Ollama 문서는 로컬 모델이면 64k 이상을 권하므로, 위 Ollama 설정으로 길이를 정하고 `ollama ps`의 CONTEXT 열로 확인합니다.
 
 ## 이 숫자는 얼마나 확실한가
 
@@ -139,21 +135,27 @@ CanRun 조합 페이지는 표에서 고른 컨텍스트와 KV 캐시 종류에 
 
 <Measured model="gpt-oss-20b" gpu="rtx-5060-ti-16gb" />
 
-컨텍스트 표의 각 행은 컨텍스트가 그 길이까지 찼다고 가정합니다. 에이전트 세션은 쓰는 동안 그 길이까지 차 갑니다. 표는 다음 조건을 가정합니다. Windows에서 그 카드가 화면도 출력하고, 시스템 RAM은 32GB(DDR5)입니다. 모델은 하나만 올리고, 요청은 한 번에 하나만 처리합니다. Ollama FAQ에 따르면 필요 메모리는 `OLLAMA_NUM_PARALLEL`과 컨텍스트 길이를 곱한 만큼 늘어납니다. 동시 요청을 쓰면 표보다 메모리가 더 듭니다. Ollama와 llama.cpp는 메모리를 스스로 추정합니다. llama.cpp 자동 배치는 카드마다 VRAM을 조금 비워 두기도 합니다. 그래서 여기서 아슬아슬하게 들어가는 모델이 실제로는 일부 시스템 RAM으로 갈 수 있습니다. 내 PC에서는 `ollama ps`의 PROCESSOR 열이나 llama.cpp 시작 로그를 기준으로 봅니다.
+정한 길이만큼의 메모리는 모델을 올릴 때 미리 잡히므로 메모리 수치는 첫 턴부터 그대로입니다. 각 행의 속도만 컨텍스트가 그 길이까지 찼다고 가정하고, 에이전트 세션은 쓰는 동안 그 길이까지 차 갑니다. 표는 다음 조건을 가정합니다. Windows에서 그 카드가 화면도 출력하고, 시스템 RAM은 32GB(DDR5)입니다. 모델은 하나만 올리고, 요청은 한 번에 하나만 처리합니다. Ollama FAQ에 따르면 필요 메모리는 `OLLAMA_NUM_PARALLEL`과 컨텍스트 길이를 곱한 만큼 늘어납니다. 동시 요청을 쓰면 표보다 메모리가 더 듭니다. Ollama와 llama.cpp는 메모리를 스스로 추정합니다. llama.cpp 자동 배치는 카드마다 VRAM을 조금 비워 두기도 합니다. 그래서 여기서 아슬아슬하게 들어가는 모델이 실제로는 일부 시스템 RAM으로 갈 수 있습니다. 내 PC에서는 `ollama ps`의 PROCESSOR 열이나 llama.cpp 시작 로그를 기준으로 봅니다.
 
 생각 모드가 있는 모델에는 속도 기준을 1.5배 엄격하게 적용합니다. 생각 모드를 켜면 답 하나에 토큰을 훨씬 많이 쓰기 때문입니다. 아래 기준표에는 이 내용이 빠져 있습니다. 이 글의 모델 가운데 gpt-oss-20b는 늘 생각합니다. Qwen3.6 35B-A3B, Qwen3.8 27B, Qwen3.5 9B에는 생각 모드가 있습니다. Gemma 4 26B-A4B와 Nemotron 3.5 Lightning 30B-A3B도 마찬가지입니다. Qwen3 30B-A3B (2507)과 Mistral Small 3.2 24B에는 생각 모드가 없습니다. CanRun은 모델이 코드를 얼마나 잘 쓰는지, 도구를 얼마나 잘 부르는지는 평가하지 않습니다.
 
 <Threshold />
 
+## 다음 단계
+
+- Ollama 기본 컨텍스트와 설정 방법: <GuideLink slug="ollama-context-length" />
+- KV 캐시가 커지는 원리와 q8_0·q4_0: <GuideLink slug="kv-cache-context" />
+- 8k에서 VRAM 구간별로 들어가는 모델: <GuideLink slug="vram-requirements" />
+
 ## 자주 묻는 질문
 
 ### 로컬 코딩 에이전트에는 컨텍스트가 얼마나 필요한가요?
 
-Ollama 문서 기준으로 64k 이상입니다. Ollama는 에이전트와 코딩 도구에 이 길이를 권합니다. OpenClaw는 스스로 찾은 Ollama 모델에 보통 32k를 보냅니다. Qwen3.6 35B-A3B 모델 카드는 생각 능력을 위해 128k 이상을 권합니다. 모델 전체가 GPU에 남는 범위에서 가장 긴 컨텍스트를 고르세요. f16 KV 캐시로 64k를 쓰면 Qwen3.8 27B는 <Num kind="needGB" model="qwen3.8-27b" ctx="65536" />, gpt-oss-20b는 <Num kind="needGB" model="gpt-oss-20b" ctx="65536" />가 필요합니다. 사용 가능 메모리는 24GB 카드가 <Num kind="usableGB" gpu="rtx-3090" />, 16GB 카드가 <Num kind="usableGB" gpu="rtx-5060-ti-16gb" />입니다.
+Ollama 문서 기준으로 64k 이상입니다. Qwen3.6 35B-A3B 모델 카드는 생각 능력을 위해 128k 이상을 권합니다. 모델 전체가 GPU에 남는 범위에서 가장 긴 컨텍스트를 고르세요. f16 KV 캐시로 64k를 쓰면 Qwen3.8 27B는 <Num kind="needGB" model="qwen3.8-27b" ctx="65536" />, gpt-oss-20b는 <Num kind="needGB" model="gpt-oss-20b" ctx="65536" />가 필요합니다. 사용 가능 메모리는 24GB 카드가 <Num kind="usableGB" gpu="rtx-3090" />, 16GB 카드가 <Num kind="usableGB" gpu="rtx-5060-ti-16gb" />입니다.
 
 ### 로컬 에이전트가 답을 늦게 시작하거나 타임아웃이 나는 이유는 무엇인가요?
 
-대개 긴 프롬프트를 읽는 중이거나 모델을 올리는 중이기 때문입니다. Ollama API 응답의 `prompt_eval_duration`과 `load_duration`을 비교해 보세요. `OLLAMA_KEEP_ALIVE`로 모델을 메모리에 오래 두고, 에이전트의 타임아웃을 늘립니다. OpenClaw 문서에 `timeoutSeconds` 설정이 나옵니다. `ollama ps`에 CPU/GPU 분할이 보이면 컨텍스트를 줄이거나 q8_0 KV 캐시를 씁니다. `100% GPU`가 나올 때까지 조정합니다.
+대개 긴 프롬프트를 읽는 중이거나 모델을 올리는 중이기 때문입니다. Ollama API 응답의 `prompt_eval_duration`과 `load_duration`을 비교해 보세요. `OLLAMA_KEEP_ALIVE`로 모델을 메모리에 오래 두고, 에이전트의 타임아웃을 늘립니다. OpenClaw 문서에 `timeoutSeconds` 설정이 나옵니다. `ollama ps`에 CPU와 GPU가 나뉘어 나오면 컨텍스트를 줄이거나 q8_0 KV 캐시를 씁니다. `100% GPU`가 나올 때까지 조정합니다.
 
 ### q8_0 KV 캐시를 쓰면 코딩 품질이 떨어지나요?
 
@@ -161,25 +163,27 @@ Ollama FAQ는 q8_0의 정밀도 손실을 아주 작다고 설명합니다. 메�
 
 ### 에이전트가 도구를 실행하지 않고 호출 내용을 글자로 출력하는 이유는 무엇인가요?
 
-연결 방식, 컨텍스트, 모델 가운데 하나가 원인일 수 있습니다. OpenClaw 문서에 따르면 Ollama의 OpenAI 호환 `/v1` 주소로 연결하면 도구 호출이 깨집니다. 이때 모델이 호출 내용을 일반 텍스트로 쓰기도 하니, 고유 주소로 연결합니다. OpenCode 문서는 도구 호출이 안 되면 Ollama의 `num_ctx`를 늘려 보라고 합니다. 모델도 도구 호출을 지원해야 합니다. Qwen3.6 35B-A3B와 Qwen3 30B-A3B (2507) 모델 카드에는 도구 호출 설명이 있습니다. gpt-oss-20b 모델 카드에는 함수 호출이 적혀 있습니다.
+연결 방식, 컨텍스트, 모델 가운데 하나가 원인일 수 있습니다. OpenClaw 문서에 따르면 Ollama의 OpenAI 호환 `/v1` 주소로 연결하면 도구 호출이 깨집니다. 이때 모델이 호출 내용을 일반 텍스트로 쓰기도 하니, `/v1` 없는 기본 주소로 연결합니다. OpenCode 문서는 도구 호출이 안 되면 Ollama의 `num_ctx`를 늘려 보라고 합니다. 모델도 도구 호출을 지원해야 합니다. Qwen3.6 35B-A3B와 Qwen3 30B-A3B (2507) 모델 카드에는 도구 호출 설명이 있습니다. gpt-oss-20b 모델 카드에는 함수 호출이 적혀 있습니다.
 
 ### CanRun 목록에 없는 코딩 모델도 확인할 수 있나요?
 
-네, 확인할 수 있습니다. 계산기에 Hugging Face 모델 id를 붙여 넣고 컨텍스트를 64k로 고르면 같은 메모리 계산을 해 줍니다. 불러온 모델의 결과는 이론 추정(±30%)입니다. 계산기는 그 모델에 생각 모드가 있는지 알 수 없습니다. 그래서 생각 모드 모델용 엄격한 기준은 적용하지 않습니다.
+네, 확인할 수 있습니다. Qwen3-Coder-30B-A3B-Instruct는 설정 파일상 Qwen3 30B-A3B (2507)과 구조가 같습니다(48층, KV 헤드 4개, 전문가 128개). Devstral Small 2507은 Mistral Small 3.1을 바탕으로 만든 모델로, Mistral Small 3.2 24B와 층 수(40층)·KV 헤드 수(8개)가 같습니다. 그래서 두 모델은 위 표의 해당 행을 거의 그대로 참고할 수 있습니다. 다른 모델은 계산기에 Hugging Face 모델 id를 붙여 넣고 컨텍스트를 64k로 고르면 같은 메모리 계산을 해 줍니다. 불러온 모델의 결과는 이론 추정(±30%)입니다. 계산기는 그 모델에 생각 모드가 있는지 알 수 없어서, 생각 모드 모델용 엄격한 기준은 적용하지 않습니다.
 
 ## 출처
 
 - [Ollama 문서: 컨텍스트 길이](https://docs.ollama.com/context-length): 에이전트·웹 검색·코딩 도구에 64k 이상 권고, VRAM 구간별 기본값, `ollama ps`, CPU 오프로드를 피하라는 권고
 - [Ollama 문서: OpenCode 연동](https://docs.ollama.com/integrations/opencode): `ollama launch opencode`, OpenCode에 64k 이상 컨텍스트가 필요하다는 설명, 로컬 모델은 64k 이상을 직접 설정
 - [Ollama 문서: OpenClaw 연동](https://docs.ollama.com/integrations/openclaw): `ollama launch openclaw`, 로컬 모델이면 64k 이상 권고
-- [Ollama 문서: Claude Code 연동](https://docs.ollama.com/integrations/claude-code): `ollama launch claude`, 로컬 모델은 64k 이상을 직접 설정
+- [Ollama 문서: Claude Code 연동](https://docs.ollama.com/integrations/claude-code): `ollama launch claude`, Anthropic 호환 API, 로컬 모델은 64k 이상을 직접 설정
 - [Ollama FAQ](https://docs.ollama.com/faq): 모델을 메모리에 두는 시간(기본 5분, `OLLAMA_KEEP_ALIVE`), KV 캐시 양자화와 정밀도 설명, `OLLAMA_NUM_PARALLEL`에 따라 늘어나는 메모리
-- [Ollama API 문서: 사용량](https://docs.ollama.com/api/usage): `prompt_eval_count`, 캐시되지 않은 프롬프트 토큰 처리 시간인 `prompt_eval_duration`, `load_duration`, 나노초 단위
-- [OpenClaw 문서: Ollama](https://docs.openclaw.ai/providers/ollama): 고유 API 사용, `/v1` 주소를 쓰면 도구 호출이 깨진다는 경고
-- [OpenClaw 문서: Ollama 고급 설정](https://docs.openclaw.ai/providers/ollama/advanced): 찾아낸 로컬 모델의 32k 상한, `contextTokens`, `params.num_ctx`, OpenAI 호환 모드의 `num_ctx`
+- [Ollama API 문서: 사용량](https://docs.ollama.com/api/usage): `prompt_eval_count`, `prompt_eval_cached_count`, 캐시되지 않은 프롬프트 토큰 처리 시간인 `prompt_eval_duration`, `load_duration`, 나노초 단위
+- [Ollama 소스: api/types.go](https://github.com/ollama/ollama/blob/main/api/types.go): `--verbose`가 보여 주는 ‘prompt eval rate’를 캐시되지 않은 토큰으로 계산
+- [OpenClaw 문서: Ollama](https://docs.openclaw.ai/providers/ollama): Ollama 자체 API 사용, `/v1` 주소를 쓰면 도구 호출이 깨진다는 경고
+- [OpenClaw 문서: Ollama 고급 설정](https://docs.openclaw.ai/providers/ollama/advanced): 찾아낸 로컬 모델의 32k 상한, Ollama 자체 기본값보다 우선하는 `contextTokens`·`params.num_ctx`, OpenAI 호환 모드의 `num_ctx`
 - [OpenClaw 문서: 로컬 모델](https://docs.openclaw.ai/gateway/local-models): 프롬프트·도구·대화·출력이 들어갈 자리, 64k 컨텍스트의 llama.cpp 추천 구성, 타임아웃과 콜드 스타트
 - [OpenCode 문서: 제공자](https://opencode.ai/docs/providers/): Ollama·llama-server를 OpenAI 호환 제공자로 연결, `limit.context`, 도구 호출이 안 될 때 `num_ctx`를 늘리라는 안내
-- [llama.cpp 서버 README](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md): `-c`(0이면 모델 최대 길이), `--fit`·`--fit-ctx`, `-ctk`·`-ctv`, `-fa`, `--jinja`와 도구 호출, `cache_prompt`, `timings_per_token`
+- [llama.cpp 서버 README](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md): `-c`(0이면 모델 최대 길이), `--fit`·`--fit-ctx`, `-ctk`·`-ctv`, `-fa`, `--jinja`와 도구 호출, `cache_prompt`, `--ctx-checkpoints`, `cache_n`·`prompt_per_second`가 담긴 `timings` 객체
+- [llama.cpp 소스: server-context.cpp](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/server-context.cpp): 슬라이딩 윈도·하이브리드 모델은 컨텍스트 체크포인트로 되돌아가거나 프롬프트를 처음부터 다시 처리
 - [llama.cpp PR #16653 (자동 배치)](https://github.com/ggml-org/llama.cpp/pull/16653): 지정하지 않은 컨텍스트를 가중치보다 먼저 줄인다는 설명, MoE 모델은 dense 가중치를 먼저 GPU에 둔다는 설명
 - [llama.cpp 토론 #15013: NVIDIA CUDA 성능](https://github.com/ggml-org/llama.cpp/discussions/15013): NVIDIA 카드별 pp512·tg128 결과
 - [llama.cpp의 gpt-oss 실행 안내 토론](https://github.com/ggml-org/llama.cpp/discussions/15396): RTX 5060 Ti 16GB·gpt-oss-20b 공개 벤치마크 결과
@@ -187,6 +191,8 @@ Ollama FAQ는 q8_0의 정밀도 손실을 아주 작다고 설명합니다. 메�
 - [Qwen3.8-27B 모델 카드](https://huggingface.co/Qwen/Qwen3.8-27B): 하이브리드 구조, KV 헤드 수, 기본 지원 컨텍스트, 생각 모드 기본값
 - [Qwen3.5-9B 모델 카드](https://huggingface.co/Qwen/Qwen3.5-9B): Gated DeltaNet·Gated Attention 하이브리드 구조
 - [Qwen3-30B-A3B-Instruct-2507 모델 카드](https://huggingface.co/Qwen/Qwen3-30B-A3B-Instruct-2507): 48층, KV 헤드 4개, 생각 모드 없음, 도구 호출
+- [Qwen3-Coder-30B-A3B-Instruct 설정 파일](https://huggingface.co/Qwen/Qwen3-Coder-30B-A3B-Instruct/blob/main/config.json): 48층, KV 헤드 4개, 전문가 128개 중 8개로 Qwen3-30B-A3B-Instruct-2507과 같음
+- [Devstral Small 2507 모델 카드](https://huggingface.co/mistralai/Devstral-Small-2507)와 [설정 파일](https://huggingface.co/mistralai/Devstral-Small-2507/blob/main/config.json): Mistral Small 3.1을 바탕으로 만든 모델, 128k 컨텍스트, 40층·KV 헤드 8개
 - [Mistral Small 3.2 24B 설정 파일](https://huggingface.co/mistralai/Mistral-Small-3.2-24B-Instruct-2506/blob/main/config.json): 40층, KV 헤드 8개, 슬라이딩 윈도 없음
 - [gpt-oss-20b 모델 카드](https://huggingface.co/openai/gpt-oss-20b)와 [설정 파일](https://huggingface.co/openai/gpt-oss-20b/blob/main/config.json): 함수 호출, 슬라이딩 윈도 층과 전체 어텐션 층의 교차 배치
 - [Gemma 4 26B-A4B 설정 파일](https://huggingface.co/google/gemma-4-26B-A4B-it/blob/main/config.json): 슬라이딩 윈도 25층·전체 어텐션 5층, 1024토큰 윈도
