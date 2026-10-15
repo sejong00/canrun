@@ -36,17 +36,17 @@ export const GUIDE_SLUGS = [
   'korean-open-llms',
   'mac-local-llm',
   'kv-cache-context',
-  // 10-15 D75: 배치 1 새 가이드 초안 4편 — 사용자 감수 대기(draft = noindex·미링크)
+  // 10-15 D75: 배치 1 새 가이드 초안 4편 — 10-15 사용자 게시 승인(D84)
   'gpu-by-budget',
   'moe-cpu-offload',
   'local-coding-agents',
   'gpu-offload-check',
-  // 10-15 D76: 배치 2 새 가이드 초안 4편 — 사용자 감수 대기(draft = noindex·미링크)
+  // 10-15 D76: 배치 2 새 가이드 초안 4편 — 10-15 사용자 게시 승인(D84)
   'unified-memory-128gb',
   'ollama-vs-llama-cpp-lm-studio',
   'thinking-models',
   'tokens-per-second',
-  // 10-15 D77: 배치 3 새 가이드 초안 4편 — 사용자 감수 대기(draft = noindex·미링크)
+  // 10-15 D77: 배치 3 새 가이드 초안 4편 — 10-15 사용자 게시 승인(D84)
   'amd-intel-gpus',
   'laptop-gpu-llm',
   'multi-gpu',
@@ -61,8 +61,8 @@ const BATCH1_MODELS = ['llama-3.1-8b', 'gemma-3-12b', 'qwen3-14b', 'gpt-oss-20b'
 /** 09-30 사용자가 채팅으로 6편 모두 게시 승인 (D40) */
 const PUBLISHED = { status: 'published', reviewedAt: '2026-09-30', datePublished: '2026-09-30', dateModified: '2026-09-30', author: 'CanRun' } as const;
 
-/** 10-15 D75·D76·D77 배치 1·2·3 초안 —게시 전환은 사용자가 슬러그별로 승인한 뒤(D40, reviewedAt·날짜 갱신과 함께) */
-const DRAFT_1015 = { status: 'draft', datePublished: '2026-10-15', dateModified: '2026-10-15', author: 'CanRun' } as const;
+/** 10-15 D75·D76·D77 배치 1·2·3 — 사용자가 채팅으로 12편 모두 게시 승인(D84, D40). 날짜는 UTC(배포일) */
+const PUBLISHED_1015 = { status: 'published', reviewedAt: '2026-10-15', datePublished: '2026-10-15', dateModified: '2026-10-15', author: 'CanRun' } as const;
 
 export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
   'vram-requirements': {
@@ -203,7 +203,7 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
     },
   },
   'gpu-by-budget': {
-    ...DRAFT_1015,
+    ...PUBLISHED_1015,
     grids: {
       // 가격대별 카드 8종(이 글을 쓸 때 data/gpus.json 실거래가 낮은 순 — 본문이 "when this guide was written"으로 이 순서를 밝힌다.
       // 가격을 고치면 본문의 가격 순서 문장 4곳과 이 행 순서를 다시 확인한다) × 인기 모델 6
@@ -228,7 +228,7 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
     },
   },
   'moe-cpu-offload': {
-    ...DRAFT_1015,
+    ...PUBLISHED_1015,
     grids: {
       moe: {
         gpus: ['rtx-4060', 'rtx-3060-12gb', 'rtx-5060-ti-16gb', 'rtx-3090', 'rtx-5090'],
@@ -250,7 +250,7 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
     },
   },
   'local-coding-agents': {
-    ...DRAFT_1015,
+    ...PUBLISHED_1015,
     // ComboGrid 는 8k 고정이라 쓰지 않는다 — 32k·64k·128k 는 CtxTable 로
     grids: {},
     related: ['ollama-context-length', 'kv-cache-context', 'vram-requirements'],
@@ -268,7 +268,7 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
     },
   },
   'gpu-offload-check': {
-    ...DRAFT_1015,
+    ...PUBLISHED_1015,
     grids: {},
     related: ['ollama-context-length', 'kv-cache-context', 'gguf-quantization'],
     locales: {
@@ -285,7 +285,7 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
     },
   },
   'unified-memory-128gb': {
-    ...DRAFT_1015,
+    ...PUBLISHED_1015,
     grids: {
       // 128GB급 통합 메모리 3종 + 맥 스튜디오 Ultra 2종 + 비교용 RTX 5090(시스템 RAM 32GB 기준) × MoE·dense·대형 MoE 5종.
       // 통합 메모리 칸은 "가장 좋은 판정이 나는 가장 작은 구성"이라 본문이 그 점을 설명한다. llama-3.3-70b 는 Strix·M4 Max·M2 Ultra
@@ -310,7 +310,7 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
     },
   },
   'ollama-vs-llama-cpp-lm-studio': {
-    ...DRAFT_1015,
+    ...PUBLISHED_1015,
     // 그리드 없음 — KvPerTokenTable·CtxTable(qwen3-32b × rtx-4090)·MemoryBreakdown·Measured 로 기본값의 메모리 차이를 보인다
     grids: {},
     related: ['ollama-context-length', 'kv-cache-context', 'gpu-offload-check'],
@@ -328,7 +328,7 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
     },
   },
   'thinking-models': {
-    ...DRAFT_1015,
+    ...PUBLISHED_1015,
     grids: {
       // 생각 모드 갈래별 모델 6(없음: phi-4·gemma-3-27b · 기본 켜짐: qwen3-14b·qwen3-32b · 기본 꺼짐: gemma-4-26b-a4b · 늘 켜짐: gpt-oss-20b)
       // × NVIDIA 5장. 본문이 말하는 칸은 전부 <Expect> 로 고정
@@ -352,7 +352,7 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
     },
   },
   'tokens-per-second': {
-    ...DRAFT_1015,
+    ...PUBLISHED_1015,
     grids: {
       // 모델 4 × 대역폭 작은 순 8칸(CPU 89.6 → RTX 5090 1792 GB/s). 본문이 이 순서("least memory bandwidth to the most" /
       // "위에서부터 메모리 대역폭이 작은 순서")와 "RTX 4060 행 첫 칸이 4060 Ti 16GB 보다 높은 건 실측이라서"를 말한다 —
@@ -377,7 +377,7 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
     },
   },
   'amd-intel-gpus': {
-    ...DRAFT_1015,
+    ...PUBLISHED_1015,
     grids: {
       // 라데온·Arc 카드 바로 아래에 VRAM 이 같은 NVIDIA 카드: 12GB B580/3060 · 16GB 9060 XT/5060 Ti · 16GB 9070 XT/5070 Ti ·
       // 24GB 7900 XTX/3090 × 모델 6. 본문이 이 순서("one row after the other" / "한 줄씩 번갈아")와 12·16·24GB 절의 짝을
@@ -402,7 +402,7 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
     },
   },
   'laptop-gpu-llm': {
-    ...DRAFT_1015,
+    ...PUBLISHED_1015,
     grids: {
       // 노트북 GPU 7종 + 이름이 같은 데스크톱 카드를 짝으로(노트북 줄 바로 아래에 데스크톱 줄, 노트북 VRAM 작은 순) × 인기 모델 5.
       // 본문이 "laptop GPU with the desktop card that shares its name" / "바로 아래 줄에 붙였습니다"라고 이 순서를 말한다 —
@@ -442,7 +442,7 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
     },
   },
   'multi-gpu': {
-    ...DRAFT_1015,
+    ...PUBLISHED_1015,
     grids: {
       // 짝을 이루는 카드(RTX 3060 12GB, RTX 5060 Ti 16GB)와 합계가 같은 한 장짜리 카드(RTX 3090 = 24GB, RTX 5090 = 32GB) × 모델 6.
       // 그리드는 콤보 페이지처럼 한 줄 = 카드 한 장. 두 장 결과는 본문이 계산기 결과(이론 추정)로 말한다 — <Expect> 는 GPU 하나만
@@ -467,7 +467,7 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
     },
   },
   'cpu-only-llm': {
-    ...DRAFT_1015,
+    ...PUBLISHED_1015,
     grids: {
       // CPU 전용 프로필 3종 × 모델 6. 행 순서 = 대역폭이 작은 순(DDR4-3200 51.2 → DDR5-5600 89.6 → DDR5-6000 96 GB/s).
       // 본문이 이 순서("ordered from the least memory bandwidth to the most" / "위에서부터 메모리 대역폭이 작은 순서")를 말한다.
