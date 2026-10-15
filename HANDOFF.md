@@ -35,5 +35,5 @@ P1-6(출시 후)부터는 주 1회 GSC 수치(클릭·노출·인덱스)를 Clau
 - 토큰·키는 GitHub Actions Secrets / `wrangler secret`에만 둔다. 파일이나 채팅에 붙여넣지 않는다 (Cloudflare 배포 토큰 `CLOUDFLARE_API_TOKEN`·`CLOUDFLARE_ACCOUNT_ID`는 08-16 등록 — 08-15 첫 push 배포는 토큰 미등록으로 실패했고 08-16 수동 실행이 첫 배포. 교체할 때도 Actions Secrets만)
 - GitHub 조회·머지는 `gh` CLI 로그인으로 한다 — Claude Code가 git 자격증명에서 토큰을 꺼내 쓰지 않게 한다
 - 위임용 자동 허용 규칙은 `.claude/settings.local.json`(개인 설정, 커밋 안 됨)에 있다: `gh pr merge/close/reopen`·`gh issue close/comment`·`gh workflow run`·`git push origin main`(force push·원격 브랜치 삭제·머지 시 브랜치 삭제·`--admin`은 거부). 위임을 끄려면 이 파일을 지운다
-- 저장소 공개 전환 시: secret scanning 활성화 + 전체 히스토리 스캔 1회
+- 저장소는 10-15부터 공개다(PROGRESS §4 D78) — 코드·문서·이슈·Actions 로그를 누구나 볼 수 있다. secret scanning·push protection은 켜져 있으니 끄지 않는다
 - 위임 범위 밖(저장소 설정 변경 등)은 Claude Code가 멈추고 확인을 구한다 — 정상 동작이니 브라우저에서 직접 하거나 승인한다
