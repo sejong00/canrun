@@ -258,7 +258,7 @@ export default async function ComboPage({ params }: Props) {
   // 메모리 열의 분모 — dGPU 는 VRAM 전체, 통합은 GPU 사용 가능량 (허브 표와 동일)
   const memTotal = gpu.kind === 'dgpu' ? (gpu.vramGB ?? 0) : q.memory.gpuUsableGB;
 
-  // FP16 연산 성능을 밝히지 않은 칩(M5 Ultra — 10-16 D85)은 FP16 구절을 뺀다
+  // fp16Tflops 가 없는 칩은 FP16 구절을 뺀다(10-16 D85 — 지금 카탈로그엔 이런 칩이 없다. M5 Ultra 는 D87 에서 위키백과 표 값을 넣었다)
   const fp16 = gpu.fp16Tflops;
   const spec =
     gpu.kind === 'dgpu'

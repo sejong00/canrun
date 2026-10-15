@@ -32,7 +32,7 @@ Every speed on CanRun is a range with a label:
 - **Calibrated**: our estimate, checked against benchmarks of similar setups. The range is ±12% for dense models running fully on an NVIDIA or AMD card, and ±20% for other hardware, mixture-of-experts (MoE) models and setups that spill into system RAM.
 - **Theoretical**: an estimate for a setup we have not been able to check against benchmarks yet, shown with a ±30% range.
 
-Prompt processing speed, the time before the first token, is shown as a rough ±40% range. It is estimated from the GPU's FP16 compute; Apple's M5-series chips, which have a matrix accelerator in each GPU core, get their own factor, fitted to their public benchmarks.
+Prompt processing speed, the time before the first token, is shown as a rough ±40% range. It is estimated from the GPU's FP16 compute; Apple's M5-series chips, which have a matrix accelerator in each GPU core, get their own factor, fitted to their public benchmarks. Apple does not publish its chips' compute, so for Apple chips we use the theoretical figures in Wikipedia's Apple silicon table; their GPUs run FP16 at the same rate as FP32.
 
 ## How accurate it has been
 
@@ -66,4 +66,5 @@ Verdicts and recommendations are calculated from the data above. They do not dep
 - [llama.cpp](https://github.com/ggml-org/llama.cpp): quantization formats and runtime behavior.
 - [Ollama documentation](https://docs.ollama.com): default context length and KV cache settings.
 - Manufacturer specification pages for each GPU and chip, linked from its GPU page.
+- [Wikipedia: Apple silicon](https://en.wikipedia.org/wiki/Apple_silicon): GPU compute for Apple chips, which Apple does not publish.
 - Public benchmarks, each linked where it is shown.

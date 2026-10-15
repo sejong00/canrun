@@ -71,7 +71,7 @@ export const GpuSchema = z
     /** unified/cpu: 선택 가능한 RAM 구성 (GB) */
     ramOptionsGB: z.array(z.number().positive()).min(1).optional(),
     memBandwidthGBs: z.number().positive(),
-    /** GTX 10 시리즈처럼 FP16 크리플이면 실효값(예: 0.18) */
+    /** GTX 10 시리즈처럼 FP16 크리플이면 실효값(예: 0.18). Apple 은 위키백과 Apple silicon 표의 FP32 이론값 — 애플 미공개, 애플 GPU 는 FP16 이 FP32 와 같은 속도(10-16 D87) */
     fp16Tflops: z.number().positive().optional(),
     effClass: EffClassSchema,
     /**
