@@ -3,7 +3,7 @@
  * 모든 속도 문장은 est. + 밴드 + 신뢰 라벨을 동반한다 (CLAUDE.md 규칙 3).
  */
 import type { Mode, Result } from '@canrun/engine';
-import type { ComboAssessment, GpuCore, MeasuredJoin, QuantAssessment } from '@canrun/data/client';
+import type { ComboAssessment, GpuCore, MeasuredJoin, QuantAssessment, TitleVerdict } from '@canrun/data/client';
 import { formatCtx, formatGB, formatInt, formatSpeed, formatTokS } from './format';
 
 /** next-intl translator 의 최소 형태 (네임스페이스가 이미 바인딩된 t) */
@@ -192,6 +192,23 @@ export function noteLines(
   }
   if (showReasoning && combo.reasoning) lines.push(t.common('reasoningMark'));
   return lines;
+}
+
+/**
+ * 콤보 제목에 붙는 판정 (결정 D14) — 제목·description(RAM 힌트)·공유 카드(D96, scripts/og-cards.ts)가 같은 문자열을 쓴다.
+ * `tCombo` 는 Combo 네임스페이스 (titleVerdictQuant·titleVerdictRam)
+ */
+export function titleVerdictLabel(tVerdict: Translate, tCombo: Translate, locale: string, tv: TitleVerdict): string {
+  switch (tv.kind) {
+    case 'baseline':
+      return tVerdict(tv.verdict);
+    case 'quant':
+      return tCombo('titleVerdictQuant', { verdict: tVerdict(tv.verdict), quant: tv.quant });
+    case 'ram':
+      return tCombo('titleVerdictRam', { verdict: tVerdict(tv.verdict), ram: formatInt(locale, tv.ramGB) });
+    case 'none':
+      return tVerdict('F');
+  }
 }
 
 /**

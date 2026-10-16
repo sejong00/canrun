@@ -2,7 +2,7 @@
  * 기본 공유 카드(og:image) 생성 — 1회성 개발 도구 (P1-5). 결과 PNG 를 커밋한다: `apps/web/public/og/default-{en,ko}.png`.
  * 새 의존성 없이 설치된 Playwright 로 HTML 을 1200×630 스크린샷한다. 문구는 messages(Site.name·Site.tagline·Home.intro).
  * 실행: `pnpm exec tsx scripts/make-og.ts` (Chrome 이 없는 PC 는 `OG_CHANNEL=msedge`).
- * GPU·모델 허브별 카드는 빌드마다 scripts/og-cards.ts 가 그린다(D60), 콤보는 이 기본 카드.
+ * GPU·모델 허브(D60)·공개 콤보·게시 가이드(D96) 카드는 빌드마다 scripts/og-cards.ts 가 그린다 — 미공개 콤보·초안·계산기·정적 페이지는 이 기본 카드.
  */
 import { mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';

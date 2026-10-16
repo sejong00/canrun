@@ -13,7 +13,7 @@
 | 데이터 | `/data/*.json` + zod 검증 + 빌드 시 타입 생성 | DB 없음. PR 리뷰 가능 = 데이터 거버넌스 |
 | 호스팅 | **Cloudflare Pages** (무료·대역폭 무제한) | 트래픽 커져도 $0. 대안: Vercel(DX↑, 무료 대역폭 100GB 한도) |
 | 빌드 | GitHub Actions: push 배포 + **일 1회 스케줄 리빌드**(데이터/가격 반영) | ISR 불필요 — 데이터 갱신 주기가 일 단위 |
-| og:image | 빌드 타임 satori→resvg (허브+상위 콤보만), 나머지 기본 카드 — 10-01 허브만 구현(PROGRESS §4 D60, 콤보는 기본 카드) | P2: Workers 온디맨드 전환 |
+| og:image | 빌드 타임 satori→resvg (postbuild `scripts/og-cards.ts`, 경로 `lib/og-images.ts`) — GPU·모델 허브(10-01 D60) + 공개 콤보(indexable 집합 — 배치를 열면 카드도 늘어난다)·게시 가이드(10-16 D96), 나머지(미공개 콤보·초안·계산기·정적 페이지) 기본 카드 | P2: Workers 온디맨드 전환 |
 | 분석 | Cloudflare Web Analytics + GSC + 네이버 서치어드바이저 (+P2 Plausible 검토) | 쿠키리스, 동의 배너 최소화 |
 | 에러 | Sentry 무료 티어 (클라이언트만) | |
 

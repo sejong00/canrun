@@ -82,6 +82,7 @@ export function webSiteJsonLd(input: {
 /**
  * 가이드 — Article (docs/04 §5, P1-4 D41). 저자·발행처는 브랜드 Organization(사용자 결정 — 실명 전환은 레지스트리 한 줄).
  * headline 은 Google 권장 110자 이하(레지스트리 제목 길이 테스트가 보장), 날짜는 레지스트리 `YYYY-MM-DD` 그대로.
+ * image 는 og:image 와 같은 공유 카드 절대 URL (10-16 D96 — 1200×630).
  */
 export function articleJsonLd(input: {
   headline: string;
@@ -92,6 +93,7 @@ export function articleJsonLd(input: {
   dateModified: string;
   author: string;
   siteUrl: string;
+  image: string;
 }) {
   const org = { '@type': 'Organization', name: input.author, url: input.siteUrl };
   return {
@@ -101,6 +103,7 @@ export function articleJsonLd(input: {
     description: input.description,
     url: input.url,
     mainEntityOfPage: input.url,
+    image: input.image,
     inLanguage: input.inLanguage,
     datePublished: input.datePublished,
     dateModified: input.dateModified,

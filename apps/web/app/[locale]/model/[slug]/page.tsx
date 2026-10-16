@@ -32,6 +32,7 @@ import { loadHubIntro } from '@/lib/hub-intros';
 import { getModelHub } from '@/lib/hubs';
 import type { QA } from '@/lib/jsonld';
 import { calculatorHref, comboHref, gpuHref, hfUrl, localeHref, modelHref } from '@/lib/links';
+import { hubOgImage } from '@/lib/og-images';
 import { isComboIndexable } from '@/lib/publish';
 import { gpuName, quantText, speedPhrase, type Translate } from '@/lib/phrases';
 import { searchModelName } from '@/lib/search-names';
@@ -117,7 +118,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return buildPageMetadata({
     href: modelHref(hub.model.id),
     locale,
-    ogImage: `/og/model/${hub.model.id}-${locale}.png`,
+    ogImage: hubOgImage('model', hub.model.id, locale),
     title: t.hub('metaTitle', { model: name }),
     description: t.hub('metaDescription', {
       model: name,

@@ -42,6 +42,7 @@ import {
 import { getCombo } from '@/lib/combos';
 import { formatCtx, formatGB, formatInt } from '@/lib/format';
 import { calculatorHref, comboHref, localeHref, modelHref } from '@/lib/links';
+import { comboOgImage } from '@/lib/og-images';
 import { canLinkCombo } from '@/lib/publish';
 import { gpuName, modeKey, shortGpuName, speedPhrase, type Translate } from '@/lib/phrases';
 import { buildPageMetadata } from '@/lib/seo';
@@ -86,6 +87,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     locale,
     absoluteTitle: true,
     noindex: !page.publish.indexable,
+    // 공개 콤보만 페이지별 카드(10-16 D96 — postbuild 가 indexable 집합만 그린다), 미공개는 기본 카드
+    ...(page.publish.indexable ? { ogImage: comboOgImage(modelId, gpuId, locale) } : {}),
     title: t.combo('metaTitle', {
       model: page.model.name,
       gpu: shortGpuName(name),

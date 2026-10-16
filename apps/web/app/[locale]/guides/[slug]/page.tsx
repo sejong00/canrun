@@ -8,7 +8,7 @@ import { JsonLd } from '@/components/json-ld';
 import { PageShell } from '@/components/page-shell';
 import { GUIDE_SLUGS } from '@/content/guides';
 import type { Locale } from '@/i18n/routing';
-import { formatGuideDate, guideEntry, isGuideSlug, isPublished, loadGuideBody } from '@/lib/guides';
+import { formatGuideDate, guideEntry, guideOgImagePath, isGuideSlug, isPublished, loadGuideBody } from '@/lib/guides';
 import { articleJsonLd } from '@/lib/jsonld';
 import { guideHref, guidesHref, localeHref } from '@/lib/links';
 import { buildPageMetadata } from '@/lib/seo';
@@ -33,6 +33,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     description: entry.locales[locale].description,
     noindex: !isPublished(slug),
     article: { publishedTime: entry.datePublished, modifiedTime: entry.dateModified },
+    ogImage: guideOgImagePath(slug, locale),
   });
 }
 
@@ -65,6 +66,8 @@ export default async function GuidePage({ params }: Props) {
           dateModified: entry.dateModified,
           author: entry.author,
           siteUrl: absoluteUrl(localeHref(locale, '/')),
+          // og:image 와 같은 카드 (10-16 D96)
+          image: absoluteUrl(guideOgImagePath(slug, locale)),
         })}
       />
       <article className="flex flex-col gap-8">

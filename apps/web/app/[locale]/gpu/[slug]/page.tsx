@@ -25,6 +25,7 @@ import { guideEntry } from '@/lib/guides';
 import { getGpuHub } from '@/lib/hubs';
 import type { QA } from '@/lib/jsonld';
 import { comboHref, gpuHref, guideHref, localeHref, modelHref } from '@/lib/links';
+import { hubOgImage } from '@/lib/og-images';
 import { isComboIndexable } from '@/lib/publish';
 import { gpuName, modeKey, quantText, speedPhrase, type Translate } from '@/lib/phrases';
 import { gpuAliasLabels } from '@/lib/search-names';
@@ -131,7 +132,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return buildPageMetadata({
     href: gpuHref(hub.gpu.id),
     locale,
-    ogImage: `/og/gpu/${hub.gpu.id}-${locale}.png`,
+    ogImage: hubOgImage('gpu', hub.gpu.id, locale),
     title: t.hub('metaTitle', { gpu: name, memory }),
     description: summary + largest,
   });

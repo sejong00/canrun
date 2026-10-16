@@ -2,6 +2,7 @@ import type { ComponentType } from 'react';
 import { GUIDES, GUIDE_SLUGS, type GuideEntry, type GuideGrid, type GuideLocale, type GuideSlug } from '@/content/guides';
 import type { Locale } from '@/i18n/routing';
 import { findGpu, findModel } from './catalog';
+import { defaultOgImage, guideOgImage } from './og-images';
 
 /**
  * 가이드 로더 맵·조회 (D38·D40·D44). 로더는 **명시적**이다 — 템플릿 문자열 import 는 Turbopack 이 패턴으로 풀어 떠돌이
@@ -105,6 +106,11 @@ export function isPublished(slug: GuideSlug): boolean {
 /** published 가이드 (레지스트리 순서 = 우선순위) — 목차·내비·관련 링크는 이것만 쓴다 (D40) */
 export function publishedGuides(): GuideSlug[] {
   return GUIDE_SLUGS.filter(isPublished);
+}
+
+/** 공유 카드 경로 — 게시 가이드는 가이드별 카드(10-16 D96, postbuild 가 그린다), 초안은 기본 카드. og:image 와 Article.image 가 같이 쓴다 */
+export function guideOgImagePath(slug: GuideSlug, locale: Locale): string {
+  return isPublished(slug) ? guideOgImage(slug, locale) : defaultOgImage(locale);
 }
 
 export async function loadGuideBody(slug: GuideSlug, locale: Locale): Promise<GuideBody> {

@@ -873,6 +873,14 @@
     "modelSubtitle": "이 모델을 돌릴 수 있는 GPU",
     "unifiedMemory": "통합 메모리 {mem}GB",
     "vram": "VRAM {mem}GB",
-    "active": "활성 {n}B"
+    "ram": "RAM {mem}GB",
+    "active": "활성 {n}B",
+    "comboGpu": "{gpu} · {memory}",
+    "comboNeed": "{quant} 기준 필요 메모리 약 {need}GB{split}",
+    "comboTooSlow": "{quant} 기준 약 {need}GB로 메모리에는 들어가지만 너무 느립니다",
+    "comboNoFit": "{quant} 기준 약 {need}GB가 필요해 메모리에 들어가지 않습니다",
+    "speedBand": "{low}–{high} tok/s",
+    "speedMeasured": "{est} tok/s",
+    "guideKicker": "가이드"
   }
 }

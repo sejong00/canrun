@@ -22,6 +22,9 @@ import { GPU_INTRO_IDS, HUB_INTROS_UPDATED, MODEL_INTRO_IDS } from '../apps/web/
 import { SITE_UPDATES, latestSiteUpdate } from '../apps/web/content/updates';
 import { ADSENSE_CLIENT } from '../apps/web/lib/site';
 import { CF_PAGES_REDIRECT_LINE_LIMIT } from '../scripts/build-redirects';
+import { comboCardText, loadCatalog, ogTranslators } from '../scripts/og-cards';
+import { summarizeGpu, type GpuHubData } from '../packages/data/src/index';
+import { comboOgImage, defaultOgImage, guideOgImage, hubOgImage } from '../apps/web/lib/og-images';
 import {
   comboIndexable,
   comboOf,
@@ -63,8 +66,9 @@ const BOILERPLATE_MAX = 0.6;
 const FILE_COUNT_MAX = 16_000;
 /** D18 — CF Pages 단일 파일 25 MiB 한도 */
 const FILE_SIZE_MAX = 25 * 1024 * 1024;
-/** 허용 비-HTML 파일 (P1-5 사이트맵·robots·RSS·기본 공유 카드, ads·llms 대비) */
-const ROOT_FILE_ALLOWLIST = /^(?:_redirects|icon\.svg|robots\.txt|sitemap[^/]*\.xml|ads\.txt|llms\.txt|rss\.xml|ko\/rss\.xml|og\/default-(?:en|ko)\.png|og\/(?:gpu|model)\/[a-z0-9.-]+-(?:en|ko)\.png)$/;
+/** 허용 비-HTML 파일 (P1-5 사이트맵·robots·RSS·기본 공유 카드, ads·llms 대비 · 허브 카드 D60 · 공개 콤보·게시 가이드 카드 D96) */
+const ROOT_FILE_ALLOWLIST =
+  /^(?:_redirects|icon\.svg|robots\.txt|sitemap[^/]*\.xml|ads\.txt|llms\.txt|rss\.xml|ko\/rss\.xml|og\/default-(?:en|ko)\.png|og\/(?:gpu|model|guide)\/[a-z0-9.-]+-(?:en|ko)\.png|og\/combo\/[a-z0-9.-]+\/[a-z0-9.-]+-(?:en|ko)\.png)$/;
 const TXT_ALLOWLIST = new Set(['robots.txt', 'ads.txt', 'llms.txt']);
 const HEAVY_TIMEOUT = 60_000;
 
@@ -316,17 +320,73 @@ describe('hub intros (10-14 D74 — 손으로 쓴 소개글은 레지스트리 �
   });
 });
 
-describe('share cards (D60 — 허브별 og:image)', () => {
-  it('every page has an og:image that exists in out/; hubs use their own card', () => {
+describe('share cards (D60 허브별 · D96 공개 콤보·게시 가이드별 og:image)', () => {
+  const ogPath = (page: PageFacts) => new URL(page.ogImage!).pathname;
+
+  it('every page has an og:image that exists in out/, and twitter:image is the same card', () => {
     for (const page of pages) {
       expect(page.ogImage, page.file).toBeDefined();
-      const path = new URL(page.ogImage!).pathname;
+      const path = ogPath(page);
       expect(existsSync(join(outDir, path.slice(1))), `${page.file} → ${path}`).toBe(true);
+      expect(page.twitterImage, page.file).toBe(page.ogImage);
+    }
+  });
+
+  it('hubs, published combos and published guides use their own card; unpublished combos and drafts keep the default', () => {
+    let combos = 0;
+    for (const page of pages) {
+      const path = ogPath(page);
       if (isHub(page)) {
-        const id = page.urlPath.split('/').pop();
-        expect(path, page.file).toBe(`/og/${page.kind}/${id}-${page.locale}.png`);
+        expect(path, page.file).toBe(hubOgImage(page.kind as 'gpu' | 'model', page.urlPath.split('/').pop()!, page.locale));
+      } else if (page.kind === 'combo') {
+        const { modelId, gpuId } = page.combo!;
+        expect(path, page.file).toBe(indexableOf(page) ? comboOgImage(modelId, gpuId, page.locale) : defaultOgImage(page.locale));
+        combos += 1;
+      } else if (isGuide(page)) {
+        const slug = guideSlugOf(page.urlPath)!;
+        expect(path, page.file).toBe(guidePublished(slug) ? guideOgImage(slug, page.locale) : defaultOgImage(page.locale));
+        // Article.image 도 같은 카드
+        const article = page.jsonLd.find((b) => b['@type'] === 'Article')!;
+        expect(article.image, page.file).toBe(page.ogImage);
       }
     }
+    expect(combos, 'combo pages checked').toBeGreaterThan(0);
+  });
+
+  it('cards exist only for published pages (file count follows the indexable set, D18)', () => {
+    const plan = loadPublish();
+    const published = gpus.flatMap((g) => models.filter((m) => comboIndexable(plan, g.id, m.id))).length;
+    const count = (prefix: string) => outFiles.filter((f) => f.rel.startsWith(prefix)).length;
+    expect(count('og/combo/'), 'combo cards = indexable combos × 2 locales').toBe(published * 2);
+    expect(count('og/guide/'), 'guide cards = published guides × 2 locales').toBe(PUBLISHED_GUIDES.length * 2);
+  });
+
+  it('a combo card shows the title verdict and the description memory and speed band with its label (규칙 3)', () => {
+    const catalog = loadCatalog();
+    const hubs = new Map<string, GpuHubData>();
+    const hubOf = (gpuId: string) => {
+      if (!hubs.has(gpuId)) hubs.set(gpuId, summarizeGpu(catalog, catalog.gpus.find((g) => g.id === gpuId)!));
+      return hubs.get(gpuId)!;
+    };
+    const t = { en: ogTranslators('en'), ko: ogTranslators('ko') };
+    let checked = 0;
+    for (const page of requireCombos().filter(indexableOf)) {
+      const card = comboCardText(hubOf(page.combo!.gpuId), page.combo!.modelId, t[page.locale], page.locale);
+      expect(page.title, `${page.file} title verdict`).toContain(card.verdictText);
+      const need = /(\d[\d.,]*)\s?GB/.exec(card.need)?.[1];
+      expect(need, `${page.file} card need`).toBeDefined();
+      expect(page.description, `${page.file} need`).toContain(need!);
+      if (card.speed) {
+        expect(page.description, `${page.file} speed`).toContain(card.speed.value);
+        // 추정은 description 과 같은 밴드·라벨, 실측은 측정 조건이 붙은 라벨
+        if (/±\d+%/.test(card.speed.label)) expect(page.description, `${page.file} label`).toContain(card.speed.label);
+        else expect(card.speed.label, page.file).toMatch(/measured|실측/);
+      } else {
+        expect(card.need, `${page.file} no speed only when it does not fit`).toMatch(/does not fit|들어가지 않습니다/);
+      }
+      checked += 1;
+    }
+    expect(checked, 'published combo pages').toBeGreaterThan(0);
   });
 });
 

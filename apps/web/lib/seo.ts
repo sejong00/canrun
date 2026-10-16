@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { routing, type Locale } from '@/i18n/routing';
 import { localeHref, rssHref } from './links';
+import { defaultOgImage } from './og-images';
 import { absoluteUrl } from './site';
 
 /** next-intl getPathname 과 같은 as-needed 규칙 (lib/links.ts — 클라이언트 번들 회피) */
@@ -31,7 +32,10 @@ export function buildAlternates(href: string, locale: Locale): Metadata['alterna
 
 const OG_LOCALE: Record<Locale, string> = { en: 'en_US', ko: 'ko_KR' };
 
-/** 기본 공유 카드 (P1-5) — 로캘별 1장. GPU·모델 허브는 허브별 카드(postbuild 가 그린다, D60), 콤보는 기본 카드 */
+/**
+ * 공유 카드 크기 — 기본 카드(P1-5)는 로캘별 1장. GPU·모델 허브(D60)·공개 콤보·게시 가이드(D96)는 페이지별 카드(postbuild 가 그린다,
+ * 경로는 lib/og-images.ts). 미공개 콤보·초안 가이드·계산기·정적 페이지는 기본 카드
+ */
 const OG_IMAGE = { width: 1200, height: 630 } as const;
 
 /** 페이지 메타데이터 — alternates(규칙 5) + Open Graph 기본값 + 기본 공유 카드. */
@@ -46,7 +50,7 @@ export function buildPageMetadata(opts: {
   noindex?: boolean;
   /** 가이드 (P1-4 D41) — og type article + 게시·수정일(YYYY-MM-DD) */
   article?: { publishedTime: string; modifiedTime: string };
-  /** 사이트 기준 경로의 공유 카드 (허브별 카드, D60) — 없으면 로캘 기본 카드 */
+  /** 사이트 기준 경로의 공유 카드 (lib/og-images.ts — 허브 D60, 공개 콤보·게시 가이드 D96) — 없으면 로캘 기본 카드. twitter:image 는 Next 가 이 값을 이어받는다 */
   ogImage?: string;
 }): Metadata {
   const { href, locale, title, description } = opts;
@@ -64,7 +68,7 @@ export function buildPageMetadata(opts: {
       description,
       url: absoluteUrl(getPathname({ href, locale })),
       locale: OG_LOCALE[locale],
-      images: [{ url: absoluteUrl(opts.ogImage ?? `/og/default-${locale}.png`), ...OG_IMAGE }],
+      images: [{ url: absoluteUrl(opts.ogImage ?? defaultOgImage(locale)), ...OG_IMAGE }],
     },
     twitter: { card: 'summary_large_image' },
   };

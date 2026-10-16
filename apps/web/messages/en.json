@@ -873,6 +873,14 @@
     "modelSubtitle": "Which GPUs can run this model",
     "unifiedMemory": "{mem} GB unified memory",
     "vram": "{mem} GB VRAM",
-    "active": "{n}B active"
+    "ram": "{mem} GB RAM",
+    "active": "{n}B active",
+    "comboGpu": "on the {gpu} · {memory}",
+    "comboNeed": "Needs about {need} GB at {quant}{split}",
+    "comboTooSlow": "Fits in memory at {quant} (about {need} GB) but is too slow to use",
+    "comboNoFit": "Needs about {need} GB at {quant}: does not fit in memory",
+    "speedBand": "{low}–{high} tok/s",
+    "speedMeasured": "{est} tok/s",
+    "guideKicker": "Guide"
   }
 }

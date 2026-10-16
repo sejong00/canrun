@@ -8,7 +8,7 @@ import type { Locale } from '@/i18n/routing';
 import type { ComboPage } from './combos';
 import { formatCtx, formatGB, formatInt, formatSpeed, formatUSD } from './format';
 import type { QA } from './jsonld';
-import { confidenceText, gpuName, quantText, shortGpuName, speedPhrase, type Translate } from './phrases';
+import { confidenceText, gpuName, quantText, shortGpuName, speedPhrase, titleVerdictLabel, type Translate } from './phrases';
 
 type Tr = Translate & { has?: (key: string) => boolean };
 
@@ -39,22 +39,9 @@ export function usableGBFor(page: ComboPage, q: QuantAssessment): number {
   return page.gpu.kind === 'cpu' ? q.memory.ramUsableGB : q.memory.gpuUsableGB;
 }
 
-/** 제목에 붙는 판정 (D14) */
+/** 제목에 붙는 판정 (D14) — 공유 카드(D96)도 같은 `titleVerdictLabel` */
 export function titleVerdictText(t: ComboTranslators, page: ComboPage, locale: Locale): string {
-  const tv = titleVerdict(page.combo);
-  switch (tv.kind) {
-    case 'baseline':
-      return t.verdict(tv.verdict);
-    case 'quant':
-      return t.combo('titleVerdictQuant', { verdict: t.verdict(tv.verdict), quant: tv.quant });
-    case 'ram':
-      return t.combo('titleVerdictRam', {
-        verdict: t.verdict(tv.verdict),
-        ram: formatInt(locale, tv.ramGB),
-      });
-    case 'none':
-      return t.verdict('F');
-  }
+  return titleVerdictLabel(t.verdict, t.combo, locale, titleVerdict(page.combo));
 }
 
 /** description 의 속도 — 밴드 + 신뢰 라벨만. 실측은 측정 조건(컨텍스트·건수)과 8k 추정이 붙는 speedPhrase 그대로 */
