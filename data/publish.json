@@ -25,6 +25,37 @@
         "gpt-oss-120b",
         "gemma-3-12b"
       ]
+    },
+    {
+      "batch": 2,
+      "plannedAt": "2026-10-16",
+      "note": "docs/04 §3 배치 2 — 배치 1 GPU 10 × 많이 찾는 새 모델·검색 수요 상위 12 = 120쌍(en+ko 240p). 모델은 HF 30일 다운로드·검색어 조사로 골랐고 공개 실측(10-16 D92)이 있는 모델 우선. 개방은 배치 1 색인 결과를 본 뒤(사용자 승인)",
+      "gpuIds": [
+        "rtx-4060",
+        "rtx-3060-12gb",
+        "rtx-4070",
+        "rtx-5070",
+        "rtx-5060-ti-16gb",
+        "rtx-4090",
+        "rtx-3090",
+        "rtx-5090",
+        "apple-m4",
+        "apple-m4-pro"
+      ],
+      "modelIds": [
+        "gemma-4-26b-a4b",
+        "gemma-4-31b",
+        "gemma-4-12b",
+        "qwen3.8-27b",
+        "qwen3.6-35b-a3b",
+        "qwen3.5-35b-a3b",
+        "qwen3.5-9b",
+        "qwen3.5-27b",
+        "qwen3.5-122b-a10b",
+        "qwen3-8b",
+        "qwen3-32b",
+        "llama-3.3-70b"
+      ]
     }
   ]
 }

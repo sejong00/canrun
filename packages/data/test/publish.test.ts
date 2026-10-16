@@ -16,15 +16,25 @@ const seed = loadSeed();
 describe('seed publish.json', () => {
   it('batch 1 (10 GPUs × 6 models) is open since P1-6 (09-30, user-approved gate — rule 5)', () => {
     expect(seed.publish.currentBatch).toBe(1);
-    expect(seed.publish.batches).toHaveLength(1);
+    expect(seed.publish.batches[0]!.batch).toBe(1);
     expect(seed.publish.batches[0]!.gpuIds).toHaveLength(10);
     expect(seed.publish.batches[0]!.modelIds).toHaveLength(6);
+  });
+
+  it('batch 2 is planned only (10 GPUs × 12 models, 10-16 D92) — opening it needs the gate and user approval', () => {
+    const batch2 = seed.publish.batches.find((b) => b.batch === 2)!;
+    expect(batch2.gpuIds).toEqual(seed.publish.batches[0]!.gpuIds);
+    expect(batch2.modelIds).toHaveLength(12);
+    // 배치 1 모델과 겹치지 않는다 — 겹치면 그 쌍은 배치 1 로 남아 계획한 120쌍이 줄어든다
+    expect(batch2.modelIds.filter((id) => seed.publish.batches[0]!.modelIds.includes(id))).toEqual([]);
   });
 
   it('batch 1 indexes exactly the 60 candidate combos, nothing outside it', () => {
     expect(indexableCombos(seed.publish).size).toBe(60);
     expect(comboPublishState(seed.publish, 'rtx-4060', 'llama-3.1-8b')).toEqual({ batch: 1, indexable: true });
-    expect(comboPublishState(seed.publish, 'rtx-4060', 'llama-3.3-70b')).toEqual({ indexable: false });
+    // 배치 2 계획에 든 쌍 — 배치 번호는 있지만 아직 색인 안 함
+    expect(comboPublishState(seed.publish, 'rtx-4060', 'llama-3.3-70b')).toEqual({ batch: 2, indexable: false });
+    expect(comboPublishState(seed.publish, 'rtx-4060', 'phi-4')).toEqual({ indexable: false });
   });
 
   it('closing the gate (currentBatch 0) indexes nothing — the rollback switch', () => {

@@ -98,17 +98,20 @@ function pick<T extends object, K extends keyof T>(obj: T, keys: readonly K[]): 
 }
 
 /**
- * 전체 카탈로그 → 요약. 서버(빌드)에서 1회. 카탈로그 밖 캘리브레이션 실측(gpuId 없음)은 조인 불가라 버린다.
+ * 전체 카탈로그 → 요약. 서버(빌드)에서 1회. 조인할 수 없는 실측은 버린다 — 카탈로그 밖 캘리브레이션 실측(gpuId 없음)과,
+ * (모델, quant)가 model-quants 행에 없는 실측(Q4_K_XL 등 — `measuredPoints` 는 행의 quant 와 정확 일치만 붙인다).
+ * 그런 실측은 서버가 그리는 실측 표에만 쓰인다 (10-16 D92 — 실측 92건 추가로 9 KiB 예산을 넘지 않게).
  * 키 순서가 입력 순서·상수 순서로 결정되므로 직렬화 결과도 결정적이다 (D21 빌드 결정성).
  */
 export function toCatalogLite(seed: CatalogCore): CatalogLite {
+  const rowKeys = new Set(seed.modelQuants.map((r) => `${r.modelId}\u0000${r.quant}`));
   return {
     gpus: seed.gpus.map((g) => pick(g, GPU_CORE_KEYS)),
     models: seed.models.map((m) => pick(m, MODEL_CORE_KEYS)),
     modelQuants: seed.modelQuants.map((r) => pick(r, MODEL_QUANT_CORE_KEYS)),
     quantDefs: seed.quantDefs.map((q) => pick(q, QUANT_DEF_CORE_KEYS)),
     benchmarks: seed.benchmarks
-      .filter((b) => b.gpuId !== undefined)
+      .filter((b) => b.gpuId !== undefined && rowKeys.has(`${b.modelId}\u0000${b.quant}`))
       .map((b) => pick(b, BENCH_CORE_KEYS)),
   };
 }

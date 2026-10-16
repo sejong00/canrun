@@ -32,8 +32,12 @@ describe('toCatalogLite', () => {
     expect(lite.quantDefs.map((q) => q.id)).toEqual(seed.quantDefs.map((q) => q.id));
   });
 
-  it('drops calibration benchmarks without a catalog gpu and keeps the join keys', () => {
-    expect(lite.benchmarks.length).toBe(seed.benchmarks.filter((b) => b.gpuId !== undefined).length);
+  it('keeps only joinable benchmarks (catalog gpu + a model-quants row with the same quant) and the join keys', () => {
+    const rows = new Set(seed.modelQuants.map((r) => `${r.modelId}/${r.quant}`));
+    const joinable = seed.benchmarks.filter((b) => b.gpuId !== undefined && rows.has(`${b.modelId}/${b.quant}`));
+    expect(lite.benchmarks.length).toBe(joinable.length);
+    // 표에만 나오는 실측(Q4_K_XL 등)이 실제로 있어서 걸러지는지 — 필터의 공회전 방지
+    expect(seed.benchmarks.filter((b) => b.gpuId !== undefined).length).toBeGreaterThan(joinable.length);
     for (const b of lite.benchmarks) expect(Object.keys(b).sort()).toEqual(['ctx', 'gpuId', 'modelId', 'quant', 'tgTokS']);
   });
 
