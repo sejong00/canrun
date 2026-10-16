@@ -324,7 +324,7 @@ export function bailingMlaLayers(layers: number, groupSize: number, nextn: numbe
 /**
  * config.json → 엔진이 모델링하는 구조인지 분류 — **선례가 있는 구조만**(PROGRESS §4 D53, D63 개정): 전체 어텐션 ·
  * 슬라이딩 윈도(layer_types) · 하이브리드 선형(layer_types) · 상수 상태 층 하이브리드(Mamba2·short-conv·KDA+MLA — 전용 분기, D63).
- * 처음 보는 model_type, 반복 층·디스크 임베딩·압축 어텐션, 층 지도가 없는 MLA·Mamba·conv 는 unsupported.
+ * 처음 보는 model_type, 반복 층·디스크 임베딩(n-gram·PLE)·KV 공유 층·압축 어텐션, 층 지도가 없는 MLA·Mamba·conv 는 unsupported.
  */
 export function classifyArch(config: unknown): ArchResult {
   if (typeof config !== 'object' || config === null) return { kind: 'unsupported', reason: 'config 없음' };
@@ -336,6 +336,14 @@ export function classifyArch(config: unknown): ArchResult {
   const loops = Math.max(posInt(cfg['num_loops']) ?? 1, posInt(cfg['total_ut_steps']) ?? 1);
   if (loops > 1) return { kind: 'unsupported', reason: `반복 층 — 토큰마다 같은 층을 ${loops}번 지남(가중치 읽기·KV 가 ${loops}배)` };
   if (has('ngram_vocab_size_base') || has('ple_layer_ids')) return { kind: 'unsupported', reason: '디스크에서 읽는 n-gram 임베딩 표 — 파일 크기로 메모리를 셀 수 없음' };
+  // Gemma 4 E 계열(10-16 D98): 층별 임베딩 표(PLE, hidden_size_per_layer_input > 0)는 입력층이라 그래픽카드에 올라가지 않는데
+  // Q4_K_M 파일의 43~56% 라 헤더 실측 offGpuGB 가 검증 상한(MAX_OFF_GPU_FRACTION 25%)에 걸려 파일 전체가 그래픽카드 몫이 된다
+  // (4GiB 를 넘는 표는 디스크에서 행만 읽는다 — TENSOR_READ_LAZY). 뒤쪽 num_kv_shared_layers 층은 앞 층의 KV 를 다시 써
+  // (n_layer_kv_from_start = 층 수 − 공유 층) 전체 어텐션 층으로 센 KV 가 1.75~2.3배. 큰 Gemma 4 는 두 값이 0 이라 그대로 통과한다
+  // 출처: https://github.com/ggml-org/llama.cpp/blob/b6334e37e6ef286fc5091a41b6561b2113d915fb/src/models/gemma4.cpp#L9-L11 · #L59
+  if (posInt(cfg['hidden_size_per_layer_input']) !== undefined) return { kind: 'unsupported', reason: '층별 임베딩 표(PLE) — 그래픽카드 밖 몫이 파일의 25% 를 넘어 지금 산식으로는 메모리를 셀 수 없음' };
+  const sharedKv = posInt(cfg['num_kv_shared_layers']);
+  if (sharedKv !== undefined) return { kind: 'unsupported', reason: `KV 공유 층 ${sharedKv}개(num_kv_shared_layers) — 층마다 KV 를 두는 산식으로는 과대` };
   const modelType = String(cfg['model_type'] ?? top['model_type'] ?? '');
   if (!KNOWN_MODEL_TYPES.has(modelType)) return { kind: 'unsupported', reason: `처음 보는 구조 model_type=${modelType || '(없음)'} — 선례 없음, 수동 검토` };
   for (const key of ALWAYS_UNSUPPORTED_KEYS) {

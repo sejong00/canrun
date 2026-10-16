@@ -625,6 +625,9 @@ describe('classifyArch — new model types and constant-state hybrids (10-03 D63
     ['looped layers even on a known type', { model_type: 'llama', num_loops: 2, num_hidden_layers: 22, num_attention_heads: 8, head_dim: 128, max_position_embeddings: 4096 }, '반복 층'],
     ['looped layers (Ouro total_ut_steps)', { model_type: 'ouro', total_ut_steps: 4, num_hidden_layers: 24 }, '반복 층'],
     ['disk-read n-gram embedding (Qwen3.8-Flash-Next)', { model_type: 'qwen4_exp', text_config: { model_type: 'qwen3_5_moe_text', ngram_vocab_size_base: 20000000, ple_layer_ids: [2] } }, 'n-gram'],
+    // Gemma 4 E4B config(10-16 D98) — 층별 임베딩 256 차원 · 뒤 18층이 KV 공유. 큰 Gemma 4 는 두 값이 0(아래 Gemma 4 31B 통과 케이스)
+    ['per-layer embeddings (Gemma 4 E4B)', { model_type: 'gemma4', text_config: { model_type: 'gemma4_text', hidden_size_per_layer_input: 256, num_kv_shared_layers: 18, num_hidden_layers: 42 } }, 'PLE'],
+    ['KV-shared layers on a known type', { model_type: 'gemma4_text', hidden_size_per_layer_input: 0, num_kv_shared_layers: 20, num_hidden_layers: 35 }, 'KV 공유 층 20개'],
     ['compressed attention on a known type', { model_type: 'llama', compress_ratios: [0, 4, 128], num_hidden_layers: 3 }, 'compress_ratios'],
     ['DSA layer type (GLM-5.3) on a known type', { model_type: 'qwen3_5_text', num_hidden_layers: 2, num_attention_heads: 4, num_key_value_heads: 1, head_dim: 64, max_position_embeddings: 4096, layer_types: ['deepseek_sparse_attention', 'linear_attention'] }, 'deepseek_sparse_attention'],
     ['Ling/Ring-2.5 (BailingMoeV2_5 — not converted by llama.cpp)', { ...LING_TINY, architectures: ['BailingMoeV2_5ForCausalLM'], no_kda_lora: undefined, kda_safe_gate: undefined }, 'bailing_hybrid'],
@@ -692,6 +695,35 @@ describe('classifyArch — Gemma 3 style sliding_window_pattern without layer_ty
   it('still refuses every-layer sliding windows without a pattern', () => {
     const cfg = { model_type: 'mistral', num_hidden_layers: 32, num_attention_heads: 32, num_key_value_heads: 8, hidden_size: 4096, max_position_embeddings: 32768, sliding_window: 4096 };
     expect(classifyArch(cfg).kind).toBe('unsupported');
+  });
+});
+
+describe('classifyArch — Gemma 4 per-layer embedding and KV-sharing keys set to 0 (10-16 D98)', () => {
+  it('Gemma 4 31B config (PLE 0, no KV-shared layers) still passes with the catalog KV record', () => {
+    // google/gemma-4-31B-it config.json 그대로의 구조 값 — E 계열만 두 값이 0 보다 크다(위 refuses 표)
+    const cfg = {
+      model_type: 'gemma4',
+      text_config: {
+        model_type: 'gemma4_text',
+        num_hidden_layers: 60,
+        num_attention_heads: 32,
+        num_key_value_heads: 16,
+        num_global_key_value_heads: 4,
+        head_dim: 256,
+        global_head_dim: 512,
+        max_position_embeddings: 262144,
+        sliding_window: 1024,
+        hidden_size_per_layer_input: 0,
+        num_kv_shared_layers: 0,
+        layer_types: Array.from({ length: 60 }, (_, i) => ((i + 1) % 6 === 0 ? 'full_attention' : 'sliding_attention')),
+      },
+      vision_config: {},
+    };
+    const r = classifyArch(cfg);
+    expect(r.kind).toBe('ok');
+    if (r.kind !== 'ok') return;
+    expect(r.attnType).toBe('swa');
+    expect(r.override?.kvBytesPerTokenF16).toBe(81_920); // 카탈로그 gemma-4-31b — 10 × 4 × 512 × 4
   });
 });
 
