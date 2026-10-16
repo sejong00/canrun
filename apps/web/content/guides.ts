@@ -102,7 +102,8 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
           'Why Ollama trims long conversations or slows down: its default context length by VRAM tier, how to raise it, and what a longer context costs in memory.',
       },
       ko: {
-        title: 'Ollama가 느리거나 앞 내용을 잊을 때 — 컨텍스트 기본값',
+        // 10-16 D94: 한글 표기(올라마)를 제목에 한 번 — 자동완성 조사(모델 한글 이름은 content/ko-names.ts)
+        title: '올라마(Ollama)가 느리거나 앞 내용을 잊을 때 — 컨텍스트 기본값',
         description:
           'Ollama가 긴 대화의 앞부분을 버리거나 느려지는 이유를 설명합니다. VRAM별 기본 컨텍스트 길이와 늘리는 방법, 늘렸을 때 더 드는 메모리도 정리했습니다.',
       },
@@ -154,7 +155,8 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
           'Specs, licenses and what it takes to run LG EXAONE, Kakao Kanana, NAVER HyperCLOVA X SEED and Upstage Solar locally, with verdicts on common GPUs and Macs.',
       },
       ko: {
-        title: '한국 오픈 LLM 정리 — EXAONE·Kanana·HyperCLOVA X·Solar 구동 사양',
+        // 10-16 D94: 네 모델의 한글 표기를 제목에 — 영문 표기는 설명·본문에 있다
+        title: '한국 오픈 LLM 정리 — 엑사원·카나나·하이퍼클로바X·솔라 구동 사양',
         description:
           'LG EXAONE, 카카오 Kanana, 네이버 HyperCLOVA X SEED, 업스테이지 Solar를 내 PC에서 돌리려면 무엇이 필요한지 정리했습니다. 모델 사양과 라이선스, 흔한 GPU·맥에서의 판정을 함께 봅니다.',
       },
@@ -221,7 +223,8 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
           'Which local LLMs each GPU memory size runs, 8GB to 32GB, with dated street prices: 12GB vs 8GB cards, a new 16GB card vs a 24GB RTX 3090, and when system RAM helps.',
       },
       ko: {
-        title: '로컬 LLM 그래픽카드 추천 — 예산별로 돌릴 수 있는 모델 (2026)',
+        // 10-16 D94: "AI용 그래픽카드"(자동완성 조사)
+        title: 'AI용 그래픽카드 추천 — 예산별로 돌릴 수 있는 로컬 LLM (2026)',
         description:
           '그래픽카드 VRAM 용량별로 돌아가는 로컬 LLM과 실거래가를 정리했습니다. 12GB와 8GB 카드, 신품 16GB와 24GB RTX 3090을 데이터로 비교하고, 시스템 RAM이 도움이 되는 경우도 다룹니다.',
       },
@@ -305,7 +308,8 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
           'What fits on a 128GB Strix Halo, DGX Spark or Mac Studio, how much memory each GPU can use, and why bandwidth sets the speed, with public gpt-oss-120b results.',
       },
       ko: {
-        title: '128GB 통합 메모리 기기 비교 — 스트릭스 헤일로·DGX Spark·맥 스튜디오',
+        // 10-16 D94: "미니PC"·"AI Max+ 395"(자동완성 조사 — 한국에선 칩 이름으로 찾는다)
+        title: '128GB 통합 메모리 미니PC 비교 — AI Max+ 395(스트릭스 헤일로)·DGX Spark·맥 스튜디오',
         description:
           '128GB 스트릭스 헤일로·DGX Spark·맥 스튜디오에 들어가는 큰 모델과 GPU가 실제로 쓸 수 있는 메모리를 정리했습니다. 속도를 가르는 대역폭과 gpt-oss-120b 공개 벤치마크도 함께 봅니다.',
       },
@@ -323,7 +327,8 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
           'Ollama and LM Studio run GGUF models on llama.cpp. How each tool’s default context, parallel slots and GPU split change memory and speed, and how to match them.',
       },
       ko: {
-        title: 'Ollama·llama.cpp·LM Studio 차이 — 같은 엔진, 다른 기본값',
+        // 10-16 D94: 한글 표기(올라마)를 제목에 한 번
+        title: '올라마(Ollama)·llama.cpp·LM Studio 차이 — 같은 엔진, 다른 기본값',
         description:
           'Ollama와 LM Studio는 모두 llama.cpp로 GGUF 모델을 돌립니다. 세 도구의 기본 컨텍스트, 동시 요청, GPU 배치가 메모리와 속도를 어떻게 바꾸는지, 같은 조건으로 맞추는 법을 정리했습니다.',
       },

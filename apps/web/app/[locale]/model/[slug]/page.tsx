@@ -34,6 +34,7 @@ import type { QA } from '@/lib/jsonld';
 import { calculatorHref, comboHref, gpuHref, hfUrl, localeHref, modelHref } from '@/lib/links';
 import { isComboIndexable } from '@/lib/publish';
 import { gpuName, quantText, speedPhrase, type Translate } from '@/lib/phrases';
+import { searchModelName } from '@/lib/search-names';
 import { buildPageMetadata } from '@/lib/seo';
 import { absoluteUrl } from '@/lib/site';
 
@@ -111,13 +112,15 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const hub = getModelHub(slug);
   if (!hub) return {};
   const t = await translators(locale);
+  // 한국어는 한글로도 찾는 계열이면 "Gemma 4 26B-A4B(젬마 4)" — 제목·설명·H1 만 (10-16 D94, content/ko-names.ts)
+  const name = searchModelName(locale, hub.model);
   return buildPageMetadata({
     href: modelHref(hub.model.id),
     locale,
     ogImage: `/og/model/${hub.model.id}-${locale}.png`,
-    title: t.hub('metaTitle', { model: hub.model.name }),
+    title: t.hub('metaTitle', { model: name }),
     description: t.hub('metaDescription', {
-      model: hub.model.name,
+      model: name,
       need: formatGB(locale, needAt8k(hub, hub.baselineQuant).total),
       quant: hub.baselineQuant,
       gpus: hub.gpuRows.length,
@@ -252,7 +255,7 @@ export default async function ModelHubPage({ params }: Props) {
             ]}
           />
           <h1 className="text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
-            {t.hub('h1', { model: model.name })}
+            {t.hub('h1', { model: searchModelName(locale, model) })}
           </h1>
           <div className="flex flex-wrap gap-2">
             <LicenseBadge license={model.license} hfId={model.hfId} />

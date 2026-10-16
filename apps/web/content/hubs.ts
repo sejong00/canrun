@@ -4,7 +4,8 @@
  * - 본문은 로캘별 MDX `content/{en,ko}/hubs/{gpu,model}/<id>.mdx`(따로 집필 — 번역 금지, 규칙 `content/AUTHORING.md` §10).
  *   로더는 `lib/hub-intros.ts` 의 명시적 맵, 렌더는 허브 페이지 머리말 아래(`[data-hub-intro]`). 여기 없는 허브는 소개 없이 그대로.
  * - 고른 기준(D74): GPU = 인기 GPU 10종(`data/publish.json` 배치 1 — 검색 수요 상위, 공개 콤보가 붙어 방문이 가장 많다),
- *   모델 = `data/models.json` `popularity` 5 인 9종 + HF 30일 다운로드 1위(gemma-4-26b-a4b, 10-06 기준).
+ *   모델 = `data/models.json` `popularity` 5 인 9종 + HF 30일 다운로드 1위(gemma-4-26b-a4b, 10-06 기준). 10-14 당시 기준이다 —
+ *   10-16 D94 에서 인기도를 고쳐 지금 5 는 12종(gemma-4-26b-a4b·qwen3.5-9b·qwen3.6-35b-a3b 추가)이지만 이 목록은 그대로 둔다.
  * - 순서 = 위 기준의 순서(표시에는 쓰지 않는다).
  */
 

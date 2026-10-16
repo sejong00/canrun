@@ -169,6 +169,11 @@ export const ModelSchema = z
      */
     thinking: z.enum(['always', 'default-on', 'default-off', 'auto']).optional(),
     korean: z.boolean().optional(),
+    /**
+     * 사람이 고르는 인기도 1~5 — 홈 "인기 모델"(4 이상)·계산기 추천순·인기순. 새 모델은 `add-model` 이 HF 30일 다운로드로 처음 정하고
+     * (`popularityFrom`) 그 뒤로는 손으로 고친다. 10-16 D94: 2026년 출시 모델 중 다운로드가 5 등급 모델과 같은 수준이고 같은 계열·크기의
+     * 5 등급 모델이 있는 것을 5 로 올리고, 홈 목록 개수(23)는 4 등급 중 다운로드가 가장 적은 한국 모델 아닌 모델을 3 으로 내려 유지했다
+     */
     popularity: z.number().int().min(1).max(5),
     /**
      * 원본 저장소(`hfId`)의 Hugging Face 최근 30일 다운로드 수 — `https://huggingface.co/api/models/<hfId>` 응답의 `downloads`

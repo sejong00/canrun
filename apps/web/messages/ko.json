@@ -26,7 +26,7 @@
     "browseModels": "인기 모델"
   },
   "Calculator": {
-    "metaTitle": "LLM 계산기: 내 GPU·RAM으로 돌아가는 모델과 예상 속도",
+    "metaTitle": "LLM·VRAM 계산기: 내 GPU·RAM으로 돌아가는 모델과 예상 속도",
     "metaDescription": "GPU(또는 맥 칩)와 RAM, OS를 고르면 오픈 LLM {total}종 가운데 어떤 모델이 어떤 GGUF 양자화로 돌아가는지 보여 줍니다. 예상 tok/s 범위와 신뢰 라벨도 함께 나옵니다. GPU는 브라우저에서 감지하고, 결과는 링크로 공유할 수 있습니다.",
     "crumb": "계산기",
     "h1": "내 PC로 돌릴 수 있는 로컬 LLM 찾기",
@@ -302,7 +302,7 @@
   "Guides": {
     "indexMetaTitle": "로컬 LLM 가이드: VRAM, 양자화, 컨텍스트, 맥",
     "indexMetaDescription": "내 PC나 맥에서 LLM을 돌릴 때 알아야 할 내용을 CanRun 데이터로 정리한 가이드 모음입니다. 모델별 필요 메모리, 어떤 양자화 파일을 받을지, 컨텍스트를 늘리면 메모리가 얼마나 더 드는지 다룹니다.",
-    "indexH1": "가이드",
+    "indexH1": "로컬 LLM 가이드",
     "indexIntro": "내 PC나 맥에서 LLM을 돌리는 데 필요한 내용을 정리한 가이드입니다. 글에 나오는 수치는 GPU·모델·조합 페이지와 같은 데이터로 계산했습니다.",
     "indexEmpty": "첫 가이드를 검토하고 있습니다. 공개되면 여기에 표시됩니다.",
     "byline": "{author} · {date} 업데이트",
@@ -405,7 +405,7 @@
   },
   "Breadcrumb": {
     "label": "현재 위치",
-    "home": "홈",
+    "home": "CanRun",
     "guides": "가이드"
   },
   "Common": {
@@ -533,6 +533,7 @@
   },
   "GpuHub": {
     "metaTitle": "{gpu}에서 돌아가는 로컬 LLM과 예상 속도 ({memory})",
+    "metaCard": "{gpu} 그래픽카드",
     "metaDescription": "{gpu}({memory})에서 로컬 LLM {total}개 중 {good}개가 쾌적하거나 원활하게 돌아갑니다(Q4_K_M·8k 컨텍스트 기준). 그중 가장 큰 모델은 {model}, 속도는 {speed}입니다.",
     "metaDescriptionNone": "Q4_K_M·8k 컨텍스트 기준으로 {gpu}({memory})에서 로컬 LLM {total}개의 판정과 예상 속도 범위를 보여 줍니다.",
     "memoryVram": "{vram}GB",
@@ -550,6 +551,7 @@
     "specFp16Value": "{value} TFLOPS",
     "specLaunch": "출시 연도",
     "specPrice": "가격",
+    "specAliases": "다른 표기",
     "priceStreet": "{date} 기준 실거래가 {price}",
     "priceMsrp": "출시가 {price}",
     "badgeLaptop": "노트북 GPU: 데스크톱 카드와 다른 제품이고, 노트북마다 전력 제한이 다릅니다",
@@ -778,6 +780,7 @@
     "fileSharded": "파일: {file} 외 {rest}개 조각(총 {size}GB, {repo}).",
     "llamaCpp": "llama.cpp",
     "ollama": "Ollama",
+    "ollamaTitle": "올라마(Ollama)",
     "nglAll": "-ngl all: 모든 층을 GPU에 올립니다.",
     "nglFitAuto": "GPU가 여러 장이라 -ngl과 --n-cpu-moe를 뺐습니다. llama.cpp b7410(2025년 12월) 이후 버전은 층과 전문가를 카드마다 알아서 나눠 올립니다.",
     "nglZero": "-ngl 0: 전부 CPU에서 돌립니다.",

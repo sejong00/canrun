@@ -25,6 +25,7 @@ import type { QA } from '@/lib/jsonld';
 import { comboHref, gpuHref, localeHref, modelHref } from '@/lib/links';
 import { isComboIndexable } from '@/lib/publish';
 import { gpuName, modeKey, quantText, speedPhrase, type Translate } from '@/lib/phrases';
+import { gpuAliasLabels } from '@/lib/search-names';
 import { buildPageMetadata } from '@/lib/seo';
 import { absoluteUrl } from '@/lib/site';
 
@@ -92,7 +93,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const hub = getGpuHub(slug);
   if (!hub) return {};
   const t = await translators(locale);
-  const name = gpuName(t.names, hub.gpu);
+  // 제목·설명의 이름 — 한국어는 그래픽카드(dGPU)면 "… 그래픽카드" (10-16 D94 — 맥·통합 메모리·CPU 는 이름 그대로)
+  const display = gpuName(t.names, hub.gpu);
+  const name = hub.gpu.kind === 'dgpu' ? t.hub('metaCard', { gpu: display }) : display;
   const memory = memoryLabel(t.hub, hub.gpu, locale);
   const primaryMemory = primaryMemoryLabel(t.hub, hub, locale);
   const counts = hub.counts[hub.primaryIndex]!;
@@ -262,6 +265,9 @@ export default async function GpuHubPage({ params }: Props) {
         ? tSpec('assumeUnified')
         : tSpec('assumeCpu');
 
+  // 다른 표기(10-16 D94) — 별칭이 있을 때만, 사양 목록에 한 줄
+  const aliases = gpuAliasLabels(gpu);
+
   const price =
     gpu.streetUSD !== undefined && gpu.priceAsOf
       ? tSpec('priceStreet', { price: formatPrice(t.common, locale, gpu.streetUSD), date: gpu.priceAsOf })
@@ -341,6 +347,12 @@ export default async function GpuHubPage({ params }: Props) {
               <div>
                 <dt className="text-muted-foreground">{tSpec('specPrice')}</dt>
                 <dd className="font-medium">{price}</dd>
+              </div>
+            )}
+            {aliases.length > 0 && (
+              <div className="col-span-2 sm:col-span-3">
+                <dt className="text-muted-foreground">{tSpec('specAliases')}</dt>
+                <dd>{aliases.join(', ')}</dd>
               </div>
             )}
           </dl>

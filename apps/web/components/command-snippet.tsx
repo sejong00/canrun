@@ -83,7 +83,8 @@ export function CommandSnippet({
       </figure>
 
       <figure {...(plan.ollama ? { 'data-snippet': 'ollama' } : { 'data-snippet-omitted': 'ollama' })} className="flex flex-col gap-2">
-        <figcaption className="font-medium">{t('ollama')}</figcaption>
+        {/* 한국어는 여기서만 "올라마(Ollama)" — 콤보에서 Ollama 가 처음 나오는 자리, 한 번 (10-16 D94) */}
+        <figcaption className="font-medium">{t('ollamaTitle')}</figcaption>
         {plan.ollama ? (
           <>
             <p className="text-xs text-muted-foreground">

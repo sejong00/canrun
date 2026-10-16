@@ -4,10 +4,12 @@ import type { Locale } from '@/i18n/routing';
 import { guideEntry, relatedGuideFor } from '@/lib/guides';
 import { comboHref, gpuHref, guideHref, localeHref, modelHref } from '@/lib/links';
 import { gpuName } from '@/lib/phrases';
+import { searchModelName } from '@/lib/search-names';
 
 /**
  * 인접 콤보 4 + 양쪽 허브 (docs/04 §2 내부링크 규칙) — 탭 타깃 ≥24px 를 위해 py-2.
- * 이 콤보를 그리드로 다루는 **published** 가이드가 있으면 그 가이드로도 링크한다 (P1-4 D44 — 초안은 링크하지 않는다)
+ * 이 콤보를 그리드로 다루는 **published** 가이드가 있으면 그 가이드로도 링크한다 (P1-4 D44 — 초안은 링크하지 않는다).
+ * 모델 허브 링크는 한국어에서 한글 계열 이름을 붙인다 — 콤보 본문에서 한글 이름이 나오는 유일한 자리(10-16 D94, content/ko-names.ts)
  */
 export function AdjacentLinks({ adjacent, gpu, model }: { adjacent: AdjacentCombos; gpu: Gpu; model: Model }) {
   const locale = useLocale() as Locale;
@@ -56,7 +58,7 @@ export function AdjacentLinks({ adjacent, gpu, model }: { adjacent: AdjacentComb
           ))}
           <li>
             <a href={localeHref(locale, modelHref(model.id))} className={item}>
-              {t('modelHub', { model: model.name })}
+              {t('modelHub', { model: searchModelName(locale, model) })}
             </a>
           </li>
         </ul>

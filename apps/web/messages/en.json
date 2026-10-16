@@ -26,7 +26,7 @@
     "browseModels": "Popular models"
   },
   "Calculator": {
-    "metaTitle": "LLM Hardware Calculator: What Runs on Your GPU & RAM",
+    "metaTitle": "LLM VRAM Calculator: What Runs on Your GPU & RAM",
     "metaDescription": "Pick your GPU or Mac chip, RAM and OS to see which of {total} open LLMs run, at which GGUF quant, with an estimated tokens-per-second band and a confidence label. Detects your GPU in the browser; results share as a link.",
     "crumb": "Calculator",
     "h1": "Which local LLMs can your PC run?",
@@ -302,7 +302,7 @@
   "Guides": {
     "indexMetaTitle": "Local LLM guides: VRAM, quantization, context length and Macs",
     "indexMetaDescription": "Practical guides to running LLMs on your own hardware, built on CanRun data: how much memory models need, which quant to download, and what context length costs.",
-    "indexH1": "Guides",
+    "indexH1": "Local LLM guides",
     "indexIntro": "Practical guides to running LLMs on your own PC or Mac. Every number in them comes from the same data and estimates as our GPU, model and combo pages.",
     "indexEmpty": "Our first guides are being reviewed. They will appear here once they are published.",
     "byline": "By {author} · Updated {date}",
@@ -405,7 +405,7 @@
   },
   "Breadcrumb": {
     "label": "Breadcrumb",
-    "home": "Home",
+    "home": "CanRun",
     "guides": "Guides"
   },
   "Common": {
@@ -533,6 +533,7 @@
   },
   "GpuHub": {
     "metaTitle": "{gpu} for Local LLMs: What Runs & How Fast ({memory})",
+    "metaCard": "{gpu}",
     "metaDescription": "{gpu} · {memory}: at Q4_K_M with 8k context, {good} of {total} local LLMs run great or well. Biggest that runs well: {model}, {speed}.",
     "metaDescriptionNone": "{gpu} · {memory}: verdicts and estimated speed bands for {total} local LLMs at Q4_K_M with 8k context.",
     "memoryVram": "{vram} GB",
@@ -550,6 +551,7 @@
     "specFp16Value": "{value} TFLOPS",
     "specLaunch": "Launch year",
     "specPrice": "Price",
+    "specAliases": "Also written as",
     "priceStreet": "{price} street (as of {date})",
     "priceMsrp": "{price} launch MSRP",
     "badgeLaptop": "Laptop GPU — a separate SKU from the desktop card, with power limits that vary by laptop",
@@ -778,6 +780,7 @@
     "fileSharded": "File: {file} and {rest} more shards ({size} GB total) from {repo}.",
     "llamaCpp": "llama.cpp",
     "ollama": "Ollama",
+    "ollamaTitle": "Ollama",
     "nglAll": "-ngl all loads every layer on the GPU.",
     "nglFitAuto": "With several GPUs the command leaves out -ngl and --n-cpu-moe: llama.cpp b7410 (December 2025) and later place the layers and experts on each card themselves.",
     "nglZero": "-ngl 0 keeps everything on the CPU.",

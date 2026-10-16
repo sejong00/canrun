@@ -8,13 +8,14 @@
  * 문장 단위(D16)는 `UnitTable` 로 인터닝해 페이지당 id 배열만 보유한다.
  */
 
+import { koFamilyName } from '../apps/web/content/ko-names';
 import { STATIC_PAGE_SLUGS } from '../apps/web/content/pages';
 
 export type Locale = 'en' | 'ko';
 export type PageKind = 'home' | 'gpu' | 'model' | 'combo' | 'calculator' | 'guide' | 'guides-index' | 'static' | 'other';
 
 export type GpuRecord = { id: string; name: string; aliases?: string[]; kind?: 'dgpu' | 'unified' | 'cpu' };
-export type ModelRecord = { id: string; name: string };
+export type ModelRecord = { id: string; name: string; family?: string };
 
 export type PageFacts = {
   /** out/ 기준 상대 파일 경로 (posix) */
@@ -137,6 +138,13 @@ export type PageFacts = {
   /** 가시 텍스트의 원화 참고 가격 "약 41만 원" 수 · 환산 안내("환율(1달러 1,361원)") 유무 (D61) */
   krwPrices: number;
   krwNote: boolean;
+  /**
+   * 한글 모델 이름(10-16 D94, `content/ko-names.ts`) — ko 모델 허브·콤보 중 한글 계열 이름이 있는 모델만.
+   * `body` = `<body>` 가시 텍스트(관련 가이드 링크 `a[data-related-guide]` 제외 — 가이드 제목은 따로 쓴 글이다) 속 출현 수
+   */
+  koModelName?: { name: string; title: boolean; description: boolean; h1: boolean; body: number };
+  /** Qwen 의 한글 표기(큐웬·큐원)가 제목·설명·가시 텍스트에 있다 — 쓰지 않는다(D94) */
+  qwenHangul: boolean;
 };
 
 // ---------------------------------------------------------------------------
@@ -580,6 +588,26 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
 
   const faq = visibleFaq(html);
   const description = metaContent(html, /<meta name="description" content="([^"]*)"/);
+  const title = metaContent(html, /<title>([^<]*)<\/title>/);
+  const h1 = elementText(noScript.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/)?.[1] ?? '');
+
+  // 한글 모델 이름(D94) — 모델 허브는 URL 끝 id, 콤보는 모델 id
+  const pageModelId = combo?.modelId ?? (kind === 'model' ? urlPath.split('/').pop() : undefined);
+  const pageModel = locale === 'ko' && pageModelId ? ctx.modelById.get(pageModelId) : undefined;
+  const koName = pageModel?.family ? koFamilyName({ name: pageModel.name, family: pageModel.family }) : undefined;
+  let koModelName: PageFacts['koModelName'];
+  if (koName) {
+    const body = noScript
+      .slice(Math.max(0, noScript.indexOf('<body')))
+      .replace(/<a\b[^>]*\sdata-related-guide[^>]*>[\s\S]*?<\/a>/g, ' ');
+    koModelName = {
+      name: koName,
+      title: (title ?? '').includes(koName),
+      description: (description ?? '').includes(koName),
+      h1: h1.includes(koName),
+      body: decodeEntities(body.replace(TAG_RE, ' ')).split(koName).length - 1,
+    };
+  }
   const ogDescription = metaContent(html, /<meta property="og:description" content="([^"]*)"/);
   const ogImage = metaContent(html, /<meta property="og:image" content="([^"]*)"/);
   const verdictSentence = elementsWithAttr(noScript, 'data-verdict-sentence').map((e) => elementText(e.inner))[0];
@@ -646,7 +674,7 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
     kind,
     ...(combo ? { combo } : {}),
     lang: html.match(/<html[^>]*\blang="([^"]+)"/)?.[1],
-    title: metaContent(html, /<title>([^<]*)<\/title>/),
+    title,
     description,
     ...(ogDescription === undefined ? {} : { ogDescription }),
     canonical: extractCanonical(html),
@@ -687,6 +715,8 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
     ...(ogImage === undefined ? {} : { ogImage }),
     krwPrices: (visible.match(/약 [\d,]+만 원/g) ?? []).length,
     krwNote: /환율\(1달러 [\d,]+원\)/.test(visible),
+    ...(koModelName ? { koModelName } : {}),
+    qwenHangul: /큐웬|큐원/.test(`${title ?? ''} ${description ?? ''} ${visible}`),
   };
 }
 

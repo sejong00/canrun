@@ -461,6 +461,34 @@ describe('titles and descriptions (docs/04 §4 — no duplicate templates)', () 
   });
 });
 
+describe('Korean model names (10-16 D94 — 한글 표기는 한국어 페이지에, 페이지마다 한 번)', () => {
+  it('ko model hubs put "Name(한글)" in the title, description and h1 and nowhere else in the body; ko combos name it once in the body, never in the title', () => {
+    const problems: string[] = [];
+    let hubs = 0;
+    let combos = 0;
+    for (const page of pages) {
+      const ko = page.koModelName;
+      if (!ko) continue;
+      if (page.kind === 'model') {
+        hubs += 1;
+        if (!ko.title || !ko.description || !ko.h1) problems.push(`${page.file}: "${ko.name}" missing from title/description/h1`);
+        if (ko.body !== 1) problems.push(`${page.file}: "${ko.name}" appears ${ko.body}× in the body (h1 only)`);
+      } else if (page.kind === 'combo') {
+        combos += 1;
+        if (ko.title) problems.push(`${page.file}: "${ko.name}" in the combo title`);
+        if (ko.body !== 1) problems.push(`${page.file}: "${ko.name}" appears ${ko.body}× in the body (model hub link only)`);
+      }
+    }
+    expect(hubs, 'ko model hubs with a Hangul family name').toBeGreaterThan(0);
+    expect(combos, 'ko combos with a Hangul family name').toBeGreaterThan(0);
+    expect(problems.slice(0, 20)).toEqual([]);
+  });
+
+  it('no page writes Qwen in Hangul (큐웬·큐원 collide with other brands on Naver)', () => {
+    expect(pages.filter((p) => p.qwenHangul).map((p) => p.file)).toEqual([]);
+  });
+});
+
 describe('internal linking (docs/04 §2 — 고아 페이지 0)', () => {
   it('every hub is linked from at least one other page', () => {
     const inbound = new Map<string, number>();
