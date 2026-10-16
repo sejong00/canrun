@@ -1,4 +1,5 @@
 # 일 1회 스케줄 리빌드 (docs/05 §1) — 데이터·가격 갱신 반영. ISR 대체.
+# 배포 잡(deploy.yml)을 그대로 재사용하므로 IndexNow 전송(D93 — 바뀐 URL 만, 없으면 보내지 않음)도 함께 돈다.
 name: Daily rebuild
 
 on:

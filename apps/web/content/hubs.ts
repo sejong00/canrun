@@ -10,7 +10,7 @@
  */
 
 /**
- * 소개글을 마지막으로 고친 날 — 사이트맵 lastmod(레지스트리 허브 = 이 날과 데이터 기준일 중 늦은 날, `scripts/build-sitemaps.ts`).
+ * 소개글을 마지막으로 고친 날 — 사이트맵 lastmod(레지스트리 허브 = 이 날·데이터 기준일·엔진 `ENGINE_SPEC_DATE` 중 가장 늦은 날, `scripts/build-sitemaps.ts`).
  * 소개글(en·ko)을 고친 커밋에서 함께 바꾼다. 날짜 기준은 `content/updates.ts` 와 같다: 배포(main 푸시)되는 날의 UTC 날짜 — KST 자정~09시 푸시는 전날.
  */
 export const HUB_INTROS_UPDATED = '2026-10-14';

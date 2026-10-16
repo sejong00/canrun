@@ -197,7 +197,7 @@ export function buildDigest(
     ...rows,
     '',
     '트리아지: `/canrun-start`에서 Claude가 가치 판정 → 추가할 모델만 카탈로그 태스크로 옮기고 이 이슈를 닫는다.',
-    '48h 플레이북 (docs/04 §8): ① config.json·GGUF 크기 수집(sync PR) ② 허브+콤보 페이지 ③ en/ko 가이드 ④ sitemap ping ⑤ (선택) 실측 1점 ⑥ 커뮤니티 링크',
+    '48h 플레이북 (docs/04 §8): ① config.json·GGUF 크기 수집(sync PR) ② 허브+콤보 페이지 ③ en/ko 가이드 ④ GSC 색인 요청(IndexNow 는 배포 때 자동) ⑤ (선택) 실측 1점 ⑥ 커뮤니티 링크',
     '',
     `<!-- ${DIGEST_MARKER} ${hfIds.join(',')} -->`,
   ];

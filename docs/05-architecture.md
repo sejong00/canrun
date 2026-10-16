@@ -50,6 +50,7 @@ canrun/
 │     content/{en,ko}/hubs/{gpu,model}/*.mdx  # 인기 허브 소개글 — 레지스트리 content/hubs.ts, 로더 lib/hub-intros.ts (10-14 D74)
 ├─ scripts/
 │  ├─ sync-models.ts  new-model-alert.ts  build-sitemaps.ts(postbuild 4단계 — P1-5 D49)  make-og.ts(기본 공유 카드 1회 생성 — D50)
+│  ├─ indexnow.ts               # 배포 전 지금 사이트맵 받기 → 배포 뒤 바뀐 URL 을 IndexNow 로 전송 (deploy.yml — 10-16 D93)
 │  └─ parse-bench.ts            # llama-bench 파서 (P2 제출과 공용 — 미리 엔진 옆에)
 └─ .github/workflows/{deploy,daily-rebuild,data-sync}.yml
 ```
@@ -59,9 +60,10 @@ canrun/
 규모: 허브 168(GPU 54 + 모델 29 × 2언어) + 콤보 1,566 × 2 = 3,132 + 계산기 2 + 가이드 목차 2 + 가이드 12(6쌍, P1-4) → 홈 포함 **3,318페이지 전부 생성**, 인덱싱만 게이트(계획 시점 "1,400페이지"는 GPU 30 × 모델 20 시절 수치 — PROGRESS §4 09-29). 허브·콤보 조립 로직(기준·추천 quant, 실측 조인, 신뢰 라벨, ctx×KV 표, 대안, 커맨드 스니펫, 공개 상태)은 `packages/data/src/{assess,combo,snippet,publish}.ts`(순수·엔진 무변경 — P1-3부터 계산기가 같은 함수를 `{ctx, kvQuant, theoretical, ramHint}` 옵션으로 브라우저에서 호출, D33), 페이지는 서버 컴포넌트 + **클라이언트 아일랜드 3종**(`components/islands/` — 계산기·콤보 ctx/KV·모델 허브 가격 정렬, 번역·카탈로그는 props, §5) — 내부 링크는 `<a>`, next-intl 클라이언트 프로바이더 없음(JS 예산 `01` §7). 20분 초과 시 콤보 분할 빌드 도입.
 
 빌드 후처리 `scripts/postbuild.ts`(P1-2 D18·D21, PROGRESS §4 09-29) — 순서가 중요하다:
-1. **RSC 페이로드 프루닝(평탄화 전)**: Cloudflare Pages 파일 한도 20,000개 — 페이지당 html + RSC `.txt` 3 + `__next.*` 디렉터리 = 5파일이라 3,302페이지면 ~16,500(82%). `__next.*` 디렉터리를 재귀 삭제하고 허용목록(`robots.txt|ads.txt|llms.txt` — P1-5 대비) 외 `*.txt`를 전부 삭제한다(~17% 감소). 안전 근거: 사이트는 `<a>`만 쓰고 next/link·router가 없어 Next 16.3.6 클라이언트가 `.txt`를 요청하는 경로(`fetchServerResponse` — navigate/prefetch/refresh)가 실행되지 않고, HTML에 `.txt` 참조 0건, 뒤로가기(`pageshow`/`popstate`) 복원은 기존 CacheNode를 재사용한다. 안전망: export 테스트(허용목록 외 `.txt` 0 · `__next` 0 · 총 파일 < 16,000 · 최대 파일 < 25MiB) + E2E 실패 요청 0(인접 링크 이동 후 `goBack()` + networkidle 포함 — 유일한 history 경로).
+1. **RSC 페이로드 프루닝(평탄화 전)**: Cloudflare Pages 파일 한도 20,000개 — 페이지당 html + RSC `.txt` 3 + `__next.*` 디렉터리 = 5파일이라 3,302페이지면 ~16,500(82%). `__next.*` 디렉터리를 재귀 삭제하고 허용목록(`robots.txt|ads.txt|llms.txt` — P1-5 대비, IndexNow 키 파일 `<키>.txt` — D93) 외 `*.txt`를 전부 삭제한다(~17% 감소). 안전 근거: 사이트는 `<a>`만 쓰고 next/link·router가 없어 Next 16.3.6 클라이언트가 `.txt`를 요청하는 경로(`fetchServerResponse` — navigate/prefetch/refresh)가 실행되지 않고, HTML에 `.txt` 참조 0건, 뒤로가기(`pageshow`/`popstate`) 복원은 기존 CacheNode를 재사용한다. 안전망: export 테스트(허용목록 외 `.txt` 0 · `__next` 0 · 총 파일 < 16,000 · 최대 파일 < 25MiB) + E2E 실패 요청 0(인접 링크 이동 후 `goBack()` + networkidle 포함 — 유일한 history 경로).
 2. `out/en/**` → 루트 평탄화(`renameSync`, §1).
 3. `_redirects` 생성(아래).
+4. 사이트맵·robots·RSS·ads.txt·IndexNow 키 파일(`scripts/build-sitemaps.ts`) — RSS 항목은 요약 `description` + 이미 export 된 가이드 HTML 의 본문을 정리한 `content:encoded`(D93). 배포 워크플로는 Cloudflare 배포 전에 지금 사이트의 사이트맵을 받아 두고, 배포가 성공하면 새로 생기거나 lastmod 가 바뀐 URL 만 IndexNow 로 보낸다(실패해도 경고만 — `scripts/indexnow.ts`).
 - `next.config.ts` `generateBuildId: () => GITHUB_SHA ?? 'local'`(D21)로 빌드 ID를 고정 — 산출물 결정성(채택 조건: 두 번 빌드 `diff -r out` 바이트 동일, 결과는 PROGRESS §4 09-29).
 
 alias→canonical 301(`04` §2)은 Next redirects가 정적 export에서 미지원이므로 **Cloudflare Pages `_redirects` 파일을 `aliases.json`에서 빌드 시 생성**한다(정적 룰 2,000줄 한도 — 수요 있는 alias만 301, 나머지는 캐노니컬 태그로만). **콤보 URL엔 alias 301을 만들지 않는다**(1,566쌍 × 2언어가 한도를 넘는다 — 캐노니컬만, `04` §2, P1-2).
@@ -108,6 +110,7 @@ Cloudflare Pages/Workers/D1 무료 티어 $0 + 도메인 ~$1 + Sentry $0 = **~$1
 | Cloudflare API 토큰(배포용) | **GitHub Actions Secrets만** | 최소 권한(Pages Edit 한정), 워크플로에서 echo 금지 |
 | HF 토큰(선택 — 공개 API는 무토큰으로 충분) | Actions Secrets | 코드·JSON 하드코딩 금지 |
 | AdSense pub ID·어필리에이트 태그·Sentry DSN | 공개 성격 값 | 시크릿 아님 — 다만 env로 관리해 환경 분리 |
+| IndexNow 키(10-16 PROGRESS §4 D93) | `apps/web/lib/site.ts` `INDEXNOW_KEY` | 시크릿 아님 — 프로토콜상 사이트 루트 `/<키>.txt` 로 공개하는 값(검색엔진이 그 파일로 소유를 확인한다). 저장소가 공개라 다른 사람이 이 키를 써도 보낼 수 있는 것은 이 사이트의 URL 뿐이다. gitleaks 는 상수 선언 한 줄만 정규식으로 예외(`.gitleaks.toml`) |
 | 로컬 개발 변수 | `.env.local` (gitignore) | `.env*` 커밋 금지, CI에 gitleaks 스캔 |
 
 **Phase 2(Workers+D1) 추가 규칙**: 서버 시크릿은 `wrangler secret`으로만 주입 · D1은 prepared statement만(문자열 SQL 조립 금지) · 제출 입력은 파서가 숫자·열거형 화이트리스트로 정규화, 자유 텍스트는 렌더 시 이스케이프(XSS 차단) · URL 필드는 도메인 화이트리스트 + `rel="nofollow noopener"` · rate limit용 IP는 **솔트 해시로만 저장(원문 IP 저장 금지, TTL 24h)** — PII 미수집 설계로 GDPR·개인정보보호법 부담 최소화(프라이버시 페이지에 명시).
