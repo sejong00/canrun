@@ -6,14 +6,14 @@
  *  1) 가중치 11종: MAE < 1% (검증값 0.7%), 케이스별 |err| ≤ 1.6%
  *  2) KV 7종: 공식값 전수 일치 (±0.5 KiB)
  *  3) 속도 12점: 각 점이 클래스 밴드(±12%/±20%) 이내 + MAE < 7% (검증값 6.3% → 10-15 D83 Apple 2점을 지금 빌드 값으로 바꿔 5.6%
- *     → 10-16 D88 MoE 고정 시간으로 4.7%)
+ *     → 10-16 D88 MoE 고정 시간으로 4.7% → 10-16 D90 strix 재보정으로 4.2%)
  *  4) 판정 새너티: 4060 8GB 통념 일치
  *  5) cpu-moe(전문가 RAM) 3점: 각 ±20% 이내 + MAE < 12% (09-30 보정 — 이전 식은 ~2.5× 과소)
  *  6) 같은 GPU 여러 장 10점(D58) · 7) 서로 다른 GPU 섞기 3점(D67)
- *  8) 클래스 계수 재보정 23점(10-15 D79·D83): AMD Vulkan 4점 각 ±12% · DGX Spark 10점·Apple dense 9점 각 ±20%
+ *  8) 클래스 계수 재보정 29점(10-15 D79·D83, 10-16 D90): AMD Vulkan 4점 각 ±12% · DGX Spark 10점·Apple dense 9점·Strix Halo dense 6점 각 ±20%
  *     (Apple MoE 8점(#15396 2025-08 빌드)은 10-16 D88 에 회귀 밖 참고점 — 10 의 MOE_OLD_BUILD_CASES)
  *  9) pp(§3.5) Apple 12점(10-16 D86): 각 ±40%(PP_BAND) · M5 계열 5점 각 ±12% · 그 밖의 칩 새 빌드 2점 각 ±5%
- * 10) MoE 토큰당 고정 시간(§3.1, 10-16 D88): 2026 빌드 45점 각 ±20% · MAE < 10%(검증값 8.9%) · 클래스별 MAE < 12%
+ * 10) MoE 토큰당 고정 시간(§3.1, 10-16 D88): 2026 빌드 49점(10-16 D90 에 Strix Halo 4점 추가) 각 ±20% · MAE < 10%(검증값 8.9% → 8.3%) · 클래스별 MAE < 12%
  */
 import { describe, expect, it } from 'vitest';
 import { fit } from '../src/fit';
@@ -27,6 +27,7 @@ import {
   MOE_OVERHEAD_CASES,
   MOE_OVERHEAD_SPARK_B7941,
   RECAL_1015_CASES,
+  STRIX_SLOWER_DENSE_CASES,
   HETERO_GPU_CASES,
   MULTI_GPU_CASES,
   GPT_OSS_20B,
@@ -90,7 +91,7 @@ describe('3) speed: tg = eff × BW / (weightsRead + kvRead) vs measured (12 poin
     },
   );
 
-  it('MAE < 7% (verified 6.3% → 5.6% after the 10-15 D83 Apple swap → 4.7% with the 10-16 D88 MoE fixed time)', () => {
+  it('MAE < 7% (verified 6.3% → 5.6% after the 10-15 D83 Apple swap → 4.7% with the 10-16 D88 MoE fixed time → 4.2% with the 10-16 D90 strix recalibration)', () => {
     const mae = errors.reduce((a, b) => a + Math.abs(b), 0) / errors.length;
     expect(mae).toBeLessThan(0.07);
   });
@@ -203,7 +204,7 @@ describe('7) mixed GPUs layer split (§6 beta, 10-03 D67): 공개 실측 3점', 
   });
 });
 
-describe('8) class recalibration (10-15 D79·D83): AMD Vulkan 4점 · DGX Spark 10점 · Apple dense 9점', () => {
+describe('8) class recalibration (10-15 D79·D83, 10-16 D90): AMD Vulkan 4점 · DGX Spark 10점 · Apple dense 9점 · Strix Halo dense 6점', () => {
   const errors = RECAL_1015_CASES.map(
     ({ hw, mq, ctx, measuredTg }) => (tgEstimate(hw, mq, { mode: 'full-gpu' }, { ctx }) - measuredTg) / measuredTg,
   );
@@ -235,6 +236,21 @@ describe('8) class recalibration (10-15 D79·D83): AMD Vulkan 4점 · DGX Spark 
     // 가이드 mac-local-llm '얼마나 확실한가'의 "각 11% 안쪽" 문장을 고정한다
     expect(Math.max(...base.map(Math.abs))).toBeLessThan(0.11);
   });
+
+  it('Strix Halo dense (Vulkan 지금 빌드 — 10-16 D90): 6점 MAE < 3% · 각 ±5%', () => {
+    const strix = group('Strix Halo dense');
+    expect(strix).toHaveLength(6);
+    expect(strix.reduce((a, b) => a + Math.abs(b), 0) / strix.length).toBeLessThan(0.03);
+    expect(Math.max(...strix.map(Math.abs))).toBeLessThan(0.05);
+  });
+
+  it('회귀 밖 참고: Strix Halo 의 ROCm·FA 끔 dense 5점은 추정이 높게(0~+14%) — 모두 ±20% 안', () => {
+    for (const c of STRIX_SLOWER_DENSE_CASES) {
+      const e = (tgEstimate(c.hw, c.mq, { mode: 'full-gpu' }, { ctx: c.ctx }) - c.measuredTg) / c.measuredTg;
+      expect(e, c.label).toBeGreaterThanOrEqual(0);
+      expect(e, c.label).toBeLessThanOrEqual(c.band);
+    }
+  });
 });
 
 describe('9) pp: Apple #4167 Llama 2 7B Q4_0 pp512 (10-16 D86·D87, docs/02 §3.5)', () => {
@@ -261,14 +277,14 @@ describe('9) pp: Apple #4167 Llama 2 7B Q4_0 pp512 (10-16 D86·D87, docs/02 §3.
   });
 });
 
-describe('10) MoE 토큰당 고정 시간 (§3.1, 10-16 D88): 2026 llama.cpp 빌드 45점', () => {
+describe('10) MoE 토큰당 고정 시간 (§3.1, 10-16 D88·D90): 2026 llama.cpp 빌드 49점', () => {
   const cases = [...MOE_OVERHEAD_CASES, ...MOE_OVERHEAD_SPARK_B7941];
   const err = (c: (typeof cases)[number]) => (tgEstimate(c.hw, c.mq, { mode: 'full-gpu' }, { ctx: c.ctx }) - c.measuredTg) / c.measuredTg;
   const errors = cases.map(err);
   const mae = (xs: readonly number[]) => xs.reduce((a, b) => a + Math.abs(b), 0) / xs.length;
 
-  it('has the 45 points the constants were fitted to', () => {
-    expect(cases).toHaveLength(45);
+  it('has the 49 points the constants were fitted to', () => {
+    expect(cases).toHaveLength(49);
     for (const c of cases) expect(c.source, c.label).toMatch(/^https:\/\//);
   });
 
@@ -276,7 +292,7 @@ describe('10) MoE 토큰당 고정 시간 (§3.1, 10-16 D88): 2026 llama.cpp 빌
     expect(Math.abs(errors[i]!)).toBeLessThanOrEqual(0.2);
   });
 
-  it('MAE < 10% over all 45 (verified 8.9%) and < 12% in every class', () => {
+  it('MAE < 10% over all 49 (verified 8.9% on 45 → 8.3% with the 10-16 D90 Strix Halo points) and < 12% in every class', () => {
     expect(mae(errors)).toBeLessThan(0.1);
     for (const cls of ['apple', 'apple-ultra', 'dgx-spark', 'nvidia', 'amd', 'strix'] as const) {
       const xs = errors.filter((_, i) => cases[i]!.hw.effClass === cls);

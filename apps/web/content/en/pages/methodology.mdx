@@ -40,15 +40,16 @@ We check the calculation against real data, and the check runs automatically eve
 
 - **Model file sizes**: an average error of 0.7% and at most 1.6% across 11 real GGUF files.
 - **KV cache**: an exact match with the formula for all 7 architectures we checked.
-- **Speed**: an average error of 4.7% and at most 10.5% across 12 reference benchmarks. The largest misses were an Apple M5 Pro and a CPU-only setup, both about 10% too low.
-- **MoE speed**: an average error of 8.9% and at most 19.9% across 45 public benchmarks from 2026 llama.cpp builds, on NVIDIA, AMD and Apple GPUs, the DGX Spark and the Strix Halo.
+- **Speed**: an average error of 4.2% and at most 10.5% across 12 reference benchmarks. The largest misses were an Apple M5 Pro and a CPU-only setup, both about 10% too low.
+- **MoE speed**: an average error of 8.3% and at most 19.9% across 49 public benchmarks from 2026 llama.cpp builds, on NVIDIA, AMD and Apple GPUs, the DGX Spark and the Strix Halo.
 
-We first checked these figures on August 9, 2026. On October 15, 2026, we replaced the two Apple speed benchmarks, which came from a 2023 llama.cpp build, with results from current builds. Later that day we changed how MoE speed is calculated and added the MoE check. The automated check keeps the figures from getting worse.
+We first checked these figures on August 9, 2026. On October 15, 2026, we replaced the two Apple speed benchmarks, which came from a 2023 llama.cpp build, with results from current builds. Later that day we changed how MoE speed is calculated and added the MoE check. On October 16, 2026, we refitted the Strix Halo factors to results from current llama.cpp builds and added four Strix Halo results to the MoE check. The automated check keeps the figures from getting worse.
 
 ## Known limits
 
 - **MoE models with their experts in system RAM** are estimated with as many experts on the GPU as fit and only the rest in RAM. That matches how current llama.cpp and Ollama split these models on their own, and the `--n-cpu-moe` value in our commands follows the same split. Against 35 public benchmarks on NVIDIA cards the average error was about 10%, and 89% landed within ±20%. Some setups were off by about a third depending on the OS, backend and RAM configuration, so these results stay labeled theoretical (±30%) (checked October 1, 2026, and again on October 15, 2026).
 - **MoE speed depends on how the model is built, not only on its size.** We use one fixed cost per expert for each class of hardware, so a model whose layers do more or less work than most can land up to about 20% off. Q8_0 files tend to run a little faster than we estimate. Our figures follow 2026 llama.cpp builds; Mac MoE benchmarks from 2025 builds came in up to about 30% below them.
+- **The backend can change speed.** Our Strix Halo figures follow llama.cpp's Vulkan backend, which is faster there. In public comparisons on the same machine and build, ROCm generated text about 3% to 12% slower.
 - **Benchmarks differ in how they measure.** Some average over a long context and some use a short prompt, so we record the context of every benchmark and compare like with like.
 - **Your own machine can differ**: laptop power and heat limits, single-channel RAM, drivers and background apps can all change real speeds. The ranges absorb some of this, not all of it.
 - **Runtimes make their own decisions.** Ollama and llama.cpp estimate memory in their own way and may split a model between GPU and CPU differently from our calculation. llama.cpp's automatic fitting, which current Ollama versions also go through, keeps some VRAM free on each GPU, so a model that only just fits in our calculation can end up partly in system RAM. On your machine, `ollama ps` shows what actually happened.

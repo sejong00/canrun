@@ -92,6 +92,7 @@ export const CPU_OS_RESERVE_GB = 4;
  * GPU 클래스의 옛 MoE 계수(nvidia 0.45·amd 0.5·apple 0.44·apple-ultra 0.29·strix 0.53·dgx-spark 0.68)는 없앴다.
  * `moe` 는 CPU 경로(cpu-only)의 MoE 계수만 남는다.
  */
+// source(strix, 10-16 D90): Radeon 8060S(Strix Halo, 256GB/s) Vulkan 지금 빌드 dense 6점(FA 켬 — llama-bench 기본 auto) — Llama 2 7B Q4_0 b11349 54.38(https://github.com/ggml-org/llama.cpp/discussions/10879#discussioncomment-18711544) · Llama 3.1 8B Q4_0 44.52 · Q4_K_S 44.21 · Qwen3.5 27B Q6_K 8.93(https://github.com/ggml-org/llama.cpp/pull/24966#issuecomment-4787851707 master 열, 2026-06) · Llama 2 13B Q5_K_M 22.48(https://github.com/ggml-org/llama.cpp/pull/21751#issuecomment-4297412913 머지 열) · Qwen3.8 27B Q4_K_M(ggml-org 17.66GiB) b10940 tg32 11.29(https://github.com/ggml-org/llama.cpp/pull/28494#issuecomment-5652740372)이 같은 식에서 0.81~0.85 → minimax 0.829 를 내림한 0.82(각 ±3.3% 안). 옛 0.65("ROCm7/Vulkan")는 출처 없는 값이었다. 같은 기기 ROCm 은 dense 가 0~14% 느리다 — b11349 FA 켬 51.33·끔 47.36, ROCm 7.14 b10376 49.10(https://github.com/ggml-org/llama.cpp/discussions/15021#discussioncomment-17979194), Qwen3.8 27B 11.01 은 0.82 로 +0.4~+13.7%(±20% 안)
 // source: https://github.com/ggml-org/llama.cpp/discussions/15013 · https://github.com/ggml-org/llama.cpp/discussions/15396 · https://www.localscore.ai · https://www.hardware-corner.net/gpu-ranking-local-llm/ — 실측 70여 점 도출 (docs/02 §3.2, research/hardware.md §6)
 // source(amd, 10-15 D79·D80): https://github.com/ggml-org/llama.cpp/discussions/10879 Vulkan 스코어보드 no-FA 4점, 값은 제출 댓글 fa 0 줄 — 7900 XTX b10868 182.63(https://github.com/ggml-org/llama.cpp/discussions/10879#discussioncomment-18386832)·9070 XT b7825 131.54(https://github.com/ggml-org/llama.cpp/discussions/10879#discussioncomment-15594467)·9070 b6188 119.71(https://github.com/ggml-org/llama.cpp/discussions/10879#discussioncomment-14129066)·7800 XT b7875 118.27(https://github.com/ggml-org/llama.cpp/discussions/10879#discussioncomment-15642964)이 같은 식에서 0.72~0.79 → 최대 오차를 가장 작게 하는 값(minimax) 0.76. D79 의 0.77 은 표가 9070 XT 의 FA 켬 줄(137.11)을 no-FA 칸에 넣은 값으로 구했었다(0.72~0.83)
 // source(dgx-spark, 10-15 D79): https://github.com/ggml-org/llama.cpp/blob/3795cc1e89e16fbc145f8a5457ea30abd86e0d1d/benches/dgx-spark/dgx-spark.md (b7941 llama-bench, 깊이 0·8192) — dense 2모델 0.72~0.89 → 각 점이 ±20% 밴드 안에 드는 범위에서 dense 0.78 (옛 0.4 는 출처와 맞지 않던 tg 35 한 점에 맞춘 값). 같은 파일의 MoE 3모델로 정했던 MoE 0.68 은 10-16 D88 에 MOE_SLICE_US 로 대체
@@ -104,7 +105,7 @@ export const EFF: Readonly<Record<EffClass, { dense: number; moe?: number }>> = 
   'intel-arc': { dense: 0.59 }, // B580 실측
   apple: { dense: 0.76 }, // #4167 새 빌드 6점 minimax — 10-15 D83
   'apple-ultra': { dense: 0.57 }, // #4167 새 빌드 3점 minimax — 10-15 D83
-  strix: { dense: 0.65 }, // ROCm7/Vulkan
+  strix: { dense: 0.82 }, // Vulkan 지금 빌드 6점 minimax — 10-16 D90 (ROCm 은 0~14% 느리다)
   'dgx-spark': { dense: 0.78 }, // 개발진 결과 파일 b7941 (mmap 끔) — 10-15 D79
   cpu: { dense: 0.5, moe: 0.43 }, // ≥8코어 전제, 코어 부족 시 ×0.7 은 UI 안내 · moe 는 cpu-only 경로 전용
 });
@@ -161,7 +162,8 @@ export const MULTI_GPU_TG_FACTOR = 1;
  * 근사가 놓친 공유 텐서 몫이 들어간다. 같은 모델의 Q4·Q8 처럼 바이트만 다른 실측에서 Q8 이 바이트 1.2~1.7배에 1.1~1.3배만 느린 것
  * (D86)과, 활성 파라미터가 작은 MoE 가 빠른 카드에서 대역폭 식 위로 못 가는 것(옛 235 tok/s 캡 — 지금 빌드 5090 gpt-oss-20b 412)을
  * 한 항으로 설명한다. 층 수만 곱한 꼴·상수 하나 꼴보다 층 × topK 꼴이 2026 빌드 45점에서 오차가 가장 작았다(평균 8.9%, 모두 ±20% 안 —
- * 옛 식은 17.2%·14점 밖). 값은 클래스별 점의 최대 오차를 가장 작게 하는 값(minimax, 0.1µs).
+ * 옛 식은 17.2%·14점 밖). 값은 클래스별 점의 최대 오차를 가장 작게 하는 값(minimax, 0.1µs). 10-16 D90 에 strix 를 dense 0.82 로
+ * 다시 맞추며 Strix Halo 4점을 더해 49점 — 평균 8.3%·최대 19.9%.
  * 클래스 값이 없는 intel-arc 는 가장 큰 클래스 값을 쓰고 이론 추정(±30%)으로 둔다 — B580 Vulkan gpt-oss-20b tg128 93.09
  * (https://github.com/ggml-org/llama.cpp/pull/18831) 이 그 값으로 −2%. 검증점은 test/fixtures.ts MOE_OVERHEAD_CASES.
  * (Apple 칩의 2025-08 빌드 값(#15396 gpt-oss 가이드)은 지금 빌드보다 느려 +10~+39% 과대 — 회귀 밖 참고점 MOE_OLD_BUILD_CASES)
@@ -171,14 +173,15 @@ export const MULTI_GPU_TG_FACTOR = 1;
 // source(dgx-spark, 9.6 — 9점 최대 18.1%): 개발진 결과 파일 b7941 gpt-oss-20b·120b·Qwen3-Coder-30B-A3B Q8_0 × 깊이 0·8192(https://github.com/ggml-org/llama.cpp/blob/3795cc1e89e16fbc145f8a5457ea30abd86e0d1d/benches/dgx-spark/dgx-spark.md) · PDL 머지 열 tg128 gpt-oss-20b 84.05 · Nemotron 3 Nano 30B-A3B Q4_K_M 76.68 · Qwen3.5-35B-A3B Q4_K_M 62.98(https://github.com/ggml-org/llama.cpp/pull/22522)
 // source(nvidia, 7.7 — 14점 최대 16.5%): gpt-oss-20b tg128 b9867 RTX 3090 210.37 · 4090 264.26 · 5090 411.96(https://github.com/ggml-org/llama.cpp/pull/25319) · RTX PRO 6000 Blackwell 353.16 · RTX 6000 Ada 253.90(https://github.com/ggml-org/llama.cpp/pull/19053) · PRO 6000 PDL 열 gpt-oss-20b 376.31 · Nemotron 3 Nano Q4_K_M 325.74 · Qwen3.5-35B-A3B Q4_K_M 233.26(https://github.com/ggml-org/llama.cpp/pull/22522) · PRO 6000 Max-Q Qwen3.6-35B-A3B UD-Q4_K_M 246.50 · Gemma 4 26B-A4B Q4_K_M 214.47(https://github.com/ggml-org/llama.cpp/pull/24706#issuecomment-4789353680) · Gemma 4 26B-A4B Q4_0 머지 열 3090 148.73 · 4090 186.33 · 5090 258.06(https://github.com/ggml-org/llama.cpp/pull/23615#issuecomment-4534473995) · 3090 Qwen3-30B-A3B UD-Q4_K_XL 202.26(https://github.com/ggml-org/llama.cpp/pull/20831#issuecomment-4285435222)
 // source(amd, 15.5 — 7점 최대 19.9%): ROCm 머지 열 RX 7900 XTX gpt-oss-20b 172.41 · Gemma 4 26B-A4B Q6_K 96.90 · Radeon AI PRO R9700 150.79 · 87.97(https://github.com/ggml-org/llama.cpp/pull/29478#issuecomment-5854628298) · RX 9060 XT gpt-oss-20b 84.81(https://github.com/ggml-org/llama.cpp/pull/25319) · Vulkan R9700 Qwen3.6-35B-A3B UD-Q4_K_XL 117.34(https://github.com/ggml-org/llama.cpp/issues/26795#issuecomment-5247488002) · RX 9070 XT gpt-oss-20b 177.89(https://github.com/ggml-org/llama.cpp/pull/21024#issuecomment-4460661536)
-// source(strix, 2.1 — 3점 최대 9.6%): Radeon 8060S Vulkan Qwen3.5-35B-A3B Q8_0 46.17(https://github.com/ggml-org/llama.cpp/issues/22375#issuecomment-4321102370) · Strix Halo Vulkan Q6_K 53.77(https://github.com/ggml-org/llama.cpp/pull/24966#issuecomment-4787851707) · ROCm gpt-oss-120b 50.2(https://quozul.dev/posts/2025-10-27-gpt-oss-120b-on-ryzen-ai-max-395/). strix dense 0.65 가 지금 Vulkan dense 실측(같은 #24966 의 Llama 8B Q4_0 44.52 = 0.81)보다 낮아 작은 값이 그 차이를 메운다 — dense 를 다시 맞추면 이 값도 다시 맞춘다
+// source(strix, 14.3 — 7점 최대 9.0%, 10-16 D90 에 dense 0.82 로 다시 맞춤): Radeon 8060S Vulkan Qwen3.5-35B-A3B Q8_0 46.17(https://github.com/ggml-org/llama.cpp/issues/22375#issuecomment-4321102370) · Q6_K 53.77(https://github.com/ggml-org/llama.cpp/pull/24966#issuecomment-4787851707) · Qwen3.6-35B-A3B Q8_0 b9586 50.57(https://github.com/ggml-org/llama.cpp/issues/24438) · gpt-oss-20b 72.68 · Qwen3-30B-A3B Q2_K 91.60(https://github.com/ggml-org/llama.cpp/pull/19625 머지 열) · Qwen3.5-122B-A10B Q4_K_M 22.40(https://github.com/ggml-org/llama.cpp/issues/25207#issuecomment-4863716589) · ROCm gpt-oss-120b 50.2(https://quozul.dev/posts/2025-10-27-gpt-oss-120b-on-ryzen-ai-max-395/). D88 의 2.1 은 dense 0.65 가 지금 Vulkan dense(0.82)보다 낮은 몫을 메우던 값이었다
+// source(strix ROCm, 회귀 밖 참고): 같은 빌드 ROCm 은 MoE 가 Vulkan 보다 ~12% 느리다 — AMD 재현 b9592 Qwen3.6-35B-A3B Q8_0 Vulkan 52.2~52.4 vs ROCm 46.0~46.2(https://github.com/ggml-org/llama.cpp/issues/24438#issuecomment-4690618844, 14.3 으로 +9%) · ROCm 10.0 Qwen3-30B-A3B Q4_K_M 77.1(https://github.com/ggml-org/llama.cpp/pull/29450#issuecomment-5843050524, −13%)
 // source: https://github.com/ggml-org/llama.cpp/pull/28948 · https://github.com/ggml-org/llama.cpp/pull/22522 · https://github.com/ggml-org/llama.cpp/pull/25319 외 — 클래스별 근거 점은 위 source(클래스) 줄 (docs/02 §3.1·§7, research/hardware.md §6)
 export const MOE_EXPERT_OVERHEAD_US: Readonly<Partial<Record<EffClass, number>>> = Object.freeze({
   nvidia: 7.7,
   amd: 15.5,
   apple: 9.8,
   'apple-ultra': 14.3,
-  strix: 2.1,
+  strix: 14.3,
   'dgx-spark': 9.6,
 });
 
@@ -199,9 +202,9 @@ export const PARTIAL_OFFLOAD_B_CAP_GPU_FRAC = 0.9;
  * 신뢰 밴드 (§4). calibrated 는 클래스 의존:
  * NVIDIA·AMD dGPU dense ±12% / 그 외 클래스·모든 MoE·부분 오프로드 ±20%.
  * 검증 최대 오차를 상회하도록 설정 — 밴드가 검증값보다 좁으면 안 됨. 속도 12점 최대 10.5%(M5 Pro — 10-16 D88 전에는 15.4% 5060 Ti MoE,
- * 10-15 D83 전에는 17.1% M4 Pro b1550) · MoE 2026 빌드 45점 최대 19.9%(±20% 안, 10-16 D88).
+ * 10-15 D83 전에는 17.1% M4 Pro b1550) · MoE 2026 빌드 49점 최대 19.9%(±20% 안, 10-16 D88·D90).
  */
-// source: docs/02 §4 (policy) — 검증 근거는 §7 (속도 12점 MAE 4.7% / max 10.5% · MoE 45점 MAE 8.9% / max 19.9%, verify-regression.test.ts)
+// source: docs/02 §4 (policy) — 검증 근거는 §7 (속도 12점 MAE 4.2% / max 10.5% · MoE 49점 MAE 8.3% / max 19.9%, verify-regression.test.ts)
 export const BANDS = Object.freeze({
   calibratedDgpuDense: 0.12,
   calibratedOther: 0.2,

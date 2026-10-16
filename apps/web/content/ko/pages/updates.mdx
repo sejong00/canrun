@@ -2,6 +2,14 @@ CanRun은 자주 바뀝니다. 새 모델이 들어오고, 계산기에 기능�
 
 ## 바뀐 기능과 고친 계산
 
+<Update id="strix-halo-speed">
+
+### Strix Halo 속도 추정을 고쳤습니다
+
+<SiteLink to="/gpu/amd-strix-halo">Ryzen AI Max+ 395(Strix Halo)</SiteLink>의 효율 계수는 근거가 분명하지 않은 예전 값이어서, 지금 llama.cpp 빌드에서 dense 모델 속도를 낮게 잡았습니다. 지금 빌드의 Vulkan 공개 결과에 계수를 다시 맞추고, MoE 모델에서 전문가마다 드는 고정 시간도 함께 다시 맞췄습니다. dense 모델은 4분의 1쯤 빨라졌고, Qwen3 8B 같은 8B 모델은 ‘원활’에서 ‘쾌적’으로 바뀌었습니다. MoE 모델은 많게는 5분의 1쯤 바뀌었는데, gpt-oss-20b처럼 빨라진 모델도 있고 Qwen3 30B-A3B처럼 조금 느려진 모델도 있습니다. 계수는 Vulkan 백엔드 기준이고, 같은 기기로 비교한 공개 결과에서 ROCm은 3~12% 느렸습니다.
+
+</Update>
+
 <Update id="moe-fixed-cost">
 
 ### MoE 모델 속도 추정을 고쳤습니다

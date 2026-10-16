@@ -2,6 +2,14 @@ CanRun changes often. New models arrive, the calculator gains features, and now 
 
 ## Changes to the site
 
+<Update id="strix-halo-speed">
+
+### Faster estimates for the Strix Halo
+
+Our efficiency factor for the <SiteLink to="/gpu/amd-strix-halo">Ryzen AI Max+ 395 (Strix Halo)</SiteLink> was an older value without a clear source, and it ran low for dense models on current llama.cpp builds. We refitted it to public Vulkan results from current builds, and refitted the fixed per-expert cost for MoE models with it. Dense models now come out about a quarter faster, and 8B models such as Qwen3 8B moved from Runs well to Runs great. MoE estimates moved both ways, by up to about a fifth: gpt-oss-20b rose, and Qwen3 30B-A3B fell a little. The factors follow the Vulkan backend; in public comparisons on the same machine, ROCm ran about 3% to 12% slower.
+
+</Update>
+
 <Update id="moe-fixed-cost">
 
 ### More accurate speeds for MoE models
