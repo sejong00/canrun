@@ -45,8 +45,20 @@ jobs:
       - name: Build (static export + postbuild)
         run: pnpm build
 
+      # IndexNow (10-16 D93, scripts/indexnow.ts) — 배포 전에 지금 사이트의 사이트맵·키 파일을 받아 두고(바뀐 URL 만 고르려고),
+      # 배포가 성공하면 새로 생기거나 lastmod 가 바뀐 URL 을 네이버·api.indexnow.org 에 보낸다. 시크릿 없음(키는 공개 값).
+      # 스크립트는 실패해도 경고만 남기고 exit 0 — continue-on-error 는 그래도 배포를 막지 않기 위한 이중 안전장치.
+      # daily-rebuild(workflow_call)도 이 잡을 그대로 돈다.
+      - name: Fetch live sitemaps (IndexNow baseline)
+        continue-on-error: true
+        run: pnpm run indexnow fetch "$RUNNER_TEMP/indexnow-live"
+
       - name: Deploy to Cloudflare Pages
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: pnpm dlx wrangler@4 pages deploy apps/web/out --project-name=canrun
+
+      - name: IndexNow submit (new or changed URLs)
+        continue-on-error: true
+        run: pnpm run indexnow submit "$RUNNER_TEMP/indexnow-live"

@@ -20,7 +20,8 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { GUIDES, GUIDE_SLUGS, type GuideSlug } from '../apps/web/content/guides';
 import { GPU_INTRO_IDS, HUB_INTROS_UPDATED, MODEL_INTRO_IDS } from '../apps/web/content/hubs';
 import { SITE_UPDATES, latestSiteUpdate } from '../apps/web/content/updates';
-import { ADSENSE_CLIENT } from '../apps/web/lib/site';
+import { ADSENSE_CLIENT, INDEXNOW_KEY } from '../apps/web/lib/site';
+import { ENGINE_SPEC_DATE } from '../packages/engine/src/index';
 import { CF_PAGES_REDIRECT_LINE_LIMIT } from '../scripts/build-redirects';
 import {
   comboIndexable,
@@ -63,9 +64,13 @@ const BOILERPLATE_MAX = 0.6;
 const FILE_COUNT_MAX = 16_000;
 /** D18 — CF Pages 단일 파일 25 MiB 한도 */
 const FILE_SIZE_MAX = 25 * 1024 * 1024;
-/** 허용 비-HTML 파일 (P1-5 사이트맵·robots·RSS·기본 공유 카드, ads·llms 대비) */
-const ROOT_FILE_ALLOWLIST = /^(?:_redirects|icon\.svg|robots\.txt|sitemap[^/]*\.xml|ads\.txt|llms\.txt|rss\.xml|ko\/rss\.xml|og\/default-(?:en|ko)\.png|og\/(?:gpu|model)\/[a-z0-9.-]+-(?:en|ko)\.png)$/;
-const TXT_ALLOWLIST = new Set(['robots.txt', 'ads.txt', 'llms.txt']);
+/** IndexNow 키 파일 (10-16 D93 — 내용 = 키, 공개 값) */
+const INDEXNOW_KEY_FILE = `${INDEXNOW_KEY}.txt`;
+/** 허용 비-HTML 파일 (P1-5 사이트맵·robots·RSS·기본 공유 카드, ads·llms 대비, IndexNow 키 파일 — D93) */
+const ROOT_FILE_ALLOWLIST = /^(?:_redirects|icon\.svg|robots\.txt|sitemap[^/]*\.xml|ads\.txt|llms\.txt|[0-9a-f]{32}\.txt|rss\.xml|ko\/rss\.xml|og\/default-(?:en|ko)\.png|og\/(?:gpu|model)\/[a-z0-9.-]+-(?:en|ko)\.png)$/;
+const TXT_ALLOWLIST = new Set(['robots.txt', 'ads.txt', 'llms.txt', INDEXNOW_KEY_FILE]);
+/** RSS 파일 크기 상한 (10-16 D93 — 본문 전체를 넣은 피드를 수집기가 한 번에 받도록 10MB 아래로. 정책 값) */
+const RSS_SIZE_MAX = 10 * 1000 * 1000;
 const HEAVY_TIMEOUT = 60_000;
 
 type OutFile = { rel: string; size: number };
@@ -89,6 +94,11 @@ function walkOut(dir: string, rel = ''): { files: OutFile[]; dirs: string[] } {
 }
 
 const readJson = <T>(relPath: string): T => JSON.parse(readFileSync(join(repoRoot, relPath), 'utf8')) as T;
+/** YYYY-MM-DD 둘 중 늦은 날 */
+const laterDate = (a: string, b: string) => (a > b ? a : b);
+/** React 가 텍스트를 이스케이프하는 방식 — 렌더된 HTML 에서 messages 문장을 찾을 때 */
+const escHtml = (s: string) =>
+  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#x27;');
 
 let pages: PageFacts[] = [];
 let outFiles: OutFile[] = [];
@@ -299,16 +309,16 @@ describe('hub intros (10-14 D74 — 손으로 쓴 소개글은 레지스트리 �
     expect(seen.ko.sort(), 'ko hubs with an intro').toEqual(expected);
   });
 
-  it('sitemap lastmod of a hub with an intro is the later of the data date and the intro date; other hubs keep the data date', () => {
-    const dataUpdated = readJson<{ dataUpdated: string }>('data/meta.json').dataUpdated;
-    const introDate = dataUpdated > HUB_INTROS_UPDATED ? dataUpdated : HUB_INTROS_UPDATED;
+  it('sitemap lastmod of a hub with an intro is the latest of the data, engine (D93) and intro dates; other hubs the later of data and engine', () => {
+    const numbersDate = laterDate(readJson<{ dataUpdated: string }>('data/meta.json').dataUpdated, ENGINE_SPEC_DATE);
+    const introDate = laterDate(numbersDate, HUB_INTROS_UPDATED);
     const withIntro = new Set([...GPU_INTRO_IDS.map((id) => `/gpu/${id}`), ...MODEL_INTRO_IDS.map((id) => `/model/${id}`)]);
     let checked = 0;
     for (const file of ['sitemap-gpus.xml', 'sitemap-models.xml']) {
       const xml = readFileSync(join(outDir, file), 'utf8');
       for (const m of xml.matchAll(/<url><loc>([^<]+)<\/loc><lastmod>([^<]+)<\/lastmod>/g)) {
         const path = urlToPath(m[1]!).replace(/^\/ko(?=\/)/, '');
-        expect(m[2], `${file} ${m[1]} lastmod`).toBe(withIntro.has(path) ? introDate : dataUpdated);
+        expect(m[2], `${file} ${m[1]} lastmod`).toBe(withIntro.has(path) ? introDate : numbersDate);
         checked += 1;
       }
     }
@@ -1089,6 +1099,60 @@ describe('sitemaps · robots.txt · RSS (P1-5)', () => {
       const links = [...xml.matchAll(/<item><title>[^<]*<\/title><link>([^<]+)<\/link>/g)].map((m) => m[1]!);
       const expected = PUBLISHED_GUIDES.map((slug) => `${origin()}${localePath(locale, `/guides/${slug}`)}`);
       expect([...links].sort(), rel).toEqual([...expected].sort());
+    }
+  });
+
+  it('RSS items carry the full guide body in <content:encoded> (D93): every body heading, absolute links, no scripts/nav/icons/screen attributes, under the size cap', () => {
+    for (const [rel, locale] of [
+      ['rss.xml', 'en'],
+      ['ko/rss.xml', 'ko'],
+    ] as const) {
+      const xml = read(rel);
+      console.log(`[rss] ${rel} ${xml.length} chars`);
+      expect(Buffer.byteLength(xml), `${rel} bytes`).toBeLessThan(RSS_SIZE_MAX);
+      expect(xml, rel).toContain('xmlns:content="http://purl.org/rss/1.0/modules/content/"');
+      const dataNote = readJson<{ Guides: { dataNote: string } }>(`apps/web/messages/${locale}.json`).Guides.dataNote;
+      const items = [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)].map((m) => m[1]!);
+      expect(items.length, rel).toBe(PUBLISHED_GUIDES.length);
+      for (const item of items) {
+        const link = /<link>([^<]+)<\/link>/.exec(item)![1]!;
+        expect(item, `${link} <description>`).toMatch(/<description>[^<]+<\/description>/);
+        const encoded = /<content:encoded><!\[CDATA\[([\s\S]*?)\]\]><\/content:encoded>/.exec(item)?.[1];
+        expect(encoded, `${link} <content:encoded>`).toBeDefined();
+        expect(encoded!.endsWith(`<p>${dataNote}</p>`), `${link} ends with the data note`).toBe(true);
+        for (const banned of ['<script', '<style', '<nav', '<svg', '<form', '<!--', ' class=', ' style=', ' data-', ' aria-', 'href="/', '__next']) {
+          expect(encoded!.includes(banned), `${link} content contains ${banned}`).toBe(false);
+        }
+        // 화면의 본문 = [data-guide-body] 시작부터 바로 뒤 데이터 안내 문단까지 — 그 안의 h2 가 피드에 전부 있다
+        const html = readFileSync(join(outDir, `${urlToPath(link).slice(1)}.html`), 'utf8');
+        const start = html.indexOf('data-guide-body');
+        const end = html.indexOf(escHtml(dataNote), start);
+        expect(start > 0 && end > start, `${link} page has a body followed by the data note`).toBe(true);
+        const headings = [...html.slice(start, end).matchAll(/<h2\b[^>]*>([\s\S]*?)<\/h2>/g)].map((m) =>
+          m[1]!.replace(/<!--[\s\S]*?-->/g, '').replace(/\s(?:class|data-[\w-]+)="[^"]*"/g, ''),
+        );
+        expect(headings.length, `${link} body headings`).toBeGreaterThan(0);
+        for (const heading of headings) expect(encoded!.includes(`<h2>${heading}</h2>`), `${link} heading "${heading}"`).toBe(true);
+      }
+    }
+  });
+
+  it('the IndexNow key file sits at the site root and holds just the key (D93)', () => {
+    expect(INDEXNOW_KEY).toMatch(/^[0-9a-f]{32}$/);
+    expect(existsSync(join(outDir, INDEXNOW_KEY_FILE)), INDEXNOW_KEY_FILE).toBe(true);
+    expect(read(INDEXNOW_KEY_FILE)).toBe(INDEXNOW_KEY);
+  });
+
+  it('calculator and combo lastmod are the later of the data date and the engine date (D93); home keeps the data date', () => {
+    const dataUpdated = readJson<{ dataUpdated: string }>('data/meta.json').dataUpdated;
+    const numbersDate = laterDate(dataUpdated, ENGINE_SPEC_DATE);
+    const lastmods = (xml: string) => [...xml.matchAll(/<url><loc>([^<]+)<\/loc><lastmod>([^<]+)<\/lastmod>/g)].map((m) => [urlToPath(m[1]!), m[2]!] as const);
+    const pageDates = new Map(lastmods(read('sitemap-pages.xml')));
+    for (const locale of ['en', 'ko'] as const) {
+      expect(pageDates.get(localePath(locale, '/')), `${locale} home`).toBe(dataUpdated);
+      expect(pageDates.get(localePath(locale, '/calculator')), `${locale} calculator`).toBe(numbersDate);
+      const combos = existsSync(join(outDir, `sitemap-combos-${locale}.xml`)) ? lastmods(read(`sitemap-combos-${locale}.xml`)) : [];
+      for (const [path, lastmod] of combos) expect(lastmod, path).toBe(numbersDate);
     }
   });
 });

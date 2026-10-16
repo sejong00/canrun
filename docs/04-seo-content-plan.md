@@ -47,7 +47,7 @@
 - **P1-6 개방 절차** = `currentBatch: 1` 커밋·배포 + sitemap-combos 제출·GSC 색인 요청 → 이후 배치도 같은 방법. 주의: 오래 noindex였던 URL은 재크롤이 느리다 — **4주 게이트는 GSC에서 재크롤이 확인된 시점부터 기산**한다.
 - **쌍둥이 GPU 근접 중복 완화(D22)**: VRAM·대역폭·클래스가 같은 GPU 쌍(7그룹 — RX 9070/9070 XT, RTX 4090/3090 Ti, 5070 Ti/5080 Laptop 등)은 fit·tg 수치가 동일해 콤보 페이지가 거의 같다. 페이지에 형제 문장("{twin}도 메모리 구성이 같아 생성 속도는 동일, 프롬프트 처리만 다름 {pp} vs {ppTwin}")과 FP16 TFLOPS·pp·가격·인접 GPU 차이를 싣고, **같은 인덱싱 배치에 쌍둥이를 함께 넣지 않는다**.
 - 수요 없는 콤보(구형 GPU×비주류 모델)는 어느 배치에도 넣지 않는다(생성은 되지만 noindex 유지) → 인덱스 품질 보호.
-- sitemap: 유형별 분할(sitemap-gpus/models/combos-en/combos-ko/guides) + lastmod = 데이터 갱신일.
+- sitemap: 유형별 분할(sitemap-gpus/models/combos-en/combos-ko/guides) + lastmod = 데이터 갱신일. 엔진 수치를 그리는 계산기·허브·콤보는 max(데이터 갱신일, 엔진 스펙 날짜 `ENGINE_SPEC_DATE`) — 엔진 개정은 데이터 없이도 모든 수치를 바꾼다(PROGRESS §4 D93). 가이드는 레지스트리 dateModified, 업데이트 소식·소개글 허브는 위 규칙대로.
 
 ## 4. 콤보 페이지 품질 요건 (스케일드 콘텐츠 판정 방어 체크리스트)
 페이지당 **고유 데이터 ≥8개**: ①quant×fit 표(수치 전부 조합 고유) ②VRAM 분해 바 ③ctx별 메모리/속도 곡선 ④예상 pp/tg±밴드 ⑤실측 표(있으면) ⑥대안 3종 추천 로직 결과 ⑦실행 커맨드(플래그가 조합 의존: -ngl, --n-cpu-moe N 값) ⑧FAQ(수치 삽입형) — 선택 요소로 dGPU 콤보의 "시스템 RAM 용량별 판정"(16~128GB, 맨 위 판정이 RAM 에 따라 바뀌는 페이지만 — 10-03 D64, PROGRESS §4). 제목·description·헤더 판정·FAQ 는 RAM 32GB 가정 그대로라 RAM 목록이 이 불변식(FAQ 답 = JSON-LD, 제목 유일)을 바꾸지 않는다. "깊이 테스트": GPU명 가리고도 페이지 구분 가능해야 함 — P1-2 구현(D15): GPU명·id·별칭 마스킹 후 숫자 다중집합 지문이 로케일 내 전 콤보에서 유일 + 시드 PRNG 3페이지 기록(쌍둥이 GPU는 FP16·pp·가격·인접 GPU로 구분, §3 D22). 보일러플레이트 문장 비율 < 60% — 측정(D16): 콤보의 ≥50%에 나타나는 문장 단위(p/li/h/td/th/dt/dd/caption/code, 이름 마스킹) 글자 비율 < 0.6.
@@ -62,13 +62,13 @@
 - ko는 번역이 아니라 로컬라이즈: 템플릿 문자열 세트는 네이티브 감수 1회(유한 세트라 저비용·정책 안전), 에디토리얼은 별도 집필, ko 고유 요소(원화, 쿠팡, 한국 모델, 아카라이브 문화) 포함. **장문 기계번역 게시 금지.**
 
 ## 7. 네이버 플레이북 (ko 트래픽 2차 엔진, 점유율 62.9%지만 개발자층은 구글 우선)
-1. 출시 주: 네이버 서치어드바이저 등록(소유 확인, robots에 Yeti 허용, **사이트맵+RSS 제출**) — SSG 풀 HTML이라 렌더링 리스크 없음.
+1. 출시 주: 네이버 서치어드바이저 등록(소유 확인, robots에 Yeti 허용, **사이트맵+RSS 제출**) — SSG 풀 HTML이라 렌더링 리스크 없음. RSS 항목은 요약(`description`) + 본문 전체(`content:encoded`), 배포마다 IndexNow 로 바뀐 URL 을 알린다(PROGRESS §4 D93).
 2. 병행 채널: **네이버 블로그 개설** — 주 1회 한국어 벤치마크/가이드 포스팅 + 도구 링크(네이버 SERP는 자사 블로그/카페 블록이 지배 — C-Rank는 주제 일관성, D.I.A+는 실사용 후기 가점 → 국민 가성비 카드인 5060 Ti 16GB 실측 후기 콘텐츠가 정확히 유리).
 3. OG 태그·모바일 최적화(한국 사용자 90% 모바일).
 4. (P2) 아카라이브 로컬 채널·퀘이사존에 벤치 제출 요청 포스트 — 단 광고성 금지, 기여 형태로.
 
 ## 8. 신모델 48시간 플레이북 (반복 랜드그랩 — apxml 검증 패턴)
-릴리스 감지(파이프라인 알림) → ①config.json·GGUF 크기 수집(자동 PR) ②모델 허브 + 인기 GPU 15종 콤보 페이지 생성·배포 ③en/ko 요구사양 가이드 1편(30분 템플릿) ④sitemap ping + GSC 색인 요청 ⑤(선택) 자체 리그(5060 Ti 16GB)에서 돌아가는 신모델이면 실측 1점 추가 → "실측 포함" 차별화 ⑥r/LocalLLaMA·아카라이브 스레드에 계산기 링크(질문 답변 형태). 목표: 48h 내 라이브, 서지 2주 수확.
+릴리스 감지(파이프라인 알림) → ①config.json·GGUF 크기 수집(자동 PR) ②모델 허브 + 인기 GPU 15종 콤보 페이지 생성·배포 ③en/ko 요구사양 가이드 1편(30분 템플릿) ④IndexNow 전송(배포마다 자동 — 새로 생기거나 lastmod 가 바뀐 URL 을 네이버·api.indexnow.org 에, `scripts/indexnow.ts`, PROGRESS §4 D93) + GSC 색인 요청(Google 은 IndexNow 를 쓰지 않고 sitemap ping 도 2023 년에 없앴다) ⑤(선택) 자체 리그(5060 Ti 16GB)에서 돌아가는 신모델이면 실측 1점 추가 → "실측 포함" 차별화 ⑥r/LocalLLaMA·아카라이브 스레드에 계산기 링크(질문 답변 형태). 목표: 48h 내 라이브, 서지 2주 수확.
 
 ## 9. 에디토리얼 캘린더 (출시분 — AdSense 승인·웜업·T1 커버)
 **P1-4 확정(PROGRESS §4 D37)** — hreflang 대칭 때문에 가이드는 **같은 슬러그의 en/ko 쌍**(같은 질문·같은 범위, 각 언어 별도 집필). 출시 6쌍(우선순위 순): `vram-requirements`(VRAM 8~32GB로 돌릴 수 있는 모델 — 배치1 dGPU 48쌍 그리드) · `ollama-context-length`(Ollama가 느리거나 앞 내용을 잊을 때) · `gguf-quantization`(Q4_K_M·IQ4_XS·Q8_0 무엇을 받을까) · `korean-open-llms`(EXAONE·Kanana·HyperCLOVA X SEED·Solar) · `mac-local-llm`(M4·M5 통합 메모리 — 배치1 Apple 12쌍 그리드) · `kv-cache-context`. 보류(해제 조건): run-120b(엔진 후속 ①④ — cpu-moe 교정·gpt-oss nonExpertGB) · 예산 GPU·중고 3090(streetKRW·중고가 데이터) · 5060 Ti 전수 실측(P0-5) · 입문(소유자 설치 스크린샷). 아래 목록은 이후 쌍을 고르는 주제 풀이다. 집필 규칙: `apps/web/content/AUTHORING.md`.

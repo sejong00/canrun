@@ -25,7 +25,8 @@
     "validate-data": "tsx scripts/validate-data.ts",
     "sync-models": "tsx scripts/sync-models.ts",
     "add-model": "tsx scripts/add-model.ts",
-    "new-model-alert": "tsx scripts/new-model-alert.ts"
+    "new-model-alert": "tsx scripts/new-model-alert.ts",
+    "indexnow": "tsx scripts/indexnow.ts"
   },
   "devDependencies": {
     "@lhci/cli": "^0.15.1",

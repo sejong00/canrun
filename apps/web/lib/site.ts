@@ -42,3 +42,11 @@ export const SEARCH_VERIFICATION = {
  * 광고 스크립트·슬롯은 승인 뒤 별도 작업(docs/07 §3).
  */
 export const ADSENSE_CLIENT: string = 'ca-pub-7918829214294284';
+
+/**
+ * IndexNow 키 (10-16 D93 — 공개 값, 시크릿 아님). 프로토콜상 누구나 읽을 수 있어야 하는 값이다: postbuild 가 `out/<키>.txt` 에
+ * 키 자체를 써서 사이트 루트에 올리고, 검색엔진(네이버·Bing 등)은 전송 요청의 `keyLocation` 에서 그 파일을 읽어 사이트 소유를 확인한다.
+ * 배포 뒤 `scripts/indexnow.ts` 가 새로 생기거나 lastmod 가 바뀐 URL 을 이 키로 보낸다. 2026-10-16 node crypto 로 한 번 만든 32자리 hex.
+ * 바꾸면 다음 배포가 첫 실행처럼 전체 URL 을 보낸다(지금 사이트에 새 키 파일이 없으므로).
+ */
+export const INDEXNOW_KEY = '9d1f94852e4dcac43ae59c8dfbec33e0';
