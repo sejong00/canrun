@@ -251,6 +251,8 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
   },
   'local-coding-agents': {
     ...PUBLISHED_1015,
+    // 10-16 D91: pp 추정이 모델 크기를 반영 — 프롬프트 처리 문단 갱신
+    dateModified: '2026-10-16',
     // ComboGrid 는 8k 고정이라 쓰지 않는다 — 32k·64k·128k 는 CtxTable 로
     grids: {},
     related: ['ollama-context-length', 'kv-cache-context', 'vram-requirements'],
@@ -353,6 +355,8 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
   },
   'tokens-per-second': {
     ...PUBLISHED_1015,
+    // 10-16 D91: pp 추정이 모델 크기를 반영 — 프롬프트 처리 문단 갱신
+    dateModified: '2026-10-16',
     grids: {
       // 모델 4 × 대역폭 작은 순 8칸(CPU 89.6 → RTX 5090 1792 GB/s). 본문이 이 순서("least memory bandwidth to the most" /
       // "위에서부터 메모리 대역폭이 작은 순서")와 "RTX 4060 행 첫 칸이 4060 Ti 16GB 보다 높은 건 실측이라서"를 말한다 —
@@ -378,6 +382,8 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
   },
   'amd-intel-gpus': {
     ...PUBLISHED_1015,
+    // 10-16 D91: pp 추정이 모델 크기를 반영 — 프롬프트 처리 문단 갱신
+    dateModified: '2026-10-16',
     grids: {
       // 라데온·Arc 카드 바로 아래에 VRAM 이 같은 NVIDIA 카드: 12GB B580/3060 · 16GB 9060 XT/5060 Ti · 16GB 9070 XT/5070 Ti ·
       // 24GB 7900 XTX/3090 × 모델 6. 본문이 이 순서("one row after the other" / "한 줄씩 번갈아")와 12·16·24GB 절의 짝을

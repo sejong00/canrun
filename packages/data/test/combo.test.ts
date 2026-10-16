@@ -182,7 +182,9 @@ describe('vramBreakdown / ppRange', () => {
   it('pp is a rough ±40% range for full-GPU fits (rtx-4060 × llama-3.1-8b)', () => {
     const g = gpu('rtx-4060');
     const combo = assessCombo(seed, g, hardwareConfigs(g, seed.gpus)[0]!, model('llama-3.1-8b'));
-    expect(ppRange(combo.display)).toEqual({ est: 2114, low: 2114 * 0.6, high: 2114 * 1.4, band: 0.4 });
+    // 기준값 154 × 15.1 TFLOPS(7B Q4_0 상당)를 8.03B 로 나눈 값 — 모델 크기 반영(10-16 D91, 전에는 모든 모델 2114)
+    const est = (154 * 15.1) / (0.05 + 0.95 * (8.03 / 6.74));
+    expect(ppRange(combo.display)).toEqual({ est: expect.closeTo(est, 6), low: expect.closeTo(est * 0.6, 6), high: expect.closeTo(est * 1.4, 6), band: 0.4 });
   });
 });
 

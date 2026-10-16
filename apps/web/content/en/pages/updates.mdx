@@ -2,6 +2,14 @@ CanRun changes often. New models arrive, the calculator gains features, and now 
 
 ## Changes to the site
 
+<Update id="prompt-speed-model-size">
+
+### Prompt speed estimates now depend on the model
+
+The prompt-processing estimate on combo pages was one figure per graphics card, fitted to a 7B model, so a 1B model and a 70B model showed the same prompt speed on the same card. It is now divided by the model's size, and mixture-of-experts (MoE) models count as more than their active parameters, because each expert gets only a slice of every batch of prompt tokens. We fitted it to 91 public benchmarks from recent llama.cpp builds and refitted the NVIDIA, AMD and Strix Halo factors with it; Radeon cards now use AMD's FP16 matrix figure, which is twice the usual FP16 figure on the RX 9000 series. On an <SiteLink to="/gpu/rtx-4090">RTX 4090</SiteLink>, Qwen3 32B now shows a little under a quarter of the old figure and Llama 3.2 1B about five times as much, and the <SiteLink to="/gpu/nvidia-dgx-spark">DGX Spark</SiteLink> now gets a prompt estimate too. Generation speeds and verdicts did not change.
+
+</Update>
+
 <Update id="strix-halo-speed">
 
 ### Faster estimates for the Strix Halo

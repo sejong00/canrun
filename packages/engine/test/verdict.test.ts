@@ -1,6 +1,8 @@
 /** 판정·신뢰 밴드 유닛 — docs/02 §4·§5. */
 import { describe, expect, it } from 'vitest';
+import { PP_COEF } from '../src/constants';
 import { evaluate } from '../src/index';
+import { ppEstimate } from '../src/speed';
 import { bandFor, calibratedBand, verdictOf } from '../src/verdict';
 import { LLAMA31_8B_Q4, LLAMA33_70B_Q4, M4_MAX_128, RTX_4060_8GB } from './fixtures';
 
@@ -74,7 +76,9 @@ describe('evaluate confidence wiring (§4)', () => {
   it('ppTokS present only when fp16Tflops is provided', () => {
     expect(evaluate(RTX_4060_8GB, LLAMA31_8B_Q4).ppTokS).toBeUndefined();
     const withTflops = { ...RTX_4060_8GB, fp16Tflops: 15.1 };
-    expect(evaluate(withTflops, LLAMA31_8B_Q4).ppTokS?.est).toBeCloseTo(140 * 15.1, 3);
+    // 8B 는 기준(7B)보다 조금 느리다 — 모델 크기 반영(10-16 D91)
+    expect(evaluate(withTflops, LLAMA31_8B_Q4).ppTokS?.est).toBeCloseTo(ppEstimate(withTflops, LLAMA31_8B_Q4)!, 6);
+    expect(evaluate(withTflops, LLAMA31_8B_Q4).ppTokS!.est).toBeLessThan(PP_COEF.nvidia! * 15.1);
   });
 
   it('calibrated: 기본 경로, low/high = est × (1∓밴드)', () => {

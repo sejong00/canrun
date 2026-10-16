@@ -140,9 +140,9 @@ B580의 약점은 프롬프트를 읽는 속도입니다. llama.cpp에 공개된
 
 생성은 토큰을 하나씩 만들며 메모리를 읽습니다. 프롬프트 처리는 프롬프트 전체를 크게 묶어 한꺼번에 읽습니다. 그래서 메모리 대신 GPU 연산 성능이 속도를 정합니다. 자세한 원리는 ‘<GuideLink slug="tokens-per-second" />’ 가이드에 있습니다. 이 차이는 모델이 답하기 전에 읽을 내용이 많을 때 크게 느껴집니다. 긴 문서를 붙여 넣을 때, 캐시가 비워진 긴 대화를 이어 갈 때가 그렇습니다. 코딩 에이전트의 긴 지시문과 도구 설명을 읽을 때도 마찬가지입니다.
 
-CanRun 조합 페이지는 모델이 GPU에 다 올라갈 때 프롬프트 처리 속도를 대략적 추정(±40%)으로 보여 줍니다. 카드의 FP16 연산 성능으로 계산하는 값입니다. AMD·인텔 카드는 연산 성능이 같아도 프롬프트 처리 속도를 NVIDIA 카드의 4분의 1쯤으로 잡습니다. 이 비율은 Vulkan 공개 결과를 바탕으로, RX 7900 XTX의 결과보다 조금 높게 잡은 값입니다. 이 추정에서 RX 9070 XT의 프롬프트 처리 속도는 RTX 5070 Ti의 절반을 조금 넘습니다. 생성 속도가 80% 정도인 것과 비교하면 차이가 큽니다.
+CanRun 조합 페이지는 모델이 GPU에 다 올라갈 때 프롬프트 처리 속도를 대략적 추정(±40%)으로 보여 줍니다. 카드의 FP16 연산 성능에서 출발해 모델 크기로 나눈 값입니다. 자세한 계산은 ‘<GuideLink slug="tokens-per-second" />’ 가이드에 있습니다. 라데온 카드는 AMD 사양 페이지의 FP16 행렬 연산 성능을 씁니다. RX 9000 시리즈는 이 값이 GPU 페이지의 FP16 값의 두 배이고, RX 7000 시리즈는 같습니다. 계수는 RX 9060 XT·RX 9070 XT·RX 7900 XTX를 2026년 llama.cpp 빌드로 잰 공개 llama-bench 결과에 맞췄습니다. 이 추정에서 RX 9070 XT의 프롬프트 처리 속도는 RTX 5070 Ti의 10분의 7쯤입니다. 생성 속도는 80% 정도입니다. RX 7900 XTX는 RTX 3090의 절반을 조금 넘습니다.
 
-공개 결과는 이 계산보다 높게 나온 것도, 낮게 나온 것도 있습니다. RX 9070 XT의 Vulkan 결과와 RX 7900 XT의 gpt-oss-20b ROCm 결과는 CanRun 값보다 높습니다. 반대로 RX 7900 XTX와 Arc B580은 CanRun 값보다 낮게 나왔습니다. 그러니 라데온·Arc 페이지의 프롬프트 처리 속도는 대략적인 범위로만 보세요. 긴 프롬프트가 중요하다면 직접 재는 편이 낫습니다. `ollama run`에 `--verbose`를 붙이면 `prompt eval rate`가 나옵니다. llama-server는 답이 끝날 때마다 `prompt eval time` 줄을 찍습니다.
+Arc B580의 프롬프트 처리 추정이 가장 불확실합니다. Llama 2 7B를 Vulkan으로 잰 2025년 결과는 CanRun 추정보다 3분의 1쯤 낮았습니다. 반대로 새 빌드와 드라이버로 잰 2026년 결과는 훨씬 빨랐습니다. 다만 카탈로그 밖 모델로 잰 값입니다. 그러니 라데온·Arc 페이지의 프롬프트 처리 속도는 대략적인 범위로만 보세요. 긴 프롬프트가 중요하다면 직접 재는 편이 낫습니다. `ollama run`에 `--verbose`를 붙이면 `prompt eval rate`가 나옵니다. llama-server는 답이 끝날 때마다 `prompt eval time` 줄을 찍습니다.
 
 ## 이 숫자는 얼마나 확실한가
 
@@ -196,3 +196,5 @@ CanRun 계산으로는 생성 속도가 조금 빠릅니다. 라데온의 효율
 - [llama.cpp: NVIDIA CUDA 성능 토론](https://github.com/ggml-org/llama.cpp/discussions/15013): 같은 벤치마크의 RTX 5070 Ti·RTX 3090·RTX 3060 12GB 결과
 - [llama.cpp: gpt-oss 실행 안내 토론](https://github.com/ggml-org/llama.cpp/discussions/15396): ROCm으로 잰 gpt-oss-20b 결과 — RX 7900 XT(직접 변환한 파일)와 RX 7900 GRE(MXFP4 파일)
 - [gpt-oss-20b 모델 카드](https://huggingface.co/openai/gpt-oss-20b): 전체·활성 파라미터, 16GB 메모리 안에서 구동
+- [AMD: Radeon RX 9070 XT 사양](https://www.amd.com/en/products/graphics/desktops/radeon/9000-series/amd-radeon-rx-9070xt.html)·[Radeon RX 7900 XTX 사양](https://www.amd.com/en/products/graphics/desktops/radeon/7000-series/amd-radeon-rx-7900xtx.html): FP16 벡터·행렬 연산 성능
+- [llama.cpp 이슈 #30009](https://github.com/ggml-org/llama.cpp/issues/30009): Arc B580에서 Vulkan으로 잰 2026년 프롬프트 처리 결과(Gemma 4 E4B Q4_0)

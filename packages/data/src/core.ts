@@ -20,6 +20,8 @@ export const GPU_CORE_KEYS = [
   'ramOptionsGB',
   'memBandwidthGBs',
   'fp16Tflops',
+  // pp 추정의 행렬 FP16(10-16 D91 — AMD)
+  'fp16MatrixTflops',
   'effClass',
   // 계산기의 pp 추정(10-16 D86 — M5 계열 Neural Accelerator 계수)
   'neuralAccelerators',

@@ -14,6 +14,8 @@
  *     (Apple MoE 8점(#15396 2025-08 빌드)은 10-16 D88 에 회귀 밖 참고점 — 10 의 MOE_OLD_BUILD_CASES)
  *  9) pp(§3.5) Apple 12점(10-16 D86): 각 ±40%(PP_BAND) · M5 계열 5점 각 ±12% · 그 밖의 칩 새 빌드 2점 각 ±5%
  * 10) MoE 토큰당 고정 시간(§3.1, 10-16 D88): 2026 빌드 49점(10-16 D90 에 Strix Halo 4점 추가) 각 ±20% · MAE < 10%(검증값 8.9% → 8.3%) · 클래스별 MAE < 12%
+ * 11) pp 모델 크기(§3.5, 10-16 D91): 2026 빌드 다모델 91점(dense 61·MoE 30) 각 ±40%(PP_BAND) · MAE < 13%(검증값 11.6%) · 클래스별 MAE < 15%
+ *     · ±30% 밖 2점 이하 — 옛 식(GPU 마다 값 하나)은 같은 점에서 MAE 92%·최대 +733%
  */
 import { describe, expect, it } from 'vitest';
 import { fit } from '../src/fit';
@@ -22,6 +24,8 @@ import { kvBytesPerToken, kvGB, weightsGBFromBpw } from '../src/memory';
 import { ppEstimate, tgEstimate } from '../src/speed';
 import {
   APPLE_PP_CASES,
+  LLAMA2_7B_Q4_0,
+  PP_SIZE_CASES,
   CPU_MOE_CASES,
   MOE_OLD_BUILD_CASES,
   MOE_OVERHEAD_CASES,
@@ -256,7 +260,7 @@ describe('8) class recalibration (10-15 D79·D83, 10-16 D90): AMD Vulkan 4점 ·
 describe('9) pp: Apple #4167 Llama 2 7B Q4_0 pp512 (10-16 D86·D87, docs/02 §3.5)', () => {
   // 표시 밴드 = 데이터 레이어 PP_BAND 0.4 (docs/02 §3.5 policy) — 엔진 테스트라 값으로 둔다
   const PP_BAND = 0.4;
-  const errors = APPLE_PP_CASES.map(({ hw, measuredPp }) => (ppEstimate(hw)! - measuredPp) / measuredPp);
+  const errors = APPLE_PP_CASES.map(({ hw, measuredPp }) => (ppEstimate(hw, LLAMA2_7B_Q4_0)! - measuredPp) / measuredPp);
   const group = (g: (typeof APPLE_PP_CASES)[number]['group']) => errors.filter((_, i) => APPLE_PP_CASES[i]!.group === g);
 
   it.each(APPLE_PP_CASES.map((c, i) => [c.label, i] as const))('%s within ±40% rough band', (_label, i) => {
@@ -325,5 +329,47 @@ describe('10) MoE 토큰당 고정 시간 (§3.1, 10-16 D88·D90): 2026 llama.cp
       expect(e, c.label).toBeGreaterThan(0.1);
       expect(e, c.label).toBeLessThan(0.4);
     }
+  });
+});
+
+describe('11) pp 모델 크기 (§3.5, 10-16 D91): 2026 llama.cpp 빌드 다모델 91점', () => {
+  // 표시 밴드 = 데이터 레이어 PP_BAND 0.4 (docs/02 §3.5 policy) — 엔진 테스트라 값으로 둔다
+  const PP_BAND = 0.4;
+  const err = (c: (typeof PP_SIZE_CASES)[number]) =>
+    (ppEstimate(c.hw, c.mq, { ubatch: c.ubatch })! - c.measuredPp) / c.measuredPp;
+  const errors = PP_SIZE_CASES.map(err);
+  const mae = (xs: readonly number[]) => xs.reduce((a, b) => a + Math.abs(b), 0) / xs.length;
+  const cls = (c: (typeof PP_SIZE_CASES)[number]) => (c.hw.neuralAccel ? 'neural-accel' : c.hw.effClass);
+
+  it('has the 91 points the constants were fitted to (dense 61 · MoE 30), all with an https source', () => {
+    expect(PP_SIZE_CASES).toHaveLength(91);
+    expect(PP_SIZE_CASES.filter((c) => c.mq.activeParamsB !== undefined)).toHaveLength(30);
+    for (const c of PP_SIZE_CASES) expect(c.source, c.label).toMatch(/^https:\/\//);
+  });
+
+  it.each(PP_SIZE_CASES.map((c, i) => [c.label, i] as const))('%s within ±40% rough band', (_label, i) => {
+    expect(Math.abs(errors[i]!)).toBeLessThanOrEqual(PP_BAND);
+  });
+
+  it('MAE < 13% (verified 11.6%), ±30% 밖 2점 이하, 클래스마다 MAE < 15%', () => {
+    expect(mae(errors)).toBeLessThan(0.13);
+    expect(errors.filter((e) => Math.abs(e) > 0.3).length).toBeLessThanOrEqual(2);
+    for (const k of ['nvidia', 'dgx-spark', 'apple-ultra', 'neural-accel', 'amd', 'strix'] as const) {
+      const xs = errors.filter((_, i) => cls(PP_SIZE_CASES[i]!) === k);
+      expect(xs.length, k).toBeGreaterThanOrEqual(4);
+      expect(mae(xs), k).toBeLessThan(0.15);
+    }
+  });
+
+  it('같은 기기·같은 빌드에서 큰 모델이 느린 비율을 따라간다 — 4090 8B → 70B · DGX Spark 3B → 70B (±25%)', () => {
+    const pair = (a: string, b: string) => {
+      const ca = PP_SIZE_CASES.find((c) => c.label.startsWith(a))!;
+      const cb = PP_SIZE_CASES.find((c) => c.label.startsWith(b))!;
+      const est = ppEstimate(ca.hw, ca.mq, { ubatch: ca.ubatch })! / ppEstimate(cb.hw, cb.mq, { ubatch: cb.ubatch })!;
+      return est / (ca.measuredPp / cb.measuredPp) - 1;
+    };
+    expect(Math.abs(pair('RTX 4090 llama 8B Q4_0 pp512 (2026-05-25', 'RTX 4090 llama 70B Q4_K_M'))).toBeLessThan(0.25);
+    expect(Math.abs(pair('DGX Spark llama 3B Q4_K_M', 'DGX Spark llama 70B Q4_K_M'))).toBeLessThan(0.25);
+    expect(Math.abs(pair('RTX 3090 llama 1B Q4_0', 'RTX 3090 llama 8B Q4_0 pp512'))).toBeLessThan(0.25);
   });
 });

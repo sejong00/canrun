@@ -58,6 +58,11 @@ export type Hardware = {
   /** pp 추정용 (선택) */
   fp16Tflops?: number;
   /**
+   * 행렬 코어 FP16 처리량(dense) — 제조사가 벡터 FP16 과 따로 밝힐 때(AMD "Peak Half Precision (FP16 Matrix)"). 있으면 pp 가
+   * `fp16Tflops` 대신 이 값을 쓴다(§3.5, 10-16 D91 — RDNA4 는 행렬 FP16 이 카탈로그 fp16Tflops 의 2배, RDNA3 는 같다)
+   */
+  fp16MatrixTflops?: number;
+  /**
    * GPU 코어마다 행렬곱 가속기(Apple M5 계열 Neural Accelerator) — pp 추정이 클래스 계수 대신 `PP_COEF_NEURAL_ACCEL` 을 쓴다
    * (§3.5, 10-16 D86). tg 는 대역폭 식 그대로
    */

@@ -80,7 +80,7 @@ llama.cpp's public scoreboard for NVIDIA cards, which runs Llama 2 7B at Q4_0 th
 
 The wait before the first word is roughly the new prompt tokens divided by the prompt speed, plus loading time if the model was not in memory yet. In a chat it stays short, because runtimes reuse the part of the prompt they have already processed: Ollama reports those tokens as `prompt eval cached`, and llama-server as `cache_n`. It grows when you paste a long document or run an agent, whose instructions and tool descriptions alone are long; <GuideLink slug="local-coding-agents" /> covers that case.
 
-CanRun's combo pages show a prompt speed as a rough estimate (±40%), calculated from the card's FP16 compute and shown only when the whole model is on the GPU. It is fitted to a 7B model and is the same for every model on a card, so larger dense models read prompts more slowly than it shows.
+CanRun's combo pages show a prompt speed as a rough estimate (±40%), shown only when the whole model is on the GPU. It starts from the card's FP16 compute, which sets the speed for a 7B model, and is divided by the model's size, because reading a prompt takes about two operations per parameter for every token. A 32B model reads prompts at about a fifth of a 7B model's speed on the same card. A 1B model gains less than its size suggests, because part of the time per token does not depend on the model, and that part weighs more on fast cards. A mixture-of-experts model counts as more than its active parameters, because each expert gets only a slice of every batch of prompt tokens. The estimate is for a short prompt; as the context fills, attention takes a larger share of the work and prompt speed falls.
 
 ## Measuring speed on your own PC
 

@@ -10,6 +10,7 @@
 export type SiteUpdate = { readonly id: string; readonly date: string };
 
 export const SITE_UPDATES = [
+  { id: 'prompt-speed-model-size', date: '2026-10-16' },
   { id: 'strix-halo-speed', date: '2026-10-16' },
   { id: 'moe-fixed-cost', date: '2026-10-15' },
   { id: 'apple-gpu-compute', date: '2026-10-15' },

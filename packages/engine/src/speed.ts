@@ -1,6 +1,18 @@
 /** 속도 모델 — docs/02-engine-spec.md §3. */
 
-import { CPU_MOE_RAM_EFF, EFF, MOE_EXPERT_OVERHEAD_US, MULTI_GPU_TG_FACTOR, PP_COEF, PP_COEF_NEURAL_ACCEL } from './constants';
+import {
+  CPU_MOE_RAM_EFF,
+  EFF,
+  MOE_EXPERT_OVERHEAD_US,
+  MULTI_GPU_TG_FACTOR,
+  PP_COEF,
+  PP_COEF_NEURAL_ACCEL,
+  PP_FIXED_SHARE,
+  PP_KQUANT_FACTOR,
+  PP_MOE,
+  PP_REF_PARAMS_B,
+  PP_UBATCH,
+} from './constants';
 import type { FitResult } from './fit';
 import { expertGBFor, gpuCountOf, gpuSharesOf, isUniformGpus, kvGB, nonExpertGBFor, weightsGB } from './memory';
 import type { Hardware, KvQuant, ModelQuant } from './types';
@@ -162,14 +174,53 @@ export function tgEstimate(
   }
 }
 
+export type PpOptions = {
+  /** llama.cpp 물리 배치(-ub). 기본 512 = llama-server·Ollama·LM Studio 기본값 — MoE 의 전문가당 토큰 수만 바꾼다 */
+  ubatch?: number;
+};
+
+/** pp 추정에 쓰는 모델 정보 — 회귀 점은 카탈로그 밖 양자화(Q4_0·Q4_K_S 등)도 넣으므로 quant 는 문자열 */
+export type PpModel = Pick<ModelQuant, 'paramsB' | 'activeParamsB' | 'activeExpertFrac'> & { quant: string };
+
+/** K-quant·i-quant(Unsloth UD 포함) — 역양자화가 무거운 형식 (PP_KQUANT_FACTOR) */
+function isKOrIQuant(quant: string): boolean {
+  return quant.includes('_K') || quant.startsWith('IQ') || quant.startsWith('UD-');
+}
+
 /**
- * pp ≈ ppCoef × fp16Tflops (§3.5). 계수 미정 클래스나 Tflops 미제공 시 undefined.
- * GPU 코어마다 행렬곱 가속기가 있는 칩(Apple M5 계열)은 클래스 계수 대신 `PP_COEF_NEURAL_ACCEL` (10-16 D86).
+ * pp 실효 파라미터 B (§3.5, 10-16 D91) — dense 는 전체 파라미터, MoE 는 활성 × PP_MOE 배수(전문가당 토큰이 적을수록 크다).
+ * 전문가 비율(topK/experts)이 없는 MoE 는 기준 비율(전문가당 64토큰 — gpt-oss-20b)로 둔다.
+ */
+export function ppEffectiveParamsB(mq: PpModel, opts?: PpOptions): number {
+  if (mq.activeParamsB === undefined) return mq.paramsB;
+  const ubatch = opts?.ubatch ?? PP_UBATCH;
+  const tokensPerExpert = mq.activeExpertFrac !== undefined ? ubatch * mq.activeExpertFrac : PP_MOE.refTokensPerExpert;
+  return mq.activeParamsB * PP_MOE.activeFactor * (PP_MOE.refTokensPerExpert / tokensPerExpert) ** PP_MOE.tokenExp;
+}
+
+/**
+ * 프롬프트 처리 tok/s (§3.5, 10-16 D91): 기준값(계수 × FP16 TFLOPS = Llama 2 7B Q4_0 pp512 상당)을 모델 크기로 나눈다.
+ *   pp = 기준값 × 양자화 계수 ÷ (φ + (1 − φ) × 실효 파라미터 / 6.74)
+ * - 계수: 클래스 `PP_COEF`, GPU 코어마다 행렬곱 가속기가 있는 칩(Apple M5 계열)은 `PP_COEF_NEURAL_ACCEL`(10-16 D86)
+ * - TFLOPS: 행렬 코어 값(`fp16MatrixTflops` — AMD)이 있으면 그 값
+ * - 양자화 계수: M5 계열·Strix Halo 의 dense K-quant·i-quant 만 `PP_KQUANT_FACTOR`
+ * 짧은 프롬프트(pp512) 기준이다 — 문맥이 길어지면 어텐션 몫이 커져 느려진다. 계수 미정 클래스나 TFLOPS 미제공 시 undefined.
  */
 export function ppEstimate(
-  hw: Pick<Hardware, 'effClass' | 'fp16Tflops' | 'neuralAccel'>,
+  hw: Pick<Hardware, 'effClass' | 'fp16Tflops' | 'fp16MatrixTflops' | 'neuralAccel'>,
+  mq: PpModel,
+  opts?: PpOptions,
 ): number | undefined {
   const coef = hw.neuralAccel ? PP_COEF_NEURAL_ACCEL : PP_COEF[hw.effClass];
-  if (coef === undefined || hw.fp16Tflops === undefined) return undefined;
-  return coef * hw.fp16Tflops;
+  const tflops = hw.fp16MatrixTflops ?? hw.fp16Tflops;
+  if (coef === undefined || tflops === undefined) return undefined;
+  const ref = coef * tflops;
+  const x = ppEffectiveParamsB(mq, opts) / PP_REF_PARAMS_B;
+  const kq = !isMoe(mq) && isKOrIQuant(mq.quant) ? ppKQuantFactor(hw) : 1;
+  return (ref * kq) / (PP_FIXED_SHARE + (1 - PP_FIXED_SHARE) * x);
+}
+
+function ppKQuantFactor(hw: Pick<Hardware, 'effClass' | 'neuralAccel'>): number {
+  if (hw.neuralAccel) return PP_KQUANT_FACTOR.neuralAccel;
+  return hw.effClass === 'strix' ? PP_KQUANT_FACTOR.strix : 1;
 }

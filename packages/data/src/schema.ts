@@ -73,6 +73,11 @@ export const GpuSchema = z
     memBandwidthGBs: z.number().positive(),
     /** GTX 10 시리즈처럼 FP16 크리플이면 실효값(예: 0.18). Apple 은 위키백과 Apple silicon 표의 FP32 이론값 — 애플 미공개, 애플 GPU 는 FP16 이 FP32 와 같은 속도(10-16 D87) */
     fp16Tflops: z.number().positive().optional(),
+    /**
+     * 행렬 코어 FP16 처리량(dense) — 제조사가 벡터 FP16 과 따로 밝힐 때만(AMD "Peak Half Precision (FP16 Matrix) Performance").
+     * pp 추정이 fp16Tflops 대신 쓴다(10-16 D91 — RDNA4 는 카탈로그 fp16Tflops 의 2배, RDNA3 는 같다). 사양 표시는 fp16Tflops 그대로
+     */
+    fp16MatrixTflops: z.number().positive().optional(),
     effClass: EffClassSchema,
     /**
      * GPU 코어마다 행렬곱 가속기가 있는 칩(Apple M5 계열의 Neural Accelerator — 애플 뉴스룸) — pp 추정이 클래스 계수 대신

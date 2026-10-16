@@ -2,10 +2,20 @@
 import { describe, expect, it } from 'vitest';
 import { fit } from '../src/fit';
 import { gpuSharesOf, gpuUnitsOf } from '../src/memory';
-import { bytesPerTokenGB, gpuThroughputGBs, moeOverheadSeconds, ppEstimate, resolveEff, tgEstimate } from '../src/speed';
+import { bytesPerTokenGB, gpuThroughputGBs, moeOverheadSeconds, ppEffectiveParamsB, ppEstimate, resolveEff, tgEstimate } from '../src/speed';
 import type { Hardware, ModelQuant } from '../src/types';
-import { CPU_MOE_RAM_EFF, MOE_EXPERT_OVERHEAD_US, MULTI_GPU_TG_FACTOR, PP_COEF, PP_COEF_NEURAL_ACCEL } from '../src/constants';
-import { GPT_OSS_20B, QWEN3_8B_Q4, QWEN35_35B_A3B_Q4, QWEN36_35B_A3B_Q4_SPLIT, RTX_3060_12GB, RTX_4090 } from './fixtures';
+import {
+  CPU_MOE_RAM_EFF,
+  MOE_EXPERT_OVERHEAD_US,
+  MULTI_GPU_TG_FACTOR,
+  PP_COEF,
+  PP_COEF_NEURAL_ACCEL,
+  PP_FIXED_SHARE,
+  PP_KQUANT_FACTOR,
+  PP_MOE,
+  PP_REF_PARAMS_B,
+} from '../src/constants';
+import { GPT_OSS_20B, LLAMA2_7B_Q4_0, LLAMA33_70B_Q4, QWEN3_8B_Q4, QWEN35_35B_A3B_Q4, QWEN36_35B_A3B_Q4_SPLIT, RTX_3060_12GB, RTX_4090 } from './fixtures';
 
 describe('resolveEff (§3.2)', () => {
   it('uses class defaults — GPU classes have one (dense) value since 10-16 D88, MoE reads with it too', () => {
@@ -149,21 +159,62 @@ describe('tgEstimate (§3.1~3.4)', () => {
   });
 });
 
-describe('ppEstimate (§3.5)', () => {
-  it('ppCoef × fp16Tflops for known classes', () => {
-    expect(ppEstimate({ effClass: 'nvidia', fp16Tflops: 82.6 })).toBeCloseTo(140 * 82.6, 3);
-    expect(ppEstimate({ effClass: 'apple', fp16Tflops: 34 })).toBeCloseTo(PP_COEF.apple! * 34, 3);
+describe('ppEstimate (§3.5, 10-16 D91 — 모델 크기 반영)', () => {
+  const nv = { effClass: 'nvidia', fp16Tflops: 82.6 } as const;
+  const scale = (paramsB: number) => 1 / (PP_FIXED_SHARE + (1 - PP_FIXED_SHARE) * (paramsB / PP_REF_PARAMS_B));
+
+  it('기준 모델(Llama 2 7B Q4_0)에서는 계수 × fp16Tflops 그대로', () => {
+    expect(ppEstimate(nv, LLAMA2_7B_Q4_0)).toBeCloseTo(PP_COEF.nvidia! * 82.6, 3);
+    expect(ppEstimate({ effClass: 'apple', fp16Tflops: 34 }, LLAMA2_7B_Q4_0)).toBeCloseTo(PP_COEF.apple! * 34, 3);
   });
 
-  it('Neural Accelerator 칩(M5 계열)은 클래스 계수 대신 PP_COEF_NEURAL_ACCEL (10-16 D86)', () => {
-    expect(ppEstimate({ effClass: 'apple', fp16Tflops: 38, neuralAccel: true })).toBeCloseTo(PP_COEF_NEURAL_ACCEL * 38, 3);
-    expect(ppEstimate({ effClass: 'apple', fp16Tflops: 38, neuralAccel: false })).toBeCloseTo(PP_COEF.apple! * 38, 3);
-    expect(ppEstimate({ effClass: 'apple', neuralAccel: true })).toBeUndefined();
+  it('dense 는 파라미터에 거의 반비례 — 70B 는 7B 의 약 1/10, 1B 는 비만큼 빨라지지 않는다(고정 몫 φ)', () => {
+    const ref = ppEstimate(nv, LLAMA2_7B_Q4_0)!;
+    const big = ppEstimate(nv, LLAMA33_70B_Q4)!;
+    expect(big).toBeCloseTo(ref * scale(70.6), 3);
+    expect(ref / big).toBeGreaterThan(9.5);
+    expect(ref / big).toBeLessThan(10.5);
+    const small = ppEstimate(nv, { paramsB: 1.24, quant: 'Q4_0' })!;
+    expect(small / ref).toBeGreaterThan(4);
+    expect(small / ref).toBeLessThan(PP_REF_PARAMS_B / 1.24);
+  });
+
+  it('MoE 는 활성 × 배수 — 전문가당 토큰(ubatch × topK/experts)이 적을수록 실효 파라미터가 크다', () => {
+    // gpt-oss-20b: 32 전문가·top-4 → ub512 에서 64토큰 = 기준 → 활성 × activeFactor
+    expect(ppEffectiveParamsB(GPT_OSS_20B)).toBeCloseTo(3.6 * PP_MOE.activeFactor, 6);
+    // Qwen3.6-35B-A3B: 256·top-8 → 16토큰 → (64/16)^tokenExp 배
+    expect(ppEffectiveParamsB(QWEN36_35B_A3B_Q4_SPLIT)).toBeCloseTo(3 * PP_MOE.activeFactor * 4 ** PP_MOE.tokenExp, 6);
+    // ub 2048 이면 전문가당 토큰이 4배 → 실효 파라미터가 줄어 빨라진다
+    expect(ppEffectiveParamsB(GPT_OSS_20B, { ubatch: 2048 })).toBeLessThan(ppEffectiveParamsB(GPT_OSS_20B));
+    expect(ppEstimate(nv, GPT_OSS_20B, { ubatch: 2048 })!).toBeGreaterThan(ppEstimate(nv, GPT_OSS_20B)!);
+    // 전문가 비율이 없으면 기준 비율(64토큰)
+    expect(ppEffectiveParamsB({ paramsB: 30, activeParamsB: 3, quant: 'Q4_K_M' })).toBeCloseTo(3 * PP_MOE.activeFactor, 6);
+    expect(ppEstimate(nv, GPT_OSS_20B)).toBeCloseTo(PP_COEF.nvidia! * 82.6 * scale(3.6 * PP_MOE.activeFactor), 3);
+  });
+
+  it('Neural Accelerator 칩(M5 계열)은 PP_COEF_NEURAL_ACCEL, dense K-quant 은 × PP_KQUANT_FACTOR (MoE·Q8_0 은 그대로)', () => {
+    const m5 = { effClass: 'apple', fp16Tflops: 16.59, neuralAccel: true } as const;
+    expect(ppEstimate(m5, LLAMA2_7B_Q4_0)).toBeCloseTo(PP_COEF_NEURAL_ACCEL * 16.59, 3);
+    expect(ppEstimate({ ...m5, neuralAccel: false }, LLAMA2_7B_Q4_0)).toBeCloseTo(PP_COEF.apple! * 16.59, 3);
+    const q8 = ppEstimate(m5, { paramsB: 26.9, quant: 'Q8_0' })!;
+    expect(ppEstimate(m5, { paramsB: 26.9, quant: 'Q4_K_M' })).toBeCloseTo(q8 * PP_KQUANT_FACTOR.neuralAccel, 3);
+    expect(ppEstimate(m5, { paramsB: 26.9, quant: 'IQ4_XS' })).toBeCloseTo(q8 * PP_KQUANT_FACTOR.neuralAccel, 3);
+    expect(ppEstimate(m5, { ...QWEN36_35B_A3B_Q4_SPLIT, quant: 'Q4_K_M' })).toBeCloseTo(ppEstimate(m5, { ...QWEN36_35B_A3B_Q4_SPLIT, quant: 'Q8_0' })!, 6);
+    const strix = { effClass: 'strix', fp16Tflops: 29.7 } as const;
+    expect(ppEstimate(strix, { paramsB: 27.3, quant: 'UD-Q2_K_XL' })).toBeCloseTo(ppEstimate(strix, { paramsB: 27.3, quant: 'Q8_0' })! * PP_KQUANT_FACTOR.strix, 3);
+    // 그 밖의 클래스는 양자화 계수 없음
+    expect(ppEstimate(nv, { paramsB: 8, quant: 'Q4_K_M' })).toBeCloseTo(ppEstimate(nv, { paramsB: 8, quant: 'Q4_0' })!, 6);
+    expect(ppEstimate({ effClass: 'apple', neuralAccel: true }, LLAMA2_7B_Q4_0)).toBeUndefined();
+  });
+
+  it('행렬 코어 FP16(fp16MatrixTflops — AMD RDNA4 는 벡터의 2배)이 있으면 그 값', () => {
+    const rdna4 = { effClass: 'amd', fp16Tflops: 97.3, fp16MatrixTflops: 195 } as const;
+    expect(ppEstimate(rdna4, LLAMA2_7B_Q4_0)).toBeCloseTo(PP_COEF.amd! * 195, 3);
   });
 
   it('undefined when Tflops missing or class unverified', () => {
-    expect(ppEstimate({ effClass: 'nvidia' })).toBeUndefined();
-    expect(ppEstimate({ effClass: 'cpu', fp16Tflops: 1 })).toBeUndefined();
+    expect(ppEstimate({ effClass: 'nvidia' }, LLAMA2_7B_Q4_0)).toBeUndefined();
+    expect(ppEstimate({ effClass: 'cpu', fp16Tflops: 1 }, LLAMA2_7B_Q4_0)).toBeUndefined();
   });
 });
 

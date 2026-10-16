@@ -2,6 +2,14 @@ CanRun은 자주 바뀝니다. 새 모델이 들어오고, 계산기에 기능�
 
 ## 바뀐 기능과 고친 계산
 
+<Update id="prompt-speed-model-size">
+
+### 프롬프트 처리 추정이 모델 크기를 반영합니다
+
+조합 페이지의 프롬프트 처리 추정은 그래픽카드마다 7B 모델에 맞춘 값 하나여서, 같은 카드면 1B 모델과 70B 모델의 프롬프트 처리 속도가 같게 나왔습니다. 이제 이 값을 모델 크기로 나누고, MoE 모델은 한 번에 읽는 프롬프트 토큰이 전문가마다 나뉘는 만큼 활성 파라미터보다 큰 모델처럼 계산합니다. 최근 llama.cpp 빌드로 잰 공개 벤치마크 91건에 맞추면서 NVIDIA·AMD·Strix Halo의 계수도 다시 정했고, 라데온 카드는 AMD가 밝힌 FP16 행렬 연산 성능(RX 9000 시리즈는 보통 쓰는 FP16 값의 두 배)을 씁니다. <SiteLink to="/gpu/rtx-4090">RTX 4090</SiteLink>에서 Qwen3 32B는 예전 값의 4분의 1이 조금 안 되게, Llama 3.2 1B는 5배쯤으로 바뀌었고, <SiteLink to="/gpu/nvidia-dgx-spark">DGX Spark</SiteLink>에도 이제 프롬프트 처리 추정이 나옵니다. 생성 속도와 판정은 그대로입니다.
+
+</Update>
+
 <Update id="strix-halo-speed">
 
 ### Strix Halo 속도 추정을 고쳤습니다

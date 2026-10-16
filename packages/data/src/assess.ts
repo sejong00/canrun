@@ -198,6 +198,8 @@ export function dgpuHardware(
     vramGB: gpu.vramGB,
     memBandwidthGBs: gpu.memBandwidthGBs,
     fp16Tflops: gpu.fp16Tflops,
+    // pp 는 행렬 FP16 이 따로 있으면 그 값(10-16 D91 — AMD RDNA4 는 벡터의 2배)
+    ...(gpu.fp16MatrixTflops !== undefined ? { fp16MatrixTflops: gpu.fp16MatrixTflops } : {}),
     ramGB,
     ramBandwidthGBs,
     effClass: gpu.effClass,
@@ -253,6 +255,7 @@ export function hardwareConfigs(
       os,
       memBandwidthGBs: gpu.memBandwidthGBs,
       fp16Tflops: gpu.fp16Tflops,
+      ...(gpu.fp16MatrixTflops !== undefined ? { fp16MatrixTflops: gpu.fp16MatrixTflops } : {}),
       // M5 계열 — pp 는 Neural Accelerator 계수(10-16 D86)
       ...(gpu.neuralAccelerators ? { neuralAccel: true } : {}),
       ramGB,

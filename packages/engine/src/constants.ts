@@ -110,16 +110,27 @@ export const EFF: Readonly<Record<EffClass, { dense: number; moe?: number }>> = 
   cpu: { dense: 0.5, moe: 0.43 }, // ≥8코어 전제, 코어 부족 시 ×0.7 은 UI 안내 · moe 는 cpu-only 경로 전용
 });
 
-/** pp ≈ ppCoef × fp16Tflops (±40% "대략" 표기 전용, §3.5 — NVIDIA 140/TFLOP, Apple 57(M5 계열은 PP_COEF_NEURAL_ACCEL), AMD/Intel 30~40) */
-// source: https://github.com/ggml-org/llama.cpp/discussions/15013 (CUDA pp512) · https://github.com/ggml-org/llama.cpp/discussions/10879 (7900 XTX Vulkan — 10-15 D79 재확인: 현재 표 pp512 3727 = 30/TFLOP, 옛 3532 = 29. 같은 표 9070 XT 52·9070 44·7800 XT 27, 15396 의 7900 XT ROCm pp2048 41(직접 변환한 BF16 파일 — 10-15 D81) → AMD 35 유지, ±40% "대략" 밴드 안)
+/**
+ * pp 기준값 = 계수 × FP16 TFLOPS(행렬 코어 값이 따로 있으면 `fp16MatrixTflops`) — Llama 2 7B Q4_0 pp512 상당(§3.5).
+ * 모델별 pp 는 이 기준값을 실효 파라미터로 나눈다(`ppEstimate` — PP_FIXED_SHARE·PP_MOE·PP_KQUANT_FACTOR, 10-16 D91).
+ * 10-16 D91 에 nvidia·amd·strix 를 지금 빌드(2026, llama-bench 기본 FA auto) 다모델 실측으로 다시 맞추고 dgx-spark 를 더했다 —
+ * 클래스 점 전체(모델 크기·MoE·양자화가 다른 점과 7B Q4_0 스코어보드 점)의 최대 오차를 가장 작게 하는 값(minimax). Apple 은 D87 그대로.
+ */
+// source(nvidia, 30점 — 비 123.9~203.3, minimax 154.0 → 각 ±24.3%): https://github.com/ggml-org/llama.cpp/pull/23615#issuecomment-4534473995 (2026-05 master, 3090·4090·5090 × Llama 3.2 1B·Gemma 2B·Llama 3.1 8B Q4_0·Gemma 4 26B-A4B Q4_0) · https://github.com/ggml-org/llama.cpp/pull/25319 (b9867 pp2048 ub512, gpt-oss-20b·8B Q4_0) · https://github.com/ggml-org/llama.cpp/pull/19378 (4090 1~4장 -sm layer pp512 — 같은 PR 표에서 8B Q4_0 이 1~4장 12,731·12,837·12,285·12,023 으로 장수와 무관: Qwen3.5 27B Q4_0·Q8_0 · Gemma 4 31B Q4_K_M·Q8_0 · Llama 3.x 70B Q4_K_M · 1B·8B F16, https://github.com/ggml-org/llama.cpp/pull/19378#issuecomment-3897437729 1장 8B Q4_0) · 스코어보드 7B Q4_0 FA 켬 3090 b10809 5,973.72(https://github.com/ggml-org/llama.cpp/discussions/15013#discussioncomment-18332268)·b9011 5,992.10(https://github.com/ggml-org/llama.cpp/discussions/15013#discussioncomment-16797292) · 3060 12GB 2,407.93(https://github.com/ggml-org/llama.cpp/discussions/15013#discussioncomment-18108605) · 5060 Ti 4,613.86(https://github.com/ggml-org/llama.cpp/discussions/15013#discussioncomment-16020010) · 5060 3,799.47(https://github.com/ggml-org/llama.cpp/discussions/15013#discussioncomment-17364014). 옛 140 은 FA 끔·2025 빌드 표 값이었다. 4090 은 TFLOP 당 느리고(147~150) 5060 계열은 빠르다(195~198) — 카드 차이라 클래스 값 하나로는 ±24% 가 한계
+// source(amd, 15점 — 행렬 TFLOPS 기준 비 20.0~31.6, minimax 24.53 → 24.5): RX 9060 XT ROCm https://github.com/ggml-org/llama.cpp/pull/23615#issuecomment-4534473995 (1B·2B·8B Q4_0·Gemma 4 26B-A4B) · https://github.com/ggml-org/llama.cpp/pull/25319 (gpt-oss-20b·8B) · Vulkan 7B Q4_0 3,228.15(https://github.com/ggml-org/llama.cpp/discussions/10879#discussioncomment-18709094) · RX 9070 XT Vulkan https://github.com/ggml-org/llama.cpp/pull/21024#issuecomment-4460661536 (gpt-oss-20b·8B Q4_0·Q8_0) · https://github.com/ggml-org/llama.cpp/pull/21751#issuecomment-4297412913 (13B Q5_K_M·8B Q4_K_S) · 7B Q4_0 5,505.31(https://github.com/ggml-org/llama.cpp/discussions/10879#discussioncomment-16350652) · RX 7900 XTX Vulkan 7B Q4_0 b10868 3,889.54(https://github.com/ggml-org/llama.cpp/discussions/10879#discussioncomment-18386832) · Qwen3.8-27B IQ3_XXS b11065 914.90(https://github.com/ggml-org/llama.cpp/issues/28843#issuecomment-5772682741). 행렬 FP16 은 AMD 사양 "Peak Half Precision (FP16 Matrix) Performance" — RDNA4 는 카탈로그 fp16Tflops 의 2배(9070 XT 195 https://www.amd.com/en/products/graphics/desktops/radeon/9000-series/amd-radeon-rx-9070xt.html · 9060 XT 103 https://www.amd.com/en/products/graphics/desktops/radeon/9000-series/amd-radeon-rx-9060xt.html), RDNA3 는 같다(7900 XTX 123 https://www.amd.com/en/products/graphics/desktops/radeon/7000-series/amd-radeon-rx-7900xtx.html). 카탈로그 fp16Tflops 로는 7B Q4_0 이 RDNA3 32/TFLOP·RDNA4 57~63/TFLOP 로 갈려 옛 35 가 9060 XT 를 −44% 로 봤다(ROCm 도 같은 비 — https://github.com/ggml-org/llama.cpp/discussions/15021)
+// source(strix, 4점 — 비 57.4~86.5, minimax 69.0, Vulkan 지금 빌드): 7B Q4_0 b11349 1,704.30(https://github.com/ggml-org/llama.cpp/discussions/10879#discussioncomment-18711544) · Qwen3.6-35B-A3B UD-Q5_K_M 1,501.2·gpt-oss-120b 1,132.7 b11223 ub512(https://github.com/ggml-org/llama.cpp/issues/29892#issuecomment-5981486905) · Qwen3.8-27B Q5_K_XL ub2048 311.0(https://github.com/ggml-org/llama.cpp/pull/27554#issuecomment-5414311828). dense K-quant 은 PP_KQUANT_FACTOR.strix. 8월 전 빌드 표(#19625 2026-02·#21751 2026-04 — 같은 기기 8B Q4_0 947)는 지금의 0.55~0.65배라 뺐다. 옛 35 는 출처 없는 값이었다(7B 로 −39%)
+// source(dgx-spark, 8점 — 비 43.1~66.6, minimax 52.3 → 52, 새로 둔다): https://github.com/ggml-org/llama.cpp/pull/22522 (2026-04 master 열 pp512 — Llama 3.2 3B·Qwen3 4B·Qwen3.5 27B·Llama 3.x 70B Q4_K_M, gpt-oss-20b·Qwen3.5-35B-A3B·Nemotron 3 Nano·Super). 이전에는 계수가 없어 DGX Spark 의 pp 를 보이지 않았다
+// source(intel-arc 35, 그대로 — 지금 빌드 표준 모델 실측 없음): B580 Vulkan 2025 빌드 7B Q4_0 b6527 621(data/benchmarks.json s4-b580-l27b) 로는 −35%. 2026-10 빌드는 Gemma 4 E4B Q4_0 pp512 3,286(https://github.com/ggml-org/llama.cpp/issues/30009) 로 훨씬 빨라졌다 — 표준 모델 값이 나오면 다시 맞춘다
 // source(apple·apple-ultra, 10-16 D86 → D87): https://github.com/ggml-org/llama.cpp/discussions/4167 Llama 2 7B Q4_0 pp512 ÷ 카탈로그 fp16Tflops. Apple 의 fp16Tflops 는 위키백과 표의 FP32 이론값(https://en.wikipedia.org/w/index.php?title=Apple_silicon&oldid=1380050693 — 애플은 TFLOPS 미공개, 애플 GPU 는 FP16 FMA 처리량이 FP32 와 같다 https://github.com/philipturner/metal-benchmarks). D86 의 27 은 시드 값(FP32×2)에 맞춘 것이라 값이 절반쯤으로 바뀐 D87 에서 다시 맞췄다. M5 가 아닌 칩의 새 빌드 값 — M2 Ultra 76코어 c1d0e7a00+FA 1,488.81 ÷ 27.2 = 54.7(본문 빌드별 표) · M4 Max 32코어 b5440 762.81 ÷ 12.92 = 59.0(https://github.com/ggml-org/llama.cpp/discussions/4167#discussioncomment-13218715) → minimax 56.8 → 57(내림 56 이면 M4 Max 32코어 −5.2% 로 회귀 9 의 ±5% 밖 — 각 +4.1%·−3.5%). 요약 표의 b1550(2023) 값 M4 221.29 · M4 Pro 20코어 439.78 · M4 Max 40코어 885.68 · M3 Ultra 80코어 1,471.24 · M2 Ultra 1,238.48 은 57 로 −3~+25% — ±40% 안. 카탈로그 밖 칩도 같은 수준 — M1 Ultra 64코어 b10621 1,179.89 ÷ 21.233 = 55.6(https://github.com/ggml-org/llama.cpp/discussions/4167#discussioncomment-18191340)
+// source: https://github.com/ggml-org/llama.cpp/discussions/15013 · https://github.com/ggml-org/llama.cpp/discussions/10879 · https://github.com/ggml-org/llama.cpp/discussions/4167 · https://github.com/ggml-org/llama.cpp/pull/22522 (클래스별 근거는 위 source(클래스) 줄 — docs/02 §3.5·§7)
 export const PP_COEF: Readonly<Partial<Record<EffClass, number>>> = Object.freeze({
-  nvidia: 140,
+  nvidia: 154,
   apple: 57,
   'apple-ultra': 57,
-  amd: 35,
+  amd: 24.5, // 행렬 FP16 TFLOPS(fp16MatrixTflops) 기준
   'intel-arc': 35,
-  strix: 35,
+  strix: 69,
+  'dgx-spark': 52,
 });
 
 /**
@@ -128,6 +139,50 @@ export const PP_COEF: Readonly<Partial<Record<EffClass, number>>> = Object.freez
  */
 // source: https://github.com/ggml-org/llama.cpp/discussions/4167 지금 빌드(b9754 이후, llama-bench FA auto) Llama 2 7B Q4_0 pp512 ÷ 카탈로그 fp16Tflops(위키백과 표의 FP32 이론값 — https://en.wikipedia.org/w/index.php?title=Apple_silicon&oldid=1380050693, D87. D86 의 78 은 시드 값 FP32×2 기준) — M5 10코어 b10621 722.79 ÷ 4.15 = 174.2(https://github.com/ggml-org/llama.cpp/discussions/4167#discussioncomment-18210351) · M5 Pro 16코어 b11046 1,340.44 ÷ 8.29 = 161.7(https://github.com/ggml-org/llama.cpp/discussions/4167#discussioncomment-18583406) · M5 Pro 20코어 1,620.64 ÷ 8.29 = 195.5(https://github.com/ggml-org/llama.cpp/discussions/4167#discussioncomment-18213344, 카탈로그 M5 Pro 는 두 구성을 한 행 — 20코어 값 8.29 로 둔다) · M5 Max 40코어 b10621 3,219.99 ÷ 16.59 = 194.1(https://github.com/ggml-org/llama.cpp/discussions/4167#discussioncomment-18152504) · b9754 3,347.44 ÷ 16.59 = 201.8(https://github.com/ggml-org/llama.cpp/discussions/4167#discussioncomment-17386908) → minimax 179.5 를 내림한 179(각 ±12% 안, MAE 8.2%). M5 Ultra 80코어 b10621 4,944.66 ÷ 33.18 = 149.0(https://github.com/ggml-org/llama.cpp/discussions/4167#discussioncomment-18683605) 은 179 로 +20% — ±40% 안(계수 근거 밖). 출시 직후 빌드 M5 b6817 FA 켬 650.65(https://github.com/ggml-org/llama.cpp/discussions/4167#discussioncomment-14821709)도 +14% 로 밴드 안 — 빌드가 아니라 칩 차이다. 가속기: https://www.apple.com/newsroom/2025/10/apple-unleashes-m5-the-next-big-leap-in-ai-performance-for-apple-silicon/ · https://www.apple.com/newsroom/2026/03/apple-debuts-m5-pro-and-m5-max-to-supercharge-the-most-demanding-pro-workflows/ ("a Neural Accelerator in each GPU core")
 export const PP_COEF_NEURAL_ACCEL = 179;
+
+/** pp 기준 모델 — Llama 2 7B(스코어보드 #4167·#15013·#10879 의 llama-bench params 6.74 B). 실효 파라미터가 이 값이면 pp = 기준값 (§3.5) */
+// source: https://github.com/ggml-org/llama.cpp/discussions/4167 (llama 7B Q4_0 | 3.56 GiB | 6.74 B)
+export const PP_REF_PARAMS_B = 6.74;
+
+/**
+ * pp 의 토큰당 고정 몫(§3.5, 10-16 D91) — 기준(7B) 토큰 시간 중 모델 크기와 상관없는 비율 φ.
+ * pp = 기준값 ÷ (φ + (1 − φ) × 실효 파라미터 / 6.74). 프롬프트 처리 연산량은 토큰당 약 2 × 파라미터라 큰 모델은 거의 반비례로
+ * 느려지고(4090 8B → 70B 실측 1/8.8 · 파라미터 비 8.8), 작은 모델은 모델과 무관한 시간(어텐션·정규화·커널 실행) 때문에 비만큼 빨라지지 않는다
+ * (4090 1B 는 8B 의 3.6배 — 파라미터 비 6.5). 빠른 GPU 일수록 이 몫이 크다(4090 0.17 · 3090 0.09 · Apple ≈ 0) — 하나로 둔 값은
+ * 다모델 실측 97점(D91 회귀 11 + 회귀 9 의 Apple 7B 6점)에서 φ·MoE 계수·양자화 계수를 함께 격자로 골라 최대 오차가 가장 작은 조합의 값.
+ */
+// source: https://github.com/ggml-org/llama.cpp/pull/23615#issuecomment-4534473995 (같은 빌드 1B·2B·8B·26B-A4B, 3090·4090·5090·RX 9060 XT) · https://github.com/ggml-org/llama.cpp/pull/19378 (4090 1B~70B) · https://github.com/ggml-org/llama.cpp/pull/22522 (DGX Spark 3B~70B) — 근거 점은 test/fixtures.ts PP_SIZE_CASES
+export const PP_FIXED_SHARE = 0.05;
+
+/** llama.cpp 기본 ubatch(llama-server·llama-bench, Ollama·LM Studio 도 512) — MoE 전문가당 토큰 수의 기준(§3.5) */
+// source: https://github.com/ggml-org/llama.cpp/blob/a30fb4924dcfec81c1b2c20634bd47fa4403061a/common/common.h#L458-L459 (n_ubatch = 512) · https://github.com/ggml-org/llama.cpp/blob/a30fb4924dcfec81c1b2c20634bd47fa4403061a/tools/llama-bench/llama-bench.cpp#L392
+export const PP_UBATCH = 512;
+
+/**
+ * MoE pp 의 실효 파라미터(§3.5, 10-16 D91) = 활성 × activeFactor × (refTokensPerExpert / 전문가당 토큰)^tokenExp,
+ * 전문가당 토큰 = ubatch × topK/experts. ubatch 의 토큰이 전문가에 나뉘어 전문가마다 작은 행렬곱이 되므로 활성 파라미터만큼 빠르지 않고,
+ * 전문가가 많고 topK 가 작을수록(전문가당 토큰이 적을수록) 더 느리다 — 같은 4090 에서 gpt-oss-20b(32·top-4, 전문가당 64토큰)는
+ * 활성 3.6B 인데 8B dense 와 비슷하고, Qwen3.5-35B-A3B(256·top-8, 16토큰)는 활성 3B 인데 8B 의 0.6배.
+ * refTokensPerExpert 64 는 gpt-oss-20b·ub512 를 1 로 두는 기준(정의). ub 2048 실측(Apple 표 대부분)도 이 식으로 같이 맞는다.
+ */
+// source: https://github.com/ggml-org/llama.cpp/pull/25319 (gpt-oss-20b·8B, 3090·4090·5090·RX 9060 XT) · https://github.com/ggml-org/llama.cpp/pull/22522 (DGX Spark MoE 4종) · https://github.com/ggml-org/llama.cpp/pull/20962#issuecomment-4319496646 · https://github.com/ggml-org/llama.cpp/pull/28948 (M5 Max·M2 Ultra Gemma 4 26B-A4B·Qwen3.5-35B-A3B) · https://github.com/ggml-org/llama.cpp/issues/29892#issuecomment-5981486905 (Strix Halo) — MoE 30점 MAE 10.3%·최대 34.9%(test/fixtures.ts PP_SIZE_CASES)
+export const PP_MOE = Object.freeze({
+  activeFactor: 1.9,
+  tokenExp: 0.35,
+  refTokensPerExpert: 64,
+});
+
+/**
+ * dense K-quant·i-quant(Q2_K~Q6_K·IQ*·UD-*) pp 계수(§3.5, 10-16 D91) — 행렬곱이 빠른 칩은 역양자화가 병목이라 Q4_0·Q8_0 보다 느리다.
+ * M5 계열: 같은 기기·같은 빌드에서 Qwen3.5 27B Q4_K_M 이 Q8_0 의 0.49배(M5 Max pp2048 356.52 vs 721.19), M5 Qwen3.5-9B Q4_K_M 은 식(Q4_0 기준)의 0.74배.
+ * Strix Halo(Vulkan): Qwen3.8-27B Q5_K_XL 이 7B Q4_0 기준 식의 0.6배 안팎. MoE(mul_mat_id)는 같은 기기에서 Q4_K_M ≈ Q8_0(M5 Max 3,652 vs 3,563)이라 dense 만.
+ * 그 밖의 클래스는 Q4_K_M 이 Q4_0 의 0.9~1.0배(4090 8B 11,680 vs 12,477 — #19378)라 계수를 두지 않는다
+ */
+// source: https://github.com/ggml-org/llama.cpp/pull/28948 (M5 Max·M2 Ultra Qwen3.5 27B Q4_K_M·Q8_0 같은 빌드) · https://github.com/ggml-org/llama.cpp/pull/28439#issuecomment-5847308681 (M5 Qwen3.5-9B Q4_K_M) · https://github.com/ggml-org/llama.cpp/pull/27554#issuecomment-5414311828 (Strix Halo Qwen3.8-27B Q5_K_XL)
+export const PP_KQUANT_FACTOR = Object.freeze({
+  neuralAccel: 0.6,
+  strix: 0.6,
+});
 
 /**
  * cpu-moe(§3.3) RAM 몫 효율 — CPU 에 둔 전문가의 토큰당 읽기 바이트 ÷ (이 값 × RAM 대역폭). 09-30 전문가 전부 RAM
