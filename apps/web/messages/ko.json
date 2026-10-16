@@ -495,6 +495,17 @@
     "cpu-ddr5-6000-2ch": "DDR5-6000 듀얼채널 CPU",
     "cpu-ddr4-3200-2ch": "DDR4-3200 듀얼채널 CPU"
   },
+  "MacProduct": {
+    "mac-mini": "맥 미니",
+    "macbook-air": "맥북 에어",
+    "macbook-pro": "맥북 프로",
+    "imac": "아이맥",
+    "mac-studio": "맥 스튜디오",
+    "mac-pro": "맥 프로",
+    "separator": "·",
+    "nameWithProducts": "{gpu}({products})",
+    "nameWithProductsDetail": "{chip} ({detail}, {products})"
+  },
   "Attention": {
     "full": "풀 어텐션",
     "swa": "슬라이딩 윈도 어텐션",
@@ -539,6 +550,8 @@
     "metaCard": "{gpu} 그래픽카드",
     "metaDescription": "{gpu}({memory})에서 로컬 LLM {total}개 중 {good}개가 쾌적하거나 원활하게 돌아갑니다(Q4_K_M·8k 컨텍스트 기준).",
     "metaDescriptionNone": "Q4_K_M·8k 컨텍스트 기준으로 {gpu}({memory})에서 로컬 LLM {total}개의 판정과 예상 속도 범위를 보여 줍니다.",
+    "metaDescriptionMac": "{gpu} 칩이 들어간 {memory} {products}에서 로컬 LLM {total}개 중 {good}개가 쾌적하거나 원활하게 돌아갑니다(Q4_K_M·8k 컨텍스트 기준).",
+    "metaDescriptionMacNone": "Q4_K_M·8k 컨텍스트 기준으로 {gpu} 칩이 들어간 {memory} {products}에서 로컬 LLM {total}개의 판정과 예상 속도 범위를 보여 줍니다.",
     "metaLargest": " {memory}에 통째로 올라가는 가장 큰 모델은 {model} {quant}이고, 속도는 {speed}입니다.",
     "metaLargestCpu": " 돌릴 수 있는 가장 큰 모델은 {model} {quant}이고, 속도는 {speed}입니다.",
     "memoryVram": "{vram}GB",
@@ -557,6 +570,8 @@
     "specLaunch": "출시 연도",
     "specPrice": "가격",
     "specAliases": "다른 표기",
+    "specProducts": "이 칩이 들어간 맥",
+    "productMemory": "{product}: {memory}",
     "priceStreet": "{date} 기준 실거래가 {price}",
     "priceMsrp": "출시가 {price}",
     "badgeLaptop": "노트북 GPU: 데스크톱 카드와 다른 제품이고, 노트북마다 전력 제한이 다릅니다",

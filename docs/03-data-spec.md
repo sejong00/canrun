@@ -19,7 +19,15 @@ Gpu { id, name, aliases[],  // 검색 별칭 + P1-3 계산기 콤보박스·GPU 
      neuralAccelerators?: true,   // GPU 코어마다 행렬곱 가속기(Apple M5 계열 — 애플 뉴스룸) → pp 계수 PP_COEF_NEURAL_ACCEL (docs/02 §3.5, 10-16 D86)
      launchYear:2015..2026, msrpUSD?, streetUSD?, streetKRW?,
      priceAsOf?,         // streetUSD/KRW 존재 시 필수 (CLAUDE.md 규칙 2)
-     popular:boolean, note?, sources[] }
+     popular:boolean, note?,
+     products?: { line:'mac-mini'|'macbook-air'|'macbook-pro'|'imac'|'mac-studio'|'mac-pro', model, memoryGB[], sources[] }[],   // Apple 칩 필수·그 밖 금지 (10-16 D97)
+     sources[] }
+     // products: 이 칩이 들어가는 맥 — 애플 공식 사양(Tech Specs) 페이지 하나 = 모델 하나, 페이지로 확인한 칩·메모리 짝만(추측 금지). model = 사양 페이지 제목 그대로("Mac mini (2024)").
+     //   memoryGB 는 오름차순·ramOptionsGB 안의 값만, ramOptionsGB 구성마다 그 메모리로 파는 모델이 하나 이상(zod). sources = support.apple.com/<로캘>/<번호> ·
+     //   apple.com/…/specs/ · 애플이 구성을 내린 뒤의 확인용 web.archive.org 사본(M3 Ultra 512GB — 10-15 D80)만, 레코드 sources 에도 있어야 한다(zod).
+     //   출시 확인 전이라 ramOptionsGB 에서 뺀 구성(M5 Ultra 512GB — D85)은 여기서도 뺀다. 서버 전용(lite 카탈로그 키 아님) — GPU 허브 제목·H1
+     //   "Apple M4(맥 미니·맥북 에어·맥북 프로·아이맥)", 설명(요약 구성 메모리로 파는 계열만), 사양 "이 칩이 들어간 맥" 줄(계열별 메모리). 표시 이름은 messages `MacProduct`,
+     //   조립은 `apps/web/lib/search-names.ts`. 콤보 제목에는 넣지 않는다
 Model { id, family, name, hfId, paramsB, activeParamsB?,   // moe ⇒ activeParamsB 필수
      arch:{layers, kvHeads, headDim, attnType:'full'|'swa'|'mla'|'hybrid', kvBytesPerTokenF16, experts?, topK?, expertLayers?},  // 바이트/tok f16 사전계산 (SWA/MLA/하이브리드 보정 반영)
      // experts·topK (10-01 D56): MoE 전용, 둘 다 있거나 둘 다 없음, topK < experts. validateAll 이 모든 MoE 모델에 요구하고 MOE_ARCH 와 대조.

@@ -14,7 +14,15 @@ import { STATIC_PAGE_SLUGS } from '../apps/web/content/pages';
 export type Locale = 'en' | 'ko';
 export type PageKind = 'home' | 'gpu' | 'model' | 'combo' | 'calculator' | 'guide' | 'guides-index' | 'static' | 'other';
 
-export type GpuRecord = { id: string; name: string; aliases?: string[]; kind?: 'dgpu' | 'unified' | 'cpu' };
+export type GpuRecord = {
+  id: string;
+  name: string;
+  aliases?: string[];
+  kind?: 'dgpu' | 'unified' | 'cpu';
+  ramOptionsGB?: number[];
+  /** Apple 칩이 들어가는 맥(10-16 D97) — 허브 제목·H1·설명 검사용 */
+  products?: Array<{ line: string; memoryGB: number[] }>;
+};
 export type ModelRecord = { id: string; name: string; family?: string };
 
 export type PageFacts = {
@@ -59,6 +67,8 @@ export type PageFacts = {
   /** `<meta name="robots">` 에 noindex 포함 */
   robotsNoindex: boolean;
   h1Count: number;
+  /** GPU 허브의 h1 텍스트 — Apple 칩 허브의 맥 제품 이름 검사(10-16 D97) */
+  hubH1?: string;
   verdictSentence?: string;
   /** `[data-live-summary]` SSR 텍스트 — 상호작용 전엔 비어 있어야 한다 (D28) */
   liveSummary?: string;
@@ -692,6 +702,7 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
     measuredLabelIssues: measuredLabelIssuesOf(visible.replace(/\s+/g, ' ')),
     robotsNoindex: robotsNoindexOf(html),
     h1Count: (noScript.match(/<h1\b/g) ?? []).length,
+    ...(kind === 'gpu' ? { hubH1: h1 } : {}),
     ...(verdictSentence === undefined ? {} : { verdictSentence }),
     adjacentHrefs,
     comboLinkHrefs,

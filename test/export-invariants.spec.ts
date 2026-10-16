@@ -23,7 +23,7 @@ import { SITE_UPDATES, latestSiteUpdate } from '../apps/web/content/updates';
 import { ADSENSE_CLIENT } from '../apps/web/lib/site';
 import { CF_PAGES_REDIRECT_LINE_LIMIT } from '../scripts/build-redirects';
 import { comboCardText, loadCatalog, ogTranslators } from '../scripts/og-cards';
-import { summarizeGpu, type GpuHubData } from '../packages/data/src/index';
+import { MAC_LINES, summarizeGpu, type GpuHubData } from '../packages/data/src/index';
 import { comboOgImage, defaultOgImage, guideOgImage, hubOgImage } from '../apps/web/lib/og-images';
 import {
   comboIndexable,
@@ -565,6 +565,40 @@ describe('Korean model names (10-16 D94 — 한글 표기는 한국어 페이지
 
   it('no page writes Qwen in Hangul (큐웬·큐원 collide with other brands on Naver)', () => {
     expect(pages.filter((p) => p.qwenHangul).map((p) => p.file)).toEqual([]);
+  });
+});
+
+describe('Mac product names (10-16 D97 — Apple 칩 허브의 제목·H1·설명, data/gpus.json products)', () => {
+  it('Apple hubs name every Mac line in the title and h1, the description names the lines sold with its memory size, and no combo or other hub title names a Mac', () => {
+    const lineNames = Object.fromEntries(
+      (['en', 'ko'] as const).map((locale) => {
+        const ns = readJson<{ MacProduct: Record<string, string> }>(`apps/web/messages/${locale}.json`).MacProduct;
+        return [locale, MAC_LINES.map((line) => ({ line, name: ns[line]! }))];
+      }),
+    ) as Record<'en' | 'ko', Array<{ line: string; name: string }>>;
+    const problems: string[] = [];
+    let apple = 0;
+    for (const page of pages.filter((p) => p.kind === 'gpu' || p.kind === 'combo')) {
+      const gpu = gpus.find((g) => g.id === (page.combo?.gpuId ?? page.urlPath.split('/').pop()));
+      const names = lineNames[page.locale];
+      if (page.kind === 'gpu' && gpu?.products) {
+        apple += 1;
+        const lines = new Set(gpu.products.map((p) => p.line));
+        // 설명은 요약 구성(최대 메모리)으로 파는 계열만 — M4 Pro 64GB 는 맥 미니뿐
+        const ram = Math.max(...(gpu.ramOptionsGB ?? []));
+        const sold = new Set(gpu.products.filter((p) => p.memoryGB.includes(ram)).map((p) => p.line));
+        for (const { line, name } of names) {
+          if (lines.has(line) !== (page.title ?? '').includes(name)) problems.push(`${page.file}: title "${page.title}" and ${name}`);
+          if (lines.has(line) !== (page.hubH1 ?? '').includes(name)) problems.push(`${page.file}: h1 "${page.hubH1}" and ${name}`);
+          if (sold.has(line) !== (page.description ?? '').includes(name)) problems.push(`${page.file}: description "${page.description}" and ${name}`);
+        }
+      } else {
+        // 콤보 제목은 지금 구글 순위가 붙은 제목이라 그대로 둔다(배치 2 를 열 때 한 번에 바꾼다 — D94)
+        for (const { name } of names) if ((page.title ?? '').includes(name)) problems.push(`${page.file}: title "${page.title}" names ${name}`);
+      }
+    }
+    expect(apple, 'Apple chip hubs (en + ko)').toBe(2 * gpus.filter((g) => g.products).length);
+    expect(problems.slice(0, 20)).toEqual([]);
   });
 });
 

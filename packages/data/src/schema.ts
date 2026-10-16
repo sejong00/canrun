@@ -58,6 +58,32 @@ export const QuantIdSchema = z.enum([
   'F16',
 ]);
 
+/** 맥 제품 계열 (10-16 D97) — 표시 이름은 messages `MacProduct`, 이 순서로 나열한다 */
+export const MAC_LINES = ['mac-mini', 'macbook-air', 'macbook-pro', 'imac', 'mac-studio', 'mac-pro'] as const;
+export type MacLine = (typeof MAC_LINES)[number];
+
+/**
+ * 애플 공식 사양(Tech Specs) 페이지 — support.apple.com 사양 문서, apple.com 의 `/specs/` 페이지, 또는 애플이 구성을 내린 뒤의
+ * 확인용으로 그 사양 문서의 web.archive.org 사본(M3 Ultra 512GB — 10-15 D80)
+ */
+const APPLE_SPEC_URL =
+  /^https:\/\/(?:support\.apple\.com\/[a-z]{2}-[a-z]{2}\/\d+|www\.apple\.com\/(?:[a-z-]+\/)*specs\/|web\.archive\.org\/web\/\d+\/https:\/\/support\.apple\.com\/[a-z]{2}-[a-z]{2}\/\d+)$/;
+
+/**
+ * Apple 칩이 들어가는 맥 한 모델 (10-16 D97) — 애플 사양 페이지 하나가 모델 하나. 페이지에서 확인한 칩·메모리 짝만 적는다(추측 금지).
+ * 허브 제목·H1·설명의 제품 이름과 사양의 "이 칩이 들어간 맥" 줄이 읽는다(서버 전용 — 계산기 lite 카탈로그에는 없다)
+ */
+export const MacProductSchema = z.object({
+  line: z.enum(MAC_LINES),
+  /** 사양 페이지 제목의 모델 이름 그대로 ("Mac mini (2024)", "MacBook Air (13-inch, M5)") — 기록용, 화면은 line 만 쓴다 */
+  model: z.string().min(1),
+  /** 이 칩으로 고를 수 있는 통합 메모리 (GB, 오름차순) */
+  memoryGB: z.array(z.number().positive()).min(1),
+  /** 애플 사양 페이지 — 레코드 sources 에도 있어야 한다 */
+  sources: z.array(z.string().regex(APPLE_SPEC_URL, 'must be an Apple tech specs page')).min(1),
+});
+export type MacProduct = z.infer<typeof MacProductSchema>;
+
 export const GpuSchema = z
   .object({
     id: slug,
@@ -93,6 +119,11 @@ export const GpuSchema = z
     popular: z.boolean(),
     /** 랩톱 SKU 등 UI 경고 배지용 */
     note: z.string().optional(),
+    /**
+     * Apple 칩 레코드 필수 — 이 칩이 들어가는 맥 (10-16 D97, 애플 사양 페이지로 확인한 모델만). 메모리는 ramOptionsGB 안의 값만,
+     * ramOptionsGB 의 구성마다 그 메모리로 파는 모델이 하나 이상 (아래 refine). 출시 확인 전이라 ramOptionsGB 에서 뺀 구성(M5 Ultra 512GB — D85)은 여기서도 뺀다
+     */
+    products: z.array(MacProductSchema).min(1).optional(),
     sources,
   })
   .superRefine((gpu, ctx) => {
@@ -107,6 +138,33 @@ export const GpuSchema = z
     }
     if (gpu.kind !== 'dgpu' && gpu.ramOptionsGB === undefined) {
       ctx.addIssue({ code: 'custom', message: `${gpu.id}: unified/cpu requires ramOptionsGB` });
+    }
+    if ((gpu.vendor === 'apple') !== (gpu.products !== undefined)) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `${gpu.id}: products (Macs with the chip, D97) are required for Apple chips and only for them`,
+      });
+    }
+    const ram = gpu.ramOptionsGB ?? [];
+    const sold = new Set<number>();
+    for (const product of gpu.products ?? []) {
+      const where = `${gpu.id} products "${product.model}"`;
+      if (product.memoryGB.some((gb, i) => i > 0 && gb <= product.memoryGB[i - 1]!)) {
+        ctx.addIssue({ code: 'custom', message: `${where}: memoryGB must be ascending without repeats` });
+      }
+      for (const gb of product.memoryGB) {
+        sold.add(gb);
+        if (!ram.includes(gb)) ctx.addIssue({ code: 'custom', message: `${where}: ${gb} GB is not in ramOptionsGB` });
+      }
+      for (const url of product.sources) {
+        if (!gpu.sources.includes(url)) ctx.addIssue({ code: 'custom', message: `${where}: source ${url} missing from sources` });
+      }
+    }
+    if (gpu.products && gpu.products.length !== new Set(gpu.products.map((p) => p.model)).size) {
+      ctx.addIssue({ code: 'custom', message: `${gpu.id}: products list a model twice` });
+    }
+    for (const gb of gpu.products ? ram : []) {
+      if (!sold.has(gb)) ctx.addIssue({ code: 'custom', message: `${gpu.id}: no product sells the ${gb} GB configuration` });
     }
   });
 

@@ -495,6 +495,17 @@
     "cpu-ddr5-6000-2ch": "DDR5-6000 dual-channel CPU",
     "cpu-ddr4-3200-2ch": "DDR4-3200 dual-channel CPU"
   },
+  "MacProduct": {
+    "mac-mini": "Mac mini",
+    "macbook-air": "MacBook Air",
+    "macbook-pro": "MacBook Pro",
+    "imac": "iMac",
+    "mac-studio": "Mac Studio",
+    "mac-pro": "Mac Pro",
+    "separator": ", ",
+    "nameWithProducts": "{gpu} ({products})",
+    "nameWithProductsDetail": "{chip} ({detail}; {products})"
+  },
   "Attention": {
     "full": "Full attention",
     "swa": "Sliding-window attention",
@@ -539,6 +550,8 @@
     "metaCard": "{gpu}",
     "metaDescription": "{gpu} · {memory}: at Q4_K_M with 8k context, {good} of {total} local LLMs run great or well.",
     "metaDescriptionNone": "{gpu} · {memory}: verdicts and estimated speed bands for {total} local LLMs at Q4_K_M with 8k context.",
+    "metaDescriptionMac": "{gpu} with {memory} ({products}): at Q4_K_M with 8k context, {good} of {total} local LLMs run great or well.",
+    "metaDescriptionMacNone": "{gpu} with {memory} ({products}): verdicts and estimated speed bands for {total} local LLMs at Q4_K_M with 8k context.",
     "metaLargest": " Largest that fits entirely in {memory}: {model} at {quant}, {speed}.",
     "metaLargestCpu": " Largest it can run: {model} at {quant}, {speed}.",
     "memoryVram": "{vram} GB",
@@ -557,6 +570,8 @@
     "specLaunch": "Launch year",
     "specPrice": "Price",
     "specAliases": "Also written as",
+    "specProducts": "Macs with this chip",
+    "productMemory": "{product}: {memory}",
     "priceStreet": "{price} street (as of {date})",
     "priceMsrp": "{price} launch MSRP",
     "badgeLaptop": "Laptop GPU — a separate SKU from the desktop card, with power limits that vary by laptop",

@@ -179,7 +179,8 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
           'How much of a Mac’s unified memory a local model can use, which M4 and M5 configurations fit which models, and why memory bandwidth sets the speed.',
       },
       ko: {
-        title: '맥에서 로컬 LLM 돌리기 — M4·M5 통합 메모리는 얼마나 필요할까',
+        // 10-16 D97: 맥 제품 이름(맥 미니·맥북·맥 스튜디오)을 제목에 한 번 — 칩보다 제품 이름으로 찾는다(칩 허브 제목은 lib/search-names.ts)
+        title: '맥 미니·맥북·맥 스튜디오에서 로컬 LLM 돌리기 — M4·M5 통합 메모리는 얼마나 필요할까',
         description:
           '맥의 통합 메모리 가운데 모델이 실제로 쓸 수 있는 양과 M4·M5 구성별로 돌아가는 모델을 정리했습니다. 속도를 좌우하는 메모리 대역폭도 함께 다룹니다.',
       },

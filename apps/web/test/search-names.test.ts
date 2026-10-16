@@ -1,11 +1,15 @@
 /**
- * 검색에 쓰이는 다른 이름 (10-16 D94) — 한글 모델 계열 이름(`content/ko-names.ts`)과 GPU 허브 "다른 표기"(`lib/search-names.ts`).
- * 페이지에 실제로 한 번씩 나오는지는 export 테스트(`test/export-invariants.spec.ts` "Korean model names")가 본다.
+ * 검색에 쓰이는 다른 이름 (10-16 D94) — 한글 모델 계열 이름(`content/ko-names.ts`)과 GPU 허브 "다른 표기"(`lib/search-names.ts`),
+ * Apple 칩 허브의 맥 제품 이름(D97).
+ * 페이지에 실제로 나오는지는 export 테스트(`test/export-invariants.spec.ts` "Korean model names"·"Mac product names")가 본다.
  */
+import { readFileSync } from 'node:fs';
+import { MAC_LINES } from '@canrun/data';
 import { describe, expect, it } from 'vitest';
 import { KO_FAMILY_NAMES, koFamilyName } from '../content/ko-names';
 import { catalog } from '../lib/catalog';
-import { aliasLabel, gpuAliasLabels, searchModelName } from '../lib/search-names';
+import type { Translate } from '../lib/phrases';
+import { aliasLabel, gpuAliasLabels, gpuSearchName, macLineMemory, macLines, searchModelName } from '../lib/search-names';
 
 describe('Korean model family names (content/ko-names.ts)', () => {
   it('every registry family exists in the catalog, and Qwen has no Hangul name (큐웬·큐원 collide with other brands on Naver)', () => {
@@ -71,5 +75,50 @@ describe('GPU aliases ("다른 표기" on GPU hubs)', () => {
     expect(gpuAliasLabels(gpu('rtx-5090'))).toEqual(['5090', 'RTX5090']);
     expect(gpuAliasLabels({ kind: 'dgpu', aliases: ['5070ti', '5070Ti'] })).toEqual(['5070Ti']);
     for (const g of catalog.gpus.filter((x) => x.kind === 'cpu')) expect(gpuAliasLabels(g), g.id).toEqual([]);
+  });
+});
+
+describe('Mac product names on Apple chip hubs (10-16 D97 — data/gpus.json products)', () => {
+  const gpu = (id: string) => catalog.gpus.find((g) => g.id === id)!;
+  /** messages `MacProduct` 로 바인딩한 최소 translator — 인자는 {name} 치환만 */
+  const macMessages = (locale: 'en' | 'ko') =>
+    (JSON.parse(readFileSync(new URL(`../messages/${locale}.json`, import.meta.url), 'utf8')) as { MacProduct: Record<string, string> }).MacProduct;
+  const tMac = (locale: 'en' | 'ko'): Translate => {
+    const ns = macMessages(locale);
+    return (key, values) => ns[key]!.replace(/\{(\w+)\}/g, (_, name: string) => String(values?.[name]));
+  };
+
+  it('lists each line once in a fixed order; with a memory size only the lines sold with it', () => {
+    expect(macLines(gpu('apple-m4'))).toEqual(['mac-mini', 'macbook-air', 'macbook-pro', 'imac']);
+    expect(macLines(gpu('apple-m4-pro'))).toEqual(['mac-mini', 'macbook-pro']);
+    // M4 Pro 64GB 는 맥 미니뿐 — 맥북 프로 14·16형은 48GB 까지(애플 사양 121553·121554)
+    expect(macLines(gpu('apple-m4-pro'), 64)).toEqual(['mac-mini']);
+    expect(macLines(gpu('apple-m2-ultra'))).toEqual(['mac-studio', 'mac-pro']);
+    expect(macLines(gpu('rtx-5090'))).toEqual([]);
+  });
+
+  it('merges the memory options of models in the same line (iMac two-port 16·24 + four-port 16·24·32)', () => {
+    expect(macLineMemory(gpu('apple-m4')).find((l) => l.line === 'imac')?.memoryGB).toEqual([16, 24, 32]);
+    expect(macLineMemory(gpu('apple-m4-pro'))).toEqual([
+      { line: 'mac-mini', memoryGB: [24, 48, 64] },
+      { line: 'macbook-pro', memoryGB: [24, 48] },
+    ]);
+  });
+
+  it('names the hub "Apple M4(맥 미니·…)" in Korean and "Apple M4 (Mac mini, …)" in English; a name already in parentheses keeps one pair', () => {
+    expect(gpuSearchName(tMac('ko'), 'Apple M4', gpu('apple-m4'))).toBe('Apple M4(맥 미니·맥북 에어·맥북 프로·아이맥)');
+    expect(gpuSearchName(tMac('en'), 'Apple M4', gpu('apple-m4'))).toBe('Apple M4 (Mac mini, MacBook Air, MacBook Pro, iMac)');
+    const max = gpu('apple-m4-max-40c');
+    expect(gpuSearchName(tMac('ko'), max.name, max)).toBe('Apple M4 Max (40-core GPU, 맥북 프로·맥 스튜디오)');
+    expect(gpuSearchName(tMac('en'), max.name, max)).toBe('Apple M4 Max (40-core GPU; MacBook Pro, Mac Studio)');
+    expect(gpuSearchName(tMac('ko'), 'GeForce RTX 5090', gpu('rtx-5090'))).toBe('GeForce RTX 5090');
+  });
+
+  it('every line has a name in both locales, and Apple hub names stay unique', () => {
+    for (const locale of ['en', 'ko'] as const) {
+      for (const line of MAC_LINES) expect(macMessages(locale)[line], `${locale} ${line}`).toBeTruthy();
+      const names = catalog.gpus.filter((g) => g.vendor === 'apple').map((g) => gpuSearchName(tMac(locale), g.name, g));
+      expect(new Set(names).size).toBe(names.length);
+    }
   });
 });

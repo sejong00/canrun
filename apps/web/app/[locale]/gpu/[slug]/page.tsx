@@ -28,7 +28,7 @@ import { comboHref, gpuHref, guideHref, localeHref, modelHref } from '@/lib/link
 import { hubOgImage } from '@/lib/og-images';
 import { isComboIndexable } from '@/lib/publish';
 import { gpuName, modeKey, quantText, speedPhrase, type Translate } from '@/lib/phrases';
-import { gpuAliasLabels } from '@/lib/search-names';
+import { gpuAliasLabels, gpuSearchName, macLineList, macLineMemory, macLines } from '@/lib/search-names';
 import { buildPageMetadata } from '@/lib/seo';
 import { absoluteUrl } from '@/lib/site';
 
@@ -44,7 +44,7 @@ export const dynamicParams = false;
 type Tr = Translate & { has?: (key: string) => boolean };
 
 async function translators(locale: Locale) {
-  const [hub, faq, common, confidence, verdict, mode, names, hint] = await Promise.all([
+  const [hub, faq, common, confidence, verdict, mode, names, hint, mac] = await Promise.all([
     getTranslations({ locale, namespace: 'GpuHub' }),
     getTranslations({ locale, namespace: 'Faq' }),
     getTranslations({ locale, namespace: 'Common' }),
@@ -53,9 +53,10 @@ async function translators(locale: Locale) {
     getTranslations({ locale, namespace: 'Mode' }),
     getTranslations({ locale, namespace: 'GpuName' }),
     getTranslations({ locale, namespace: 'Hint' }),
+    getTranslations({ locale, namespace: 'MacProduct' }),
   ]);
-  return { hub, faq, common, confidence, verdict, mode, names, hint } as unknown as Record<
-    'hub' | 'faq' | 'common' | 'confidence' | 'verdict' | 'mode' | 'names' | 'hint',
+  return { hub, faq, common, confidence, verdict, mode, names, hint, mac } as unknown as Record<
+    'hub' | 'faq' | 'common' | 'confidence' | 'verdict' | 'mode' | 'names' | 'hint' | 'mac',
     Tr
   >;
 }
@@ -107,17 +108,25 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const hub = getGpuHub(slug);
   if (!hub) return {};
   const t = await translators(locale);
-  // 제목·설명의 이름 — 한국어는 그래픽카드(dGPU)면 "… 그래픽카드" (10-16 D94 — 맥·통합 메모리·CPU 는 이름 그대로)
+  // 제목·설명의 이름 — 한국어는 그래픽카드(dGPU)면 "… 그래픽카드" (10-16 D94), Apple 칩은 제목에 맥 계열 "Apple M4(맥 미니·…)" (D97),
+  // 그 밖의 통합 메모리·CPU 는 이름 그대로
   const display = gpuName(t.names, hub.gpu);
-  const name = hub.gpu.kind === 'dgpu' ? t.hub('metaCard', { gpu: display }) : display;
+  const name = hub.gpu.kind === 'dgpu' ? t.hub('metaCard', { gpu: display }) : gpuSearchName(t.mac, display, hub.gpu);
   const memory = memoryLabel(t.hub, hub.gpu, locale);
   const primaryMemory = primaryMemoryLabel(t.hub, hub, locale);
   const counts = hub.counts[hub.primaryIndex]!;
   const good = counts.S + counts.A;
+  // Apple 칩 설명은 요약 구성(최대 메모리)으로 파는 맥만 — M4 Pro 64GB 는 맥 미니뿐이다(맥북 프로는 48GB 까지)
+  const macs = macLines(hub.gpu, hub.configs[hub.primaryIndex]!.ramGB);
+  const values = { memory: primaryMemory, good, total: hub.rows.length };
   const summary =
-    good > 0
-      ? t.hub('metaDescription', { gpu: name, memory: primaryMemory, good, total: hub.rows.length })
-      : t.hub('metaDescriptionNone', { gpu: name, memory: primaryMemory, total: hub.rows.length });
+    macs.length > 0
+      ? t.hub(good > 0 ? 'metaDescriptionMac' : 'metaDescriptionMacNone', {
+          ...values,
+          gpu: display,
+          products: macLineList(t.mac, macs),
+        })
+      : t.hub(good > 0 ? 'metaDescription' : 'metaDescriptionNone', { ...values, gpu: name });
   // 가장 큰 모델 — FAQ Q1 과 같은 모델·양자화·속도 (가장 빠른 모델은 늘 가장 작은 모델이라 정보가 없다)
   const pick = largestPick(hub);
   const largest = pick
@@ -272,6 +281,8 @@ export default async function GpuHubPage({ params }: Props) {
 
   // 다른 표기(10-16 D94) — 별칭이 있을 때만, 사양 목록에 한 줄
   const aliases = gpuAliasLabels(gpu);
+  // 이 칩이 들어간 맥과 메모리 구성(10-16 D97, 애플 사양 페이지) — Apple 칩만
+  const macMemory = macLineMemory(gpu);
 
   const price =
     gpu.streetUSD !== undefined && gpu.priceAsOf
@@ -295,7 +306,7 @@ export default async function GpuHubPage({ params }: Props) {
             ]}
           />
           <h1 className="text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
-            {tSpec('h1', { gpu: name })}
+            {tSpec('h1', { gpu: gpuSearchName(t.mac, name, gpu) })}
           </h1>
           <div className="flex flex-wrap gap-2">
             {gpu.form === 'laptop' && <Pill tone="caution">{tSpec('badgeLaptop')}</Pill>}
@@ -352,6 +363,23 @@ export default async function GpuHubPage({ params }: Props) {
               <div>
                 <dt className="text-muted-foreground">{tSpec('specPrice')}</dt>
                 <dd className="font-medium">{price}</dd>
+              </div>
+            )}
+            {macMemory.length > 0 && (
+              <div className="col-span-2 sm:col-span-3">
+                <dt className="text-muted-foreground">{tSpec('specProducts')}</dt>
+                <dd>
+                  <ul className="flex flex-col gap-1">
+                    {macMemory.map(({ line, memoryGB }) => (
+                      <li key={line}>
+                        {tSpec('productMemory', {
+                          product: t.mac(line),
+                          memory: memoryGB.map((ram) => tSpec('ramOption', { ram: formatInt(locale, ram) })).join(' · '),
+                        })}
+                      </li>
+                    ))}
+                  </ul>
+                </dd>
               </div>
             )}
             {aliases.length > 0 && (

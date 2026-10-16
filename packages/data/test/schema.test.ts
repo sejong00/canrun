@@ -66,6 +66,48 @@ describe('structural refinements', () => {
     ).toBe(false);
   });
 
+  it('Apple chips list the Macs they ship in, checked against ramOptionsGB and sources (10-16 D97)', () => {
+    const spec = 'https://support.apple.com/en-us/121555';
+    const mac = {
+      ...validGpu,
+      id: 'apple-test',
+      name: 'Apple Test',
+      vendor: 'apple',
+      kind: 'unified',
+      vramGB: undefined,
+      ramOptionsGB: [16, 24, 32],
+      effClass: 'apple',
+      sources: ['https://en.wikipedia.org/wiki/Apple_M4', spec],
+      products: [
+        { line: 'mac-mini', model: 'Mac mini (2024)', memoryGB: [16, 24, 32], sources: [spec] },
+        { line: 'imac', model: 'iMac (24-inch, 2024, Two ports)', memoryGB: [16, 24], sources: [spec] },
+      ],
+    };
+    const products = (list: unknown[]) => ({ ...mac, products: list });
+    const [mini, imac] = mac.products;
+    expect(GpuSchema.safeParse(mac).success).toBe(true);
+    // Apple 칩은 필수, 다른 벤더는 금지
+    expect(GpuSchema.safeParse({ ...mac, products: undefined }).success).toBe(false);
+    expect(GpuSchema.safeParse({ ...validGpu, products: mac.products }).success).toBe(false);
+    // 메모리: ramOptionsGB 안의 값만, 오름차순, 모든 구성을 어느 모델이든 판다
+    expect(GpuSchema.safeParse(products([{ ...mini, memoryGB: [16, 24, 32, 64] }])).success).toBe(false);
+    expect(GpuSchema.safeParse(products([{ ...mini, memoryGB: [24, 16, 32] }])).success).toBe(false);
+    expect(GpuSchema.safeParse(products([imac])).success).toBe(false);
+    // 출처: 애플 사양 페이지(또는 그 아카이브 사본)이고 레코드 sources 에도 있어야 한다
+    expect(GpuSchema.safeParse(products([{ ...mini, sources: ['https://en.wikipedia.org/wiki/Apple_M4'] }])).success).toBe(false);
+    expect(GpuSchema.safeParse(products([{ ...mini, sources: ['https://support.apple.com/en-us/121556'] }])).success).toBe(false);
+    const archived = 'https://web.archive.org/web/20260219042642/https://support.apple.com/en-us/122211';
+    expect(GpuSchema.safeParse({ ...products([{ ...mini, sources: [spec, archived] }]), sources: [...mac.sources, archived] }).success).toBe(true);
+    // 같은 모델 두 번 금지
+    expect(GpuSchema.safeParse(products([mini, mini])).success).toBe(false);
+  });
+
+  it('every Apple chip in the seed names at least one Mac', () => {
+    const apple = loadSeed().gpus.filter((g) => g.vendor === 'apple');
+    expect(apple.length).toBeGreaterThan(0);
+    for (const gpu of apple) expect(gpu.products?.length, gpu.id).toBeGreaterThan(0);
+  });
+
   it('rejects moe model without activeParamsB', () => {
     const model = {
       id: 'test-moe',
