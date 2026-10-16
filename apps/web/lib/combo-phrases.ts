@@ -1,13 +1,14 @@
 /**
- * 콤보 페이지 문장 조립 — 제목·description·헤더·FAQ 가 **같은 판정 문장**을 쓴다 (결정 D14).
- * 모든 속도 문장은 speedPhrase(밴드 + 신뢰 라벨)를 거친다 (CLAUDE.md 규칙 3).
+ * 콤보 페이지 문장 조립 — 헤더·FAQ 가 **같은 판정 문장**을 쓰고, 제목·description 은 같은 판정(`titleVerdict`)과
+ * 같은 수치를 짧게 쓴다 (결정 D14, description 은 10-16 D95).
+ * 모든 속도 문장은 밴드 + 신뢰 라벨을 동반한다 (CLAUDE.md 규칙 3) — speedPhrase, description 은 `metaSpeed`.
  */
 import { maxCtxAtVerdict, titleVerdict, type QuantAssessment, type RamStep } from '@canrun/data';
 import type { Locale } from '@/i18n/routing';
 import type { ComboPage } from './combos';
-import { formatCtx, formatGB, formatInt, formatUSD } from './format';
+import { formatCtx, formatGB, formatInt, formatSpeed, formatUSD } from './format';
 import type { QA } from './jsonld';
-import { gpuName, quantText, speedPhrase, type Translate } from './phrases';
+import { confidenceText, gpuName, quantText, shortGpuName, speedPhrase, type Translate } from './phrases';
 
 type Tr = Translate & { has?: (key: string) => boolean };
 
@@ -21,14 +22,6 @@ export type ComboTranslators = {
   hint: Tr;
   gpuHub: Tr;
 };
-
-/** 페이지 가정을 짧게 (description 용) */
-export function assumeShort(t: ComboTranslators, page: ComboPage, locale: Locale): string {
-  const ram = formatInt(locale, page.config.ramGB);
-  if (page.gpu.kind === 'dgpu') return t.combo('assumeShortDgpu', { ram });
-  if (page.gpu.kind === 'unified') return t.combo('assumeShortUnified');
-  return t.combo('assumeShortCpu');
-}
 
 /** 이 페이지 구성의 메모리 표기 ("8 GB" / "32 GB of unified memory" / "32 GB of RAM") */
 export function comboMemoryLabel(t: ComboTranslators, page: ComboPage, locale: Locale): string {
@@ -62,6 +55,47 @@ export function titleVerdictText(t: ComboTranslators, page: ComboPage, locale: L
     case 'none':
       return t.verdict('F');
   }
+}
+
+/** description 의 속도 — 밴드 + 신뢰 라벨만. 실측은 측정 조건(컨텍스트·건수)과 8k 추정이 붙는 speedPhrase 그대로 */
+function descriptionSpeed(t: ComboTranslators, locale: Locale, q: QuantAssessment): string {
+  if (q.result.confidence === 'measured') return speedPhrase(t.common, t.confidence, locale, q);
+  const s = formatSpeed(locale, q.result);
+  return t.combo('metaSpeed', { low: s.low, high: s.high, label: confidenceText(t.confidence, q.result) });
+}
+
+/**
+ * meta description (10-16 D95) — 답부터 한 문장: 제목과 같은 판정 + 필요 메모리 + 속도 밴드·신뢰 라벨.
+ * 배치 문장(VRAM 여유·시스템 RAM 몫·전문가 층 수 같은 판정 문장)은 헤더·FAQ 몫이라 넣지 않는다 — 그래픽카드 콤보가
+ * 시스템 RAM 을 함께 쓰는지만 짧게 밝힌다.
+ * 수치는 제목 판정이 가리키는 양자화 — 기준, 추천(기준이 불가), RAM 힌트 구성(`titleVerdict` 와 같은 갈래)
+ */
+export function comboDescription(t: ComboTranslators, page: ComboPage, locale: Locale): string {
+  const { combo } = page;
+  const tv = titleVerdict(combo);
+  // GPU 는 제목과 같은 짧은 이름(D14 — "GeForce"·"Apple" 접두를 뗀다): 검색어 그대로이고 한국어 description 이 100자 안팎에 든다
+  const names = { model: page.model.name, gpu: shortGpuName(gpuName(t.names, page.gpu)) };
+  const gb = (v: number) => formatGB(locale, v);
+  if (tv.kind === 'none') {
+    // 기준 그대로(추천·RAM 힌트 없음) — 들어가지만 너무 느림 / 안 들어감
+    const q = combo.display;
+    const args = { ...names, verdict: t.verdict('F'), quant: quantText(t.hint, q), need: gb(q.memory.needGB) };
+    return q.fReason === 'too-slow'
+      ? t.combo('metaDescriptionTooSlow', { ...args, speed: descriptionSpeed(t, locale, q) })
+      : t.combo('metaDescriptionNoFit', args);
+  }
+  const q = tv.kind === 'ram' ? combo.ramHint!.q : combo.display;
+  // 그래픽카드보다 큰 필요량에 "원활"이 붙으면 모순처럼 읽힌다 — 시스템 RAM 을 함께 쓴다는 것만 밝힌다(몫·층 수는 본문)
+  const split = page.gpu.kind === 'dgpu' && (q.result.mode === 'partial-offload' || q.result.mode === 'cpu-moe');
+  return t.combo('metaDescription', {
+    ...names,
+    // RAM 힌트는 "RAM 64GB면 원활" 까지가 판정이다. 추천 양자화는 뒤의 "{quant} 기준" 이 밝힌다
+    verdict: tv.kind === 'ram' ? titleVerdictText(t, page, locale) : t.verdict(tv.verdict),
+    quant: quantText(t.hint, q),
+    need: gb(q.memory.needGB),
+    split: split ? t.combo('metaSplitRam') : '',
+    speed: descriptionSpeed(t, locale, q),
+  });
 }
 
 /** 판정 문장 — 헤더·description·FAQ Q1 의 단일 출처 */

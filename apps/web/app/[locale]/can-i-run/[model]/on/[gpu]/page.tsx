@@ -30,7 +30,7 @@ import { VramBar } from '@/components/vram-bar';
 import type { Locale } from '@/i18n/routing';
 import { catalog } from '@/lib/catalog';
 import {
-  assumeShort,
+  comboDescription,
   comboFaq,
   comboMemoryLabel,
   ramStepSentence,
@@ -81,7 +81,6 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (!page) return {};
   const t = await translators(locale);
   const name = gpuName(t.names, page.gpu);
-  const sentence = verdictSentence(t, page, locale);
   return buildPageMetadata({
     href: comboHref(modelId, gpuId),
     locale,
@@ -92,13 +91,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       gpu: shortGpuName(name),
       verdict: titleVerdictText(t, page, locale),
     }),
-    description: t.combo('metaDescription', {
-      model: page.model.name,
-      gpu: name,
-      memory: comboMemoryLabel(t, page, locale),
-      assume: assumeShort(t, page, locale),
-      sentence,
-    }),
+    // 답부터: 판정 + 필요 메모리 + 속도 밴드·신뢰 라벨 (10-16 D95 — 배치 문장은 본문 헤더·FAQ 몫)
+    description: comboDescription(t, page, locale),
   });
 }
 

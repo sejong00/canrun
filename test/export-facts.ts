@@ -64,7 +64,7 @@ export type PageFacts = {
   liveSummary?: string;
   /** `a[data-adjacent]` href */
   adjacentHrefs: string[];
-  /** `a[data-combo-link]` href (허브의 "상세" 링크) */
+  /** `a[data-combo-link]` href (허브·가이드 그리드의 판정 링크, 홈 "많이 찾는 조합", 가이드 ComboLink) */
   comboLinkHrefs: string[];
   /** 계산기 서버 렌더 예시(10-14 D73): `[data-start-gpu]` 하드웨어 id(문서 순서) · `a[data-start-pick]` 모델 링크 href(공개 콤보 또는 모델 허브) */
   startGpuIds: string[];

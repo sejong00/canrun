@@ -460,12 +460,14 @@ export default async function ModelHubPage({ params }: Props) {
                       <ComboCells
                         combo={row.combo}
                         gpu={gpu}
-                        comboHref={
+                        comboLink={
                           isComboIndexable(gpu.id, model.id)
-                            ? localeHref(locale, comboHref(model.id, gpu.id))
+                            ? {
+                                href: localeHref(locale, comboHref(model.id, gpu.id)),
+                                text: tTable('comboLink', { model: model.name, gpu: gpuName(t.names, gpu) }),
+                              }
                             : undefined
                         }
-                        detailsLabel={tTable('detailsFor', { model: model.name, gpu: gpuName(t.names, gpu) })}
                       />
                       <td className="text-xs">{price}</td>
                     </tr>

@@ -459,6 +459,25 @@ describe('titles and descriptions (docs/04 §4 — no duplicate templates)', () 
       descriptions.set(description!, page.file);
     }
   });
+
+  it('GPU hub descriptions name the same largest model and quant as FAQ Q1 (10-16 D95)', () => {
+    // 긴 이름부터 — "Qwen3 30B-A3B (2507)" 이 "Qwen3 30B-A3B" 보다 먼저 맞아야 한다
+    const names = models.map((m) => m.name).sort((a, b) => b.length - a.length);
+    const problems: string[] = [];
+    let named = 0;
+    for (const page of pages.filter((p) => p.kind === 'gpu')) {
+      const answer = page.faq[0]?.answer ?? '';
+      const model = names.find((n) => answer.startsWith(n));
+      if (!model) continue; // "전부 올라가는 모델 없음" 답 — description 도 가장 큰 모델을 말하지 않는다
+      named += 1;
+      // en "{model} at {quant} (…" · ko "{model} {quant}(…" — description 도 같은 이음새로 쓴다
+      const quant = answer.slice(model.length).match(/^(?: at | )[A-Za-z0-9_-]+/)?.[0];
+      const key = `${model}${quant ?? ''}`;
+      if (!quant || !(page.description ?? '').includes(key)) problems.push(`${page.file}: FAQ Q1 "${key}" — description "${page.description}"`);
+    }
+    expect(named, 'GPU hubs whose FAQ Q1 names a model').toBeGreaterThan(0);
+    expect(problems.slice(0, 10)).toEqual([]);
+  });
 });
 
 describe('Korean model names (10-16 D94 — 한글 표기는 한국어 페이지에, 페이지마다 한 번)', () => {

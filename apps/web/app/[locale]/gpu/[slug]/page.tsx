@@ -1,4 +1,4 @@
-import { isFp16Crippled, type ComboAssessment, type Gpu, type GpuHubData } from '@canrun/data';
+import { isFp16Crippled, type ComboAssessment, type ComboPick, type Gpu, type GpuHubData } from '@canrun/data';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
@@ -20,9 +20,11 @@ import { catalog } from '@/lib/catalog';
 import { formatGB, formatInt } from '@/lib/format';
 import { formatPrice, krwNote } from '@/lib/price';
 import { loadHubIntro } from '@/lib/hub-intros';
+import { gpuHubGuides } from '@/lib/gpu-hub-guides';
+import { guideEntry } from '@/lib/guides';
 import { getGpuHub } from '@/lib/hubs';
 import type { QA } from '@/lib/jsonld';
-import { comboHref, gpuHref, localeHref, modelHref } from '@/lib/links';
+import { comboHref, gpuHref, guideHref, localeHref, modelHref } from '@/lib/links';
 import { isComboIndexable } from '@/lib/publish';
 import { gpuName, modeKey, quantText, speedPhrase, type Translate } from '@/lib/phrases';
 import { gpuAliasLabels } from '@/lib/search-names';
@@ -88,6 +90,17 @@ function primaryCombos(hub: GpuHubData): ComboAssessment[] {
   return hub.rows.map((row) => row.combos[hub.primaryIndex]!);
 }
 
+/**
+ * "가장 큰 모델"의 단일 정의 (10-16 D95) — description 과 FAQ Q1 이 같은 값을 쓴다: 그래픽카드·통합 메모리는 GPU 에
+ * 전부 올라가는 가장 큰 모델(`faq.largestFullGpu`), CPU 프로필은 돌아가는 가장 큰 모델(`faq.largestRunnable`).
+ * 예전 description 은 따로 "원활 이상 가장 큰 모델"을 골라(동률은 속도 순) FAQ 와 다른 모델을 말했다(RTX 5090: Qwen3.6 vs 3.5 35B-A3B)
+ */
+function largestPick(hub: GpuHubData): ComboPick | undefined {
+  return hub.gpu.kind === 'cpu' ? hub.faq.largestRunnable : hub.faq.largestFullGpu;
+}
+
+const modelName = (id: string) => catalog.models.find((m) => m.id === id)?.name ?? id;
+
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale, slug } = await params;
   const hub = getGpuHub(slug);
@@ -100,37 +113,27 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const primaryMemory = primaryMemoryLabel(t.hub, hub, locale);
   const counts = hub.counts[hub.primaryIndex]!;
   const good = counts.S + counts.A;
-  // "원활 이상으로 도는 가장 큰 모델" — 가장 빠른 모델은 늘 가장 작은 모델이라 정보가 없다
-  const paramsOf = (id: string) => catalog.models.find((m) => m.id === id)?.paramsB ?? 0;
-  const biggest = primaryCombos(hub)
-    .filter((c) => c.baseline.result.verdict === 'S' || c.baseline.result.verdict === 'A')
-    .sort(
-      (a, b) =>
-        paramsOf(b.modelId) - paramsOf(a.modelId) ||
-        b.baseline.result.tgTokS.est - a.baseline.result.tgTokS.est,
-    )[0];
-  const biggestModel = biggest && catalog.models.find((m) => m.id === biggest.modelId);
+  const summary =
+    good > 0
+      ? t.hub('metaDescription', { gpu: name, memory: primaryMemory, good, total: hub.rows.length })
+      : t.hub('metaDescriptionNone', { gpu: name, memory: primaryMemory, total: hub.rows.length });
+  // 가장 큰 모델 — FAQ Q1 과 같은 모델·양자화·속도 (가장 빠른 모델은 늘 가장 작은 모델이라 정보가 없다)
+  const pick = largestPick(hub);
+  const largest = pick
+    ? t.hub(hub.gpu.kind === 'cpu' ? 'metaLargestCpu' : 'metaLargest', {
+        memory: primaryMemory,
+        model: modelName(pick.combo.modelId),
+        quant: pick.q.quant,
+        speed: speedPhrase(t.common, t.confidence, locale, pick.q),
+      })
+    : '';
 
   return buildPageMetadata({
     href: gpuHref(hub.gpu.id),
     locale,
     ogImage: `/og/gpu/${hub.gpu.id}-${locale}.png`,
     title: t.hub('metaTitle', { gpu: name, memory }),
-    description:
-      biggest && biggestModel
-        ? t.hub('metaDescription', {
-            gpu: name,
-            memory: primaryMemory,
-            good,
-            total: hub.rows.length,
-            model: biggestModel.name,
-            speed: speedPhrase(t.common, t.confidence, locale, biggest.baseline),
-          })
-        : t.hub('metaDescriptionNone', {
-            gpu: name,
-            memory: primaryMemory,
-            total: hub.rows.length,
-          }),
+    description: summary + largest,
   });
 }
 
@@ -140,15 +143,14 @@ function buildFaq(
   locale: Locale,
   name: string,
 ): QA[] {
-  const modelName = (id: string) => catalog.models.find((m) => m.id === id)?.name ?? id;
   const primaryRam = hub.configs[hub.primaryIndex]!.ramGB;
   const memory = primaryMemoryLabel(t.hub, hub, locale);
   const items: QA[] = [];
 
-  // Q1 — 전부 올라가는 가장 큰 모델 (CPU 프로필은 돌아가는 가장 큰 모델).
+  // Q1 — 전부 올라가는 가장 큰 모델 (CPU 프로필은 돌아가는 가장 큰 모델) — description 과 같은 `largestPick`.
   // 기준 또는 비-desperate 추천 quant 중 조건을 만족하는 것 (assess.ts pickQuant)
+  const pick = largestPick(hub);
   if (hub.gpu.kind === 'cpu') {
-    const pick = hub.faq.largestRunnable;
     items.push({
       question: t.faq('cpuLargestQ'),
       answer: pick
@@ -162,7 +164,6 @@ function buildFaq(
         : t.faq('cpuLargestNone', { total: hub.rows.length }),
     });
   } else {
-    const pick = hub.faq.largestFullGpu;
     items.push({
       question: t.faq('gpuLargestQ', { gpu: name }),
       answer: pick
@@ -244,9 +245,12 @@ export default async function GpuHubPage({ params }: Props) {
   const tSpec = t.hub;
   const tTable = await getTranslations({ locale, namespace: 'Table' });
   const tBreadcrumb = await getTranslations({ locale, namespace: 'Breadcrumb' });
+  const tGuides = await getTranslations({ locale, namespace: 'Guides' });
   const { gpu } = hub;
   const name = gpuName(t.names, gpu);
   const href = gpuHref(gpu.id);
+  // 관련 가이드 2~3편 — 하드웨어 종류별, published 만 (10-16 D95, D40)
+  const guides = gpuHubGuides(gpu);
   const primary = primaryCombos(hub);
   const multiConfig = hub.configs.length > 1;
   const config = configSuffix(t.hub, hub, locale);
@@ -446,12 +450,14 @@ export default async function GpuHubPage({ params }: Props) {
                       combo={row.combos[hub.primaryIndex]!}
                       gpu={gpu}
                       showReasoning
-                      comboHref={
+                      comboLink={
                         isComboIndexable(gpu.id, row.model.id)
-                          ? localeHref(locale, comboHref(row.model.id, gpu.id))
+                          ? {
+                              href: localeHref(locale, comboHref(row.model.id, gpu.id)),
+                              text: tTable('comboLink', { model: row.model.name, gpu: name }),
+                            }
                           : undefined
                       }
-                      detailsLabel={tTable('detailsFor', { model: row.model.name, gpu: name })}
                     />
                   </tr>
                 ))}
@@ -522,6 +528,21 @@ export default async function GpuHubPage({ params }: Props) {
         <p className="rounded-lg border border-border p-4 text-sm text-muted-foreground">
           {t.common('estimateNotice')}
         </p>
+
+        {guides.length > 0 && (
+          <section aria-labelledby="guides-heading" className="flex flex-col gap-3">
+            <h2 id="guides-heading" className="text-xl font-semibold tracking-tight">
+              {tGuides('relatedTitle')}
+            </h2>
+            <ul className="flex flex-col gap-2">
+              {guides.map((slug) => (
+                <li key={slug}>
+                  <a href={localeHref(locale, guideHref(slug))}>{guideEntry(slug).locales[locale].title}</a>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
       </article>
     </PageShell>
   );

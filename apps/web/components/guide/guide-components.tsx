@@ -87,7 +87,10 @@ function useHub(): { locale: Locale; hub: (href: string) => string } {
 }
 
 
-/** GPU × 모델 판정 그리드 — 레지스트리 그리드(D44). 셀 = 콤보 페이지 헤드라인과 같은 조립, 공개 콤보만 링크 */
+/**
+ * GPU × 모델 판정 그리드 — 레지스트리 그리드(D44). 셀 = 콤보 페이지 헤드라인과 같은 조립, 공개 콤보만 링크.
+ * 링크 텍스트는 허브 표와 같은 `Table.comboLink`("RTX 4060에서 gpt-oss-20b 판정 보기" — 10-16 D95)
+ */
 export function ComboGrid({ grid }: { grid: string }) {
   const { locale, hub } = useHub();
   const t = useTranslations('GuideData');
@@ -153,7 +156,7 @@ export function ComboGrid({ grid }: { grid: string }) {
                         )}
                         {linkable && (
                           <a href={hub(comboHref(page.model.id, gpu.id))} data-combo-link className="text-xs">
-                            {tTable('details')}
+                            {tTable('comboLink', { model: page.model.name, gpu: gpuName(names, gpu) })}
                           </a>
                         )}
                       </div>
