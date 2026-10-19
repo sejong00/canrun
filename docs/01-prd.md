@@ -99,6 +99,7 @@
 | 계산기 | `/calculator` | 정적 SSR(폼·많이 쓰는 하드웨어 예시·결과 읽는 법·범례·FAQ — PROGRESS §4 D73) + 클라이언트 아일랜드(카탈로그·번역은 props — P1-3 D27), **index**(D24) | 1 |
 | GPU 허브 | `/gpu/{slug}` | SSG from JSON | 카탈로그 전체 (현 54 — CPU 프로필 포함) |
 | 모델 허브 | `/model/{slug}` | SSG | 카탈로그 전체 (현 29) |
+| 모델 목록 · GPU 목록 | `/models` · `/gpus` | SSG — 전 행 서버 렌더 + 정렬·거르기 아일랜드(행 재배치·숨김만, 10-19 PROGRESS §4) | 각 1 |
 | 콤보 | `/can-i-run/{model}/on/{gpu}` | SSG | 카탈로그 전 조합(현 1,566 = GPU 54 × 모델 29) 생성 — 인덱싱은 `data/publish.json` 배치 게이트(`04` §3, P1-2) |
 | 가이드 | `/guides/{slug}` (+ 목차 `/guides`) | MDX(`apps/web/content/{en,ko}/guides`) + 서버 데이터 컴포넌트 | 출시 6쌍 |
 | 방법론 | `/methodology` | 정적 | 1 |

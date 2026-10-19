@@ -1,8 +1,8 @@
 /**
- * 구조화 데이터 (docs/04 §5) — 허브: BreadcrumbList + FAQPage.
+ * 구조화 데이터 (docs/04 §5) — 허브: BreadcrumbList + FAQPage, 목록 페이지(`/models`·`/gpus`): BreadcrumbList + ItemList.
  *
- * - 브레드크럼은 2단(홈 › 허브, 결정 D7): Google 은 마지막 외 항목에 `item` URL 을 요구하고
- *   `/gpu`·`/model` 인덱스 페이지는 없다. 마지막 항목 URL = 캐노니컬.
+ * - 허브 브레드크럼은 3단(홈 › 목록 › 허브 — 10-19, 목록 페이지가 생겨 가운데 단계에 URL 이 있다. 그 전에는 2단, 결정 D7):
+ *   Google 은 마지막 외 항목에 `item` URL 을 요구한다. 마지막 항목 URL = 캐노니컬.
  * - FAQPage 답 텍스트는 화면에 보이는 FAQ 와 같은 문자열을 쓴다(구글 가이드라인). 2023년 이후
  *   FAQ 리치 결과는 정부·보건 사이트 한정이라 노출은 기대하지 않는다(결정 D8).
  */
@@ -31,6 +31,26 @@ export function faqJsonLd(items: readonly QA[]) {
       '@type': 'Question',
       name: qa.question,
       acceptedAnswer: { '@type': 'Answer', text: qa.answer },
+    })),
+  };
+}
+
+/**
+ * 목록 페이지 (10-19 `/models`·`/gpus`) — 화면 표의 기본 순서 그대로 전 항목. url = 허브 절대 URL(캐노니컬), name = 링크 텍스트.
+ * 리치 결과(캐러셀)는 특정 유형(레시피·강좌 등)만이라 노출은 기대하지 않는다 — 목록 구조를 밝히는 용도
+ */
+export function itemListJsonLd(input: { name: string; url: string; items: readonly Crumb[] }) {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'ItemList',
+    name: input.name,
+    url: input.url,
+    numberOfItems: input.items.length,
+    itemListElement: input.items.map((item, index) => ({
+      '@type': 'ListItem',
+      position: index + 1,
+      name: item.name,
+      url: item.url,
     })),
   };
 }

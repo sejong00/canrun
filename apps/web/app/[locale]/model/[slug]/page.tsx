@@ -31,7 +31,7 @@ import { formatPrice, krwNote } from '@/lib/price';
 import { loadHubIntro } from '@/lib/hub-intros';
 import { getModelHub } from '@/lib/hubs';
 import type { QA } from '@/lib/jsonld';
-import { calculatorHref, comboHref, gpuHref, hfUrl, localeHref, modelHref } from '@/lib/links';
+import { calculatorHref, comboHref, gpuHref, hfUrl, localeHref, modelHref, modelsHref } from '@/lib/links';
 import { hubOgImage } from '@/lib/og-images';
 import { isComboIndexable } from '@/lib/publish';
 import { gpuName, quantText, speedPhrase, type Translate } from '@/lib/phrases';
@@ -247,6 +247,12 @@ export default async function ModelHubPage({ params }: Props) {
                 name: tBreadcrumb('home'),
                 href: localeHref(locale, '/'),
                 url: absoluteUrl(localeHref(locale, '/')),
+              },
+              // 홈 › 모델 목록 › 허브 (10-19 — 목록 페이지가 생겨 가운데 단계에 URL 이 있다)
+              {
+                name: tBreadcrumb('models'),
+                href: localeHref(locale, modelsHref()),
+                url: absoluteUrl(localeHref(locale, modelsHref())),
               },
               {
                 name: model.name,

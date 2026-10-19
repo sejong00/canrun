@@ -12,7 +12,19 @@ import { koFamilyName } from '../apps/web/content/ko-names';
 import { STATIC_PAGE_SLUGS } from '../apps/web/content/pages';
 
 export type Locale = 'en' | 'ko';
-export type PageKind = 'home' | 'gpu' | 'model' | 'combo' | 'calculator' | 'guide' | 'guides-index' | 'static' | 'other';
+export type PageKind =
+  | 'home'
+  | 'gpu'
+  | 'model'
+  | 'combo'
+  | 'calculator'
+  | 'guide'
+  | 'guides-index'
+  | 'static'
+  /** 목록 페이지 (10-19) — `/models`·`/gpus` */
+  | 'models-index'
+  | 'gpus-index'
+  | 'other';
 
 export type GpuRecord = {
   id: string;
@@ -116,6 +128,11 @@ export type PageFacts = {
     openCalculator?: string;
     /** P1-4: 헤더 `a[data-nav-guides]` href (published 가이드 ≥1 일 때만 렌더) */
     navGuides?: string;
+    /** 10-19: 헤더 `a[data-nav-models]`·`a[data-nav-gpus]` href (목록 페이지) */
+    navModels?: string;
+    navGpus?: string;
+    /** 10-19: 목록 페이지 정렬·거르기 아일랜드 `[data-list-controls="models|gpus"]` 의 값 */
+    listControls?: string;
     /** `form[data-calc-widget]` 수 (홈·가이드 — D45) */
     calcWidgets: number;
     /** `[data-guide-data]` 수 — 가이드 자체 데이터 인용 (AC, D42) */
@@ -139,6 +156,15 @@ export type PageFacts = {
   /** 업데이트 소식(10-14 D72): `[data-update]` 항목 id(문서 순서) · `a[data-added-model]` 카탈로그 추가 목록의 모델 허브 href */
   updateIds: string[];
   addedModelHrefs: string[];
+  /**
+   * 목록 페이지(10-19): 표 행 `a[data-browse-model]`·`a[data-browse-gpu]` href(문서 순서), 표 행(`tr[data-model-id]`·`tr[data-gpu-id]`, 문서 순서 —
+   * id 와 여는 태그의 data-* 값, 키는 `data-` 를 뗀 이름), 홈의 전체 목록 링크 `a[data-browse-all]` href.
+   * 모델 허브 GPU 표 행도 `data-gpu-id` 를 가져 listRows 에 들어간다 — 목록 페이지에서만 쓴다
+   */
+  browseModelHrefs: string[];
+  browseGpuHrefs: string[];
+  listRows: Array<{ id: string; data: Record<string, string> }>;
+  browseAllHrefs: string[];
   /** `<script src>` 중 nomodule 이 아닌 것 (초기 모듈 스크립트 집합 — D34 예산 게이트) */
   scriptSrcs: string[];
   /** `<link rel="preload|modulepreload">` 가 가리키는 스크립트 */
@@ -216,6 +242,8 @@ export function kindOf(urlPath: string): PageKind {
   if (/^\/model\/[^/]+$/.test(bare)) return 'model';
   if (COMBO_RE.test(bare)) return 'combo';
   if (bare === '/guides') return 'guides-index';
+  if (bare === '/models') return 'models-index';
+  if (bare === '/gpus') return 'gpus-index';
   if (/^\/guides\/[^/]+$/.test(bare)) return 'guide';
   if ((STATIC_PAGE_SLUGS as readonly string[]).includes(bare.slice(1))) return 'static';
   return 'other';
@@ -538,7 +566,12 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
   let navCalculator: string | undefined;
   let openCalculator: string | undefined;
   let navGuides: string | undefined;
+  let navModels: string | undefined;
+  let navGpus: string | undefined;
   let calcModelLink: string | undefined;
+  const browseModelHrefs: string[] = [];
+  const browseGpuHrefs: string[] = [];
+  const browseAllHrefs: string[] = [];
   const relatedGuideHrefs: string[] = [];
   const addedModelHrefs: string[] = [];
   for (const m of html.matchAll(/<a\b[^>]*>/g)) {
@@ -552,6 +585,11 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
     if (hasAttr(tag, 'data-nav-calculator')) navCalculator = href;
     if (hasAttr(tag, 'data-open-calculator')) openCalculator = href;
     if (hasAttr(tag, 'data-nav-guides')) navGuides = href;
+    if (hasAttr(tag, 'data-nav-models')) navModels = href;
+    if (hasAttr(tag, 'data-nav-gpus')) navGpus = href;
+    if (hasAttr(tag, 'data-browse-model')) browseModelHrefs.push(href);
+    if (hasAttr(tag, 'data-browse-gpu')) browseGpuHrefs.push(href);
+    if (hasAttr(tag, 'data-browse-all')) browseAllHrefs.push(href);
     if (hasAttr(tag, 'data-calc-model-link')) calcModelLink = decodeEntities(href);
     if (hasAttr(tag, 'data-related-guide')) relatedGuideHrefs.push(href);
     if (hasAttr(tag, 'data-added-model')) addedModelHrefs.push(href);
@@ -560,6 +598,12 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
   const datalist = html.match(/<datalist\b[^>]*>([\s\S]*?)<\/datalist>/)?.[1] ?? '';
   const datalistOptionCount = (datalist.match(/<option\b/g) ?? []).length;
   const guideBody = elementsWithAttr(noScript, 'data-guide-body')[0]?.inner ?? '';
+  const listControlsValue = attrValue(elementsWithAttr(noScript, 'data-list-controls')[0]?.openTag ?? '', 'data-list-controls');
+  // 목록 페이지 표 행 — 여는 태그의 data-* 전부 (정렬·거르기 아일랜드가 읽는 값)
+  const listRows = [...noScript.matchAll(/<tr\b[^>]*\sdata-(?:model|gpu)-id="[^"]+"[^>]*>/g)].map((m) => {
+    const data = Object.fromEntries([...m[0].matchAll(/\sdata-([\w-]+)="([^"]*)"/g)].map((a) => [a[1]!, a[2]!]));
+    return { id: data['model-id'] ?? data['gpu-id']!, data };
+  });
   const hubIntro = elementsWithAttr(noScript, 'data-hub-intro')[0]?.inner ?? '';
   const markers: PageFacts['markers'] = {
     calculator: elementsWithAttr(noScript, 'data-calculator').length > 0,
@@ -571,6 +615,9 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
     ...(navCalculator === undefined ? {} : { navCalculator }),
     ...(openCalculator === undefined ? {} : { openCalculator }),
     ...(navGuides === undefined ? {} : { navGuides }),
+    ...(navModels === undefined ? {} : { navModels }),
+    ...(navGpus === undefined ? {} : { navGpus }),
+    ...(listControlsValue === undefined ? {} : { listControls: listControlsValue }),
     calcWidgets: elementsWithAttr(noScript, 'data-calc-widget').length,
     guideData: elementsWithAttr(noScript, 'data-guide-data').length,
     guideDraft: elementsWithAttr(noScript, 'data-guide-draft').length > 0,
@@ -723,6 +770,10 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
     relatedGuideHrefs,
     updateIds: elementsWithAttr(noScript, 'data-update').map((e) => attrValue(e.openTag, 'data-update') ?? ''),
     addedModelHrefs,
+    browseModelHrefs,
+    browseGpuHrefs,
+    listRows,
+    browseAllHrefs,
     markers,
     scriptSrcs,
     preloadSrcs,

@@ -7,7 +7,7 @@ import { STATIC_PAGE_SLUGS, type StaticPageSlug } from '@/content/pages';
 import { routing, type Locale } from '@/i18n/routing';
 import { DATA_UPDATED } from '@/lib/data-meta';
 import { formatGuideDate } from '@/lib/guides';
-import { localeHref, staticHref } from '@/lib/links';
+import { gpusHref, localeHref, modelsHref, staticHref } from '@/lib/links';
 import { ADSENSE_CLIENT, SEARCH_VERIFICATION, SITE_URL } from '@/lib/site';
 import '../globals.css';
 
@@ -82,6 +82,21 @@ export default async function LocaleLayout({ children, params }: Props) {
         <footer className="border-t border-border">
           <div className="mx-auto flex max-w-5xl flex-col gap-3 px-4 py-6 text-sm text-muted-foreground sm:px-6">
             <p>{t('tagline')}</p>
+            {/* 모델·GPU 목록 (10-19) — 헤더 내비와 같은 입구를 페이지 끝에도 */}
+            <nav aria-label={tFooter('browse')}>
+              <ul className="flex flex-wrap gap-x-4 gap-y-1">
+                <li>
+                  <a href={localeHref(locale as Locale, modelsHref())} data-footer-link="models" className="underline underline-offset-4 hover:text-foreground">
+                    {tFooter('models')}
+                  </a>
+                </li>
+                <li>
+                  <a href={localeHref(locale as Locale, gpusHref())} data-footer-link="gpus" className="underline underline-offset-4 hover:text-foreground">
+                    {tFooter('gpus')}
+                  </a>
+                </li>
+              </ul>
+            </nav>
             {/* 정적 페이지 링크 (P1-5 — 고아 방지·AdSense 필수 페이지) + 데이터 기준일 (docs/01 §7) */}
             <nav aria-label={tFooter('nav')}>
               <ul className="flex flex-wrap gap-x-4 gap-y-1">

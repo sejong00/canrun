@@ -4,9 +4,9 @@
  * - 분할(docs/04 §3): sitemap.xml(인덱스) → pages · gpus · models · guides(published 만) · combos-en/-ko(`indexableCombos()` 만 —
  *   공개 콤보가 0 이면 파일·인덱스 항목을 만들지 않는다). URL 마다 en/ko/x-default `xhtml:link` 대체 링크(HTML hreflang 과 같은 규칙).
  * - lastmod: 가이드 = 레지스트리 dateModified, 업데이트 소식 = max(dataUpdated, 최신 항목 날짜 — content/updates.ts),
- *   엔진 수치를 그리는 페이지(계산기·GPU·모델 허브·콤보) = max(dataUpdated, 엔진 `ENGINE_SPEC_DATE` — 10-16 D93: 엔진 개정은
+ *   엔진 수치를 그리는 페이지(계산기·GPU·모델 허브·콤보·GPU 목록) = max(dataUpdated, 엔진 `ENGINE_SPEC_DATE` — 10-16 D93: 엔진 개정은
  *   데이터 없이도 모든 수치를 바꾼다), 소개글이 붙은 허브는 여기에 content/hubs.ts HUB_INTROS_UPDATED 까지 넣은 최댓값,
- *   나머지(홈·정적 페이지) = `data/meta.json` dataUpdated — 빌드 시각을 쓰지 않는다(D21 결정론).
+ *   나머지(홈·정적 페이지·모델 목록) = `data/meta.json` dataUpdated — 빌드 시각을 쓰지 않는다(D21 결정론).
  * - robots.txt: 전부 허용(네이버 Yeti 포함) + Sitemap 줄 + 맨 끝 다음(Daum) 웹마스터도구 확인 줄(D99). `/can-i-run/` 를 막지 않는다(막으면 noindex 를 못 읽는다 — PROGRESS §5).
  * - IndexNow 키 파일 `<INDEXNOW_KEY>.txt`(10-16 D93 — 내용 = 키 자체, 공개 값). 배포 뒤 `scripts/indexnow.ts` 가 이 키로 바뀐 URL 을 보낸다.
  * - RSS 2.0: `rss.xml`(en)·`ko/rss.xml`(ko) — published 가이드, 게시일 최신순. 업데이트 소식은 넣지 않는다(채널이 가이드 피드이고,
@@ -175,6 +175,9 @@ export function buildSitemaps(repoRoot: string, outDir: string): string[] {
   const pages: Entry[] = [
     { path: '/', lastmod: dataUpdated },
     { path: '/calculator', lastmod: numbersUpdated },
+    // 목록 페이지(10-19): 모델 목록은 데이터 값만 보이고, GPU 목록은 "쾌적·원활" 수(엔진 판정)를 보인다
+    { path: '/models', lastmod: dataUpdated },
+    { path: '/gpus', lastmod: numbersUpdated },
     ...(published.length > 0 ? [{ path: '/guides', lastmod: maxDate(published.map((s) => GUIDES[s].dateModified)) }] : []),
     // 업데이트 소식(10-14 D72)은 손으로 쓴 항목이 데이터 없이 늘 수 있다 — 최신 항목 날짜와 데이터 기준일 중 늦은 날
     ...STATIC_PAGE_SLUGS.map((slug) => ({ path: `/${slug}`, lastmod: slug === 'updates' ? maxDate([dataUpdated, latestSiteUpdate()]) : dataUpdated })),

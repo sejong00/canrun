@@ -17,6 +17,9 @@ export function localeHref(locale: Locale, href: string): string {
 /** 내부 링크는 next/link 대신 이 경로를 쓰는 평범한 `<a>` — 표마다 수십 개를 하이드레이션·프리페치하지 않는다 */
 export const gpuHref = (id: string) => `/gpu/${id}`;
 export const modelHref = (id: string) => `/model/${id}`;
+/** 목록 페이지 (10-19) — 카탈로그 전 모델·전 GPU. 허브 브레드크럼의 가운데 단계 */
+export const modelsHref = () => `/models`;
+export const gpusHref = () => `/gpus`;
 /** 콤보 페이지 (docs/04 §2) — 모델이 앞, GPU 가 뒤 */
 export const comboHref = (modelId: string, gpuId: string) => `/can-i-run/${modelId}/on/${gpuId}`;
 export const hfUrl = (repo: string) => `https://huggingface.co/${repo}`;

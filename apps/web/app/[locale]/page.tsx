@@ -6,7 +6,7 @@ import { PageShell } from '@/components/page-shell';
 import type { Locale } from '@/i18n/routing';
 import { catalog } from '@/lib/catalog';
 import { webSiteJsonLd } from '@/lib/jsonld';
-import { calculatorHref, comboHref, gpuHref, localeHref, modelHref } from '@/lib/links';
+import { calculatorHref, comboHref, gpuHref, gpusHref, localeHref, modelHref, modelsHref } from '@/lib/links';
 import { gpuName, shortGpuName, type Translate } from '@/lib/phrases';
 import { HOME_QUICK_PICKS, popularCombos } from '@/lib/popular-combos';
 import { buildPageMetadata } from '@/lib/seo';
@@ -129,6 +129,12 @@ export default async function HomePage({ params }: Props) {
               </li>
             ))}
           </ul>
+          {/* 전체 목록 (10-19) */}
+          <p className="text-sm">
+            <a href={localeHref(locale, gpusHref())} data-browse-all="gpus">
+              {t('allGpus', { count: catalog.gpus.length })}
+            </a>
+          </p>
         </section>
 
         <section aria-labelledby="browse-models" className="flex flex-col gap-3">
@@ -142,6 +148,11 @@ export default async function HomePage({ params }: Props) {
               </li>
             ))}
           </ul>
+          <p className="text-sm">
+            <a href={localeHref(locale, modelsHref())} data-browse-all="models">
+              {t('allModels', { count: catalog.models.length })}
+            </a>
+          </p>
         </section>
       </article>
     </PageShell>

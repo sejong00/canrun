@@ -69,6 +69,9 @@ const PAGES: readonly PageSpec[] = [
   { name: 'methodology', path: '/methodology', structured: false, combo: false },
   // 10-14 D72 — 업데이트 소식(레지스트리 항목 + 카탈로그 추가 목록, 클라이언트 JS 0)
   { name: 'updates', path: '/updates', structured: false, combo: false },
+  // 10-19 — 모델·GPU 목록(정렬·거르기 아일랜드는 e2e/browse.spec.ts)
+  { name: 'model list', path: '/models', structured: false, combo: false },
+  { name: 'gpu list', path: '/gpus', structured: false, combo: false },
 ];
 
 for (const locale of LOCALES) {
@@ -132,7 +135,7 @@ for (const locale of LOCALES) {
           const types = jsonLdTypes(blocks);
           expect([...types]).toEqual(expect.arrayContaining(['BreadcrumbList', 'FAQPage']));
 
-          // 브레드크럼: 허브 2단(D7)·콤보 3단(D10), 전 항목 item URL (마지막 = 캐노니컬)
+          // 브레드크럼: 허브 3단(홈 › 목록 › 허브 — 10-19, 그 전에는 2단 D7)·콤보 3단(D10), 전 항목 item URL (마지막 = 캐노니컬)
           const crumbs = breadcrumbItems(blocks);
           expect(crumbs.length).toBeGreaterThanOrEqual(2);
           for (const crumb of crumbs) {

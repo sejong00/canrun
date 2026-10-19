@@ -146,6 +146,8 @@ const isCalculator = (page: PageFacts) => page.kind === 'calculator';
 const isStructured = (page: PageFacts) => isHub(page) || page.kind === 'combo' || isCalculator(page);
 const isGuide = (page: PageFacts) => page.kind === 'guide';
 const isGuidesIndex = (page: PageFacts) => page.kind === 'guides-index';
+/** 모델·GPU 목록 (10-19) */
+const isList = (page: PageFacts) => page.kind === 'models-index' || page.kind === 'gpus-index';
 /** 소개·계산 방법·개인정보처리방침·문의 (P1-5) */
 const isStatic = (page: PageFacts) => page.kind === 'static';
 /** 가이드 URL → 슬러그 (레지스트리 밖이면 undefined) */
@@ -427,6 +429,7 @@ describe('structured data (docs/04 §5)', () => {
       if (isCalculator(page)) expect(types, page.file).toContain('SoftwareApplication');
       if (isGuide(page)) expect(types, page.file).toEqual(expect.arrayContaining(['Article', 'BreadcrumbList']));
       if (isGuidesIndex(page)) expect(types, page.file).toContain('BreadcrumbList');
+      if (isList(page)) expect(types, page.file).toEqual(expect.arrayContaining(['BreadcrumbList', 'ItemList']));
       if (!isStructured(page)) continue;
       expect(types, page.file).toContain('BreadcrumbList');
       expect(types, page.file).toContain('FAQPage');
@@ -442,8 +445,8 @@ describe('structured data (docs/04 §5)', () => {
     }
   });
 
-  it('breadcrumbs: every item has a URL (결정 D7), the last one is the canonical; combos are 3 levels (D10)', () => {
-    for (const page of pages.filter(isStructured)) {
+  it('breadcrumbs: every item has a URL (결정 D7), the last one is the canonical; hubs go through their list page and combos through the model hub, 3 levels each (10-19 · D10)', () => {
+    for (const page of pages.filter((p) => isStructured(p) || isList(p))) {
       const crumbs = page.jsonLd.find((b) => b['@type'] === 'BreadcrumbList')!;
       const items = crumbs.itemListElement as Array<{ item?: string; position: number }>;
       expect(items.length, page.file).toBeGreaterThanOrEqual(2);
@@ -452,6 +455,13 @@ describe('structured data (docs/04 §5)', () => {
         expect(item.item, page.file).toMatch(/^https?:\/\//);
       });
       expect(items.at(-1)!.item, page.file).toBe(page.canonical);
+      expect(urlToPath(items[0]!.item!), `${page.file} crumb 1`).toBe(localePath(page.locale, '/'));
+      // 목록 페이지는 2단(홈 › 목록), 허브는 3단(홈 › 목록 › 허브 — 10-19, 그 전에는 목록 페이지가 없어 2단이었다)
+      if (isList(page)) expect(items.length, page.file).toBe(2);
+      if (isHub(page)) {
+        expect(items.length, page.file).toBe(3);
+        expect(urlToPath(items[1]!.item!), `${page.file} crumb 2`).toBe(localePath(page.locale, page.kind === 'gpu' ? '/gpus' : '/models'));
+      }
       if (page.combo) {
         // 홈 › 모델 허브 › 콤보(캐노니컬)
         expect(items.length, page.file).toBe(3);
@@ -626,7 +636,7 @@ describe('internal linking (docs/04 §2 — 고아 페이지 0)', () => {
     // 가이드: published 만 링크 대상(초안은 URL 로만 — D40). 목차는 published ≥1 일 때만
     const linkedGuides = (p: PageFacts) =>
       (isGuide(p) && guidePublished(guideSlugOf(p.urlPath)!)) || (isGuidesIndex(p) && PUBLISHED_GUIDES.length > 0);
-    for (const page of pages.filter((p) => isHub(p) || isCalculator(p) || linkedGuides(p) || isStatic(p))) {
+    for (const page of pages.filter((p) => isHub(p) || isCalculator(p) || linkedGuides(p) || isStatic(p) || isList(p))) {
       expect(inbound.get(page.urlPath) ?? 0, `orphan ${page.kind} ${page.urlPath}`).toBeGreaterThan(0);
     }
   });
@@ -634,6 +644,15 @@ describe('internal linking (docs/04 §2 — 고아 페이지 0)', () => {
   it('every page links to the locale-correct calculator from the header (P1-3 D36)', () => {
     for (const page of pages) {
       expect(page.markers.navCalculator, `${page.file} a[data-nav-calculator]`).toBe(localePath(page.locale, '/calculator'));
+    }
+  });
+
+  it('every page links to the locale-correct model and GPU lists from the header (10-19)', () => {
+    for (const page of pages) {
+      expect([page.markers.navModels, page.markers.navGpus], `${page.file} a[data-nav-models|gpus]`).toEqual([
+        localePath(page.locale, '/models'),
+        localePath(page.locale, '/gpus'),
+      ]);
     }
   });
 
@@ -1095,6 +1114,97 @@ describe('islands SSR (P1-3 D28 · price sort)', () => {
     }
     for (const page of pages.filter((p) => p.kind === 'gpu' || p.kind === 'home' || isGuide(p) || isGuidesIndex(p) || isStatic(p))) {
       expect(page.markers.sortControl || page.markers.ctxControls, `${page.file} has no island`).toBe(false);
+    }
+    // 목록 페이지(10-19)만 목록 정렬·거르기 컨트롤을 그린다
+    for (const page of pages) {
+      const expected = page.kind === 'models-index' ? 'models' : page.kind === 'gpus-index' ? 'gpus' : undefined;
+      expect(page.markers.listControls, `${page.file} [data-list-controls]`).toBe(expected);
+    }
+  });
+});
+
+describe('list pages (10-19 — /models·/gpus: 카탈로그 전 모델·전 GPU 를 서버 HTML 에)', () => {
+  const absolute = (page: PageFacts, path: string) => `${new URL(page.canonical!).origin}${path}`;
+  const itemList = (page: PageFacts) => {
+    const list = page.jsonLd.find((b) => b['@type'] === 'ItemList')!;
+    return { list, urls: (list.itemListElement as Array<{ url: string; position: number }>).map((i) => i.url) };
+  };
+  // GPU 허브 요약 — 목록의 "쾌적·원활" 수가 허브와 같은 함수·같은 구성의 값인지 (허브 페이지와 같은 summarizeGpu)
+  const hubs = new Map<string, GpuHubData>();
+  let catalog: ReturnType<typeof loadCatalog> | undefined;
+  const gpuHub = (id: string): GpuHubData => {
+    catalog ??= loadCatalog();
+    if (!hubs.has(id)) hubs.set(id, summarizeGpu(catalog, catalog.gpus.find((g) => g.id === id)!));
+    return hubs.get(id)!;
+  };
+  const requireList = (kind: 'models-index' | 'gpus-index') => {
+    const found = pages.filter((p) => p.kind === kind);
+    expect(found.map((p) => p.locale).sort(), `${kind} pages`).toEqual(['en', 'ko']);
+    return found;
+  };
+
+  it('/models: indexable, one row and one hub link per catalog model in the default order, and an ItemList in the same order', () => {
+    // 기본 순서 = lib/browse.ts modelListOrder (인기도 → 30일 다운로드 → 이름)
+    const full = readJson<Array<{ id: string; name: string; popularity: number; hfDownloads30d?: number }>>('data/models.json');
+    const order = [...full]
+      .sort((a, b) => b.popularity - a.popularity || (b.hfDownloads30d ?? -1) - (a.hfDownloads30d ?? -1) || a.name.localeCompare(b.name, 'en'))
+      .map((m) => m.id);
+    for (const page of requireList('models-index')) {
+      expect(page.robotsNoindex, page.file).toBe(false);
+      expect(page.listRows.map((r) => r.id), `${page.file} rows`).toEqual(order);
+      expect(page.browseModelHrefs, `${page.file} model links`).toEqual(order.map((id) => hubPath(page.locale, 'model', id)));
+      const { list, urls } = itemList(page);
+      expect(list.numberOfItems, page.file).toBe(order.length);
+      expect(list.url, page.file).toBe(page.canonical);
+      expect(urls, `${page.file} ItemList`).toEqual(page.browseModelHrefs.map((href) => absolute(page, href)));
+      // 정렬·거르기 값: 기본 순서 index, 크기 구간, 깃발은 있는 모델만
+      page.listRows.forEach((row, i) => {
+        expect(row.data['sort-index'], `${page.file} ${row.id}`).toBe(String(i));
+        expect(['s', 'm', 'l', 'xl'], `${page.file} ${row.id} size`).toContain(row.data.size);
+        expect(row.data.released, `${page.file} ${row.id} released`).toMatch(/^\d{8}$/);
+      });
+    }
+  });
+
+  it('/gpus: indexable, one row and one hub link per catalog GPU, an ItemList in page order, "runs great or well" equal to the GPU hub summary', () => {
+    for (const page of requireList('gpus-index')) {
+      expect(page.robotsNoindex, page.file).toBe(false);
+      expect([...page.listRows.map((r) => r.id)].sort(), `${page.file} rows`).toEqual(gpus.map((g) => g.id).sort());
+      expect(page.browseGpuHrefs, `${page.file} GPU links`).toEqual(page.listRows.map((r) => hubPath(page.locale, 'gpu', r.id)));
+      const { list, urls } = itemList(page);
+      expect(list.numberOfItems, page.file).toBe(gpus.length);
+      expect(urls, `${page.file} ItemList`).toEqual(page.browseGpuHrefs.map((href) => absolute(page, href)));
+      for (const row of page.listRows) {
+        const hub = gpuHub(row.id);
+        const counts = hub.counts[hub.primaryIndex]!;
+        expect(row.data.good, `${page.file} ${row.id} good`).toBe(String(counts.S + counts.A));
+      }
+      // 가격 정렬 값은 dGPU 실거래가(priceAsOf 동반)만 — 규칙 2
+      for (const row of page.listRows.filter((r) => r.data.price !== undefined)) {
+        const gpu = gpus.find((g) => g.id === row.id) as GpuRecord & { streetUSD?: number; priceAsOf?: string };
+        expect([gpu.kind, String(gpu.streetUSD), Boolean(gpu.priceAsOf)], `${page.file} ${row.id} price`).toEqual(['dgpu', row.data.price, true]);
+      }
+      if (page.locale === 'ko') expect([page.krwPrices > 0, page.krwNote], `${page.file} KRW`).toEqual([true, true]);
+    }
+  });
+
+  it('home links both lists; the footer of every page links them too', () => {
+    for (const page of pages.filter((p) => p.kind === 'home')) {
+      expect([...page.browseAllHrefs].sort(), page.file).toEqual([localePath(page.locale, '/gpus'), localePath(page.locale, '/models')]);
+    }
+    for (const page of pages) {
+      const hrefs = new Set(page.links.map((l) => l.href));
+      expect(hrefs.has(localePath(page.locale, '/models')) && hrefs.has(localePath(page.locale, '/gpus')), page.file).toBe(true);
+    }
+  });
+
+  it('sitemap lastmod: the model list keeps the data date, the GPU list the later of the data and engine dates (its counts are verdicts)', () => {
+    const xml = readFileSync(join(outDir, 'sitemap-pages.xml'), 'utf8');
+    const dataUpdated = readJson<{ dataUpdated: string }>('data/meta.json').dataUpdated;
+    const lastmods = new Map([...xml.matchAll(/<url><loc>([^<]+)<\/loc><lastmod>([^<]+)<\/lastmod>/g)].map((m) => [urlToPath(m[1]!), m[2]!]));
+    for (const locale of ['en', 'ko'] as const) {
+      expect(lastmods.get(localePath(locale, '/models')), `${locale} /models`).toBe(dataUpdated);
+      expect(lastmods.get(localePath(locale, '/gpus')), `${locale} /gpus`).toBe(laterDate(dataUpdated, ENGINE_SPEC_DATE));
     }
   });
 });

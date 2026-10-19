@@ -105,6 +105,9 @@ describe('static page MDX internal links (<SiteLink to>) point at pages that exi
   const fixed = new Set([
     '/',
     '/calculator',
+    // 모델·GPU 목록 (10-19)
+    '/models',
+    '/gpus',
     ...STATIC_PAGE_SLUGS.map((slug) => `/${slug}`),
     ...(published.length > 0 ? ['/guides'] : []),
     ...published.map((slug) => `/guides/${slug}`),
@@ -116,7 +119,7 @@ describe('static page MDX internal links (<SiteLink to>) point at pages that exi
   };
 
   for (const locale of ['en', 'ko'] as const) {
-    it(`${locale}: every SiteLink target is a static page, the calculator, a catalog model/GPU hub or a published guide`, () => {
+    it(`${locale}: every SiteLink target is a static page, the calculator, a list page, a catalog model/GPU hub or a published guide`, () => {
       const dir = join(webRoot, 'content', locale, 'pages');
       const bad = readdirSync(dir)
         .filter((f) => f.endsWith('.mdx'))

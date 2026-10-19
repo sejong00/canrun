@@ -24,7 +24,7 @@ import { gpuHubGuides } from '@/lib/gpu-hub-guides';
 import { guideEntry } from '@/lib/guides';
 import { getGpuHub } from '@/lib/hubs';
 import type { QA } from '@/lib/jsonld';
-import { comboHref, gpuHref, guideHref, localeHref, modelHref } from '@/lib/links';
+import { comboHref, gpuHref, gpusHref, guideHref, localeHref, modelHref } from '@/lib/links';
 import { hubOgImage } from '@/lib/og-images';
 import { isComboIndexable } from '@/lib/publish';
 import { gpuName, modeKey, quantText, speedPhrase, type Translate } from '@/lib/phrases';
@@ -302,6 +302,8 @@ export default async function GpuHubPage({ params }: Props) {
                 href: localeHref(locale, '/'),
                 url: absoluteUrl(localeHref(locale, '/')),
               },
+              // 홈 › GPU 목록 › 허브 (10-19 — 목록 페이지가 생겨 가운데 단계에 URL 이 있다)
+              { name: tBreadcrumb('gpus'), href: localeHref(locale, gpusHref()), url: absoluteUrl(localeHref(locale, gpusHref())) },
               { name, href: localeHref(locale, href), url: absoluteUrl(localeHref(locale, href)) },
             ]}
           />

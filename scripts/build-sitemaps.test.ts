@@ -118,7 +118,7 @@ describe('buildSitemaps on a minimal out/ (RSS body · IndexNow key · lastmod)'
     }
   });
 
-  it('calculator, hub and combo lastmod follow the later of the data date and the engine date; home stays on the data date', () => {
+  it('calculator, hub, combo and GPU list lastmod follow the later of the data date and the engine date; home and the model list stay on the data date', () => {
     const numbers = later(dataUpdated, ENGINE_SPEC_DATE);
     const lastmods = (rel: string) =>
       new Map([...read(rel).matchAll(/<url><loc>([^<]+)<\/loc><lastmod>([^<]+)<\/lastmod>/g)].map((m) => [m[1]!.slice(SITE_URL.length) || '/', m[2]!]));
@@ -126,6 +126,9 @@ describe('buildSitemaps on a minimal out/ (RSS body · IndexNow key · lastmod)'
     expect(pages.get('/')).toBe(dataUpdated);
     expect(pages.get('/calculator')).toBe(numbers);
     expect(pages.get('/ko/calculator')).toBe(numbers);
+    // 목록 페이지(10-19): 모델 목록은 데이터 값만, GPU 목록은 판정 수(엔진)를 보인다
+    expect([pages.get('/models'), pages.get('/ko/models')]).toEqual([dataUpdated, dataUpdated]);
+    expect([pages.get('/gpus'), pages.get('/ko/gpus')]).toEqual([numbers, numbers]);
     for (const [file, introIds] of [
       ['sitemap-gpus.xml', GPU_INTRO_IDS],
       ['sitemap-models.xml', MODEL_INTRO_IDS],
