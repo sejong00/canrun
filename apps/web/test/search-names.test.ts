@@ -43,6 +43,8 @@ describe('Korean model family names (content/ko-names.ts)', () => {
     const gemma = catalog.models.find((m) => m.id === 'gemma-4-26b-a4b')!;
     expect(searchModelName('ko', gemma)).toBe('Gemma 4 26B-A4B(젬마 4)');
     expect(searchModelName('en', gemma)).toBe('Gemma 4 26B-A4B');
+    // 한글 계열 이름은 한국어 페이지만 — zh(10-19 D109)는 원래 이름
+    expect(searchModelName('zh', gemma)).toBe('Gemma 4 26B-A4B');
     const qwen = catalog.models.find((m) => m.family === 'qwen')!;
     expect(searchModelName('ko', qwen)).toBe(qwen.name);
     const ko = catalog.models.map((m) => searchModelName('ko', m));
@@ -81,9 +83,9 @@ describe('GPU aliases ("다른 표기" on GPU hubs)', () => {
 describe('Mac product names on Apple chip hubs (10-16 D97 — data/gpus.json products)', () => {
   const gpu = (id: string) => catalog.gpus.find((g) => g.id === id)!;
   /** messages `MacProduct` 로 바인딩한 최소 translator — 인자는 {name} 치환만 */
-  const macMessages = (locale: 'en' | 'ko') =>
+  const macMessages = (locale: 'en' | 'ko' | 'zh') =>
     (JSON.parse(readFileSync(new URL(`../messages/${locale}.json`, import.meta.url), 'utf8')) as { MacProduct: Record<string, string> }).MacProduct;
-  const tMac = (locale: 'en' | 'ko'): Translate => {
+  const tMac = (locale: 'en' | 'ko' | 'zh'): Translate => {
     const ns = macMessages(locale);
     return (key, values) => ns[key]!.replace(/\{(\w+)\}/g, (_, name: string) => String(values?.[name]));
   };
@@ -114,8 +116,8 @@ describe('Mac product names on Apple chip hubs (10-16 D97 — data/gpus.json pro
     expect(gpuSearchName(tMac('ko'), 'GeForce RTX 5090', gpu('rtx-5090'))).toBe('GeForce RTX 5090');
   });
 
-  it('every line has a name in both locales, and Apple hub names stay unique', () => {
-    for (const locale of ['en', 'ko'] as const) {
+  it('every line has a name in every locale (zh — D109), and Apple hub names stay unique', () => {
+    for (const locale of ['en', 'ko', 'zh'] as const) {
       for (const line of MAC_LINES) expect(macMessages(locale)[line], `${locale} ${line}`).toBeTruthy();
       const names = catalog.gpus.filter((g) => g.vendor === 'apple').map((g) => gpuSearchName(tMac(locale), g.name, g));
       expect(new Set(names).size).toBe(names.length);

@@ -5,6 +5,7 @@
  */
 import { compareGpus, type GpuComparison } from '@canrun/data';
 import { COMPARES, isCompareSlug, isComparePublished, publishedCompares, type CompareEntry, type CompareSlug } from '@/content/compares';
+import { ogImageLocale } from '@/i18n/locales';
 import type { Locale } from '@/i18n/routing';
 import { getGpuHub } from './hubs';
 import { compareOgImage, defaultOgImage } from './og-images';
@@ -33,7 +34,8 @@ export function compareLinksForGpu(gpuId: string): Array<{ slug: CompareSlug; ot
     .map((slug) => ({ slug, otherId: COMPARES[slug].a === gpuId ? COMPARES[slug].b : COMPARES[slug].a }));
 }
 
-/** 공유 카드 경로 — 게시 쌍은 쌍마다 카드(postbuild 가 그린다), 초안은 기본 카드 */
+/** 공유 카드 경로 — 게시 쌍은 쌍마다 카드(postbuild 가 그린다), 초안은 기본 카드. zh 는 en 카드(D109 — 카드는 검색 노출 로캘만 그린다) */
 export function compareOgImagePath(slug: CompareSlug, locale: Locale): string {
-  return isComparePublished(slug) ? compareOgImage(slug, locale) : defaultOgImage(locale);
+  const card = ogImageLocale(locale);
+  return isComparePublished(slug) ? compareOgImage(slug, card) : defaultOgImage(card);
 }

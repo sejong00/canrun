@@ -16,6 +16,7 @@ import {
 } from '@/components/hub-table';
 import { PageShell } from '@/components/page-shell';
 import { VerdictBadge, VerdictLegend } from '@/components/verdict';
+import { isContentLocale, ogImageLocale } from '@/i18n/locales';
 import type { Locale } from '@/i18n/routing';
 import { catalog } from '@/lib/catalog';
 import { formatGB, formatInt } from '@/lib/format';
@@ -144,7 +145,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return buildPageMetadata({
     href: gpuHref(hub.gpu.id),
     locale,
-    ogImage: hubOgImage('gpu', hub.gpu.id, locale),
+    // zh 는 en 카드(D109 — 카드는 검색 노출 로캘만 그린다)
+    ogImage: hubOgImage('gpu', hub.gpu.id, ogImageLocale(locale)),
     title: t.hub('metaTitle', { gpu: name, memory }),
     description: summary + largest,
   });
@@ -264,8 +266,9 @@ export default async function GpuHubPage({ params }: Props) {
   const { gpu } = hub;
   const name = gpuName(t.names, gpu);
   const href = gpuHref(gpu.id);
-  // 관련 가이드 2~3편 — 하드웨어 종류별, published 만 (10-16 D95, D40)
-  const guides = gpuHubGuides(gpu);
+  // 관련 가이드 2~3편 — 하드웨어 종류별, published 만 (10-16 D95, D40). 가이드는 장문 로캘에만 있어 zh 는 링크하지 않는다(D109)
+  const guideLocale = isContentLocale(locale) ? locale : undefined;
+  const guides = guideLocale ? gpuHubGuides(gpu) : [];
   // 이 GPU 가 든 게시 비교 쌍 (10-19 D106) — 초안은 링크하지 않는다(D40 과 같은 규칙), 없으면 블록을 그리지 않는다
   const compareNamesT = { compare: tCompare, names: t.names } as unknown as Pick<CompareTranslators, 'compare' | 'names'>;
   const compares = compareLinksForGpu(gpu.id).map(({ slug }) => ({
@@ -579,7 +582,7 @@ export default async function GpuHubPage({ params }: Props) {
           {t.common('estimateNotice')}
         </p>
 
-        {guides.length > 0 && (
+        {guideLocale && guides.length > 0 && (
           <section aria-labelledby="guides-heading" className="flex flex-col gap-3">
             <h2 id="guides-heading" className="text-xl font-semibold tracking-tight">
               {tGuides('relatedTitle')}
@@ -587,7 +590,7 @@ export default async function GpuHubPage({ params }: Props) {
             <ul className="flex flex-col gap-2">
               {guides.map((slug) => (
                 <li key={slug}>
-                  <a href={localeHref(locale, guideHref(slug))}>{guideEntry(slug).locales[locale].title}</a>
+                  <a href={localeHref(guideLocale, guideHref(slug))}>{guideEntry(slug).locales[guideLocale].title}</a>
                 </li>
               ))}
             </ul>

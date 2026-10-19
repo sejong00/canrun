@@ -9,6 +9,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { reversedCompareSlugs } from '../apps/web/content/compares';
+import { ALL_LOCALES, DEFAULT_LOCALE } from '../apps/web/i18n/locales';
 
 /** Cloudflare Pages 정적 `_redirects` 룰 한도. source: https://developers.cloudflare.com/pages/configuration/redirects/ */
 export const CF_PAGES_REDIRECT_LINE_LIMIT = 2000;
@@ -81,14 +82,14 @@ export function buildRedirects(aliases: readonly AliasRecord[]): string {
 }
 
 /**
- * GPU 비교 뒤집은 순서 → 정순 301 (10-19 D106) — en·ko 둘 다. 레지스트리 전 쌍(초안 포함 — 게시해도 URL 규칙이 바뀌지 않게).
- * 쌍 12개(COMPARE_MAX) × 2 로캘 = 24줄 — 한도(2,000)에 비해 작다
+ * GPU 비교 뒤집은 순서 → 정순 301 (10-19 D106) — 라우팅 전 로캘(en·ko·zh — zh 는 10-19 D109). 레지스트리 전 쌍(초안 포함 — 게시해도 URL 규칙이 바뀌지 않게).
+ * 쌍 12개(COMPARE_MAX) × 3 로캘 = 36줄 — 한도(2,000)에 비해 작다. 순서: 쌍마다 en → ko → zh
  */
 export function compareRedirects(): AliasRecord[] {
-  return reversedCompareSlugs().flatMap(({ reversed, slug }) => [
-    { from: `/compare/${reversed}`, to: `/compare/${slug}` },
-    { from: `/ko/compare/${reversed}`, to: `/ko/compare/${slug}` },
-  ]);
+  const prefix = (locale: string) => (locale === DEFAULT_LOCALE ? '' : `/${locale}`);
+  return reversedCompareSlugs().flatMap(({ reversed, slug }) =>
+    ALL_LOCALES.map((locale) => ({ from: `${prefix(locale)}/compare/${reversed}`, to: `${prefix(locale)}/compare/${slug}` })),
+  );
 }
 
 export function loadAliases(repoRoot: string): AliasRecord[] {

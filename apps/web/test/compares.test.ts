@@ -36,13 +36,16 @@ import {
 import { compareLinksForGpu, compareOgImagePath, getCompare } from '../lib/compares';
 import { compareHref, comparesHref } from '../lib/links';
 import { compareOgImage, defaultOgImage } from '../lib/og-images';
+import { ogImageLocale } from '../i18n/locales';
 import { HANGUL, PROSE_BANS } from './prose-rules';
 
 const webRoot = fileURLToPath(new URL('..', import.meta.url));
 const LOCALES = ['en', 'ko'] as const;
-type Locale = (typeof LOCALES)[number];
+/** 화면 문구만 기계번역한 zh(10-19 D109)까지 — 규칙(밴드·미포맷·한글)과 카드 경로만 본다. 문장 내용을 고정하는 검사는 en·ko 만 */
+const ALL_LOCALES = ['en', 'ko', 'zh'] as const;
+type Locale = (typeof ALL_LOCALES)[number];
 const messages = Object.fromEntries(
-  LOCALES.map((l) => [l, JSON.parse(readFileSync(join(webRoot, 'messages', `${l}.json`), 'utf8')) as Record<string, Record<string, string>>]),
+  ALL_LOCALES.map((l) => [l, JSON.parse(readFileSync(join(webRoot, 'messages', `${l}.json`), 'utf8')) as Record<string, Record<string, string>>]),
 ) as Record<Locale, Record<string, Record<string, string>>>;
 
 function translators(locale: Locale): CompareTranslators {
@@ -127,12 +130,14 @@ describe('links, share cards and the GPU hub block', () => {
     expect(compareOgImage('rtx-4090-vs-rtx-5090', 'ko')).toBe('/og/compare/rtx-4090-vs-rtx-5090-ko.png');
   });
 
-  it('drafts keep the default card and never appear in GPU hub links; published pairs do, from both GPUs', () => {
+  it('drafts keep the default card and never appear in GPU hub links; published pairs do, from both GPUs; zh reuses the en card (D109)', () => {
     const published = new Set(publishedCompares());
     for (const slug of COMPARE_SLUGS) {
-      for (const locale of LOCALES) {
-        expect(compareOgImagePath(slug, locale)).toBe(published.has(slug) ? compareOgImage(slug, locale) : defaultOgImage(locale));
+      for (const locale of ALL_LOCALES) {
+        const card = ogImageLocale(locale);
+        expect(compareOgImagePath(slug, locale)).toBe(published.has(slug) ? compareOgImage(slug, card) : defaultOgImage(card));
       }
+      expect(compareOgImagePath(slug, 'zh')).toBe(compareOgImagePath(slug, 'en'));
       const { a, b } = COMPARES[slug];
       for (const [gpu, other] of [
         [a, b],
@@ -176,17 +181,19 @@ describe('rendered compare text (titles · descriptions · summary · FAQ)', () 
   // 수치가 들어간 문장에는 숫자 금지 규칙(속도·GB·가격)을 빼고 본다 — 숫자는 데이터에서 온다
   const WORDING_BANS = PROSE_BANS.filter(([, why]) => /assertive|predicate/.test(why));
 
-  it('titles are unique across pairs and locales; every speed quote carries a range (규칙 3); en has no Hangul; ko keeps the wording rules', () => {
-    const titles = new Set<string>();
+  it('titles are unique across pairs and locales (zh within zh — D109); every speed quote carries a range (규칙 3); en and zh have no Hangul; ko keeps the wording rules', () => {
+    // zh 는 검색 제외 로캘이라 제목이 en·ko 와 겹쳐도 색인 충돌이 없다 — zh 안에서만 고유(번역 전 en 사본도 통과)
+    const titles = { indexed: new Set<string>(), zh: new Set<string>() };
     const problems: string[] = [];
-    for (const locale of LOCALES) {
+    for (const locale of ALL_LOCALES) {
       const t = translators(locale);
+      const seen = locale === 'zh' ? titles.zh : titles.indexed;
       for (const slug of COMPARE_SLUGS) {
         const { cmp } = getCompare(slug)!;
         const names = compareNames(t, locale, cmp);
         const title = compareTitle(t, cmp, names);
-        if (titles.has(title)) problems.push(`duplicate title ${title}`);
-        titles.add(title);
+        if (seen.has(title)) problems.push(`duplicate title ${title}`);
+        seen.add(title);
         const faq = compareFaq(t, locale, cmp, names);
         expect(faq, `${locale} ${slug} FAQ`).toHaveLength(3);
         const texts = [
@@ -199,7 +206,7 @@ describe('rendered compare text (titles · descriptions · summary · FAQ)', () 
         ].filter((x) => x !== '');
         for (const text of texts) {
           if (QUOTED_SPEED.test(text) && !RANGE.test(text)) problems.push(`${locale} ${slug}: speed without a range — ${text}`);
-          if (locale === 'en' && HANGUL.test(text)) problems.push(`${locale} ${slug}: Hangul — ${text}`);
+          if (locale !== 'ko' && HANGUL.test(text)) problems.push(`${locale} ${slug}: Hangul — ${text}`);
           if (locale === 'ko') for (const [re, why] of WORDING_BANS) if (re.test(text)) problems.push(`${locale} ${slug}: ${why} — ${text}`);
           if (/\{|\}|Compare\./.test(text)) problems.push(`${locale} ${slug}: unformatted message — ${text}`);
         }

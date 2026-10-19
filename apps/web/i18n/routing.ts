@@ -1,7 +1,9 @@
 import { defineRouting } from 'next-intl/routing';
+import { ALL_LOCALES, DEFAULT_LOCALE } from './locales';
 
 /**
- * docs/04 §6 — en 은 루트(`/`), ko 는 `/ko/` 서브디렉터리.
+ * docs/04 §6 — en 은 루트(`/`), ko 는 `/ko/`, zh 는 `/zh/` 서브디렉터리 (zh: 10-19 D109 — 화면 문구만, 공개 작업 전까지 noindex).
+ * 로캘별 능력(검색 노출·장문 유무)은 `./locales.ts`.
  *
  * `localePrefix: 'as-needed'` 는 next-intl 이 링크를 생성할 때 기본 로케일(en)의
  * 프리픽스를 붙이지 않게 한다. next-intl 공식 가이드는 static export 에서
@@ -11,8 +13,8 @@ import { defineRouting } from 'next-intl/routing';
  * test/export-invariants.spec.ts.
  */
 export const routing = defineRouting({
-  locales: ['en', 'ko'],
-  defaultLocale: 'en',
+  locales: ALL_LOCALES,
+  defaultLocale: DEFAULT_LOCALE,
   localePrefix: 'as-needed',
 });
 

@@ -8,6 +8,7 @@ import { SpeedCell } from '@/components/estimate';
 import { ScrollTable, TABLE_CLASS } from '@/components/hub-table';
 import { VerdictBadge, VerdictLegend } from '@/components/verdict';
 import { VramBar } from '@/components/vram-bar';
+import { isContentLocale } from '@/i18n/locales';
 import type { Locale } from '@/i18n/routing';
 import { catalog, findGpu, findModel } from '@/lib/catalog';
 import { getCombo } from '@/lib/combos';
@@ -797,6 +798,8 @@ export function HubLink({ gpu, model, children }: { gpu?: string; model?: string
 export function GuideLink({ slug: target, children }: { slug: string; children?: ReactNode }) {
   const { locale, hub } = useHub();
   if (!isGuideSlug(target)) throw new Error(`guide GuideLink: unknown slug "${target}"`);
+  // MDX 장문은 장문 로캘(en·ko)에서만 그려진다(D109) — zh 에서 불리면 빌드 실패
+  if (!isContentLocale(locale)) throw new Error(`guide GuideLink: rendered on locale "${locale}" without long-form content`);
   const title = guideEntry(target).locales[locale].title;
   if (!isPublished(target)) return <span data-guide-link-draft={target}>{children ?? title}</span>;
   return <a href={hub(guideHref(target))}>{children ?? title}</a>;

@@ -56,18 +56,19 @@ describe('buildRedirects', () => {
 });
 
 describe('compareRedirects (GPU 비교 뒤집은 순서 — 10-19 D106)', () => {
-  it('301s the reversed slug of every registry pair to the registry slug, in both locales', () => {
+  it('301s the reversed slug of every registry pair to the registry slug, in every routed locale (zh — 10-19 D109)', () => {
     const rules = compareRedirects();
-    expect(rules).toHaveLength(COMPARE_SLUGS.length * 2);
+    expect(rules).toHaveLength(COMPARE_SLUGS.length * 3);
     for (const slug of COMPARE_SLUGS) {
       const { a, b } = COMPARES[slug];
       expect(rules).toContainEqual({ from: `/compare/${b}-vs-${a}`, to: `/compare/${slug}` });
       expect(rules).toContainEqual({ from: `/ko/compare/${b}-vs-${a}`, to: `/ko/compare/${slug}` });
+      expect(rules).toContainEqual({ from: `/zh/compare/${b}-vs-${a}`, to: `/zh/compare/${slug}` });
     }
   });
 
   it('never redirects a real compare page (no loop) and passes the path rules', () => {
-    const pages = new Set(COMPARE_SLUGS.flatMap((slug) => [`/compare/${slug}`, `/ko/compare/${slug}`]));
+    const pages = new Set(COMPARE_SLUGS.flatMap((slug) => [`/compare/${slug}`, `/ko/compare/${slug}`, `/zh/compare/${slug}`]));
     for (const rule of compareRedirects()) {
       expect(pages.has(rule.from), rule.from).toBe(false);
       expect(pages.has(rule.to), rule.to).toBe(true);

@@ -1,5 +1,6 @@
 import type { ComponentType } from 'react';
 import { hasCompareIntro, type CompareIntroSlug } from '@/content/compares';
+import { isContentLocale, type ContentLocale } from '@/i18n/locales';
 import type { Locale } from '@/i18n/routing';
 
 /**
@@ -15,7 +16,7 @@ import type { Locale } from '@/i18n/routing';
  */
 export type CompareIntroBody = ComponentType<{ components?: object }>;
 type IntroModule = { default: CompareIntroBody };
-type Loader = Readonly<Record<Locale, () => Promise<IntroModule>>>;
+type Loader = Readonly<Record<ContentLocale, () => Promise<IntroModule>>>;
 
 const LOADERS: Readonly<Record<CompareIntroSlug, Loader>> = {
   'rtx-5060-ti-16gb-vs-rtx-5070': {
@@ -68,8 +69,9 @@ const LOADERS: Readonly<Record<CompareIntroSlug, Loader>> = {
   },
 };
 
+/** 소개글은 장문이라 장문 로캘(en·ko)에만 — zh 비교 페이지는 소개 없이 그린다(D109, CLAUDE.md 규칙 4) */
 export async function loadCompareIntro(slug: string, locale: Locale): Promise<CompareIntroBody | undefined> {
-  if (!hasCompareIntro(slug)) return undefined;
+  if (!isContentLocale(locale) || !hasCompareIntro(slug)) return undefined;
   // 레지스트리가 비어 있으면 키 타입이 never 라 문자열 색인으로 찾는다 — 맵에 없으면 빌드 실패(조용히 빠지지 않게)
   const loader = (LOADERS as Readonly<Record<string, Loader | undefined>>)[slug];
   if (!loader) throw new Error(`compare intro ${slug}: registered in COMPARE_INTRO_SLUGS but missing from the loader map`);

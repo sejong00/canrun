@@ -3,6 +3,7 @@ import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { CalcWidget } from '@/components/calc-widget';
 import { JsonLd } from '@/components/json-ld';
 import { PageShell } from '@/components/page-shell';
+import { HTML_LANG } from '@/i18n/locales';
 import type { Locale } from '@/i18n/routing';
 import { catalog } from '@/lib/catalog';
 import { webSiteJsonLd } from '@/lib/jsonld';
@@ -63,7 +64,7 @@ export default async function HomePage({ params }: Props) {
           name: tSite('name'),
           alternateName: SITE_ALTERNATE_NAMES,
           url: absoluteUrl(localeHref(locale, '/')),
-          inLanguage: locale,
+          inLanguage: HTML_LANG[locale],
           description: t('metaDescription'),
         })}
       />

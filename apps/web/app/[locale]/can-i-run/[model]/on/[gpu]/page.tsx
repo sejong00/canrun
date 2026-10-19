@@ -28,6 +28,7 @@ import { BenchTable, ScrollTable, TABLE_CLASS } from '@/components/hub-table';
 import { PageShell } from '@/components/page-shell';
 import { VerdictBadge } from '@/components/verdict';
 import { VramBar } from '@/components/vram-bar';
+import { ogImageLocale } from '@/i18n/locales';
 import type { Locale } from '@/i18n/routing';
 import { calcDeepQuery } from '@/lib/calc-catalog';
 import { catalog } from '@/lib/catalog';
@@ -89,8 +90,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     locale,
     absoluteTitle: true,
     noindex: !page.publish.indexable,
-    // 공개 콤보만 페이지별 카드(10-16 D96 — postbuild 가 indexable 집합만 그린다), 미공개는 기본 카드
-    ...(page.publish.indexable ? { ogImage: comboOgImage(modelId, gpuId, locale) } : {}),
+    // 공개 콤보만 페이지별 카드(10-16 D96 — postbuild 가 indexable 집합만 그린다), 미공개는 기본 카드. zh 는 en 카드(D109)
+    ...(page.publish.indexable ? { ogImage: comboOgImage(modelId, gpuId, ogImageLocale(locale)) } : {}),
     title: t.combo('metaTitle', {
       model: page.model.name,
       gpu: shortGpuName(name),

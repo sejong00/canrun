@@ -7,6 +7,7 @@ import { GUIDE_MDX_COMPONENTS } from '@/components/guide/guide-components';
 import { JsonLd } from '@/components/json-ld';
 import { PageShell } from '@/components/page-shell';
 import { GUIDE_SLUGS } from '@/content/guides';
+import { CONTENT_LOCALES, HTML_LANG, isContentLocale } from '@/i18n/locales';
 import type { Locale } from '@/i18n/routing';
 import { formatGuideDate, guideEntry, guideOgImagePath, isGuideSlug, isPublished, loadGuideBody } from '@/lib/guides';
 import { articleJsonLd } from '@/lib/jsonld';
@@ -16,15 +17,18 @@ import { absoluteUrl } from '@/lib/site';
 
 type Props = { params: Promise<{ locale: Locale; slug: string }> };
 
-/** 전 슬러그 생성 — 초안도 URL 로 열려야 감수할 수 있다 (P1-4 D40: 초안 = noindex + 미링크) */
+/**
+ * 전 슬러그 생성 — 초안도 URL 로 열려야 감수할 수 있다 (P1-4 D40: 초안 = noindex + 미링크).
+ * 장문 로캘(en·ko)만 — 부모 레이아웃의 `locale` 을 덮어써 zh 가이드는 만들지 않는다(D109, `contentLocaleParams` 주석)
+ */
 export function generateStaticParams() {
-  return GUIDE_SLUGS.map((slug) => ({ slug }));
+  return CONTENT_LOCALES.flatMap((locale) => GUIDE_SLUGS.map((slug) => ({ locale, slug })));
 }
 export const dynamicParams = false;
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale, slug } = await params;
-  if (!isGuideSlug(slug)) return {};
+  if (!isContentLocale(locale) || !isGuideSlug(slug)) return {};
   const entry = guideEntry(slug);
   return buildPageMetadata({
     href: guideHref(slug),
@@ -44,7 +48,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 export default async function GuidePage({ params }: Props) {
   const { locale, slug } = await params;
   setRequestLocale(locale);
-  if (!isGuideSlug(slug)) notFound();
+  // 안전망 — zh 는 generateStaticParams 에서 이미 빠진다(D109)
+  if (!isContentLocale(locale) || !isGuideSlug(slug)) notFound();
   const entry = guideEntry(slug);
   const t = await getTranslations({ locale, namespace: 'Guides' });
   const tBreadcrumb = await getTranslations({ locale, namespace: 'Breadcrumb' });
@@ -55,13 +60,13 @@ export default async function GuidePage({ params }: Props) {
   const related = entry.related.filter(isPublished);
 
   return (
-    <PageShell locale={locale} href={href}>
+    <PageShell locale={locale} href={href} availableIn={CONTENT_LOCALES}>
       <JsonLd
         data={articleJsonLd({
           headline: title,
           description,
           url,
-          inLanguage: locale,
+          inLanguage: HTML_LANG[locale],
           datePublished: entry.datePublished,
           dateModified: entry.dateModified,
           author: entry.author,

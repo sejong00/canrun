@@ -2,11 +2,13 @@ import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { useLocale } from 'next-intl';
 import { getTranslations } from 'next-intl/server';
+import { notFound } from 'next/navigation';
 import { Breadcrumbs } from '@/components/breadcrumbs';
 import { Threshold } from '@/components/guide/guide-components';
 import { PageShell } from '@/components/page-shell';
 import { CatalogAdditions, Update } from '@/components/updates';
 import type { StaticPageSlug } from '@/content/pages';
+import { CONTENT_LOCALES, isContentLocale } from '@/i18n/locales';
 import type { Locale } from '@/i18n/routing';
 import { DATA_UPDATED } from '@/lib/data-meta';
 import { formatGuideDate } from '@/lib/guides';
@@ -34,6 +36,7 @@ function pageText(t: PagesT, slug: StaticPageSlug): { title: string; description
 }
 
 export async function staticPageMetadata(locale: Locale, slug: StaticPageSlug): Promise<Metadata> {
+  if (!isContentLocale(locale)) return {};
   const t = await getTranslations({ locale, namespace: 'Pages' });
   return buildPageMetadata({ href: staticHref(slug), locale, ...pageText(t, slug) });
 }
@@ -62,8 +65,10 @@ const PAGE_MDX_COMPONENTS = { Threshold, ContactEmail, DataUpdated, SiteLink, Up
 /**
  * 정적 페이지 (P1-5 — 소개·계산 방법·개인정보처리방침·문의, 10-14 업데이트 소식 D72). 본문 = 로캘별 MDX(`content/{en,ko}/pages`), 클라이언트 JS 0.
  * 라우트 폴더 5개가 이 컴포넌트를 공유한다(동적 세그먼트를 두면 다른 최상위 경로와 겹친다).
+ * 장문 로캘(en·ko)만 — 각 라우트가 `generateStaticParams = contentLocaleParams` 로 zh 를 뺀다(D109). 아래 notFound 는 안전망
  */
 export async function StaticPage({ locale, slug }: { locale: Locale; slug: StaticPageSlug }) {
+  if (!isContentLocale(locale)) notFound();
   const t = await getTranslations({ locale, namespace: 'Pages' });
   const tBreadcrumb = await getTranslations({ locale, namespace: 'Breadcrumb' });
   const Body = await loadPageBody(slug, locale);
@@ -72,7 +77,7 @@ export async function StaticPage({ locale, slug }: { locale: Locale; slug: Stati
   const { title } = pageText(t, slug);
 
   return (
-    <PageShell locale={locale} href={href}>
+    <PageShell locale={locale} href={href} availableIn={CONTENT_LOCALES}>
       <article className="flex flex-col gap-8">
         <header className="flex flex-col gap-3">
           <Breadcrumbs

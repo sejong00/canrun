@@ -3,7 +3,8 @@
  *
  * - 분할(docs/04 §3): sitemap.xml(인덱스) → pages · gpus · models · guides(published 만) · compare(published GPU 비교 쌍 + 쌍이 있을 때 목차 —
  *   10-19 D106) · combos-en/-ko(`indexableCombos()` 만 — 공개 콤보가 0 이면 파일·인덱스 항목을 만들지 않는다. 다른 파일도 항목이 0 이면 같다).
- *   URL 마다 en/ko/x-default `xhtml:link` 대체 링크(HTML hreflang 과 같은 규칙).
+ *   URL 마다 en/ko/x-default `xhtml:link` 대체 링크(HTML hreflang 과 같은 규칙). 로캘은 검색 노출 로캘(`INDEXED_LOCALES`)만 — zh(10-19 D109)는
+ *   공개 작업 전까지 noindex 라 사이트맵·RSS·대체 링크에 없다.
  * - lastmod: 가이드 = 레지스트리 dateModified, 업데이트 소식 = max(dataUpdated, 최신 항목 날짜 — content/updates.ts),
  *   엔진 수치를 그리는 페이지(계산기·GPU·모델 허브·콤보·GPU 목록) = max(dataUpdated, 엔진 `ENGINE_SPEC_DATE` — 10-16 D93: 엔진 개정은
  *   데이터 없이도 모든 수치를 바꾼다), 소개글이 붙은 허브는 여기에 content/hubs.ts HUB_INTROS_UPDATED 까지 넣은 최댓값,
@@ -24,6 +25,7 @@ import { join } from 'node:path';
 import { indexableCombos, parseGpus, parseMeta, parseModels, parsePublish } from '../packages/data/src/index';
 import { ENGINE_SPEC_DATE } from '../packages/engine/src/index';
 import { COMPARES, publishedCompares, type CompareSlug } from '../apps/web/content/compares';
+import { INDEXED_LOCALES, type IndexedLocale } from '../apps/web/i18n/locales';
 import { GUIDES, GUIDE_SLUGS } from '../apps/web/content/guides';
 import { GPU_INTRO_IDS, HUB_INTROS_UPDATED, MODEL_INTRO_IDS } from '../apps/web/content/hubs';
 import { MODEL_ABOUT, hasModelAbout } from '../apps/web/content/model-about';
@@ -34,14 +36,17 @@ import { ADSENSE_CLIENT, DAUM_WEBMASTER_LINE, INDEXNOW_KEY, SITE_URL } from '../
 /** 페이지 캐노니컬과 바이트 동일 — Next 메타데이터는 루트를 슬래시 없이 낸다(`https://…pages.dev`) */
 const absoluteUrl = (path: string) => (path === '/' ? SITE_URL : `${SITE_URL}${path}`);
 
-const LOCALES = ['en', 'ko'] as const;
-type Locale = (typeof LOCALES)[number];
+const LOCALES = INDEXED_LOCALES;
+type Locale = IndexedLocale;
 
 /** `lib/links.ts` localeHref 와 같은 규칙 (en 무프리픽스) — 앱 모듈은 `@/` 별칭 때문에 여기서 import 하지 않는다 */
 export function localePath(locale: Locale, bare: string): string {
   if (locale === 'en') return bare;
-  return bare === '/' ? '/ko' : `/ko${bare}`;
+  return bare === '/' ? `/${locale}` : `/${locale}${bare}`;
 }
+
+/** 로캘 RSS 파일 — en `rss.xml`, ko `ko/rss.xml` */
+const rssFile = (locale: Locale) => (locale === 'en' ? 'rss.xml' : `${locale}/rss.xml`);
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -54,8 +59,7 @@ function urlXml(entry: Entry, locale: Locale): string {
     '<url>',
     `<loc>${esc(absoluteUrl(localePath(locale, entry.path)))}</loc>`,
     `<lastmod>${entry.lastmod}</lastmod>`,
-    alt('en', 'en'),
-    alt('ko', 'ko'),
+    ...LOCALES.map((target) => alt(target, target)),
     alt('x-default', 'en'),
     '</url>',
   ].join('');
@@ -296,15 +300,14 @@ export function buildSitemaps(repoRoot: string, outDir: string): string[] {
       '</rss>',
       '',
     ].join('\n');
-    writeFileSync(join(outDir, locale === 'en' ? 'rss.xml' : 'ko/rss.xml'), rss, 'utf8');
+    writeFileSync(join(outDir, rssFile(locale)), rss, 'utf8');
   }
 
   return [
     'sitemap.xml',
     ...files.map((f) => f.name),
     'robots.txt',
-    'rss.xml',
-    'ko/rss.xml',
+    ...LOCALES.map(rssFile),
     ...(adsTxt.length > 0 ? ['ads.txt'] : []),
     indexNowFile,
   ];

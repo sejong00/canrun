@@ -67,6 +67,19 @@
 ## 6. i18n·hreflang (동시 출시 스펙)
 - `/ko/` 서브디렉토리(링크 자산 통합 — 서브도메인 금지). 모든 페이지: `hreflang en / ko / x-default(en)` **자기참조 포함 완전 대칭**, 템플릿에서 생성(수기 금지).
 - ko는 번역이 아니라 로컬라이즈: 템플릿 문자열 세트는 네이티브 감수 1회(유한 세트라 저비용·정책 안전), 에디토리얼은 별도 집필, ko 고유 요소(원화, 쿠팡, 한국 모델, 아카라이브 문화) 포함. **장문 기계번역 게시 금지.**
+- **zh(간체) — 화면 문구만, 아직 검색 제외 (10-19 사용자 결정, PROGRESS §4 D109)**
+  - 범위: `/zh/` 서브디렉토리. 홈·계산기·GPU/모델 허브·콤보·GPU 비교·목록 페이지(템플릿 페이지)만 있다. 가이드·가이드 목차·정적 페이지(소개·계산 방법·업데이트 소식·개인정보처리방침·문의)는 zh 라우트가 없고(404), 허브·비교 소개글과 모델 소개도 zh 에서는 그리지 않는다 — 장문 기계번역 게시 금지를 그대로 지킨다. zh 푸터의 정적 페이지 링크는 영어판으로 간다(`hreflang="en"`).
+  - 번역: `messages/zh.json` 화면 문구(메뉴·표·판정·계산기 등 짧은 문구)를 사용자 승인 기계번역으로 만든다. 키·ICU 인자는 en 과 대칭(테스트가 강제).
+  - 검색: 공개 작업(애드센스 승인 뒤 별도 작업) 전까지 zh 전 페이지 `noindex, follow` + 자기 캐노니컬만. hreflang·사이트맵·RSS·IndexNow 에 zh 를 넣지 않고, en/ko 의 hreflang 도 en/ko/x-default 그대로다. robots.txt 로 막지 않는다(막으면 noindex 를 읽지 못한다). `<html lang="zh-Hans">`, og:locale `zh_CN`, 공유 카드는 en 카드를 쓴다. 공개할 때 정할 것: hreflang 값(`zh-Hans` / `zh-CN`), 원어민 검토 1회, 바이두·ICP.
+  - 용어집(간체·중국 본토 표기 — 구속력 있음, 번역·수정 모두 이대로):
+    - 판정(`Verdict.*` 와 판정을 부르는 모든 문장): S = 运行流畅, A = 运行良好, B = 运行较慢, F = 无法运行. 범례 제목 = 判定说明. 다른 동의어(顺畅·流利 등)를 섞지 않는다.
+    - 신뢰 라벨: measured = 实测, calibrated estimate = 校准估算, theoretical estimate = 理论估算, rough estimate(pp ±40%) = 粗略估算. "±{band}%" 같은 자리표시는 그대로 둔다.
+    - 실행 방식: full GPU = 全部载入显卡, MoE experts in RAM(cpu-moe) = MoE 专家放在内存, partial offload = 部分卸载, CPU only = 纯 CPU, unified memory = 统一内存.
+    - 용어: graphics card = 显卡, VRAM = 显存, system RAM = 系统内存, context = 上下文, quantization/quant = 量化, offload = 卸载, KV cache = KV 缓存, calculator = 计算器, estimate = 估算, laptop = 笔记本, desktop = 台式机, US dollar = 美元, model = 模型, thinking mode = 思考模式, benchmark = 基准测试, public benchmark result = 公开基准测试结果, guide = 指南, compare = 对比.
+    - 번역하지 않는 것: CanRun, 제품·모델·런타임 이름(Ollama, LM Studio, llama.cpp, GGUF, Hugging Face, Qwen, DeepSeek, Gemma, RTX…, Apple M…, Ryzen…, DGX Spark, CUDA, Metal, ROCm, Vulkan), 양자화 이름(Q4_K_M…), 단위(GB, GB/s, TFLOPS, tok/s), %, ±.
+    - 문체: 독자는 你(您 아님), 짧은 UI 말투. 중국어 문장 안에서는 전각 문장부호(，。：；（）)를 쓰되 숫자·범위("8–20 tok/s")·URL·코드 안은 ASCII 그대로. 중국어와 라틴 문자·숫자 사이에는 반각 공백("RTX 4060 显卡", "16 GB"). 간체만 — 번체·대만식 표기 금지(显卡 ○ 顯示卡 ×, 默认 ○ 預設 ×, 内存 ○ 記憶體 ×, 视频 ○ 視訊 ×).
+    - 영어 원문의 뜻을 그대로 옮기고 한국어 파일은 의도를 확인하는 보조 자료로만 쓴다. 원문에 없는 주장을 더하지 않는다. 단정적인 홍보 문구(保证·一定·完美·最强) 금지.
+  - 검사: `apps/web/test/messages.test.ts`(한글은 `LocaleSwitcher.ko` 만, 번체 전용 글자·대만식 용어, 복수형 `other`, 您·단정 표현·판정 동의어, 한자 뒤 반각 , ; :, 번역이 들어온 뒤엔 판정 이름 고정) · `test/export-invariants.spec.ts` "zh (D109)"(산출물 — noindex·hreflang 없음·사이트맵 밖·한글/원화 없음·내부 링크 /zh/*).
 
 ## 7. 네이버 플레이북 (ko 트래픽 2차 엔진, 점유율 62.9%지만 개발자층은 구글 우선)
 1. 출시 주: 네이버 서치어드바이저 등록(소유 확인, robots에 Yeti 허용, **사이트맵+RSS 제출**) — SSG 풀 HTML이라 렌더링 리스크 없음. RSS 항목은 요약(`description`) + 본문 전체(`content:encoded`), 배포마다 IndexNow 로 바뀐 URL 을 알린다(PROGRESS §4 D93).

@@ -1,5 +1,6 @@
 import type { ComponentType } from 'react';
 import { hasModelAbout, type ModelAboutId } from '@/content/model-about';
+import { isContentLocale, type ContentLocale } from '@/i18n/locales';
 import type { Locale } from '@/i18n/routing';
 
 /**
@@ -10,7 +11,7 @@ import type { Locale } from '@/i18n/routing';
 export type ModelAboutBody = ComponentType<{ components?: object }>;
 type AboutModule = { default: ModelAboutBody };
 
-const LOADERS: Readonly<Record<ModelAboutId, Readonly<Record<Locale, () => Promise<AboutModule>>>>> = {
+const LOADERS: Readonly<Record<ModelAboutId, Readonly<Record<ContentLocale, () => Promise<AboutModule>>>>> = {
   'deepseek-r1-0528-qwen3-8b': {
     en: () => import('@/content/en/model-about/deepseek-r1-0528-qwen3-8b.mdx') as Promise<AboutModule>,
     ko: () => import('@/content/ko/model-about/deepseek-r1-0528-qwen3-8b.mdx') as Promise<AboutModule>,
@@ -201,7 +202,8 @@ const LOADERS: Readonly<Record<ModelAboutId, Readonly<Record<Locale, () => Promi
   },
 };
 
+/** 모델 소개는 장문이라 장문 로캘(en·ko)에만 — zh 모델 허브는 소개 없이 그린다(D109, CLAUDE.md 규칙 4) */
 export async function loadModelAbout(id: string, locale: Locale): Promise<ModelAboutBody | undefined> {
-  if (!hasModelAbout(id)) return undefined;
+  if (!isContentLocale(locale) || !hasModelAbout(id)) return undefined;
   return (await LOADERS[id][locale]()).default;
 }

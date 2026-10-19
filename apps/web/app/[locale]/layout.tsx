@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation';
 import { hasLocale } from 'next-intl';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { STATIC_PAGE_SLUGS, type StaticPageSlug } from '@/content/pages';
+import { HTML_LANG, contentLocaleFor, isContentLocale } from '@/i18n/locales';
 import { routing, type Locale } from '@/i18n/routing';
 import { DATA_UPDATED } from '@/lib/data-meta';
 import { formatGuideDate } from '@/lib/guides';
@@ -75,8 +76,13 @@ export default async function LocaleLayout({ children, params }: Props) {
     }
   };
 
+  // 정적 페이지는 장문 로캘(en·ko)에만 있다 — zh 푸터는 영어판으로 보낸다(D109: 개인정보처리방침 등 접근 유지, hreflang="en").
+  // zh 페이지에서 허용하는 유일한 다른 언어 링크다(test/export-invariants.spec.ts "zh (D109)")
+  const pageLocale = contentLocaleFor(locale);
+  const crossLocale = !isContentLocale(locale);
+
   return (
-    <html lang={locale}>
+    <html lang={HTML_LANG[locale]}>
       <body className="min-h-dvh">
         {children}
         <footer className="border-t border-border">
@@ -102,7 +108,12 @@ export default async function LocaleLayout({ children, params }: Props) {
               <ul className="flex flex-wrap gap-x-4 gap-y-1">
                 {STATIC_PAGE_SLUGS.map((slug) => (
                   <li key={slug}>
-                    <a href={localeHref(locale as Locale, staticHref(slug))} data-footer-link={slug} className="underline underline-offset-4 hover:text-foreground">
+                    <a
+                      href={localeHref(pageLocale, staticHref(slug))}
+                      {...(crossLocale ? { hrefLang: HTML_LANG[pageLocale] } : {})}
+                      data-footer-link={slug}
+                      className="underline underline-offset-4 hover:text-foreground"
+                    >
                       {footerLabel(slug)}
                     </a>
                   </li>

@@ -12,7 +12,8 @@ import { COMPARE_SLUGS } from '../apps/web/content/compares';
 import { koFamilyName } from '../apps/web/content/ko-names';
 import { STATIC_PAGE_SLUGS } from '../apps/web/content/pages';
 
-export type Locale = 'en' | 'ko';
+/** 라우팅 로캘 — zh(10-19 D109)는 화면 문구만, 공개 작업 전까지 noindex (apps/web/i18n/locales.ts) */
+export type Locale = 'en' | 'ko' | 'zh';
 export type PageKind =
   | 'home'
   | 'gpu'
@@ -63,12 +64,21 @@ export type PageFacts = {
   jsonLdError?: string;
   /** 화면의 FAQ ([data-faq-question]/[data-faq-answer]) — JSON-LD 와 동일 문자열이어야 한다 */
   faq: Array<{ question: string; answer: string }>;
-  /** `<a href="/…">` 내부 링크 전부 (localeSwitch = `data-locale-switch` 보유) */
-  links: Array<{ href: string; localeSwitch: boolean }>;
+  /**
+   * `<a href="/…">` 내부 링크 전부 (localeSwitch = `data-locale-switch` 보유). hrefLang = `hreflang` 속성(있을 때만 — 언어 선택·zh 푸터의
+   * 영어 정적 페이지), footerLink = 푸터 `data-footer-link` 값(있을 때만) — 10-19 D109
+   */
+  links: Array<{ href: string; localeSwitch: boolean; hrefLang?: string; footerLink?: string }>;
   /** `href="/en"` · `href="/en/…"` 출현 수 (HTML 전체) */
   enPrefixedLinkCount: number;
-  /** 가시 텍스트의 한글 어절 — en 페이지만 수집 (ko 는 빈 배열) */
+  /** 가시 텍스트의 한글 어절 — en·zh 페이지만 수집 (ko 는 빈 배열) */
   hangulWords: string[];
+  /** 가시 텍스트의 한자 덩어리 — en·ko 페이지만 수집 (zh 는 빈 배열). 10-19 D109: en·ko 에는 언어 선택의 "中文" 뿐 */
+  hanWords: string[];
+  /** `<meta property="og:locale">` */
+  ogLocale?: string;
+  /** `<link rel="alternate" type="application/rss+xml">` href (P1-5 — 검색 노출 로캘만, zh 는 없다) */
+  rssAlternate?: string;
   /**
    * 규칙 3 검사 대상 문장: description · og:description · FAQ 답 · [data-verdict-sentence] ·
    * [data-alt-card] · 콤보 페이지의 `<dd>` · GPU 비교 속도 요약의 문장 단위 (허브·비교 페이지의 판정 범례 `<dd>` 는
@@ -241,39 +251,44 @@ export function urlToPath(url: string): string {
 }
 
 export const isKoPath = (urlPath: string): boolean => urlPath === '/ko' || urlPath.startsWith('/ko/');
+/** zh (10-19 D109) */
+export const isZhPath = (urlPath: string): boolean => urlPath === '/zh' || urlPath.startsWith('/zh/');
 
-/** 로케일 프리픽스 제거 (`/ko/gpu/x` → `/gpu/x`, `/ko` → `/`) */
+/** 로케일 프리픽스 제거 (`/ko/gpu/x` → `/gpu/x`, `/ko`·`/zh` → `/`) — 프리픽스는 모두 3글자 */
 export function stripLocale(urlPath: string): string {
-  if (urlPath === '/ko') return '/';
-  return isKoPath(urlPath) ? urlPath.slice('/ko'.length) : urlPath;
+  if (urlPath === '/ko' || urlPath === '/zh') return '/';
+  return isKoPath(urlPath) || isZhPath(urlPath) ? urlPath.slice('/ko'.length) : urlPath;
 }
 
-export const localeOf = (urlPath: string): Locale => (isKoPath(urlPath) ? 'ko' : 'en');
+export const localeOf = (urlPath: string): Locale => (isKoPath(urlPath) ? 'ko' : isZhPath(urlPath) ? 'zh' : 'en');
 
-const COMBO_RE = /^(?:\/ko)?\/can-i-run\/([^/]+)\/on\/([^/]+)$/;
+const COMBO_RE = /^(?:\/(?:ko|zh))?\/can-i-run\/([^/]+)\/on\/([^/]+)$/;
 
-/** 콤보 URL(`/can-i-run/{model}/on/{gpu}`, `/ko/…`) → ids */
+/** 콤보 URL(`/can-i-run/{model}/on/{gpu}`, `/ko/…`, `/zh/…`) → ids */
 export function comboOf(urlPath: string): { modelId: string; gpuId: string } | undefined {
   const m = COMBO_RE.exec(urlPath);
   return m ? { modelId: m[1]!, gpuId: m[2]! } : undefined;
 }
 
+/** 로캘 프리픽스 — en 무프리픽스 (apps/web/lib/links.ts localeHref 와 같은 규칙) */
+const prefixOf = (locale: Locale) => (locale === 'en' ? '' : `/${locale}`);
+
 export function comboPath(locale: Locale, modelId: string, gpuId: string): string {
-  return `${locale === 'ko' ? '/ko' : ''}/can-i-run/${modelId}/on/${gpuId}`;
+  return `${prefixOf(locale)}/can-i-run/${modelId}/on/${gpuId}`;
 }
 
 export function hubPath(locale: Locale, kind: 'gpu' | 'model', id: string): string {
-  return `${locale === 'ko' ? '/ko' : ''}/${kind}/${id}`;
+  return `${prefixOf(locale)}/${kind}/${id}`;
 }
 
 export function localePath(locale: Locale, bare: string): string {
   if (locale === 'en') return bare;
-  return bare === '/' ? '/ko' : `/ko${bare}`;
+  return bare === '/' ? prefixOf(locale) : `${prefixOf(locale)}${bare}`;
 }
 
-/** GPU 비교 URL(`/compare/{slug}`, `/ko/…`) → 레지스트리 슬러그 (레지스트리 밖이면 undefined) */
+/** GPU 비교 URL(`/compare/{slug}`, `/ko/…`, `/zh/…`) → 레지스트리 슬러그 (레지스트리 밖이면 undefined) */
 export function compareSlugOf(urlPath: string): string | undefined {
-  const slug = /^(?:\/ko)?\/compare\/([^/]+)$/.exec(urlPath)?.[1];
+  const slug = /^(?:\/(?:ko|zh))?\/compare\/([^/]+)$/.exec(urlPath)?.[1];
   return slug !== undefined && (COMPARE_SLUGS as readonly string[]).includes(slug) ? slug : undefined;
 }
 
@@ -302,6 +317,8 @@ const SCRIPT_RE = /<script[\s\S]*?<\/script>/g;
 const STYLE_RE = /<style[\s\S]*?<\/style>/g;
 const TAG_RE = /<[^>]+>/g;
 export const HANGUL_RE = /[ᄀ-ᇿ㄰-㆏가-힯]+/g;
+/** 한자(CJK 통합·확장 A·호환) 덩어리 — en·ko 페이지 검사용 (10-19 D109) */
+export const HAN_RE = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]+/g;
 
 export function decodeEntities(text: string): string {
   return text
@@ -312,10 +329,11 @@ export function decodeEntities(text: string): string {
     .replace(/&amp;/g, '&');
 }
 
-/** D46 — 실측 라벨 표기 결함 패턴 (en/ko). 공백 정규화된 가시 텍스트를 받는다 */
+/** D46 — 실측 라벨 표기 결함 패턴 (en/ko/zh). 공백 정규화된 가시 텍스트를 받는다 */
 const MEASURED_LABEL_ISSUES: readonly RegExp[] = [
-  // 0폭 밴드 바로 뒤 실측 라벨 — 실측값이 추정 밴드 자리에 들어간 것
-  /(\d[\d.,]*)–\1, (?:measured|실측)/g,
+  // 0폭 밴드 바로 뒤 실측 라벨 — 실측값이 추정 밴드 자리에 들어간 것 (zh 는 전각 쉼표일 수 있다 — 10-19 D109)
+  /(\d[\d.,]*)–\1(?:, |，)(?:measured|실측|实测)/g,
+  /实测（\d+ 次，\s*上下文）/g,
   // 측정 컨텍스트가 빈 라벨
   /measured \(\d+ runs?, context\)/g,
   /measured at context/g,
@@ -625,7 +643,14 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
     const tag = m[0];
     const href = tag.match(HREF_RE)?.[1];
     if (!href) continue;
-    links.push({ href, localeSwitch: hasAttr(tag, 'data-locale-switch') });
+    const hrefLang = attrValue(tag, 'hrefLang') ?? attrValue(tag, 'hreflang');
+    const footerLink = attrValue(tag, 'data-footer-link');
+    links.push({
+      href,
+      localeSwitch: hasAttr(tag, 'data-locale-switch'),
+      ...(hrefLang === undefined ? {} : { hrefLang }),
+      ...(footerLink === undefined ? {} : { footerLink }),
+    });
     if (hasAttr(tag, 'data-adjacent')) adjacentHrefs.push(href);
     if (hasAttr(tag, 'data-combo-link')) comboLinkHrefs.push(href);
     if (hasAttr(tag, 'data-compare-link')) compareLinkHrefs.push(href);
@@ -763,6 +788,8 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
   }
   const ogDescription = metaContent(html, /<meta property="og:description" content="([^"]*)"/);
   const ogImage = metaContent(html, /<meta property="og:image" content="([^"]*)"/);
+  const ogLocale = metaContent(html, /<meta property="og:locale" content="([^"]*)"/);
+  const rssAlternate = html.match(/<link\b[^>]*rel="alternate"[^>]*type="application\/rss\+xml"[^>]*>/)?.[0].match(/href="([^"]+)"/)?.[1];
   const twitterImage = metaContent(html, /<meta name="twitter:image" content="([^"]*)"/);
   const verdictSentence = elementsWithAttr(noScript, 'data-verdict-sentence').map((e) => elementText(e.inner))[0];
   // 쌍둥이 GPU 형제 문장 (D22) — pp 비교가 들어가므로 규칙 3 검사 대상
@@ -839,7 +866,10 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
     faq,
     links,
     enPrefixedLinkCount: (html.match(/(?:href|action)="\/en(\/|")/g) ?? []).length,
-    hangulWords: locale === 'en' ? (visible.match(HANGUL_RE) ?? []) : [],
+    hangulWords: locale !== 'ko' ? (visible.match(HANGUL_RE) ?? []) : [],
+    hanWords: locale !== 'zh' ? (visible.match(HAN_RE) ?? []) : [],
+    ...(ogLocale === undefined ? {} : { ogLocale }),
+    ...(rssAlternate === undefined ? {} : { rssAlternate }),
     speedTexts,
     measuredLabelIssues: measuredLabelIssuesOf(visible.replace(/\s+/g, ' ')),
     robotsNoindex: robotsNoindexOf(html),

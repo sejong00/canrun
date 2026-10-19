@@ -26,6 +26,7 @@ import { PriceSort } from '@/components/islands/price-sort';
 import { PageShell } from '@/components/page-shell';
 import { VerdictBadge, VerdictLegend } from '@/components/verdict';
 import { modelSeries, seriesMembers, seriesNoteKey } from '@/content/model-series';
+import { ogImageLocale } from '@/i18n/locales';
 import type { Locale } from '@/i18n/routing';
 import { catalog } from '@/lib/catalog';
 import { formatCtx, formatGB, formatInt, formatParams } from '@/lib/format';
@@ -111,7 +112,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return buildPageMetadata({
     href: modelHref(hub.model.id),
     locale,
-    ogImage: hubOgImage('model', hub.model.id, locale),
+    // zh 는 en 카드(D109 — 카드는 검색 노출 로캘만 그린다)
+    ogImage: hubOgImage('model', hub.model.id, ogImageLocale(locale)),
     title: t.hub('metaTitle', { model: name }),
     description: t.hub('metaDescription', {
       model: name,

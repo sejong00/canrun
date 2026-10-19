@@ -158,13 +158,13 @@ describe('model series in the catalog', () => {
 });
 
 describe('series notes (the line under a series table)', () => {
-  const modelHub = (locale: 'en' | 'ko') =>
+  const modelHub = (locale: 'en' | 'ko' | 'zh') =>
     (JSON.parse(readFileSync(fileURLToPath(new URL(`../messages/${locale}.json`, import.meta.url)), 'utf8')) as { ModelHub: Record<string, string> }).ModelHub;
 
-  it('every note belongs to a series that renders a table, and its sentence exists in both locales', () => {
+  it('every note belongs to a series that renders a table, and its sentence exists in every locale (zh — D109)', () => {
     for (const [series, note] of Object.entries(SERIES_NOTES)) {
       expect(groups.get(series)?.length ?? 0, `${series} has a table`).toBeGreaterThanOrEqual(2);
-      for (const locale of ['en', 'ko'] as const) expect(modelHub(locale)[note.message], `${locale} ModelHub.${note.message}`).toBeTypeOf('string');
+      for (const locale of ['en', 'ko', 'zh'] as const) expect(modelHub(locale)[note.message], `${locale} ModelHub.${note.message}`).toBeTypeOf('string');
     }
   });
 

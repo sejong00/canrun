@@ -1,5 +1,6 @@
 import type { ComponentType } from 'react';
 import { GUIDES, GUIDE_SLUGS, type GuideEntry, type GuideGrid, type GuideLocale, type GuideSlug } from '@/content/guides';
+import { ogImageLocale, type ContentLocale } from '@/i18n/locales';
 import type { Locale } from '@/i18n/routing';
 import { findGpu, findModel } from './catalog';
 import { defaultOgImage, guideOgImage } from './og-images';
@@ -12,11 +13,11 @@ import { defaultOgImage, guideOgImage } from './og-images';
 export type GuideBody = ComponentType<{ components?: object }>;
 type GuideModule = { default: GuideBody };
 
-// 레지스트리의 로캘 타입과 라우팅 로캘이 같아야 한다 — 어긋나면 이 줄이 타입 오류
-const LOCALES_MATCH: [GuideLocale, Locale] extends [Locale, GuideLocale] ? true : never = true;
+// 레지스트리의 로캘 타입과 장문 로캘(i18n/locales.ts — zh 는 장문 없음, D109)이 같아야 한다 — 어긋나면 이 줄이 타입 오류
+const LOCALES_MATCH: [GuideLocale, ContentLocale] extends [ContentLocale, GuideLocale] ? true : never = true;
 void LOCALES_MATCH;
 
-const LOADERS: Readonly<Record<GuideSlug, Readonly<Record<Locale, () => Promise<GuideModule>>>>> = {
+const LOADERS: Readonly<Record<GuideSlug, Readonly<Record<ContentLocale, () => Promise<GuideModule>>>>> = {
   'vram-requirements': {
     en: () => import('@/content/en/guides/vram-requirements.mdx') as Promise<GuideModule>,
     ko: () => import('@/content/ko/guides/vram-requirements.mdx') as Promise<GuideModule>,
@@ -125,11 +126,13 @@ export function publishedGuides(): GuideSlug[] {
 }
 
 /** 공유 카드 경로 — 게시 가이드는 가이드별 카드(10-16 D96, postbuild 가 그린다), 초안은 기본 카드. og:image 와 Article.image 가 같이 쓴다 */
-export function guideOgImagePath(slug: GuideSlug, locale: Locale): string {
-  return isPublished(slug) ? guideOgImage(slug, locale) : defaultOgImage(locale);
+export function guideOgImagePath(slug: GuideSlug, locale: ContentLocale): string {
+  const card = ogImageLocale(locale);
+  return isPublished(slug) ? guideOgImage(slug, card) : defaultOgImage(card);
 }
 
-export async function loadGuideBody(slug: GuideSlug, locale: Locale): Promise<GuideBody> {
+/** 가이드 본문은 장문 로캘(en·ko)에만 있다 — zh 라우트는 만들지 않는다(D109) */
+export async function loadGuideBody(slug: GuideSlug, locale: ContentLocale): Promise<GuideBody> {
   return (await LOADERS[slug][locale]()).default;
 }
 

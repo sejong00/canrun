@@ -1,6 +1,7 @@
 import { useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
 import { VerdictSprite } from '@/components/verdict';
+import { ALL_LOCALES, HTML_LANG, isContentLocale } from '@/i18n/locales';
 import { routing, type Locale } from '@/i18n/routing';
 import { publishedGuides } from '@/lib/guides';
 import { gpusHref, guidesHref, localeHref, modelsHref } from '@/lib/links';
@@ -13,14 +14,19 @@ const NAV_LINK = 'inline-flex min-h-9 items-center text-muted-foreground underli
  * 로케일 전환 링크는 **현재 페이지의 짝**을 서버에서 계산한다: 각 페이지가 자기 `href`
  * (로케일 프리픽스 없는 내부 경로, buildAlternates 와 같은 값)를 넘긴다. 레이아웃은 페이지
  * 경로를 모르므로 헤더를 여기서 그린다 — 클라이언트 훅·NextIntlClientProvider 없이 (결정 D6).
+ *
+ * `availableIn` — 이 페이지가 있는 로캘(기본 전부). 장문 페이지(가이드·정적 페이지)는 `CONTENT_LOCALES` 를 넘긴다:
+ * 그 페이지가 없는 로캘(zh, D109)로 가는 전환 링크는 그 로캘 홈으로 보낸다(404 대신).
  */
 export function PageShell({
   locale,
   href,
+  availableIn = ALL_LOCALES,
   children,
 }: {
   locale: Locale;
   href: string;
+  availableIn?: readonly Locale[];
   children: ReactNode;
 }) {
   const tSite = useTranslations('Site');
@@ -53,8 +59,8 @@ export function PageShell({
                   {tSite('navGpus')}
                 </a>
               </li>
-              {/* 가이드 목차는 published 가이드가 1편 이상일 때만 (초안은 URL 로만 — P1-4 D40) */}
-              {publishedGuides().length > 0 && (
+              {/* 가이드 목차는 published 가이드가 1편 이상일 때만 (초안은 URL 로만 — P1-4 D40). 가이드는 장문 로캘에만 — zh 는 메뉴 없음(D109) */}
+              {isContentLocale(locale) && publishedGuides().length > 0 && (
                 <li>
                   <a href={localeHref(locale, guidesHref())} data-nav-guides className={NAV_LINK}>
                     {tSite('navGuides')}
@@ -72,9 +78,9 @@ export function PageShell({
               ) : (
                 <a
                   key={target}
-                  href={localeHref(target, href)}
-                  hrefLang={target}
-                  lang={target}
+                  href={localeHref(target, availableIn.includes(target) ? href : '/')}
+                  hrefLang={HTML_LANG[target]}
+                  lang={HTML_LANG[target]}
                   data-locale-switch
                   className="text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
                 >

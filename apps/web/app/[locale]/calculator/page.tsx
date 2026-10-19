@@ -7,6 +7,7 @@ import { Faq } from '@/components/faq';
 import { CalculatorIsland } from '@/components/islands/calculator-island';
 import { JsonLd } from '@/components/json-ld';
 import { PageShell } from '@/components/page-shell';
+import { HTML_LANG } from '@/i18n/locales';
 import type { Locale } from '@/i18n/routing';
 import { getCatalogLite } from '@/lib/calc-catalog';
 import { catalog } from '@/lib/catalog';
@@ -56,7 +57,7 @@ export default async function CalculatorPage({ params }: Props) {
           name: t('appName'),
           url,
           description,
-          inLanguage: locale,
+          inLanguage: HTML_LANG[locale],
           version: ENGINE_SPEC_VERSION,
         })}
       />

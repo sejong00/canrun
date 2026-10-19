@@ -1,5 +1,6 @@
 import type { ComponentType } from 'react';
 import { GPU_INTRO_IDS, MODEL_INTRO_IDS, type GpuIntroId, type HubIntroKind, type ModelIntroId } from '@/content/hubs';
+import { isContentLocale, type ContentLocale } from '@/i18n/locales';
 import type { Locale } from '@/i18n/routing';
 
 /**
@@ -8,7 +9,7 @@ import type { Locale } from '@/i18n/routing';
  */
 export type HubIntroBody = ComponentType<{ components?: object }>;
 type IntroModule = { default: HubIntroBody };
-type Loaders<Id extends string> = Readonly<Record<Id, Readonly<Record<Locale, () => Promise<IntroModule>>>>>;
+type Loaders<Id extends string> = Readonly<Record<Id, Readonly<Record<ContentLocale, () => Promise<IntroModule>>>>>;
 
 const GPU_LOADERS: Loaders<GpuIntroId> = {
   'rtx-4060': {
@@ -100,8 +101,9 @@ export function hasHubIntro(kind: HubIntroKind, id: string): boolean {
   return ((kind === 'gpu' ? GPU_INTRO_IDS : MODEL_INTRO_IDS) as readonly string[]).includes(id);
 }
 
+/** 소개글은 사람이 쓴 장문이라 장문 로캘(en·ko)에만 — zh 허브는 소개 없이 그린다(D109, CLAUDE.md 규칙 4) */
 export async function loadHubIntro(kind: HubIntroKind, id: string, locale: Locale): Promise<HubIntroBody | undefined> {
-  if (!hasHubIntro(kind, id)) return undefined;
+  if (!isContentLocale(locale) || !hasHubIntro(kind, id)) return undefined;
   const loader = kind === 'gpu' ? GPU_LOADERS[id as GpuIntroId] : MODEL_LOADERS[id as ModelIntroId];
   return (await loader[locale]()).default;
 }

@@ -12,7 +12,10 @@
  * - 순서 = 우선순위(D37): 감수가 병목이면 아래부터 뺀다(최소 5쌍)
  */
 
-export type GuideLocale = 'en' | 'ko';
+import type { ContentLocale } from '../i18n/locales';
+
+/** 장문 로캘 — 의존성 0 인 `i18n/locales.ts` 를 상대 경로로 (zh 는 장문 없음, D109) */
+export type GuideLocale = ContentLocale;
 
 export type GuideGrid = { gpus: readonly string[]; models: readonly string[] };
 

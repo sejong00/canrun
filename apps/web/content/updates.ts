@@ -10,6 +10,7 @@
 export type SiteUpdate = { readonly id: string; readonly date: string };
 
 export const SITE_UPDATES = [
+  { id: 'chinese-ui', date: '2026-10-19' },
   { id: 'new-guides-compare', date: '2026-10-19' },
   { id: 'calculator-on-pages', date: '2026-10-19' },
   { id: 'model-about', date: '2026-10-19' },

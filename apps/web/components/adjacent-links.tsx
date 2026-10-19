@@ -1,5 +1,6 @@
 import type { AdjacentCombos, Gpu, Model } from '@canrun/data';
 import { useLocale, useTranslations } from 'next-intl';
+import { isContentLocale } from '@/i18n/locales';
 import type { Locale } from '@/i18n/routing';
 import { guideEntry, relatedGuideFor } from '@/lib/guides';
 import { comboHref, gpuHref, guideHref, localeHref, modelHref } from '@/lib/links';
@@ -9,6 +10,7 @@ import { searchModelName } from '@/lib/search-names';
 /**
  * 인접 콤보 4 + 양쪽 허브 (docs/04 §2 내부링크 규칙) — 탭 타깃 ≥24px 를 위해 py-2.
  * 이 콤보를 그리드로 다루는 **published** 가이드가 있으면 그 가이드로도 링크한다 (P1-4 D44 — 초안은 링크하지 않는다).
+ * 가이드는 장문 로캘(en·ko)에만 있어 zh 는 링크하지 않는다(D109).
  * 모델 허브 링크는 한국어에서 한글 계열 이름을 붙인다 — 콤보 본문에서 한글 이름이 나오는 유일한 자리(10-16 D94, content/ko-names.ts)
  */
 export function AdjacentLinks({ adjacent, gpu, model }: { adjacent: AdjacentCombos; gpu: Gpu; model: Model }) {
@@ -19,13 +21,14 @@ export function AdjacentLinks({ adjacent, gpu, model }: { adjacent: AdjacentComb
   const name = gpuName(names, gpu);
   const item = 'block py-2 text-sm';
   const tGuides = useTranslations('Guides');
-  const guide = relatedGuideFor(gpu.id, model.id);
+  const guideLocale = isContentLocale(locale) ? locale : undefined;
+  const guide = guideLocale ? relatedGuideFor(gpu.id, model.id) : undefined;
   return (
     <div className="grid gap-6 sm:grid-cols-2">
-      {guide && (
+      {guide && guideLocale && (
         <p className="sm:col-span-2">
-          <a data-related-guide href={localeHref(locale, guideHref(guide))} className={item}>
-            {tGuides('relatedGuide', { title: guideEntry(guide).locales[locale].title })}
+          <a data-related-guide href={localeHref(guideLocale, guideHref(guide))} className={item}>
+            {tGuides('relatedGuide', { title: guideEntry(guide).locales[guideLocale].title })}
           </a>
         </p>
       )}

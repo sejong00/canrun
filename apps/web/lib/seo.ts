@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { INDEXED_LOCALES, OG_LOCALE, isIndexedLocale, ogImageLocale } from '@/i18n/locales';
 import { routing, type Locale } from '@/i18n/routing';
 import { localeHref, rssHref } from './links';
 import { defaultOgImage } from './og-images';
@@ -12,29 +13,32 @@ const getPathname = ({ href, locale }: { href: string; locale: Locale }) => loca
  *
  * 페이지는 이 함수만 호출하고 수기로 <link rel="alternate"> 를 쓰지 않는다.
  * `href` 는 로케일 프리픽스가 없는 내부 경로(`/`, `/calculator`, `/gpu/rtx-4060`).
+ *
+ * hreflang 은 검색 노출 로캘(`INDEXED_LOCALES` — en·ko)끼리만 짝짓는다. zh(10-19 D109)는 공개 작업 전까지 검색 제외라
+ * 자기 캐노니컬만 두고 hreflang·RSS 대체 링크가 없으며, en/ko 페이지의 hreflang 에도 들어가지 않는다.
  */
 export function buildAlternates(href: string, locale: Locale): Metadata['alternates'] {
-  const languages: Record<string, string> = {};
+  const canonical = absoluteUrl(getPathname({ href, locale }));
+  if (!isIndexedLocale(locale)) return { canonical };
 
-  for (const target of routing.locales) {
+  const languages: Record<string, string> = {};
+  for (const target of INDEXED_LOCALES) {
     languages[target] = absoluteUrl(getPathname({ href, locale: target }));
   }
   // x-default 는 en (docs/04 §6)
   languages['x-default'] = absoluteUrl(getPathname({ href, locale: routing.defaultLocale }));
 
   return {
-    canonical: absoluteUrl(getPathname({ href, locale })),
+    canonical,
     languages,
     // 로캘 RSS (P1-5) — rel=alternate type=application/rss+xml (hreflang 없음)
     types: { 'application/rss+xml': absoluteUrl(getPathname({ href: rssHref(), locale })) },
   };
 }
 
-const OG_LOCALE: Record<Locale, string> = { en: 'en_US', ko: 'ko_KR' };
-
 /**
  * 공유 카드 크기 — 기본 카드(P1-5)는 로캘별 1장. GPU·모델 허브(D60)·공개 콤보·게시 가이드(D96)는 페이지별 카드(postbuild 가 그린다,
- * 경로는 lib/og-images.ts). 미공개 콤보·초안 가이드·계산기·정적 페이지는 기본 카드
+ * 경로는 lib/og-images.ts). 미공개 콤보·초안 가이드·계산기·정적 페이지는 기본 카드. zh 는 en 카드를 쓴다(D109 — `ogImageLocale`)
  */
 const OG_IMAGE = { width: 1200, height: 630 } as const;
 
@@ -46,7 +50,7 @@ export function buildPageMetadata(opts: {
   description: string;
   /** 레이아웃의 " — CanRun" 템플릿을 쓰지 않을 때 (홈·콤보) */
   absoluteTitle?: boolean;
-  /** 인덱싱 배치 밖의 콤보 (docs/04 §3, 결정 D9) — noindex,follow. 캐노니컬·hreflang 은 그대로 */
+  /** 인덱싱 배치 밖의 콤보 (docs/04 §3, 결정 D9) — noindex,follow. 캐노니컬·hreflang 은 그대로. 검색 노출 로캘이 아니면(zh, D109) 항상 noindex */
   noindex?: boolean;
   /** 가이드 (P1-4 D41) — og type article + 게시·수정일(YYYY-MM-DD) */
   article?: { publishedTime: string; modifiedTime: string };
@@ -54,11 +58,12 @@ export function buildPageMetadata(opts: {
   ogImage?: string;
 }): Metadata {
   const { href, locale, title, description } = opts;
+  const noindex = opts.noindex === true || !isIndexedLocale(locale);
   return {
     title: opts.absoluteTitle ? { absolute: title } : title,
     description,
     alternates: buildAlternates(href, locale),
-    ...(opts.noindex ? { robots: { index: false, follow: true } } : {}),
+    ...(noindex ? { robots: { index: false, follow: true } } : {}),
     openGraph: {
       ...(opts.article
         ? { type: 'article' as const, publishedTime: opts.article.publishedTime, modifiedTime: opts.article.modifiedTime, authors: ['CanRun'] }
@@ -68,7 +73,7 @@ export function buildPageMetadata(opts: {
       description,
       url: absoluteUrl(getPathname({ href, locale })),
       locale: OG_LOCALE[locale],
-      images: [{ url: absoluteUrl(opts.ogImage ?? defaultOgImage(locale)), ...OG_IMAGE }],
+      images: [{ url: absoluteUrl(opts.ogImage ?? defaultOgImage(ogImageLocale(locale))), ...OG_IMAGE }],
     },
     twitter: { card: 'summary_large_image' },
   };

@@ -12,7 +12,10 @@ const root = resolve(__dirname, '..');
 const messages = {
   en: JSON.parse(readFileSync(join(root, 'messages/en.json'), 'utf8')) as Record<string, Record<string, string>>,
   ko: JSON.parse(readFileSync(join(root, 'messages/ko.json'), 'utf8')) as Record<string, Record<string, string>>,
+  // 화면 문구만 기계번역(10-19 D109) — 아일랜드는 같은 사전을 받으므로 같은 동치 검사를 거친다
+  zh: JSON.parse(readFileSync(join(root, 'messages/zh.json'), 'utf8')) as Record<string, Record<string, string>>,
 };
+const LOCALES = ['en', 'ko', 'zh'] as const;
 
 /** 콤보 아일랜드·허브 정렬이 쓰는 개별 키 (완성 문자열은 서버에서 만들지만 라벨은 dict 로 넘긴다) */
 const ISLAND_KEYS = ['CtxControls', 'Sort'] as const;
@@ -28,13 +31,13 @@ function pluralArgs(message: string): Set<string> {
   return new Set([...message.matchAll(/\{\s*([A-Za-z0-9_]+)\s*,\s*plural/g)].map((m) => m[1]!));
 }
 
-function specFor(locale: 'en' | 'ko') {
+function specFor(locale: (typeof LOCALES)[number]) {
   const namespaces = [...(CALC_MESSAGE_SPEC.namespaces ?? []), ...ISLAND_KEYS.filter((ns) => ns in messages[locale])];
   return pickMessages(messages[locale], { namespaces, keys: CALC_MESSAGE_SPEC.keys });
 }
 
 describe('formatIcu equals next-intl for every island message', () => {
-  for (const locale of ['en', 'ko'] as const) {
+  for (const locale of LOCALES) {
     const dict = specFor(locale);
     const t = createTranslator({ locale, messages: messages[locale] });
 
@@ -81,7 +84,7 @@ describe('formatIcu equals next-intl for every island message', () => {
   });
 });
 
-describe('island source files only use keys that exist in both locales', () => {
+describe('island source files only use keys that exist in every locale', () => {
   const dirs = ['components/islands', 'lib/calc'].map((d) => join(root, d));
   const files: string[] = [];
   const walk = (dir: string) => {
@@ -112,12 +115,13 @@ describe('island source files only use keys that exist in both locales', () => {
     const picked = {
       en: pickMessages(messages.en, CALC_MESSAGE_SPEC),
       ko: pickMessages(messages.ko, CALC_MESSAGE_SPEC),
+      zh: pickMessages(messages.zh, CALC_MESSAGE_SPEC),
     };
     const missing: string[] = [];
     let checked = 0;
     const check = (file: string, ns: string, key: string) => {
       checked += 1;
-      for (const locale of ['en', 'ko'] as const) {
+      for (const locale of LOCALES) {
         if (typeof picked[locale][`${ns}.${key}`] !== 'string') missing.push(`${file}: ${ns}.${key} (${locale}, not in the picked dict)`);
       }
     };
@@ -141,12 +145,12 @@ describe('island source files only use keys that exist in both locales', () => {
 });
 
 describe('GPU picker dictionary (home·guide widget)', () => {
-  it('every t.calc/t.names literal in the picker and the shared listbox resolves in the picked dict, both locales', () => {
+  it('every t.calc/t.names literal in the picker and the shared listbox resolves in the picked dict, every locale', () => {
     const files = ['components/islands/gpu-picker.tsx', 'components/islands/gpu-listbox.tsx'];
     const nsOf: Record<string, string> = { calc: 'Calculator', names: 'GpuName' };
     const missing: string[] = [];
     let checked = 0;
-    for (const locale of ['en', 'ko'] as const) {
+    for (const locale of LOCALES) {
       const dict = pickMessages(messages[locale], GPU_PICKER_MESSAGE_SPEC);
       for (const file of files) {
         const src = readFileSync(join(root, file), 'utf8');

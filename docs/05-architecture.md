@@ -29,6 +29,13 @@
 - 검증(회귀 테스트로 상시 강제): `pnpm test:export` → `test/export-invariants.spec.ts` — ①`out/index.html`=en·`out/ko.html`=ko 존재 ②`out/en/` 부재 ③en 페이지에 `/en` 프리픽스 링크 0건 ④캐노니컬 자기참조+hreflang en/ko/x-default 완전 대칭 ⑤`_redirects` 존재·2,000룰 이내.
 - 폴백(불필요해졌으나 기록): A안이 향후 Next/next-intl 변경으로 깨지면 `localePrefix: 'always'` + 루트 `_redirects`(`/ → /en` 302) + x-default=en으로 전환한다. 전환 비용은 postbuild 평탄화 제거 + 테스트 기대값 변경.
 
+### zh(간체) 화면판 생성 방식 (10-19, PROGRESS §4 D109)
+
+- 로캘 능력표 `apps/web/i18n/locales.ts`(의존성 0 — 스크립트·export 테스트도 읽는다): `ALL_LOCALES` en·ko·zh = 라우팅(`routing.ts`) · `INDEXED_LOCALES` en·ko = hreflang·사이트맵·RSS·IndexNow · `CONTENT_LOCALES` en·ko = 사람이 쓴 MDX 장문. `HTML_LANG`(zh → `zh-Hans`)·`OG_LOCALE`(zh → `zh_CN`)·`ogImageLocale`(zh → en 카드)·`contentLocaleFor`(zh → en, 푸터 정적 페이지 링크).
+- 장문 페이지에서 zh 빼기: 정적 세그먼트(about 등)는 부모 레이아웃의 `[locale]` 을 물려받아 모든 로캘로 생성된다. 페이지가 `generateStaticParams` 로 en·ko 목록(`contentLocaleParams()`)을 돌려주면 Next 16.3.6 `generateRouteStaticParams` 가 부모 값마다 `{...부모, ...자식}` 으로 합치고 중복을 걸러내 zh 가 사라진다(빈 배열은 `output: 'export'` 에서 빌드 실패라 부모 값과 무관하게 같은 목록). 10-19 스파이크(작은 Next 앱)에서 `/zh/about`·`/zh/guides*` 없음, `/ko/about`·`/zh/gpus` 있음을 확인. 정적 페이지 5종·가이드 목차·`guides/[slug]`(en·ko × 슬러그)가 이 방식이고 `notFound()` 안전망을 둔다. 소개글·모델 소개 로더는 zh 면 `undefined`(소개 없이 그린다).
+- 대안(안 씀, 기록): Next 가 부모 param 덮어쓰기 동작을 바꾸면 페이지에서 `notFound()` 로 그리고 postbuild 가 정해 둔 목록(`out/zh/{about,…}.html`, `out/zh/guides/`)을 지운다. export 테스트 "zh (D109)" 가 zh 장문 파일이 생기면 바로 잡는다.
+- 검색: `buildAlternates` 는 `INDEXED_LOCALES` 끼리만 hreflang 을 짝짓고, zh 는 자기 캐노니컬만(hreflang·RSS 대체 링크 없음) + `buildPageMetadata` 가 noindex 를 강제한다. 사이트맵 스크립트는 `INDEXED_LOCALES` 를 import 해 출력이 그대로다. `_redirects` 의 GPU 비교 뒤집은 순서 301 은 zh 까지 36줄.
+
 ## 2. 저장소 구조 (모노레포, pnpm)
 ```
 canrun/
@@ -57,7 +64,7 @@ canrun/
 
 ## 3. 페이지 생성 흐름
 `data/*.json` → zod 파싱 → `generateStaticParams`로 콤보/허브 열거 → 페이지 컴포넌트는 엔진 호출 결과를 빌드 시 계산해 HTML에 박음. **인덱싱 게이트는 `data/publish.json`**(`currentBatch` + `batches[{batch, gpuIds, modelIds}]` — 메커니즘 `04` §3, 스키마 `03` §1, P1-2 D9): 콤보는 카탈로그 **전 조합을 생성**하고, 개방된 배치 밖의 콤보는 `robots noindex, follow` 메타로만 구분한다(생성 여부는 게이트와 무관). **콤보 페이지의 ctx × KV quant(f16/q8_0/q4_0) 표는 정적**(메모리·tg 밴드·판정 — 색인 콘텐츠). P1-2는 클라이언트 JS 0(D11)이었고, **P1-3에서 엔진 미탑재 아일랜드 `CtxKvControls`**(슬라이더·KV 라디오 → 셀 강조·요약·실행 명령 교체, 서버가 21셀 뷰를 props로 — D28, §5)를 얹었다(콤보 스크립트 135.1KB gz, 캡 150KB).
-규모: 허브 168(GPU 54 + 모델 29 × 2언어) + 콤보 1,566 × 2 = 3,132 + 계산기 2 + 가이드 목차 2 + 가이드 12(6쌍, P1-4) → 홈 포함 **3,318페이지 전부 생성**, 인덱싱만 게이트(계획 시점 "1,400페이지"는 GPU 30 × 모델 20 시절 수치 — PROGRESS §4 09-29). 허브·콤보 조립 로직(기준·추천 quant, 실측 조인, 신뢰 라벨, ctx×KV 표, 대안, 커맨드 스니펫, 공개 상태)은 `packages/data/src/{assess,combo,snippet,publish}.ts`(순수·엔진 무변경 — P1-3부터 계산기가 같은 함수를 `{ctx, kvQuant, theoretical, ramHint}` 옵션으로 브라우저에서 호출, D33), 페이지는 서버 컴포넌트 + **클라이언트 아일랜드 3종**(`components/islands/` — 계산기·콤보 ctx/KV·모델 허브 가격 정렬, 번역·카탈로그는 props, §5) — 내부 링크는 `<a>`, next-intl 클라이언트 프로바이더 없음(JS 예산 `01` §7). 20분 초과 시 콤보 분할 빌드 도입.
+규모: 허브 168(GPU 54 + 모델 29 × 2언어) + 콤보 1,566 × 2 = 3,132 + 계산기 2 + 가이드 목차 2 + 가이드 12(6쌍, P1-4) → 홈 포함 **3,318페이지 전부 생성**, 인덱싱만 게이트(계획 시점 "1,400페이지"는 GPU 30 × 모델 20 시절 수치 — PROGRESS §4 09-29). 허브·콤보 조립 로직(기준·추천 quant, 실측 조인, 신뢰 라벨, ctx×KV 표, 대안, 커맨드 스니펫, 공개 상태)은 `packages/data/src/{assess,combo,snippet,publish}.ts`(순수·엔진 무변경 — P1-3부터 계산기가 같은 함수를 `{ctx, kvQuant, theoretical, ramHint}` 옵션으로 브라우저에서 호출, D33), 페이지는 서버 컴포넌트 + **클라이언트 아일랜드 3종**(`components/islands/` — 계산기·콤보 ctx/KV·모델 허브 가격 정렬, 번역·카탈로그는 props, §5) — 내부 링크는 `<a>`, next-intl 클라이언트 프로바이더 없음(JS 예산 `01` §7). 20분 초과 시 콤보 분할 빌드 도입. **10-19 zh 화면판(PROGRESS §4 D109)**: zh 템플릿 페이지 2,704장(장문 페이지 제외, 홈 `zh.html` 포함)이 더해져 정적 생성 5,467 → 8,171장(HTML 8,170 — zh 2,704), `out/` 파일 5,897 → 8,601개(한도 검사 16,000의 54%), `out/` 1.5GB 중 zh 460MB(첫 배포 업로드가 그만큼 늘고, 그 뒤엔 바뀐 파일만 올라간다). 로컬 빌드: 정적 생성 48~56초 → 62~70초, `pnpm build` 전체 106~118초(10-19 측정 3회).
 
 빌드 후처리 `scripts/postbuild.ts`(P1-2 D18·D21, PROGRESS §4 09-29) — 순서가 중요하다:
 1. **RSC 페이로드 프루닝(평탄화 전)**: Cloudflare Pages 파일 한도 20,000개 — 페이지당 html + RSC `.txt` 3 + `__next.*` 디렉터리 = 5파일이라 3,302페이지면 ~16,500(82%). `__next.*` 디렉터리를 재귀 삭제하고 허용목록(`robots.txt|ads.txt|llms.txt` — P1-5 대비, IndexNow 키 파일 `<키>.txt` — D93) 외 `*.txt`를 전부 삭제한다(~17% 감소). 안전 근거: 사이트는 `<a>`만 쓰고 next/link·router가 없어 Next 16.3.6 클라이언트가 `.txt`를 요청하는 경로(`fetchServerResponse` — navigate/prefetch/refresh)가 실행되지 않고, HTML에 `.txt` 참조 0건, 뒤로가기(`pageshow`/`popstate`) 복원은 기존 CacheNode를 재사용한다. 안전망: export 테스트(허용목록 외 `.txt` 0 · `__next` 0 · 총 파일 < 16,000 · 최대 파일 < 25MiB) + E2E 실패 요청 0(인접 링크 이동 후 `goBack()` + networkidle 포함 — 유일한 history 경로).

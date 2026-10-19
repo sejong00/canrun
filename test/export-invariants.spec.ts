@@ -12,6 +12,10 @@
  *  - 허브·콤보 구조화 데이터, 규칙 3 밴드, 제목·description 유일, 고아 0, 한글 누출 0
  *  - 콤보(P1-2): 전 조합 존재 · publish.json 게이트(noindex) · 링크 규칙 · 깊이(D15) ·
  *    보일러플레이트(D16) · 파일 위생(D18)
+ *
+ * zh(10-19 D109 — 화면 문구만 기계번역, 공개 작업 전까지 noindex): 위 en/ko 불변식은 en/ko 페이지(`pages`)에만 건다.
+ * zh 페이지(`zhPages`)는 맨 아래 "zh (D109)" 블록이 따로 본다 — 템플릿 페이지 집합 = en, 전부 noindex·자기 캐노니컬·hreflang 없음,
+ * 사이트맵·RSS 밖, 한글·원화 없음, 내부 링크는 /zh/* 만(푸터의 영어 정적 페이지 예외).
  */
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -30,6 +34,8 @@ import { CF_PAGES_REDIRECT_LINE_LIMIT } from '../scripts/build-redirects';
 import { comboCardText, loadCatalog, ogTranslators } from '../scripts/og-cards';
 import { MAC_LINES, summarizeGpu, type GpuHubData } from '../packages/data/src/index';
 import { comboOgImage, compareOgImage, defaultOgImage, guideOgImage, hubOgImage } from '../apps/web/lib/og-images';
+import { STATIC_PAGE_SLUGS } from '../apps/web/content/pages';
+import { ALL_LOCALES, CONTENT_LOCALES, HTML_LANG, INDEXED_LOCALES, OG_LOCALE } from '../apps/web/i18n/locales';
 import {
   comboIndexable,
   comboOf,
@@ -39,6 +45,7 @@ import {
   extractPageFacts,
   hubPath,
   isKoPath,
+  isZhPath,
   localePath,
   median,
   mulberry32,
@@ -109,7 +116,11 @@ const laterDate = (a: string, b: string) => (a > b ? a : b);
 const escHtml = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#x27;');
 
-let pages: PageFacts[] = [];
+/** 검색 노출 로캘(en·ko) 페이지 — 기존 불변식 전부의 대상 */
+type IndexedPageFacts = PageFacts & { locale: 'en' | 'ko' };
+let pages: IndexedPageFacts[] = [];
+/** zh 페이지 (10-19 D109) — "zh (D109)" 블록만 본다 */
+let zhPages: PageFacts[] = [];
 let outFiles: OutFile[] = [];
 let outDirs: string[] = [];
 let units: UnitTable;
@@ -135,12 +146,16 @@ beforeAll(() => {
   outFiles = walked.files;
   outDirs = walked.dirs;
   pages = [];
+  zhPages = [];
   for (const { rel } of outFiles) {
     if (!rel.endsWith('.html') || EXCLUDED.has(rel)) continue;
     // HTML 은 이 스코프를 벗어나면 버려진다 (D17)
-    pages.push(extractPageFacts(readFileSync(join(outDir, rel), 'utf8'), rel, ctx));
+    const facts = extractPageFacts(readFileSync(join(outDir, rel), 'utf8'), rel, ctx);
+    if (facts.locale === 'zh') zhPages.push(facts);
+    else pages.push(facts as IndexedPageFacts);
   }
-}, 120_000);
+  // 10-19 D109: zh 템플릿 페이지 약 2,700장이 더해져 HTML 이 약 5,900 → 8,600장 — 사실 추출이 그만큼 길어져 상한을 2분 → 4분으로
+}, 240_000);
 
 // ---------------------------------------------------------------------------
 // 공용 조회
@@ -168,7 +183,7 @@ const guideSlugOf = (urlPath: string): GuideSlug | undefined => {
 const guidePublished = (slug: GuideSlug) => GUIDES[slug].status === 'published';
 const PUBLISHED_GUIDES = GUIDE_SLUGS.filter(guidePublished);
 /** 계산기 페이지 (P1-3) — 없으면 명확히 실패 */
-function requireCalculators(): PageFacts[] {
+function requireCalculators(): IndexedPageFacts[] {
   const calcs = pages.filter(isCalculator);
   if (calcs.length === 0) throw new Error('no /calculator page under apps/web/out — P1-3 calculator not exported');
   return calcs;
@@ -177,7 +192,7 @@ const urlSet = () => new Set(pages.map((p) => p.urlPath));
 const byUrl = () => new Map(pages.map((p) => [p.urlPath, p]));
 
 /** 콤보 페이지 — EXPECT_COMBOS 이고 0건이면 명확히 실패 */
-function requireCombos(): PageFacts[] {
+function requireCombos(): IndexedPageFacts[] {
   const combos = pages.filter((p) => p.kind === 'combo');
   if (combos.length === 0 && EXPECT_COMBOS) {
     throw new Error(
@@ -1688,6 +1703,188 @@ describe('sitemaps · robots.txt · RSS (P1-5)', () => {
       expect(pageDates.get(localePath(locale, '/calculator')), `${locale} calculator`).toBe(numbersDate);
       const combos = existsSync(join(outDir, `sitemap-combos-${locale}.xml`)) ? lastmods(read(`sitemap-combos-${locale}.xml`)) : [];
       for (const [path, lastmod] of combos) expect(lastmod, path).toBe(numbersDate);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// zh (10-19 D109) — 화면 문구만 기계번역(사용자 승인), 공개 작업(애드센스 승인 뒤) 전까지 검색 제외
+// ---------------------------------------------------------------------------
+
+describe('zh (D109 — 화면 문구만, 공개 작업 전까지 noindex·hreflang·사이트맵 밖)', () => {
+  /** 장문 페이지 — 사람이 따로 쓴 MDX 가 있는 로캘(CONTENT_LOCALES)에만 있다 (CLAUDE.md 규칙 4) */
+  const isLongForm = (page: PageFacts) => isGuide(page) || isGuidesIndex(page) || isStatic(page);
+  const requireZh = (): PageFacts[] => {
+    if (zhPages.length === 0) throw new Error('no /zh pages under apps/web/out — the zh locale was not exported');
+    return zhPages;
+  };
+  const origin = () => new URL(pages.find((p) => p.urlPath === '/')!.canonical!).origin;
+
+  it('the zh page set is exactly the en template pages — no guides, guides index or static pages', () => {
+    const zh = requireZh();
+    const expected = pages.filter((p) => p.locale === 'en' && !isLongForm(p)).map((p) => localePath('zh', p.urlPath));
+    expect(zh.map((p) => p.urlPath).sort()).toEqual(expected.sort());
+    expect(new Set(zh.map((p) => p.urlPath)).size, 'one file per zh URL').toBe(zh.length);
+    expect(zh.filter(isLongForm).map((p) => p.file)).toEqual([]);
+    for (const slug of STATIC_PAGE_SLUGS) expect(existsSync(join(outDir, `zh/${slug}.html`)), `zh/${slug}.html`).toBe(false);
+    expect(existsSync(join(outDir, 'zh/guides.html')), 'zh/guides.html').toBe(false);
+    expect(existsSync(join(outDir, 'zh/guides')), 'zh/guides/').toBe(false);
+    console.log(`[zh] ${zh.length} zh pages · ${pages.length} en/ko pages · ${outFiles.length} files in out/`);
+  });
+
+  it('every zh page is noindex,follow with a self-referencing canonical, no hreflang and no RSS alternate, lang zh-Hans, og:locale zh_CN', () => {
+    for (const page of requireZh()) {
+      expect(page.robotsNoindex, `${page.file} noindex`).toBe(true);
+      expect(page.canonical, `${page.file} canonical`).toBeDefined();
+      expect(urlToPath(page.canonical!), `${page.file} canonical`).toBe(page.urlPath);
+      expect(page.hreflang, `${page.file} hreflang`).toEqual({});
+      expect(page.rssAlternate, `${page.file} RSS alternate`).toBeUndefined();
+      expect(page.lang, page.file).toBe(HTML_LANG.zh);
+      expect(page.ogLocale, page.file).toBe(OG_LOCALE.zh);
+      expect(page.enPrefixedLinkCount, page.file).toBe(0);
+    }
+    // en/ko 는 지금 그대로 — hreflang 에 zh 가 없고(키 집합은 위 "canonical + hreflang" 블록), 로캘 RSS 대체 링크가 있다
+    for (const page of pages) {
+      expect(page.ogLocale, page.file).toBe(OG_LOCALE[page.locale]);
+      expect(page.rssAlternate, `${page.file} RSS alternate`).toBe(`${origin()}${localePath(page.locale, '/rss.xml')}`);
+    }
+  });
+
+  it('og:image is the card of the en twin page (cards are drawn for indexed locales only), twitter:image the same', () => {
+    const map = byUrl();
+    for (const page of requireZh()) {
+      const twin = map.get(stripLocale(page.urlPath));
+      expect(twin, `${page.file} en twin`).toBeDefined();
+      expect(page.ogImage, page.file).toBe(twin!.ogImage);
+      expect(page.twitterImage, page.file).toBe(page.ogImage);
+    }
+    expect(outFiles.filter((f) => /^og\/.*-zh\.png$/.test(f.rel)).map((f) => f.rel)).toEqual([]);
+  });
+
+  it('shows no Hangul (except the 한국어 switcher label) and no KRW; every quoted speed carries a range (CLAUDE.md rule 3)', () => {
+    const RANGE = /\d[\d.,]*–\d[\d.,]*/;
+    const QUOTED_SPEED = /\d[\d.,]*\s*tok\/s/;
+    for (const page of requireZh()) {
+      expect(page.hangulWords.filter((w) => w !== '한국어'), page.file).toEqual([]);
+      expect([page.krwPrices, page.krwNote], `${page.file} KRW`).toEqual([0, false]);
+      for (const text of page.speedTexts) {
+        if (QUOTED_SPEED.test(text)) expect(RANGE.test(text), `${page.file}: ${text}`).toBe(true);
+      }
+    }
+    const bad = zhPages.filter((p) => p.measuredLabelIssues.length > 0).map((p) => `${p.file}: ${p.measuredLabelIssues.join(' | ')}`);
+    expect(bad).toEqual([]);
+  });
+
+  it('links only to /zh/* — apart from the switcher, the footer static pages go to the English pages with hreflang="en"; no guide links', () => {
+    for (const page of requireZh()) {
+      expect(page.markers.navGuides, `${page.file} a[data-nav-guides]`).toBeUndefined();
+      expect(page.relatedGuideHrefs, `${page.file} a[data-related-guide]`).toEqual([]);
+      expect([page.markers.navCalculator, page.markers.navModels, page.markers.navGpus], `${page.file} header`).toEqual(
+        ['/calculator', '/models', '/gpus'].map((bare) => localePath('zh', bare)),
+      );
+      const footer: string[] = [];
+      for (const link of page.links) {
+        if (link.localeSwitch) continue;
+        if (link.footerLink !== undefined && (STATIC_PAGE_SLUGS as readonly string[]).includes(link.footerLink)) {
+          footer.push(link.footerLink);
+          expect([link.href, link.hrefLang], `${page.file} footer ${link.footerLink}`).toEqual([`/${link.footerLink}`, 'en']);
+          continue;
+        }
+        expect(isZhPath(link.href), `${page.file} → ${link.href}`).toBe(true);
+        expect(/^\/zh\/guides(?:\/|$)/.test(link.href), `${page.file} links a guide ${link.href}`).toBe(false);
+      }
+      expect(footer, `${page.file} footer static links`).toEqual([...STATIC_PAGE_SLUGS]);
+      for (const action of page.formActions) expect(action.split('?')[0], `${page.file} form action`).toBe(localePath('zh', '/calculator'));
+    }
+  });
+
+  it('titles and descriptions are unique within zh; JSON-LD parses, FAQ JSON-LD equals the visible FAQ, breadcrumbs stay in zh, inLanguage is zh-Hans', () => {
+    const titles = new Map<string, string>();
+    const descriptions = new Map<string, string>();
+    for (const page of requireZh()) {
+      const { title, description } = page;
+      expect(title, `${page.file} title`).toBeTruthy();
+      expect(description, `${page.file} description`).toBeTruthy();
+      expect(titles.get(title!), `duplicate zh title: ${title}`).toBeUndefined();
+      expect(descriptions.get(description!), `duplicate zh description: ${description}`).toBeUndefined();
+      titles.set(title!, page.file);
+      descriptions.set(description!, page.file);
+      expect(page.jsonLdError, page.file).toBeUndefined();
+      for (const block of page.jsonLd) if ('inLanguage' in block) expect(block.inLanguage, `${page.file} inLanguage`).toBe(HTML_LANG.zh);
+      const crumbs = page.jsonLd.find((b) => b['@type'] === 'BreadcrumbList');
+      if (crumbs) {
+        const items = crumbs.itemListElement as Array<{ item: string }>;
+        expect(urlToPath(items[0]!.item), `${page.file} crumb 1`).toBe(localePath('zh', '/'));
+        expect(items.at(-1)!.item, `${page.file} last crumb`).toBe(page.canonical);
+      }
+      if (!isStructured(page)) continue;
+      const faq = page.jsonLd.find((b) => b['@type'] === 'FAQPage');
+      expect(faq, `${page.file} FAQPage`).toBeDefined();
+      const entities = (faq!.mainEntity as Array<{ name: string; acceptedAnswer: { text: string } }>).map((q) => ({
+        question: q.name,
+        answer: q.acceptedAnswer.text,
+      }));
+      expect(entities.length, page.file).toBe(3);
+      expect(entities, page.file).toEqual(page.faq);
+    }
+    const home = zhPages.find((p) => p.urlPath === localePath('zh', '/'))!;
+    expect(home.jsonLd.find((b) => b['@type'] === 'WebSite')?.inLanguage, 'zh home WebSite').toBe(HTML_LANG.zh);
+  });
+
+  it('the zh home and calculator keep the calculator markup: GET form, datalist of every GPU, no static result cards', () => {
+    const map = new Map(requireZh().map((p) => [p.urlPath, p]));
+    const calc = map.get(localePath('zh', '/calculator'))!;
+    expect([calc.markers.calculator, calc.markers.calcForm, calc.markers.inputList, calc.markers.resultCards]).toEqual([true, true, true, 0]);
+    expect(calc.datalistOptionCount).toBeGreaterThanOrEqual(gpus.length);
+    const home = map.get(localePath('zh', '/'))!;
+    expect(home.formActions).toContain(localePath('zh', '/calculator'));
+    expect(home.datalistOptionCount).toBeGreaterThanOrEqual(gpus.length);
+  });
+
+  it('sitemaps, their xhtml:link alternates and the RSS feeds never name /zh; there is no zh feed; robots.txt does not block /zh', () => {
+    const zhUrl = `${origin()}/zh`;
+    const files = [
+      ...outFiles.map((f) => f.rel).filter((rel) => /^sitemap[^/]*\.xml$/.test(rel)),
+      ...INDEXED_LOCALES.map((locale) => localePath(locale, '/rss.xml').slice(1)),
+    ];
+    expect(files.length).toBeGreaterThanOrEqual(6);
+    for (const rel of files) {
+      const xml = readFileSync(join(outDir, rel), 'utf8');
+      expect([`${zhUrl}/`, `${zhUrl}<`, `${zhUrl}"`].some((s) => xml.includes(s)), `${rel} names /zh`).toBe(false);
+      expect(/hreflang="zh/.test(xml), `${rel} zh hreflang`).toBe(false);
+    }
+    expect(existsSync(join(outDir, 'zh/rss.xml'))).toBe(false);
+    // 막으면 크롤러가 noindex 를 읽지 못한다 (docs/04 §6)
+    expect(readFileSync(join(outDir, 'robots.txt'), 'utf8')).not.toMatch(/^Disallow:.*\/zh/m);
+  });
+
+  it('en and ko pages carry no Chinese characters except the 中文 switcher label', () => {
+    const bad = pages.filter((p) => p.hanWords.some((w) => w !== '中文')).map((p) => `${p.file}: ${[...new Set(p.hanWords)].join(' ')}`);
+    expect(bad.slice(0, 20)).toEqual([]);
+  });
+
+  it('every language-switcher link (en/ko/zh) points at an existing page: the same page in the other locale, or the zh home from a long-form page', () => {
+    const all = new Set([...pages, ...zhPages].map((p) => p.urlPath));
+    for (const page of [...pages, ...zhPages]) {
+      const bare = stripLocale(page.urlPath);
+      const targets = ALL_LOCALES.filter((locale) => locale !== page.locale);
+      const switches = page.links.filter((l) => l.localeSwitch);
+      expect(switches.map((l) => l.href), `${page.file} switcher`).toEqual(
+        targets.map((target) => localePath(target, (CONTENT_LOCALES as readonly string[]).includes(target) || !isLongForm(page) ? bare : '/')),
+      );
+      expect(switches.map((l) => l.hrefLang), `${page.file} switcher hreflang`).toEqual(targets.map((target) => HTML_LANG[target]));
+      for (const { href } of switches) expect(all.has(href), `${page.file} switcher → missing ${href}`).toBe(true);
+    }
+  });
+
+  it('_redirects send the reversed compare slug to the registry slug in every routed locale, zh included', () => {
+    const rules = new Set(readFileSync(join(outDir, '_redirects'), 'utf8').split('\n'));
+    for (const slug of COMPARE_SLUGS) {
+      const { a, b } = COMPARES[slug];
+      for (const locale of ALL_LOCALES) {
+        const rule = `${localePath(locale, `/compare/${b}-vs-${a}`)} ${localePath(locale, `/compare/${slug}`)} 301`;
+        expect(rules.has(rule), rule).toBe(true);
+      }
     }
   });
 });
