@@ -89,6 +89,18 @@ const LOADERS: Readonly<Record<GuideSlug, Readonly<Record<Locale, () => Promise<
     en: () => import('@/content/en/guides/cpu-only-llm.mdx') as Promise<GuideModule>,
     ko: () => import('@/content/ko/guides/cpu-only-llm.mdx') as Promise<GuideModule>,
   },
+  'gemma-4-models': {
+    en: () => import('@/content/en/guides/gemma-4-models.mdx') as Promise<GuideModule>,
+    ko: () => import('@/content/ko/guides/gemma-4-models.mdx') as Promise<GuideModule>,
+  },
+  'qwen3.6-vs-qwen3.8': {
+    en: () => import('@/content/en/guides/qwen3.6-vs-qwen3.8.mdx') as Promise<GuideModule>,
+    ko: () => import('@/content/ko/guides/qwen3.6-vs-qwen3.8.mdx') as Promise<GuideModule>,
+  },
+  'deepseek-local': {
+    en: () => import('@/content/en/guides/deepseek-local.mdx') as Promise<GuideModule>,
+    ko: () => import('@/content/ko/guides/deepseek-local.mdx') as Promise<GuideModule>,
+  },
 };
 
 export function isGuideSlug(slug: string): slug is GuideSlug {

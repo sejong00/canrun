@@ -1,0 +1,208 @@
+Qwen3.6 27B와 Qwen3.8 27B는 구조가 같아서 필요한 메모리도 거의 같습니다. 24GB인 RTX 3090에서는 두 모델 모두 GPU에 전부 올라가 쾌적하게 돌아갑니다<Expect model="qwen3.6-27b" gpu="rtx-3090" verdict="S" mode="full-gpu" /><Expect model="qwen3.8-27b" gpu="rtx-3090" verdict="S" mode="full-gpu" />. 16GB인 RTX 5060 Ti에서는 Q4_K_M이면 일부가 RAM에 남아 겨우 돌아가고<Expect model="qwen3.6-27b" gpu="rtx-5060-ti-16gb" verdict="B" mode="partial-offload" /><Expect model="qwen3.8-27b" gpu="rtx-5060-ti-16gb" verdict="B" mode="partial-offload" />, IQ4_XS면 원활하게 돌아갑니다<Expect model="qwen3.6-27b" gpu="rtx-5060-ti-16gb" quant="IQ4_XS" verdict="A" mode="partial-offload" /><Expect model="qwen3.8-27b" gpu="rtx-5060-ti-16gb" quant="IQ4_XS" verdict="A" mode="partial-offload" />. MoE 모델인 Qwen3.6 35B-A3B는 파일이 더 커서 메모리가 더 듭니다. RTX 3090에서는 쾌적하게 돌아가고<Expect model="qwen3.6-35b-a3b" gpu="rtx-3090" verdict="S" mode="full-gpu" confidence="calibrated" />, 16GB 카드에서는 전문가 일부를 시스템 RAM에 둡니다<Expect model="qwen3.6-35b-a3b" gpu="rtx-5060-ti-16gb" fits="true" mode="cpu-moe" />.
+
+## Qwen3.6에서 Qwen3.8로 달라진 점
+
+Qwen은 2026년 4월에 Qwen3.6 35B-A3B를 먼저 공개했고, 같은 달에 Qwen3.6 27B를 내놓았습니다. Qwen3.8 27B는 2026년 8월에 나왔습니다. Qwen의 GitHub 저장소는 세 모델을 Qwen3.5와 함께 하나의 오픈 모델 시리즈로 묶어 소개합니다. Qwen3.8 27B 모델 카드에도 Qwen3.5 구조를 바탕으로 만들었다고 적혀 있습니다.
+
+<ModelFacts models="qwen3.6-27b,qwen3.8-27b,qwen3.6-35b-a3b" />
+
+두 27B 모델은 설계가 같습니다. 두 설정 파일(config)에 적힌 구조 이름도, 층 배치도 같습니다. 층은 <Num kind="layers" model="qwen3.6-27b" />개입니다. 선형 어텐션(Gated DeltaNet) 층 셋 다음에 전체 어텐션 층 하나가 오는 묶음이 되풀이됩니다. 네 층에 한 층만 전체 어텐션을 쓰는 셈입니다. 파라미터는 둘 다 <Num kind="params" model="qwen3.8-27b" />이고, 모델이 지원하는 컨텍스트도 <Num kind="maxContext" model="qwen3.8-27b" />로 같습니다. Qwen은 일부 서빙 엔진에서 RoPE 스케일링(YaRN)으로 100만 토큰 안팎까지 늘릴 수 있다고 설명합니다. 두 모델 모두 Apache 2.0 라이선스이고, 이미지와 영상도 입력으로 받습니다.
+
+무엇이 나아졌는지는 모델 카드의 설명으로 알 수 있습니다. 모델 카드에 따르면 Qwen3.6은 에이전트 코딩에 초점을 맞췄습니다. 지난 턴의 추론을 남겨 두는 옵션도 Qwen3.6이 내세운 기능입니다. Qwen3.8 카드는 코딩, 전문 업무, 리서치, 여러 단계를 거치는 긴 에이전트 작업이 두루 나아졌다고 설명합니다. Qwen3.8에는 추론 강도를 정하는 `reasoning_effort` 설정도 생겼습니다. 기본값인 `xhigh`와 `medium`, `low` 가운데 고릅니다. 지난 턴의 추론도 기본으로 남깁니다(`preserve_thinking`). Qwen3.6은 `preserve_thinking`을 켜야만 지난 추론을 남기고, 기본으로는 마지막 턴의 추론만 씁니다.
+
+Qwen3.8 27B 모델 카드의 벤치마크 표에는 Qwen3.6 27B 열도 있습니다. 두 모델의 점수가 모두 적힌 항목에서는 전부 Qwen3.8의 점수가 높습니다. 다만 제작사가 직접 낸 수치라 이 글에는 옮기지 않습니다. CanRun은 답의 품질을 재지 않습니다. 그래서 이 글은 메모리와 속도만 비교합니다.
+
+CanRun 데이터에서 두 27B가 다른 곳은 GGUF 파일입니다. 위 표의 GGUF 출처 열을 보면 Qwen3.6 27B는 unsloth 파일로 계산합니다. Qwen3.8 27B와 Qwen3.6 35B-A3B는 bartowski 파일로 계산합니다. 그래서 양자화 파일 구성도 조금 다릅니다. CanRun이 계산하는 2비트 파일은 Qwen3.6이 UD-Q2_K_XL, Qwen3.8이 Q2_K입니다.
+
+Qwen3.8 35B-A3B는 없습니다. 2026년 10월에 Qwen의 Hugging Face 페이지를 확인했습니다. Qwen3.8로 공개된 모델은 27B와 그 FP8 판, 훨씬 큰 모델들뿐이었습니다. 큰 모델들은 CanRun이 계산하지 않습니다. 35B-A3B 가운데 가장 최근 모델은 Qwen3.6 35B-A3B입니다. Qwen3.7이라는 모델은 Hugging Face에 공개되지 않았습니다.
+
+Qwen3.6 35B-A3B는 전체 파라미터가 약 35B이고, 토큰마다 쓰는 활성 파라미터는 약 3B입니다. 전문가는 256개이고, 토큰마다 라우팅 전문가 8개와 공유 전문가 1개를 씁니다. 층은 40개이고, 네 층에 한 층만 전체 어텐션을 쓰는 배치는 27B와 같습니다. Qwen3.6과 Qwen3.8에는 작은 모델이 없습니다. 아래 판정 표에 넣은 Qwen3.5 9B는 그보다 앞선 Qwen3.5 때 나온 모델입니다.
+
+## 모델마다 필요한 메모리
+
+아래 표는 8k 컨텍스트에서 네 모델이 그래픽카드에 올릴 메모리를 보여 줍니다. Q4_K_M 파일에서 그래픽카드에 올라가는 가중치에 KV 캐시(컨텍스트를 담는 메모리)와 연산 버퍼를 더했습니다.
+
+<ModelMemoryTable models="qwen3.5-9b,qwen3.6-27b,qwen3.8-27b,qwen3.6-35b-a3b" />
+
+8k에서 Qwen3.6 27B는 <Num kind="needGB" model="qwen3.6-27b" />, Qwen3.8 27B는 <Num kind="needGB" model="qwen3.8-27b" />가 필요합니다. 이 차이는 파일에서 납니다. unsloth가 만든 Qwen3.6 27B의 Q4_K_M 파일은 <Num kind="fileGB" model="qwen3.6-27b" />입니다. bartowski가 만든 Qwen3.8 27B의 파일은 <Num kind="fileGB" model="qwen3.8-27b" />입니다. 같은 Q4_K_M이라도 만든 곳마다 크기가 조금씩 다릅니다. 모델이 달라서 생긴 차이는 아닙니다.
+
+카드가 쓸 수 있는 메모리는 RTX 5060 Ti 16GB가 <Num kind="usableGB" gpu="rtx-5060-ti-16gb" />, RTX 3090이 <Num kind="usableGB" gpu="rtx-3090" />입니다. 두 27B는 16GB 카드가 쓸 수 있는 양보다 많이 필요해서, 일부가 시스템 RAM으로 넘어갑니다<Expect model="qwen3.6-27b" gpu="rtx-5060-ti-16gb" fits="true" mode="partial-offload" />. RTX 3090에는 둘 다 넉넉히 들어갑니다<Expect model="qwen3.6-27b" gpu="rtx-3090" fits="true" mode="full-gpu" /><Expect model="qwen3.8-27b" gpu="rtx-3090" fits="true" mode="full-gpu" />.
+
+KV 캐시는 작은 편입니다. 네 층에 한 층만 KV 캐시를 두기 때문입니다. 32k에서 Qwen3.6 27B의 KV 캐시는 <Num kind="kvGB" model="qwen3.6-27b" ctx="32768" />입니다. 모든 층이 전체 어텐션인 Qwen3 32B는 <Num kind="kvGB" model="qwen3-32b" ctx="32768" />로 네 배쯤 됩니다. Qwen3.6 27B는 128k가 되어야 <Num kind="kvGB" model="qwen3.6-27b" ctx="131072" />에 이릅니다. Qwen3 32B가 32k에서 쓰는 양과 같습니다. 35B-A3B는 KV 헤드가 2개뿐이라 128k에서도 <Num kind="kvGB" model="qwen3.6-35b-a3b" ctx="131072" />에 그칩니다.
+
+Qwen3.6 35B-A3B에는 <Num kind="needGB" model="qwen3.6-35b-a3b" />가 필요해 두 27B보다 많습니다. 토큰마다 읽는 파라미터는 약 3B지만, 파일 전체가 메모리에 있어야 하기 때문입니다. Qwen3.5 9B는 <Num kind="needGB" model="qwen3.5-9b" />가 필요합니다. 8GB인 RTX 4060이 쓸 수 있는 <Num kind="usableGB" gpu="rtx-4060" /> 안에 전부 들어갑니다<Expect model="qwen3.5-9b" gpu="rtx-4060" fits="true" mode="full-gpu" />.
+
+이 수치는 언어 모델 파일만 센 값입니다. 세 모델의 GGUF 저장소에는 이미지 입력용 비전 프로젝터(mmproj) 파일도 있습니다. `llama-server -hf`는 이 파일을 기본으로 받아 함께 불러오고, `--no-mmproj`를 주면 뺍니다. Ollama 라이브러리 태그에도 이 파일이 들어 있습니다. CanRun은 이 파일을 세지 않으니, 여유가 빠듯하면 `ollama ps`로 확인하세요.
+
+## dense 27B와 MoE 35B-A3B — 8GB~32GB 그래픽카드에서
+
+아래 표는 8k 컨텍스트, f16 KV 캐시, 시스템 RAM 32GB(DDR5), Windows를 가정해 판정한 결과입니다. 네 모델 모두 생각 모드가 기본으로 켜져 있어 엄격한 속도 기준을 적용했습니다.
+
+<ComboGrid grid="qwen36" />
+
+8GB부터 16GB까지 표의 모든 카드에서 두 27B는 일부가 시스템 RAM에 남아 겨우 돌아갑니다<Expect model="qwen3.6-27b" gpu="rtx-4060" verdict="B" mode="partial-offload" /><Expect model="qwen3.8-27b" gpu="rtx-4060" verdict="B" mode="partial-offload" /><Expect model="qwen3.6-27b" gpu="rtx-3060-12gb" verdict="B" mode="partial-offload" /><Expect model="qwen3.8-27b" gpu="rtx-3060-12gb" verdict="B" mode="partial-offload" /><Expect model="qwen3.6-27b" gpu="rtx-4070" verdict="B" mode="partial-offload" /><Expect model="qwen3.8-27b" gpu="rtx-4070" verdict="B" mode="partial-offload" /><Expect model="qwen3.6-27b" gpu="rtx-5070" verdict="B" mode="partial-offload" /><Expect model="qwen3.8-27b" gpu="rtx-5070" verdict="B" mode="partial-offload" /><Expect model="qwen3.6-27b" gpu="rtx-5060-ti-16gb" verdict="B" mode="partial-offload" /><Expect model="qwen3.8-27b" gpu="rtx-5060-ti-16gb" verdict="B" mode="partial-offload" />. 모두 보정된 추정입니다. dense 모델은 토큰마다 가중치를 전부 읽어서, RAM에 남은 층이 속도를 끌어내립니다. 표의 어느 카드에서도 두 27B의 판정은 같습니다.
+
+Qwen3.6 35B-A3B는 16GB 이하의 모든 카드에서 전문가 일부를 시스템 RAM에 두고 원활하게 돌아갑니다<Expect model="qwen3.6-35b-a3b" gpu="rtx-4060" verdict="A" mode="cpu-moe" confidence="theoretical" /><Expect model="qwen3.6-35b-a3b" gpu="rtx-3060-12gb" verdict="A" mode="cpu-moe" confidence="theoretical" /><Expect model="qwen3.6-35b-a3b" gpu="rtx-4070" verdict="A" mode="cpu-moe" confidence="theoretical" /><Expect model="qwen3.6-35b-a3b" gpu="rtx-5070" verdict="A" mode="cpu-moe" confidence="theoretical" /><Expect model="qwen3.6-35b-a3b" gpu="rtx-5060-ti-16gb" verdict="A" mode="cpu-moe" confidence="theoretical" />. 이 속도는 이론 추정입니다. 토큰마다 라우터가 고른 전문가만 읽으므로, RAM에서 읽어 오는 양이 적습니다. 이렇게 전문가를 RAM에 둔 구성은 추정 속도가 아무리 빨라도 쾌적하다고 보지 않습니다. 8GB인 RTX 4060은 추정 범위의 아래 끝이 기준선에 거의 닿아 있습니다.
+
+시스템 RAM이 16GB면 결과가 달라집니다. RTX 4060과 RTX 3060 12GB에는 35B-A3B가 들어가지 않습니다<Expect model="qwen3.6-35b-a3b" gpu="rtx-4060" ram="16" fits="false" /><Expect model="qwen3.6-35b-a3b" gpu="rtx-3060-12gb" ram="16" fits="false" />. RTX 5060 Ti 16GB에는 들어갑니다<Expect model="qwen3.6-35b-a3b" gpu="rtx-5060-ti-16gb" ram="16" fits="true" />. VRAM이 클수록 GPU에 두는 전문가가 많아 RAM에 둘 몫이 줄기 때문입니다. 어떻게 나뉘는지는 ‘<GuideLink slug="moe-cpu-offload" />’ 가이드에서 설명합니다.
+
+24GB·32GB 카드에서는 두 27B와 35B-A3B가 GPU에 전부 올라가 쾌적하게 돌아갑니다<Expect model="qwen3.6-27b" gpu="rtx-3090" verdict="S" mode="full-gpu" /><Expect model="qwen3.8-27b" gpu="rtx-3090" verdict="S" mode="full-gpu" /><Expect model="qwen3.8-27b" gpu="rtx-4090" verdict="S" mode="full-gpu" /><Expect model="qwen3.8-27b" gpu="rtx-5090" verdict="S" mode="full-gpu" /><Expect model="qwen3.6-35b-a3b" gpu="rtx-3090" verdict="S" mode="full-gpu" /><Expect model="qwen3.6-27b" gpu="rtx-4090" verdict="S" mode="full-gpu" /><Expect model="qwen3.6-27b" gpu="rtx-5090" verdict="S" mode="full-gpu" /><Expect model="qwen3.6-35b-a3b" gpu="rtx-4090" verdict="S" mode="full-gpu" /><Expect model="qwen3.6-35b-a3b" gpu="rtx-5090" verdict="S" mode="full-gpu" />. 같은 카드라면 MoE 모델의 추정 속도가 dense 27B의 몇 배라는 것도 표에서 볼 수 있습니다. RTX 4090과 RTX 5090의 Qwen3.8 27B 속도는 공개 벤치마크에서 실제로 잰 값입니다<Expect model="qwen3.8-27b" gpu="rtx-4090" verdict="S" confidence="measured" /><Expect model="qwen3.8-27b" gpu="rtx-5090" verdict="S" confidence="measured" />.
+
+RTX 3090의 35B-A3B는 여유가 적습니다. 필요량 <Num kind="needGB" model="qwen3.6-35b-a3b" />가 사용 가능 메모리 <Num kind="usableGB" gpu="rtx-3090" /> 안에 들어가지만<Expect model="qwen3.6-35b-a3b" gpu="rtx-3090" fits="true" mode="full-gpu" />, 남는 자리는 2GB가 안 됩니다. 비전 파일까지 불러오면 1GB도 남지 않으니 `ollama ps`로 확인하세요.
+
+Qwen3.5 9B는 표의 모든 카드에서 쾌적하게 돌아갑니다<Expect model="qwen3.5-9b" gpu="rtx-3060-12gb" verdict="S" /><Expect model="qwen3.5-9b" gpu="rtx-4070" verdict="S" /><Expect model="qwen3.5-9b" gpu="rtx-5070" verdict="S" /><Expect model="qwen3.5-9b" gpu="rtx-5060-ti-16gb" verdict="S" /><Expect model="qwen3.5-9b" gpu="rtx-3090" verdict="S" /><Expect model="qwen3.5-9b" gpu="rtx-4090" verdict="S" /><Expect model="qwen3.5-9b" gpu="rtx-5090" verdict="S" />. 다만 8GB인 RTX 4060에서는 엄격한 기준을 간신히 넘습니다<Expect model="qwen3.5-9b" gpu="rtx-4060" verdict="S" mode="full-gpu" />. RTX 3060 12GB의 Qwen3.5 9B 속도도 공개 벤치마크에서 잰 값입니다<Expect model="qwen3.5-9b" gpu="rtx-3060-12gb" verdict="S" confidence="measured" />.
+
+## 16GB 그래픽카드에 맞는 양자화
+
+16GB 카드에서는 어떤 양자화 파일을 받느냐에 따라 결과가 갈립니다. 아래 표는 RTX 5060 Ti 16GB에서 Qwen3.8 27B를 양자화별로 판정한 결과입니다. 모두 보정된 추정입니다.
+
+<QuantLadder model="qwen3.8-27b" gpu="rtx-5060-ti-16gb" />
+
+기본인 Q4_K_M은 앞의 표처럼 일부가 시스템 RAM에 남아 겨우 돌아갑니다<Expect model="qwen3.8-27b" gpu="rtx-5060-ti-16gb" verdict="B" mode="partial-offload" />. IQ4_XS는 Q4_K_M과 같은 균형 등급이지만, 필요량 <Num kind="needGB" model="qwen3.8-27b" quant="IQ4_XS" />도 사용 가능 메모리 <Num kind="usableGB" gpu="rtx-5060-ti-16gb" />를 넘습니다. 그래서 일부는 여전히 RAM에 남습니다. 그래도 90% 이상이 GPU에 있어 원활하게 돌아갑니다<Expect model="qwen3.8-27b" gpu="rtx-5060-ti-16gb" quant="IQ4_XS" verdict="A" mode="partial-offload" />. 추정 속도는 엄격한 기준을 간신히 넘는 정도입니다. CanRun이 이 조합에 제안하는 파일도 IQ4_XS입니다. Qwen3.6 27B도 IQ4_XS에서 같은 결과가 나옵니다<Expect model="qwen3.6-27b" gpu="rtx-5060-ti-16gb" quant="IQ4_XS" verdict="A" mode="partial-offload" />.
+
+2비트 파일은 GPU에 전부 들어갑니다. Qwen3.8의 Q2_K(bartowski)와 Qwen3.6의 UD-Q2_K_XL(unsloth) 모두 원활하게 돌아갑니다<Expect model="qwen3.8-27b" gpu="rtx-5060-ti-16gb" quant="Q2_K" verdict="A" mode="full-gpu" /><Expect model="qwen3.6-27b" gpu="rtx-5060-ti-16gb" quant="UD-Q2_K_XL" verdict="A" mode="full-gpu" />. 추정 속도가 일반 쾌적 기준은 넘지만, 생각 모드에 쓰는 엄격한 기준에는 못 미칩니다. 두 파일 모두 손실 큼 등급이라 권하지 않습니다. 등급마다 무엇이 다른지는 ‘<GuideLink slug="gguf-quantization" />’ 가이드에 있습니다. Q8_0은 이 카드에서 돌릴 수 없습니다<Expect model="qwen3.8-27b" gpu="rtx-5060-ti-16gb" quant="Q8_0" verdict="F" />.
+
+같은 RTX 5060 Ti 16GB라도 Qwen3.6 35B-A3B는 결과가 다르게 나옵니다.
+
+<QuantLadder model="qwen3.6-35b-a3b" gpu="rtx-5060-ti-16gb" />
+
+Q4_K_M과 IQ4_XS는 전문가 일부를 시스템 RAM에 두고 원활하게 돌아갑니다<Expect model="qwen3.6-35b-a3b" gpu="rtx-5060-ti-16gb" verdict="A" mode="cpu-moe" confidence="theoretical" /><Expect model="qwen3.6-35b-a3b" gpu="rtx-5060-ti-16gb" quant="IQ4_XS" verdict="A" mode="cpu-moe" confidence="theoretical" />. 둘 다 이론 추정입니다. Q2_K는 GPU에 전부 들어가 쾌적하게 돌아가고, 이 속도는 보정된 추정입니다<Expect model="qwen3.6-35b-a3b" gpu="rtx-5060-ti-16gb" quant="Q2_K" verdict="S" mode="full-gpu" confidence="calibrated" />. 그래도 손실 큼 등급이라 CanRun은 이 카드에서 Q4_K_M을 기준으로 두고, Q2_K를 제안하지 않습니다. 표에 나온 2비트 줄은 권하는 파일이 아닙니다.
+
+준무손실 등급인 Q8_0도 시스템 RAM이 32GB면 들어갑니다. 전문가 대부분을 RAM에 두고 원활하게 돌아갑니다<Expect model="qwen3.6-35b-a3b" gpu="rtx-5060-ti-16gb" quant="Q8_0" verdict="A" mode="cpu-moe" confidence="theoretical" />. 이 속도는 이론 추정이고, 추정 범위의 아래쪽은 기준선 밑까지 내려갑니다.
+
+### 12GB 카드라면
+
+RTX 3060 12GB에서는 Qwen3.8의 Q2_K가 GPU에 전부 들어가 원활하게 돌아갑니다<Expect model="qwen3.8-27b" gpu="rtx-3060-12gb" quant="Q2_K" verdict="A" mode="full-gpu" />. 다만 아슬아슬하게 들어가서 비전 파일을 함께 올릴 자리는 없습니다. llama-server라면 `--no-mmproj`를 붙이고, Ollama라면 `ollama ps`로 확인하세요. Qwen3.6의 UD-Q2_K_XL은 이 카드에 다 들어가지 않습니다. 일부가 시스템 RAM에 남아 겨우 돌아갑니다<Expect model="qwen3.6-27b" gpu="rtx-3060-12gb" quant="UD-Q2_K_XL" verdict="B" mode="partial-offload" />. 두 파일 모두 손실 큼 등급입니다.
+
+## 긴 컨텍스트와 Qwen3.6의 128K 권장
+
+Qwen3.6의 두 모델 카드(27B·35B-A3B)는 생각하는 능력을 지키려면 컨텍스트를 128k 이상으로 두라고 권합니다. Qwen3.8 카드에는 이런 안내가 없습니다. Ollama의 기본값은 이보다 훨씬 짧습니다. <RuntimeFact id="ollama-default-ctx" />. 그래서 24GB 카드는 32k, 16GB 카드는 4k로 시작합니다. 권장을 따르려면 컨텍스트를 직접 늘려야 합니다. 방법은 ‘<GuideLink slug="ollama-context-length" />’ 가이드에 있습니다.
+
+아래 표는 RTX 3090에서 Qwen3.6 27B를 컨텍스트 길이와 KV 캐시 종류별로 판정한 결과입니다. 모두 보정된 추정입니다.
+
+<CtxTable model="qwen3.6-27b" gpu="rtx-3090" />
+
+f16 캐시로 64k까지는 GPU에 남아 쾌적하게 돌아갑니다<Expect model="qwen3.6-27b" gpu="rtx-3090" ctx="65536" verdict="S" mode="full-gpu" />. 다만 64k에서는 기준선을 간신히 넘습니다. 128k에서 f16이면 일부가 시스템 RAM으로 넘어가 겨우 돌아갑니다<Expect model="qwen3.6-27b" gpu="rtx-3090" ctx="131072" verdict="B" mode="partial-offload" />. q8_0 캐시로 바꾸면 128k도 GPU에 남아 쾌적하게 돌아갑니다<Expect model="qwen3.6-27b" gpu="rtx-3090" ctx="131072" kv="q8_0" verdict="S" mode="full-gpu" />. 이때 여유는 1GB 안팎이고 속도도 기준선 바로 위입니다. 비전 파일은 함께 올리지 말고, `ollama ps`로 확인하세요. q4_0 캐시면 자리가 더 남습니다<Expect model="qwen3.6-27b" gpu="rtx-3090" ctx="131072" kv="q4_0" verdict="S" mode="full-gpu" />.
+
+Qwen3.8 27B는 같은 128k·q8_0에서 원활하게 돌아갑니다<Expect model="qwen3.8-27b" gpu="rtx-3090" ctx="131072" kv="q8_0" verdict="A" mode="full-gpu" />. 두 모델의 추정치가 엄격한 기준선 양쪽에 걸쳐 있어서 판정이 갈렸을 뿐입니다. 실제 속도 차이로 볼 일은 아닙니다. 여유도 1GB가 안 돼 비전 파일을 올릴 자리가 없습니다. q4_0 캐시면 쾌적하게 돌아갑니다<Expect model="qwen3.8-27b" gpu="rtx-3090" ctx="131072" kv="q4_0" verdict="S" mode="full-gpu" />.
+
+RTX 3090에서 Qwen3.6 35B-A3B는 f16 캐시로 32k까지 GPU에 남아 쾌적하게 돌아갑니다<Expect model="qwen3.6-35b-a3b" gpu="rtx-3090" ctx="32768" verdict="S" mode="full-gpu" />. 다만 32k에서는 여유가 1GB도 안 됩니다. Ollama가 24GB 카드에서 처음 쓰는 컨텍스트가 32k라, 비전 파일까지 올리면 자리가 모자랄 수 있습니다. `ollama ps`로 확인하세요. 64k에서 f16이면 전문가 일부가 RAM으로 옮겨 가고, 원활하게 돌아갑니다<Expect model="qwen3.6-35b-a3b" gpu="rtx-3090" ctx="65536" verdict="A" mode="cpu-moe" />. 이 속도는 이론 추정입니다. q8_0 캐시면 64k도 아슬아슬하게 GPU에 남아 쾌적하게 돌아갑니다<Expect model="qwen3.6-35b-a3b" gpu="rtx-3090" ctx="65536" kv="q8_0" verdict="S" mode="full-gpu" />. 128k에서 f16이면 원활하게 돌아가고<Expect model="qwen3.6-35b-a3b" gpu="rtx-3090" ctx="131072" verdict="A" mode="cpu-moe" />, 이 속도도 이론 추정입니다.
+
+16GB인 RTX 5060 Ti에서는 Qwen3.6 27B를 128k·f16으로 돌릴 수 없습니다<Expect model="qwen3.6-27b" gpu="rtx-5060-ti-16gb" ctx="131072" verdict="F" />. q4_0 캐시로 바꾸면 겨우 돌아갑니다<Expect model="qwen3.6-27b" gpu="rtx-5060-ti-16gb" ctx="131072" kv="q4_0" verdict="B" mode="partial-offload" />. Qwen3.6 35B-A3B는 같은 카드에서 128k·f16으로도 원활하게 돌아갑니다<Expect model="qwen3.6-35b-a3b" gpu="rtx-5060-ti-16gb" ctx="131072" verdict="A" mode="cpu-moe" />. 이 속도는 이론 추정입니다.
+
+Ollama에서는 KV 캐시 종류를 서버를 띄울 때 정합니다. <RuntimeFact id="ollama-kv-cache-type" />. Windows에서는 작업 표시줄에서 Ollama 앱을 끈 뒤, PowerShell에서 이렇게 띄웁니다.
+
+```powershell
+$env:OLLAMA_CONTEXT_LENGTH="131072"; $env:OLLAMA_FLASH_ATTENTION="1"; $env:OLLAMA_KV_CACHE_TYPE="q8_0"; ollama serve
+```
+
+macOS·Linux에서는 `OLLAMA_CONTEXT_LENGTH=131072 OLLAMA_FLASH_ATTENTION=1 OLLAMA_KV_CACHE_TYPE=q8_0 ollama serve`로 씁니다. llama.cpp라면 `-fa on --cache-type-k q8_0 --cache-type-v q8_0`을 붙입니다. 캐시 종류별 차이는 ‘<GuideLink slug="kv-cache-context" />’ 가이드에서 설명합니다.
+
+## 생각 모드 — 엄격한 속도 기준과 끄는 법
+
+네 모델 모두 생각 모드가 기본으로 켜져 있어서, CanRun은 속도 기준을 1.5배 엄격하게 적용합니다. 생각 모드를 꺼도 판정은 바뀌지 않습니다. 판정은 사용자 설정이 아니라 모델을 기준으로 하기 때문입니다. Q2_K로 받은 Qwen3.8 27B가 좋은 예입니다. RTX 5060 Ti 16GB에서 GPU에 전부 올라가는데도 원활하게 돌아갑니다<Expect model="qwen3.8-27b" gpu="rtx-5060-ti-16gb" quant="Q2_K" verdict="A" mode="full-gpu" />. 추정 속도가 일반 쾌적 기준은 넘지만, 엄격한 기준에는 못 미치기 때문입니다.
+
+Ollama에서는 `ollama run qwen3.8:27b --think=false`로 끄거나, 대화 중에 `/set nothink`를 입력합니다. API로는 `"think": false`를 보냅니다. OpenAI 호환 `/v1` 엔드포인트에는 `"reasoning_effort": "none"`을 보냅니다. llama-server는 `--reasoning off`(`-rea off`)로 띄웁니다. 요청마다 끄려면 `"chat_template_kwargs": {"enable_thinking": false}`를 보냅니다. 두 모델 카드도 이 방법을 안내합니다. Qwen3.6 카드에 따르면 Qwen3의 `/think`·`/nothink` 태그는 공식 지원하지 않습니다.
+
+Qwen3.8의 채팅 템플릿은 `reasoning_effort` 값으로 `xhigh`(기본값)·`medium`·`low`만 받습니다. 다른 값을 주면 오류가 납니다. llama-server에서는 `--reasoning-effort low`처럼 주면 이 값이 템플릿으로 넘어갑니다. Qwen3.6 템플릿에는 강도 단계가 없습니다.
+
+Qwen3.8은 지난 턴의 생각을 기본으로 남기고(`preserve_thinking`), Qwen3.6은 켜야만 남깁니다. 런타임이 지난 생각을 다시 보낸다면 그 생각도 다른 대화 내용처럼 컨텍스트를 차지합니다. 그러면 대화가 길어질수록 컨텍스트가 더 빨리 찹니다. 생각 모드 전반은 ‘<GuideLink slug="thinking-models" />’ 가이드에서 다룹니다.
+
+## Ollama 태그와 llama.cpp 명령
+
+Ollama의 `qwen3.6`(`qwen3.6:latest`)은 35B-A3B입니다. `qwen3.6:35b-a3b`와 같은 파일이고, dense 모델은 `qwen3.6:27b`입니다. 그래서 `ollama run qwen3.6`으로는 27B가 아니라 35B-A3B를 받습니다. `qwen3.8`(`latest`)은 `qwen3.8:27b`이고, qwen3.8에는 35B-A3B 태그가 없습니다. 기본 태그는 Q4_K_M이고 비전 프로젝터가 함께 들어 있습니다. 목록에는 q8_0, bf16, mtp 태그도 있습니다.
+
+CanRun 계산으로는 16GB 카드에서 Q4_K_M인 Qwen3.8 27B가 일부를 RAM에 두고 겨우 돌아갑니다<Expect model="qwen3.8-27b" gpu="rtx-5060-ti-16gb" verdict="B" mode="partial-offload" />. 기본 태그도 Q4_K_M이지만, Ollama 라이브러리의 파일은 Ollama가 직접 만든 것이라 CanRun이 계산한 파일과 다릅니다. CanRun이 계산한 파일을 그대로 쓰려면 `hf.co/` 형식으로 받습니다.
+
+```powershell
+ollama run hf.co/bartowski/Qwen3.8-27B-GGUF:IQ4_XS
+ollama run hf.co/unsloth/Qwen3.6-27B-GGUF:IQ4_XS
+ollama run hf.co/bartowski/Qwen_Qwen3.6-35B-A3B-GGUF:Q4_K_M
+```
+
+컨텍스트를 정하려면 작업 표시줄에서 Ollama 앱을 먼저 종료합니다. 그다음 PowerShell에서 `$env:OLLAMA_CONTEXT_LENGTH="8192"; ollama serve`로 서버를 띄우고, 모델은 다른 창에서 실행합니다. macOS·Linux에서는 `OLLAMA_CONTEXT_LENGTH=8192 ollama serve`로 씁니다.
+
+llama.cpp는 Windows에서 `.\llama-server.exe`, macOS·Linux에서 `llama-server`로 실행합니다. 아래는 CanRun이 RTX 5060 Ti 16GB에 맞춰 계산한 명령입니다.
+
+```powershell
+.\llama-server.exe -hf bartowski/Qwen3.8-27B-GGUF:Q4_K_M -c 8192 -ngl 52 -fa on
+.\llama-server.exe -hf bartowski/Qwen_Qwen3.6-35B-A3B-GGUF:Q4_K_M -c 8192 -ngl all --n-cpu-moe 15 -fa on
+```
+
+두 번째 명령의 `-ngl all`은 모든 층을 GPU에 올리고, `--n-cpu-moe 15`는 앞쪽 15개 층의 전문가를 시스템 RAM에 둡니다. CanRun 계산으로는 35B-A3B가 이 카드에서 전문가 일부를 RAM에 두기 때문입니다<Expect model="qwen3.6-35b-a3b" gpu="rtx-5060-ti-16gb" fits="true" mode="cpu-moe" />. IQ4_XS라면 배치를 `--fit`에 맡깁니다. `.\llama-server.exe -hf bartowski/Qwen3.8-27B-GGUF:IQ4_XS -c 8192`로 실행하면 됩니다. 이미지 없이 글만 쓴다면 `--no-mmproj`를, 생각 모드를 끄려면 `--reasoning off`를 붙입니다.
+
+런타임이 실제로 배치하는 방식은 CanRun 계산과 다를 수 있습니다. `ollama ps`의 PROCESSOR 열이나 llama.cpp 시작 로그에서 확인하세요. MoE 모델을 나눠 올리는 방식은 ‘<GuideLink slug="moe-cpu-offload" />’ 가이드에서 설명합니다.
+
+## 이 숫자는 얼마나 확실한가
+
+메모리는 GGUF 헤더를 읽어 공식으로 계산한 값이라 오차 범위를 붙이지 않습니다. MTP 블록과 비전 파일은 빼고 계산했고, 속도도 MTP를 끈 상태로 추정했습니다. 속도에는 신뢰 라벨이 붙습니다. ‘보정된 추정’은 NVIDIA 카드에서 dense 모델을 GPU에만 올리면 ±12%입니다. 부분 오프로드나 MoE 모델이면 ±20%입니다. ‘이론 추정’은 ±30%이고, 전문가를 시스템 RAM에 둔 구성에 붙습니다.
+
+이 글의 표에서 ‘실측’ 라벨은 네 조합에 붙어 있습니다. RTX 4090·RTX 5090의 Qwen3.8 27B, RTX 3060 12GB·RTX 4090의 Qwen3.5 9B입니다<Expect model="qwen3.8-27b" gpu="rtx-4090" verdict="S" confidence="measured" /><Expect model="qwen3.8-27b" gpu="rtx-5090" verdict="S" confidence="measured" /><Expect model="qwen3.5-9b" gpu="rtx-3060-12gb" verdict="S" confidence="measured" /><Expect model="qwen3.5-9b" gpu="rtx-4090" verdict="S" confidence="measured" />. 8~16GB 카드의 Qwen3.6 35B-A3B는 이론 추정이고, 나머지는 모두 보정된 추정입니다.
+
+아래는 RTX 4090에서 Qwen3.8 27B를 실제로 잰 결과입니다<Expect model="qwen3.8-27b" gpu="rtx-4090" verdict="S" confidence="measured" />.
+
+<Measured model="qwen3.8-27b" gpu="rtx-4090" />
+
+이 결과는 llama.cpp GitHub 이슈 댓글로 올라온 값입니다. Linux에서 llama-bench로 쟀고, 프롬프트는 1k 토큰, 생성은 400토큰이었습니다. 파일은 Ollama의 Q4_K_M이라, CanRun이 계산에 쓰는 bartowski 파일보다 조금 작습니다. CanRun이 직접 잰 값이 아니며, 옆에 CanRun의 8k 추정 범위가 함께 나옵니다. 공개 결과는 추정 범위보다 높습니다. 파일이 더 작고 운영체제도 달라서 생긴 차이일 수 있습니다.
+
+두 번째 결과는 <HubLink gpu="amd-strix-halo" />에서 Qwen3.6 35B-A3B를 잰 것입니다. 이 PC는 그래픽카드가 아니라 통합 메모리를 씁니다. CanRun은 이 PC를 메모리 64GB로 놓고 계산하는데, 그러면 파일 전체가 GPU가 읽는 메모리에 들어갑니다. 이 결과를 반영한 CanRun 판정으로는 64GB 구성에서 쾌적하게 돌아갑니다<Expect model="qwen3.6-35b-a3b" gpu="amd-strix-halo" ram="64" verdict="S" confidence="measured" />.
+
+<Measured model="qwen3.6-35b-a3b" gpu="amd-strix-halo" />
+
+이 값은 llama.cpp 이슈 댓글에 올라온 것으로, llama-bench를 Vulkan 백엔드로 돌려 쟀습니다. GGUF 파일을 누가 만들었는지는 적혀 있지 않습니다. 그래픽카드에서 전문가를 시스템 RAM에 두는 구성은 계속 이론 추정으로 둡니다. 공개 결과와 비교하면 공식의 평균 오차는 10% 안팎이었지만, 40% 가까이 벗어난 구성도 있었습니다. 자세한 비교는 ‘<GuideLink slug="moe-cpu-offload" />’ 가이드에 있습니다.
+
+표의 값은 다음 조건을 가정합니다. Windows에서 그 카드가 화면 출력도 맡고, 시스템 RAM은 32GB(DDR5-5600 듀얼 채널)입니다. 8k 컨텍스트와 f16 KV 캐시로 모델 하나를 띄워, 요청을 하나씩 처리합니다. 아래 기준표는 일반 기준입니다. 이 글의 네 모델은 생각 모드 모델이라, 표의 속도에 모두 1.5를 곱해서 보면 됩니다.
+
+<Threshold />
+
+## 다음 단계
+
+- ‘<GuideLink slug="moe-cpu-offload" />’: 전문가를 시스템 RAM에 두는 배치와 카드별로 필요한 RAM
+- ‘<GuideLink slug="gguf-quantization" />’: 양자화 등급과 2비트 파일의 품질 손실
+- ‘<GuideLink slug="thinking-models" />’: 생각 모드 모델의 속도 기준과 끄는 법
+- ‘<GuideLink slug="kv-cache-context" />’: 긴 컨텍스트와 KV 캐시를 줄이는 법
+- ‘<GuideLink slug="ollama-context-length" />’: Ollama의 기본 컨텍스트와 바꾸는 법
+- ‘<GuideLink slug="gpu-by-budget" />’: 메모리 용량별 그래픽카드와 가격
+- <HubLink model="qwen3.6-27b" />, <HubLink model="qwen3.8-27b" />, <HubLink model="qwen3.6-35b-a3b" />, <HubLink model="qwen3.5-9b" /> 모델 페이지에서 모든 카드의 결과를 볼 수 있습니다.
+
+## 자주 묻는 질문
+
+### Qwen3.8 27B가 Qwen3.6 27B보다 성능이 좋은가요?
+
+모델 카드는 그렇다고 하지만, CanRun이 확인한 것은 아닙니다. Qwen3.8 27B 모델 카드는 두 모델의 점수가 모두 있는 벤치마크 항목에서 전부 Qwen3.8이 높다고 보고합니다. 제작사가 직접 낸 수치이고, CanRun은 답의 품질을 재지 않습니다. 메모리와 속도는 거의 같아서, RTX 3090에서는 둘 다 쾌적하게 돌아갑니다<Expect model="qwen3.6-27b" gpu="rtx-3090" verdict="S" /><Expect model="qwen3.8-27b" gpu="rtx-3090" verdict="S" />.
+
+### Qwen3.8 27B는 Qwen3.6 27B보다 VRAM이 더 필요한가요?
+
+거의 차이가 없습니다. 구조가 같고, 작은 차이는 GGUF 파일을 만든 곳이 달라서 생깁니다. 8k에서 Qwen3.6 27B는 <Num kind="needGB" model="qwen3.6-27b" />, Qwen3.8 27B는 <Num kind="needGB" model="qwen3.8-27b" />가 필요합니다. 그래서 RTX 5060 Ti 16GB에서는 둘 다 일부가 시스템 RAM에 남아 겨우 돌아갑니다<Expect model="qwen3.6-27b" gpu="rtx-5060-ti-16gb" verdict="B" mode="partial-offload" /><Expect model="qwen3.8-27b" gpu="rtx-5060-ti-16gb" verdict="B" mode="partial-offload" />.
+
+### 16GB 그래픽카드로 Qwen3.6 27B나 35B-A3B를 돌릴 수 있나요?
+
+둘 다 돌릴 수 있지만, 올라가는 방식이 다릅니다. RTX 5060 Ti 16GB로 계산하면 35B-A3B는 전문가 일부를 시스템 RAM에 두고 들어갑니다<Expect model="qwen3.6-35b-a3b" gpu="rtx-5060-ti-16gb" fits="true" mode="cpu-moe" />. 27B는 Q4_K_M이면 일부가 RAM에 남아 겨우 돌아갑니다<Expect model="qwen3.6-27b" gpu="rtx-5060-ti-16gb" verdict="B" mode="partial-offload" />. IQ4_XS로 받으면 원활하게 돌아갑니다<Expect model="qwen3.6-27b" gpu="rtx-5060-ti-16gb" quant="IQ4_XS" verdict="A" />. 2비트 파일은 GPU에 전부 들어가지만<Expect model="qwen3.6-27b" gpu="rtx-5060-ti-16gb" quant="UD-Q2_K_XL" fits="true" mode="full-gpu" />, 품질은 손실 큼 등급입니다.
+
+### Qwen3.8 35B-A3B는 없나요?
+
+없습니다. 2026년 10월에 확인한 Qwen의 Hugging Face 페이지에는 Qwen3.8 35B-A3B가 없었습니다. 그곳의 Qwen3.8 모델은 27B와 훨씬 큰 모델들입니다. 가장 최근의 35B-A3B는 Qwen3.6 것이고, RTX 3090에서는 GPU에 전부 올라가 쾌적하게 돌아갑니다<Expect model="qwen3.6-35b-a3b" gpu="rtx-3090" verdict="S" mode="full-gpu" />.
+
+### Qwen3.6·Qwen3.8의 생각 모드는 어떻게 끄나요?
+
+Ollama에서는 `--think=false`, llama-server에서는 `--reasoning off`로 끕니다. 요청마다 끄려면 `chat_template_kwargs`로 `enable_thinking: false`를 보냅니다. Qwen3.6 카드에 따르면 Qwen3의 `/think`·`/nothink` 태그는 공식 지원하지 않습니다. 생각 모드를 꺼도 CanRun 판정은 그대로입니다. 판정은 모델을 기준으로 하기 때문입니다.
+
+## 출처
+
+- [Qwen3.6-27B 모델 카드](https://huggingface.co/Qwen/Qwen3.6-27B): 층 배치, 컨텍스트, 128K 이상 권장, `/think`·`/nothink` 공식 미지원, `enable_thinking`, 켜야 하는 `preserve_thinking`, Apache 2.0 라이선스
+- [Qwen3.8-27B 모델 카드](https://huggingface.co/Qwen/Qwen3.8-27B): Qwen3.5 구조 기반, 기본으로 켜진 생각 모드, `reasoning_effort` 단계, 기본으로 켜진 `preserve_thinking`, Qwen3.6 27B가 함께 실린 벤치마크 표, 기본 컨텍스트와 확장
+- [Qwen3.6-35B-A3B 모델 카드](https://huggingface.co/Qwen/Qwen3.6-35B-A3B): 전체 35B·활성 3B, 전문가 256개 중 라우팅 8개와 공유 1개, 40층, 128K 이상 권장
+- [Qwen3.8-27B 채팅 템플릿](https://huggingface.co/Qwen/Qwen3.8-27B/blob/main/chat_template.jinja): `reasoning_effort` 기본값 xhigh, xhigh·medium·low만 허용, `preserve_thinking` 기본값
+- [Qwen3.6-27B 설정 파일](https://huggingface.co/Qwen/Qwen3.6-27B/blob/main/config.json)·[Qwen3.8-27B 설정 파일](https://huggingface.co/Qwen/Qwen3.8-27B/blob/main/config.json): 같은 구조 이름, 64층, 네 번째 층마다 전체 어텐션
+- [QwenLM/Qwen3.8 GitHub 저장소](https://github.com/QwenLM/Qwen3.8): 공개 날짜가 적힌 소식 목록, Qwen3.5·Qwen3.6·Qwen3.8을 아우르는 하나의 시리즈
+- [unsloth Qwen3.6-27B GGUF](https://huggingface.co/unsloth/Qwen3.6-27B-GGUF)·[bartowski Qwen3.8-27B GGUF](https://huggingface.co/bartowski/Qwen3.8-27B-GGUF)·[bartowski Qwen3.6-35B-A3B GGUF](https://huggingface.co/bartowski/Qwen_Qwen3.6-35B-A3B-GGUF): 2비트 파일과 mmproj를 포함한 파일 목록
+- [Ollama qwen3.6 태그](https://ollama.com/library/qwen3.6/tags)·[Ollama qwen3.8 태그](https://ollama.com/library/qwen3.8/tags): 태그와 모델의 대응, 비전 프로젝터가 든 Q4_K_M 기본 태그
+- [Ollama 문서: 생각 모드](https://docs.ollama.com/capabilities/thinking): API 요청의 `think` 필드
+- [Ollama 블로그: 생각 모드](https://ollama.com/blog/thinking): 명령줄의 `--think=false`, 대화 중 `/set nothink`
+- [Ollama v0.40.4 소스: openai/openai.go](https://github.com/ollama/ollama/blob/v0.40.4/openai/openai.go): OpenAI 호환 엔드포인트에서 `reasoning_effort` 값 `none`으로 생각 모드를 끄는 처리
+- [Ollama 문서: 컨텍스트 길이](https://docs.ollama.com/context-length): 기본 컨텍스트
+- [Ollama FAQ](https://docs.ollama.com/faq): `ollama ps`, `OLLAMA_KV_CACHE_TYPE`
+- [Hugging Face의 Ollama 사용 안내](https://huggingface.co/docs/hub/ollama): `hf.co/사용자/저장소:양자화` 형식
+- [llama.cpp 서버 README](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md): `-hf`가 mmproj를 자동으로 받고 `--no-mmproj`로 끈다는 설명, `--reasoning`, `--reasoning-effort`, `--chat-template-kwargs`, `--fit`, `--n-cpu-moe`, `--cache-type-k`·`--cache-type-v`, `-fa`
+- [llama.cpp 이슈 #28196 댓글](https://github.com/ggml-org/llama.cpp/issues/28196#issuecomment-5644215426): RTX 4090의 Qwen3.8 27B 공개 벤치마크 결과
+- [llama.cpp 이슈 #22375 댓글](https://github.com/ggml-org/llama.cpp/issues/22375#issuecomment-4321169662): Strix Halo의 Qwen3.6 35B-A3B 공개 벤치마크 결과

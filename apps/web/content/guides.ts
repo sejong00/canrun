@@ -51,6 +51,10 @@ export const GUIDE_SLUGS = [
   'laptop-gpu-llm',
   'multi-gpu',
   'cpu-only-llm',
+  // 10-19 D103: 검색 유입용 새 가이드 초안 4편(자동완성 조사 10-16) — 게시는 사용자 승인 슬러그만(D40)
+  'gemma-4-models',
+  'qwen3.6-vs-qwen3.8',
+  'deepseek-local',
 ] as const;
 
 export type GuideSlug = (typeof GUIDE_SLUGS)[number];
@@ -63,6 +67,9 @@ const PUBLISHED = { status: 'published', reviewedAt: '2026-09-30', datePublished
 
 /** 10-15 D75·D76·D77 배치 1·2·3 — 사용자가 채팅으로 12편 모두 게시 승인(D84, D40). 날짜는 UTC(배포일) */
 const PUBLISHED_1015 = { status: 'published', reviewedAt: '2026-10-15', datePublished: '2026-10-15', dateModified: '2026-10-15', author: 'CanRun' } as const;
+
+/** 10-19 D103 초안 — URL 로만 열리고 noindex. 게시 승인 시 PUBLISHED_* 로 바꾼다 */
+const DRAFT_1019 = { status: 'draft', datePublished: '2026-10-19', dateModified: '2026-10-19', author: 'CanRun' } as const;
 
 export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
   'vram-requirements': {
@@ -502,6 +509,76 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
         title: '그래픽카드 없이 로컬 LLM — CPU와 시스템 RAM만으로 돌릴 수 있는 모델',
         description:
           '그래픽카드 없이 CPU와 시스템 RAM만으로 돌아가는 로컬 LLM과 모델별로 필요한 RAM 용량을 정리했습니다. 속도를 정하는 RAM 대역폭과 CPU에서 유리한 MoE 모델도 다룹니다.',
+      },
+    },
+  },
+  'gemma-4-models': {
+    ...DRAFT_1019,
+    grids: {
+      // 8~32GB 데스크톱 dGPU 8종 × Gemma 4 세 크기 — 배치 2 의 Gemma 4 dGPU 콤보를 덮는다. E2B·E4B 는 카탈로그 밖(D98)이라 본문 산문으로만
+      gemma4: {
+        gpus: ['rtx-4060', 'rtx-3060-12gb', 'rtx-4070', 'rtx-5070', 'rtx-5060-ti-16gb', 'rtx-3090', 'rtx-4090', 'rtx-5090'],
+        models: ['gemma-4-12b', 'gemma-4-26b-a4b', 'gemma-4-31b'],
+      },
+    },
+    related: ['moe-cpu-offload', 'vram-requirements', 'thinking-models'],
+    locales: {
+      en: {
+        title: 'Gemma 4 12B vs 26B-A4B vs 31B: differences, VRAM and which size fits your GPU',
+        description:
+          'How Gemma 4 12B, 26B-A4B and 31B differ in memory and speed on 8–32GB GPUs, why the MoE model can use system RAM, and what the Ollama gemma4 tags hold.',
+      },
+      ko: {
+        title: '젬마 4(Gemma 4) 모델별 차이 — 12B·26B-A4B·31B 사양과 VRAM 비교',
+        description:
+          '젬마 4 12B·26B-A4B·31B가 8~32GB 그래픽카드에서 어떻게 다른지 메모리와 속도로 비교했습니다. MoE 모델을 시스템 RAM과 나눠 돌리는 법과 Ollama gemma4 태그도 정리했습니다.',
+      },
+    },
+  },
+  'qwen3.6-vs-qwen3.8': {
+    ...DRAFT_1019,
+    grids: {
+      // gemma4 와 같은 8종 × Qwen 3.5~3.8 — 9B 는 작은 대안. 배치 2 의 qwen3.5-9b·qwen3.8-27b·qwen3.6-35b-a3b dGPU 콤보를 덮는다
+      qwen36: {
+        gpus: ['rtx-4060', 'rtx-3060-12gb', 'rtx-4070', 'rtx-5070', 'rtx-5060-ti-16gb', 'rtx-3090', 'rtx-4090', 'rtx-5090'],
+        models: ['qwen3.5-9b', 'qwen3.6-27b', 'qwen3.8-27b', 'qwen3.6-35b-a3b'],
+      },
+    },
+    related: ['moe-cpu-offload', 'gguf-quantization', 'thinking-models'],
+    locales: {
+      en: {
+        title: 'Qwen3.6 vs Qwen3.8, 27B vs 35B-A3B: differences and the VRAM each needs',
+        description:
+          'Qwen3.6 27B, Qwen3.8 27B and Qwen3.6 35B-A3B on 8–32GB GPUs: what changes between versions, dense vs MoE memory and speed, and which quant fits a 16GB card.',
+      },
+      ko: {
+        title: 'Qwen3.6·Qwen3.8 비교 — 27B와 35B-A3B 차이, VRAM과 속도',
+        description:
+          'Qwen3.6 27B·Qwen3.8 27B·Qwen3.6 35B-A3B를 8~32GB 그래픽카드에서 비교했습니다. 버전 사이에 달라진 점, dense와 MoE의 메모리·속도 차이, 16GB에 들어가는 양자화를 정리했습니다.',
+      },
+    },
+  },
+  'deepseek-local': {
+    ...DRAFT_1019,
+    grids: {
+      // 8~32GB dGPU 6종 × R1 소형 4종 — 0528-qwen3-8b 는 Ollama deepseek-r1 기본 태그, distill-14b 는 :14b (10-19 추가).
+      // 원본 R1·V3·V4 는 카탈로그 밖이라 모델 카드 출처의 산문으로만
+      deepseek: {
+        gpus: ['rtx-4060', 'rtx-3060-12gb', 'rtx-5060-ti-16gb', 'rtx-3090', 'rtx-4090', 'rtx-5090'],
+        models: ['deepseek-r1-0528-qwen3-8b', 'deepseek-r1-distill-8b', 'deepseek-r1-distill-14b', 'deepseek-r1-distill-32b'],
+      },
+    },
+    related: ['thinking-models', 'kv-cache-context', 'ollama-context-length'],
+    locales: {
+      en: {
+        title: 'Running DeepSeek locally: hardware requirements for the R1 distills and the full model',
+        description:
+          'Which DeepSeek R1 models run on a home PC: VRAM for the 8B, 14B and 32B distills, why long reasoning needs context memory, and why the full R1 is out of reach.',
+      },
+      ko: {
+        title: '딥시크(DeepSeek) 로컬 사양 — R1 증류 모델 8B·14B·32B와 원본 R1을 돌리려면',
+        description:
+          '딥시크 R1을 내 PC에서 돌릴 때 필요한 사양을 정리했습니다. 증류 모델 8B·14B·32B의 VRAM, 긴 추론에 드는 컨텍스트 메모리, 원본 R1이 가정용 PC로 어려운 이유를 다룹니다.',
       },
     },
   },

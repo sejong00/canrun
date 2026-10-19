@@ -11,6 +11,14 @@ export type ModelAboutBody = ComponentType<{ components?: object }>;
 type AboutModule = { default: ModelAboutBody };
 
 const LOADERS: Readonly<Record<ModelAboutId, Readonly<Record<Locale, () => Promise<AboutModule>>>>> = {
+  'deepseek-r1-0528-qwen3-8b': {
+    en: () => import('@/content/en/model-about/deepseek-r1-0528-qwen3-8b.mdx') as Promise<AboutModule>,
+    ko: () => import('@/content/ko/model-about/deepseek-r1-0528-qwen3-8b.mdx') as Promise<AboutModule>,
+  },
+  'deepseek-r1-distill-14b': {
+    en: () => import('@/content/en/model-about/deepseek-r1-distill-14b.mdx') as Promise<AboutModule>,
+    ko: () => import('@/content/ko/model-about/deepseek-r1-distill-14b.mdx') as Promise<AboutModule>,
+  },
   'deepseek-r1-distill-32b': {
     en: () => import('@/content/en/model-about/deepseek-r1-distill-32b.mdx') as Promise<AboutModule>,
     ko: () => import('@/content/ko/model-about/deepseek-r1-distill-32b.mdx') as Promise<AboutModule>,

@@ -1,0 +1,174 @@
+딥시크 모델 가운데 집에 있는 PC로 돌릴 수 있는 것은 작은 R1 증류(distill) 모델입니다. R1이 만든 답변으로 Qwen·Llama 모델을 학습시킨 dense 모델이며, 이 글은 8B~32B를 다룹니다. `ollama run deepseek-r1`로 받는 DeepSeek R1 0528 Qwen3 8B는 8k 컨텍스트에서 8GB인 RTX 4060에 다 들어갑니다<Expect model="deepseek-r1-0528-qwen3-8b" gpu="rtx-4060" fits="true" mode="full-gpu" />. 14B 증류 모델은 RTX 3060 12GB에<Expect model="deepseek-r1-distill-14b" gpu="rtx-3060-12gb" fits="true" mode="full-gpu" />, 32B 증류 모델은 24GB인 RTX 3090에 전부 들어갑니다<Expect model="deepseek-r1-distill-32b" gpu="rtx-3090" fits="true" mode="full-gpu" />. 원본 DeepSeek-R1과 V3·V4는 파라미터가 수천억 개를 넘는 MoE 모델이라, CanRun은 계산하지 않습니다.
+
+## 내 PC에서 돌릴 수 있는 딥시크 모델
+
+흔히 딥시크라고 하면 2025년 1월에 나온 원본 DeepSeek-R1을 떠올립니다. 모델 카드에 따르면 원본 R1은 DeepSeek-V3-Base를 바탕으로 학습한 MoE(전문가 혼합) 모델입니다. 전체 파라미터 671B 가운데 토큰마다 37B를 쓰고, 컨텍스트는 128k입니다. 2024년 12월에 나온 DeepSeek-V3도 전체 671B, 활성 37B로 크기가 같습니다. V4 시리즈는 모델 카드에 미리 보기(preview) 버전으로 소개돼 있습니다. V4-Pro는 전체 1.6T(활성 49B), V4-Flash는 전체 284B(활성 13B)이고, 컨텍스트는 둘 다 1M입니다. CanRun은 이 모델들을 계산하지 않습니다.
+
+증류 모델은 원본 R1을 줄인 모델이 아닙니다. DeepSeek는 R1이 생성한 샘플로 다른 오픈 모델을 파인튜닝했습니다. 바탕 모델은 Qwen2.5-14B·Qwen2.5-32B와 Llama-3.1-8B 등입니다. 2025년 1월에는 1.5B·7B·8B·14B·32B·70B 증류 모델 여섯 개를 공개했습니다. 5월에는 R1-0528의 생각 과정으로 Qwen3 8B Base를 추가 학습한 모델이 나왔습니다. 카드에 따르면 구조는 Qwen3-8B와 똑같습니다. CanRun은 이 가운데 네 모델을 계산합니다. 8B급은 <HubLink model="deepseek-r1-0528-qwen3-8b" />와 <HubLink model="deepseek-r1-distill-8b" />입니다. 그보다 큰 모델은 <HubLink model="deepseek-r1-distill-14b" />와 <HubLink model="deepseek-r1-distill-32b" />입니다.
+
+<ModelFacts models="deepseek-r1-0528-qwen3-8b,deepseek-r1-distill-8b,deepseek-r1-distill-14b,deepseek-r1-distill-32b" />
+
+표의 라이선스 열에 나오듯 네 모델의 가중치는 MIT 라이선스입니다. 다만 R1 모델 카드는 바탕 모델의 원래 라이선스도 밝힙니다. Qwen 증류 모델의 바탕인 Qwen2.5는 원래 Apache 2.0 라이선스입니다. Llama 8B 증류 모델의 바탕인 Llama 3.1 8B Base는 Llama 3.1 라이선스를 따릅니다. R1-0528 카드에는 R1 시리즈를 상업적으로 쓰거나 증류에 써도 된다고 적혀 있습니다.
+
+쓰는 방법도 조금 다릅니다. 1월 모델 카드는 시스템 프롬프트를 넣지 말라고 권합니다. R1-0528 카드와 0528 Qwen3 8B 카드는 이제 시스템 프롬프트를 지원한다고 설명합니다.
+
+## Ollama deepseek-r1 태그별로 받는 모델
+
+Ollama의 deepseek-r1에는 크기와 버전이 다른 모델이 태그로 묶여 있습니다.
+
+- `deepseek-r1`, `deepseek-r1:latest`, `deepseek-r1:8b`는 모두 DeepSeek R1 0528 Qwen3 8B를 받습니다. 세 태그는 `deepseek-r1:8b-0528-qwen3-q4_K_M`과 같은 파일을 가리킵니다.
+- R1 Distill Llama 8B는 `deepseek-r1:8b-llama-distill-q4_K_M`으로 받습니다. 지금의 `:8b`는 이 모델이 아닙니다.
+- `deepseek-r1:14b`는 R1 Distill Qwen 14B이고, `14b-qwen-distill-q4_K_M`과 같습니다.
+- `deepseek-r1:32b`는 R1 Distill Qwen 32B이고, `32b-qwen-distill-q4_K_M`과 같습니다.
+- `deepseek-r1:1.5b`, `:7b`, `:70b`는 CanRun 카탈로그에 없습니다. R1 모델 카드에 따르면 1.5B와 7B는 Qwen2.5-Math를 바탕으로 만들었습니다. 70B의 바탕은 Llama-3.3-70B-Instruct입니다.
+- `deepseek-r1:671b`는 원본 DeepSeek-R1이고, 기본 태그는 0528 버전입니다. CanRun은 이 모델을 계산하지 않습니다.
+
+Ollama 페이지에 따르면 0528 업데이트는 8B 증류 모델과 671B 원본 모델에 들어갔습니다. 그래서 `:14b`와 `:32b`는 지금도 1월에 나온 증류 모델입니다.
+
+기본 태그는 모두 Q4_K_M으로, CanRun이 판정 기준으로 쓰는 양자화와 같습니다. 다만 Ollama는 자체 라이브러리 파일을 씁니다. CanRun은 위 표의 ‘GGUF 출처’에 있는 커뮤니티 GGUF로 계산하므로 파일 크기가 조금 다를 수 있습니다. CanRun이 계산에 쓰는 32B 파일은 <Num kind="fileGB" model="deepseek-r1-distill-32b" />입니다.
+
+## 증류 모델별로 필요한 그래픽카드
+
+아래 표는 증류 모델 네 개를 그래픽카드 6종에서 판정한 결과입니다. 8k 컨텍스트, f16 KV 캐시(컨텍스트를 담는 메모리), 시스템 RAM 32GB(DDR5), Windows를 가정했습니다. 배지는 Q4_K_M 파일의 판정입니다. 배지 아래 줄은 CanRun이 다른 파일을 권할 때만 나옵니다.
+
+<ComboGrid grid="deepseek" />
+
+### 8GB 카드 — 8B 모델 두 개
+
+DeepSeek R1 0528 Qwen3 8B는 8k에서 <Num kind="needGB" model="deepseek-r1-0528-qwen3-8b" />가 필요하고, RTX 4060은 <Num kind="usableGB" gpu="rtx-4060" />를 쓸 수 있습니다. GPU에 전부 올라가 쾌적하게 돌아갑니다<Expect model="deepseek-r1-0528-qwen3-8b" gpu="rtx-4060" verdict="S" mode="full-gpu" />. 다만 여유가 1GB가 안 되니 `ollama ps`로 확인하세요. 추정 속도도 생각 모드에 적용하는 엄격한 ‘쾌적’ 기준을 간신히 넘습니다. R1 Distill Llama 8B는 조금 더 작아서, 1GB 남짓 남기고 쾌적하게 돌아갑니다<Expect model="deepseek-r1-distill-8b" gpu="rtx-4060" verdict="S" mode="full-gpu" />.
+
+14B 증류 모델은 <Num kind="needGB" model="deepseek-r1-distill-14b" />가 필요해 RTX 4060에 다 들어가지 않습니다. 일부가 시스템 RAM으로 넘어가서 겨우 돌아갑니다<Expect model="deepseek-r1-distill-14b" gpu="rtx-4060" verdict="B" mode="partial-offload" />. 32B 증류 모델은 Q4_K_M으로는 돌릴 수 없습니다<Expect model="deepseek-r1-distill-32b" gpu="rtx-4060" verdict="F" />. 배지 아래 줄은 Q2_K 파일을 권하는데, 이 파일로도 겨우 돌아갑니다<Expect model="deepseek-r1-distill-32b" gpu="rtx-4060" quant="Q2_K" verdict="B" mode="partial-offload" />. Q2_K는 2비트 양자화라 품질이 ‘손실 큼’ 등급에 듭니다. CanRun은 다른 양자화를 모두 돌릴 수 없을 때만 이런 파일을 권합니다.
+
+### 12GB·16GB 카드 — 14B 증류 모델
+
+RTX 3060 12GB에서 14B 증류 모델은 GPU에 전부 들어가고 원활하게 돌아갑니다<Expect model="deepseek-r1-distill-14b" gpu="rtx-3060-12gb" verdict="A" mode="full-gpu" />. 추정 속도가 보통의 ‘쾌적’ 기준은 넘지만, 생각 모드에 적용하는 1.5배 기준에는 못 미칩니다. 필요량 <Num kind="needGB" model="deepseek-r1-distill-14b" />와 사용 가능 메모리 <Num kind="usableGB" gpu="rtx-3060-12gb" />의 차이가 1GB도 안 되니 `ollama ps`로 확인하세요. 8B 모델 두 개는 이 카드에서 쾌적하게 돌아갑니다<Expect model="deepseek-r1-0528-qwen3-8b" gpu="rtx-3060-12gb" verdict="S" /><Expect model="deepseek-r1-distill-8b" gpu="rtx-3060-12gb" verdict="S" />.
+
+RTX 5060 Ti 16GB에서는 14B 증류 모델이 Q4_K_M으로 원활하게 돌아갑니다<Expect model="deepseek-r1-distill-14b" gpu="rtx-5060-ti-16gb" verdict="A" mode="full-gpu" />. 한 단계 작은 IQ4_XS 파일이면 쾌적하게 돌아갑니다<Expect model="deepseek-r1-distill-14b" gpu="rtx-5060-ti-16gb" quant="IQ4_XS" verdict="S" mode="full-gpu" />. 두 추정치는 엄격해진 ‘쾌적’ 기준의 바로 아래와 위에 있을 뿐, 차이는 크지 않습니다.
+
+32B 증류 모델은 Q4_K_M으로는 RTX 3060 12GB와 RTX 5060 Ti 16GB에 다 들어가지 않습니다. 일부를 시스템 RAM에 두고 겨우 돌아갑니다<Expect model="deepseek-r1-distill-32b" gpu="rtx-3060-12gb" verdict="B" mode="partial-offload" /><Expect model="deepseek-r1-distill-32b" gpu="rtx-5060-ti-16gb" verdict="B" mode="partial-offload" />. 아래 표는 RTX 5060 Ti 16GB에서 32B 증류 모델을 양자화별로 판정한 결과입니다.
+
+<QuantLadder model="deepseek-r1-distill-32b" gpu="rtx-5060-ti-16gb" />
+
+‘손실 큼’ 등급인 Q2_K는 <Num kind="needGB" model="deepseek-r1-distill-32b" quant="Q2_K" />가 필요해 이 카드에 전부 들어가고, 원활하게 돌아갑니다<Expect model="deepseek-r1-distill-32b" gpu="rtx-5060-ti-16gb" quant="Q2_K" verdict="A" mode="full-gpu" />. 여유가 1GB가 안 되니 이때도 `ollama ps`로 확인하세요. Q6_K는 이 카드에서 돌릴 수 없습니다<Expect model="deepseek-r1-distill-32b" gpu="rtx-5060-ti-16gb" quant="Q6_K" verdict="F" />. CanRun은 답의 품질을 재지 않으므로, 2비트 32B와 4비트 14B 중 어느 쪽 답이 나은지는 말할 수 없습니다. 품질 등급은 ‘<GuideLink slug="gguf-quantization" />’ 가이드에서 설명합니다.
+
+### 24GB·32GB 카드 — 32B 증류 모델
+
+32B 증류 모델은 8k에서 <Num kind="needGB" model="deepseek-r1-distill-32b" />가 필요하고, RTX 3090과 RTX 4090은 <Num kind="usableGB" gpu="rtx-3090" />를 쓸 수 있습니다. 두 카드 모두 1GB 남짓 남기고 GPU에 전부 올라갑니다. RTX 3090에서는 원활하게<Expect model="deepseek-r1-distill-32b" gpu="rtx-3090" verdict="A" mode="full-gpu" />, RTX 4090에서는 쾌적하게 돌아갑니다<Expect model="deepseek-r1-distill-32b" gpu="rtx-4090" verdict="S" mode="full-gpu" />. 두 추정치는 엄격해진 ‘쾌적’ 기준의 양쪽에 바짝 붙어 있습니다. 실제 속도가 몇 퍼센트만 달라도 어느 카드든 판정이 한 단계 바뀔 수 있습니다.
+
+RTX 5090에서는 네 모델 모두 쾌적하게 돌아갑니다<Expect model="deepseek-r1-0528-qwen3-8b" gpu="rtx-5090" verdict="S" /><Expect model="deepseek-r1-distill-8b" gpu="rtx-5090" verdict="S" /><Expect model="deepseek-r1-distill-14b" gpu="rtx-5090" verdict="S" /><Expect model="deepseek-r1-distill-32b" gpu="rtx-5090" verdict="S" mode="full-gpu" />. 남는 메모리는 더 긴 컨텍스트에 쓸 수 있습니다. 32B 증류 모델은 Q6_K 파일도 GPU에 전부 올라가 쾌적하게 돌아갑니다<Expect model="deepseek-r1-distill-32b" gpu="rtx-5090" quant="Q6_K" verdict="S" mode="full-gpu" />.
+
+## 생각하는 과정도 컨텍스트를 채운다
+
+네 모델은 모두 답하기 전에 추론 과정을 먼저 쓰고, CanRun은 이들을 늘 생각하는 모델로 분류합니다. 1월 모델 카드는 모든 답을 `<think>\n`으로 시작하도록 강제하라고 권합니다. R1 시리즈 모델은 생각 과정을 건너뛰는 경향이 있고, 그러면 성능이 떨어질 수 있다는 이유입니다. 0528 카드는 이제 이렇게 강제하지 않아도 된다고 설명합니다.
+
+생각 과정은 내가 보낸 메시지와 같은 컨텍스트에 쌓입니다. 그래서 다른 토큰과 똑같이 KV 캐시를 차지합니다. KV 캐시는 모델이 앞 내용을 다시 계산하지 않도록 담아 두는 메모리입니다. DeepSeek는 R1과 1월 증류 모델을 평가할 때 답 하나의 최대 길이를 32k 토큰으로 잡았습니다. R1-0528과 0528 8B 모델은 64k 토큰으로 잡았습니다.
+
+<RuntimeFact id="ollama-default-ctx" />. 그래서 Ollama는 이 글의 8GB~16GB 카드에서 4k, 24GB·32GB 카드에서 32k를 기본으로 씁니다. CanRun 판정이 가정하는 8k도 작은 카드에서는 이미 Ollama 기본값보다 깁니다. 대화가 컨텍스트를 넘으면 앞부분부터 잘려 나갑니다. 컨텍스트를 바꾸는 방법은 ‘<GuideLink slug="ollama-context-length" />’ 가이드에 있습니다. 아래 표는 32k 컨텍스트에서 모델마다 필요한 메모리입니다.
+
+<ModelMemoryTable models="deepseek-r1-0528-qwen3-8b,deepseek-r1-distill-8b,deepseek-r1-distill-14b,deepseek-r1-distill-32b" ctx="32768" />
+
+32k에서 DeepSeek R1 0528 Qwen3 8B는 RTX 3060 12GB에 전부 들어가고, 원활하게 돌아갑니다<Expect model="deepseek-r1-0528-qwen3-8b" gpu="rtx-3060-12gb" ctx="32768" verdict="A" mode="full-gpu" />. 14B 증류 모델은 32k에서 <Num kind="needGB" model="deepseek-r1-distill-14b" ctx="32768" />가 필요합니다. RTX 5060 Ti 16GB의 사용 가능 메모리 <Num kind="usableGB" gpu="rtx-5060-ti-16gb" />를 넘는 양입니다. 일부가 시스템 RAM으로 넘어가지만, 그래도 원활하게 돌아갑니다<Expect model="deepseek-r1-distill-14b" gpu="rtx-5060-ti-16gb" ctx="32768" verdict="A" mode="partial-offload" />. KV 캐시를 q8_0으로 두면 다시 GPU에 전부 들어가고, 원활하게 돌아갑니다<Expect model="deepseek-r1-distill-14b" gpu="rtx-5060-ti-16gb" ctx="32768" kv="q8_0" verdict="A" mode="full-gpu" />.
+
+네 모델의 설정 파일에는 슬라이딩 윈도가 없어서, 모든 층이 전체 어텐션을 씁니다. 층마다 KV 헤드가 8개인 것도 같습니다. 그래서 토큰당 KV 캐시는 층 수를 따라갑니다. 32B 증류 모델은 <Num kind="layers" model="deepseek-r1-distill-32b" />층, Llama 8B 증류 모델은 <Num kind="layers" model="deepseek-r1-distill-8b" />층입니다. 32B 증류 모델은 32k에서 KV 캐시만 <Num kind="kvGB" model="deepseek-r1-distill-32b" ctx="32768" />를 차지합니다.
+
+<KvPerTokenTable models="deepseek-r1-0528-qwen3-8b,deepseek-r1-distill-8b,deepseek-r1-distill-14b,deepseek-r1-distill-32b" ctxs="8192,65536,131072" />
+
+표의 128k 열은 네 모델이 지원하는 가장 긴 컨텍스트입니다. 이 길이를 f16으로 채우면 8B 모델 두 개도 KV 캐시만으로 RTX 5060 Ti 16GB의 사용 가능 메모리를 넘습니다. 그러면 CanRun 계산으로는 모델 전체가 시스템 RAM으로 가고, 이 카드에서는 돌릴 수 없습니다<Expect model="deepseek-r1-0528-qwen3-8b" gpu="rtx-5060-ti-16gb" ctx="131072" verdict="F" mode="cpu-only" /><Expect model="deepseek-r1-distill-8b" gpu="rtx-5060-ti-16gb" ctx="131072" verdict="F" mode="cpu-only" />.
+
+8GB 카드에서는 컨텍스트를 조금만 늘려도 결과가 바뀝니다. 아래 표는 RTX 4060에서 DeepSeek R1 0528 Qwen3 8B의 컨텍스트·KV 캐시별 결과입니다.
+
+<CtxTable model="deepseek-r1-0528-qwen3-8b" gpu="rtx-4060" />
+
+16k에 f16 KV 캐시를 쓰면 <Num kind="needGB" model="deepseek-r1-0528-qwen3-8b" ctx="16384" />가 필요해, 사용 가능 메모리 <Num kind="usableGB" gpu="rtx-4060" />를 넘습니다. 일부가 시스템 RAM으로 넘어가 겨우 돌아갑니다<Expect model="deepseek-r1-0528-qwen3-8b" gpu="rtx-4060" ctx="16384" verdict="B" mode="partial-offload" />. KV 캐시를 q8_0으로 두면 GPU에 전부 들어가 쾌적하게 돌아갑니다<Expect model="deepseek-r1-0528-qwen3-8b" gpu="rtx-4060" ctx="16384" kv="q8_0" verdict="S" mode="full-gpu" />. 32k에서는 f16으로 겨우 돌아가고<Expect model="deepseek-r1-0528-qwen3-8b" gpu="rtx-4060" ctx="32768" verdict="B" mode="partial-offload" />, q4_0으로 둬야 GPU에 전부 들어가 원활하게 돌아갑니다<Expect model="deepseek-r1-0528-qwen3-8b" gpu="rtx-4060" ctx="32768" kv="q4_0" verdict="A" mode="full-gpu" />. 다른 컨텍스트는 위 표에서 필요량과 사용 가능 메모리를 비교해 보세요.
+
+## 24GB 카드의 32B 증류 모델 — 컨텍스트는 어디까지
+
+RTX 3090에서 32B 증류 모델은 8k·f16 KV 캐시로 GPU에 전부 올라가고, 원활하게 돌아갑니다<Expect model="deepseek-r1-distill-32b" gpu="rtx-3090" ctx="8192" verdict="A" mode="full-gpu" />. 아래 표는 같은 조합을 컨텍스트와 KV 캐시 종류별로 계산한 결과입니다.
+
+<CtxTable model="deepseek-r1-distill-32b" gpu="rtx-3090" />
+
+16k에 f16 KV 캐시를 쓰면 <Num kind="needGB" model="deepseek-r1-distill-32b" ctx="16384" />가 필요합니다. 사용 가능 메모리 <Num kind="usableGB" gpu="rtx-3090" />보다 많아서 일부가 시스템 RAM으로 넘어갑니다. 그래도 원활하게 돌아가지만<Expect model="deepseek-r1-distill-32b" gpu="rtx-3090" ctx="16384" verdict="A" mode="partial-offload" />, 추정 속도는 8k의 절반쯤으로 떨어집니다. KV 캐시를 q8_0으로 두면 필요량이 <Num kind="needGB" model="deepseek-r1-distill-32b" ctx="16384" kv="q8_0" />로 줄어듭니다. 그러면 GPU에 전부 들어가고, 원활하게 돌아갑니다<Expect model="deepseek-r1-distill-32b" gpu="rtx-3090" ctx="16384" kv="q8_0" verdict="A" mode="full-gpu" />.
+
+32k는 Ollama가 24GB 카드에서 쓰는 기본 컨텍스트입니다. CanRun 계산으로는 f16에서 겨우 돌아가고<Expect model="deepseek-r1-distill-32b" gpu="rtx-3090" ctx="32768" verdict="B" mode="partial-offload" />, q8_0으로 둬도 겨우 돌아갑니다<Expect model="deepseek-r1-distill-32b" gpu="rtx-3090" ctx="32768" kv="q8_0" verdict="B" mode="partial-offload" />. q8_0은 ‘원활’ 기준에 아주 조금 못 미칩니다. q4_0으로 두면 GPU에 전부 들어가 원활하게 돌아갑니다<Expect model="deepseek-r1-distill-32b" gpu="rtx-3090" ctx="32768" kv="q4_0" verdict="A" mode="full-gpu" />.
+
+다만 Ollama FAQ에 따르면 q4_0은 q8_0보다 정밀도 손실이 크고, 컨텍스트가 길수록 더 두드러질 수 있습니다. FAQ는 GQA 수치가 높은 모델(예: Qwen2)이 영향을 더 받을 수 있다고도 설명합니다. Ollama 페이지에서 `:14b`와 `:32b` 태그의 구조는 qwen2로 나옵니다. q4_0을 쓴다면 답이 괜찮은지 직접 살펴보고, `ollama ps`로 배치도 확인하세요.
+
+RTX 3090에서 64k를 f16으로 쓰면 돌릴 수 없습니다<Expect model="deepseek-r1-distill-32b" gpu="rtx-3090" ctx="65536" verdict="F" />. q4_0으로 두면 겨우 돌아갑니다<Expect model="deepseek-r1-distill-32b" gpu="rtx-3090" ctx="65536" kv="q4_0" verdict="B" mode="partial-offload" />. 128k는 f16으로는 시스템 RAM 32GB까지 더해도 들어가지 않습니다<Expect model="deepseek-r1-distill-32b" gpu="rtx-3090" ctx="131072" fits="false" />.
+
+32GB인 RTX 5090에서는 32k도 f16 그대로 GPU에 전부 들어가, 쾌적하게 돌아갑니다<Expect model="deepseek-r1-distill-32b" gpu="rtx-5090" ctx="32768" verdict="S" mode="full-gpu" />.
+
+## Ollama에서 컨텍스트와 KV 캐시 설정하기
+
+<RuntimeFact id="ollama-kv-cache-type" />. Windows에서는 작업 표시줄 아이콘에서 Ollama 앱을 먼저 종료합니다. 그다음 PowerShell에서 아래 명령으로 서버를 띄웁니다. 16k 컨텍스트에 q8_0 KV 캐시를 쓰는 설정입니다.
+
+```powershell
+$env:OLLAMA_CONTEXT_LENGTH="16384"; $env:OLLAMA_FLASH_ATTENTION="1"; $env:OLLAMA_KV_CACHE_TYPE="q8_0"; ollama serve
+```
+
+PowerShell 창을 하나 더 열어 `ollama run deepseek-r1:32b`를 실행합니다. 8B는 `deepseek-r1`, 14B는 `deepseek-r1:14b`로 바꾸면 됩니다.
+
+CanRun 계산으로는 이 설정이면 DeepSeek R1 0528 Qwen3 8B가 RTX 4060에 전부 들어갑니다<Expect model="deepseek-r1-0528-qwen3-8b" gpu="rtx-4060" ctx="16384" kv="q8_0" fits="true" mode="full-gpu" />. RTX 3090에서 32B 증류 모델도 마찬가지입니다<Expect model="deepseek-r1-distill-32b" gpu="rtx-3090" ctx="16384" kv="q8_0" fits="true" mode="full-gpu" />. RTX 3060 12GB에서는 14B 증류 모델도 GPU에 전부 들어가 원활하게 돌아갑니다<Expect model="deepseek-r1-distill-14b" gpu="rtx-3060-12gb" ctx="16384" kv="q8_0" verdict="A" mode="full-gpu" />. 같은 카드에서 f16 그대로 16k를 쓰면 일부가 시스템 RAM으로 넘어갑니다. 그러면 ‘원활’ 기준 바로 아래로 떨어져 겨우 돌아갑니다<Expect model="deepseek-r1-distill-14b" gpu="rtx-3060-12gb" ctx="16384" verdict="B" mode="partial-offload" />.
+
+macOS·Linux에서 한 번만 띄울 때는 `OLLAMA_CONTEXT_LENGTH=16384 OLLAMA_FLASH_ATTENTION=1 OLLAMA_KV_CACHE_TYPE=q8_0 ollama serve`라고 씁니다. Windows에서 계속 쓰려면 ‘계정의 환경 변수 편집’에 세 변수를 넣고 Ollama를 다시 시작하세요. 관리자 권한은 필요 없습니다. 모델을 띄운 뒤에는 `ollama ps`를 실행하세요. PROCESSOR 열에 `100% GPU`가 나오면 GPU에 전부 올라간 것입니다. CONTEXT 열에는 실제로 쓰는 컨텍스트 길이가 나옵니다. KV 캐시 양자화는 ‘<GuideLink slug="kv-cache-context" />’ 가이드에서 더 자세히 다룹니다. GPU에 다 올라갔는지 보는 방법은 ‘<GuideLink slug="gpu-offload-check" />’ 가이드에 있습니다.
+
+## 이 숫자는 얼마나 확실한가
+
+메모리 수치는 실제 GGUF 파일 크기와 헤더, 모델 설정 파일로 계산한 값이라 오차 범위를 붙이지 않습니다.
+
+속도는 보정된 추정입니다. NVIDIA 카드에 전부 올리면 ±12%, 일부를 시스템 RAM에 두면 ±20%입니다. RTX 3090에서 원활하게 돌아가는 32B 증류 모델은 GPU에 전부 올라가므로 ±12%입니다<Expect model="deepseek-r1-distill-32b" gpu="rtx-3090" verdict="A" mode="full-gpu" confidence="calibrated" />. RTX 4060에서 겨우 돌아가는 14B 증류 모델은 일부를 RAM에 두므로 ±20%입니다<Expect model="deepseek-r1-distill-14b" gpu="rtx-4060" verdict="B" mode="partial-offload" confidence="calibrated" />. CanRun 데이터에는 이 DeepSeek 모델들의 공개 벤치마크 결과가 없어서, ‘실측’ 라벨이 붙은 칸이 없습니다.
+
+가장 불확실한 부분은 CanRun이 정책으로 정한 생각 모드 1.5배 기준입니다. 엄격해진 기준선에 바짝 붙은 결과도 여럿 있습니다. RTX 3090과 RTX 4090에서 돌린 32B 증류 모델이 그렇습니다. RTX 5060 Ti 16GB에서 Q4_K_M과 IQ4_XS로 받은 14B 증류 모델도 마찬가지입니다. RTX 4060의 DeepSeek R1 0528 Qwen3 8B도 기준선 가까이에 있습니다. RTX 3090에서 32k·q8_0으로 돌린 32B 증류 모델도 그렇습니다. 이런 결과는 실제 속도가 몇 퍼센트만 달라도 한 단계씩 바뀔 수 있습니다.
+
+표의 값은 다음 조건을 가정합니다. Windows에서 그 카드가 화면 출력도 맡고, 시스템 RAM은 32GB(DDR5-5600 듀얼 채널)입니다. 8k 컨텍스트와 f16 KV 캐시로 모델 하나를 띄우고, 요청은 한 번에 하나만 처리합니다. Ollama 라이브러리 파일은 CanRun이 계산에 쓰는 커뮤니티 GGUF와 크기가 조금 다릅니다. 내 PC에서 실제로 어떻게 올라갔는지는 `ollama ps`로 확인하세요. 원본 R1과 V3·V4는 CanRun 계산에 들어 있지 않습니다.
+
+생각 모드가 있는 모델에는 속도 기준을 1.5배 엄격하게 적용합니다. 아래 기준표에는 이 내용이 빠져 있으니, 표의 속도에 각각 1.5를 곱해서 보세요.
+
+<Threshold />
+
+## 다음 단계
+
+- ‘<GuideLink slug="thinking-models" />’: 생각 모드를 끄는 방법과 엄격해지는 속도 기준
+- ‘<GuideLink slug="kv-cache-context" />’: KV 캐시 크기와 q8_0·q4_0
+- ‘<GuideLink slug="ollama-context-length" />’: Ollama의 기본 컨텍스트와 바꾸는 방법
+- ‘<GuideLink slug="gguf-quantization" />’: Q2_K·IQ4_XS와 품질 등급
+- ‘<GuideLink slug="gpu-offload-check" />’: `100% GPU`인지 확인하는 방법
+- <HubLink model="deepseek-r1-distill-32b" />·<HubLink model="deepseek-r1-0528-qwen3-8b" /> 모델 페이지에서 모든 카드의 결과를 볼 수 있습니다.
+
+## 자주 묻는 질문
+
+### 원본 딥시크 R1도 내 PC에서 돌릴 수 있나요?
+
+이 글에 나온 8GB~32GB 그래픽카드로는 어렵습니다. CanRun도 원본 R1은 계산하지 않습니다. 모델 카드에 따르면 원본 R1은 전체 파라미터 671B, 활성 파라미터 37B인 MoE 모델입니다. 전체 파라미터가 32B 증류 모델의 스무 배쯤 됩니다. 집에 있는 PC로 돌릴 수 있는 것은 작은 증류 모델입니다.
+
+### 증류 모델은 원본 R1과 같은 모델인가요?
+
+아닙니다. 증류 모델은 R1이 생성한 샘플로 Qwen이나 Llama 모델을 파인튜닝한 모델입니다. 구조도 바탕 모델 그대로입니다. 예를 들어 R1 Distill Qwen 32B는 MoE가 아닌 dense 모델이고, 설정 파일의 모델 종류도 qwen2입니다. 모델 카드에는 이 32B 모델이 여러 벤치마크에서 OpenAI-o1-mini보다 낫다고 적혀 있습니다. CanRun은 답의 품질을 재지 않습니다.
+
+### R1 32B 증류 모델에는 어떤 그래픽카드가 필요한가요?
+
+메모리로 보면 8k 컨텍스트의 Q4_K_M은 24GB인 RTX 3090에 전부 들어갑니다<Expect model="deepseek-r1-distill-32b" gpu="rtx-3090" fits="true" mode="full-gpu" />. RTX 5060 Ti 16GB에는 Q2_K만 전부 들어갑니다<Expect model="deepseek-r1-distill-32b" gpu="rtx-5060-ti-16gb" quant="Q2_K" fits="true" mode="full-gpu" />. RTX 3090에서 32k를 쓰려면 KV 캐시를 q4_0으로 둬야 GPU에 전부 들어가고, 그러면 원활하게 돌아갑니다<Expect model="deepseek-r1-distill-32b" gpu="rtx-3090" ctx="32768" kv="q4_0" verdict="A" mode="full-gpu" />. 32GB인 RTX 5090에서는 32k도 f16 그대로 들어가 쾌적하게 돌아갑니다<Expect model="deepseek-r1-distill-32b" gpu="rtx-5090" ctx="32768" verdict="S" mode="full-gpu" />. 카드를 고를 때는 쓰려는 컨텍스트까지 넣어 필요한 메모리를 계산해 보세요.
+
+### Ollama에서 딥시크 R1이 앞 내용을 잊는 것 같은 이유는 무엇인가요?
+
+생각 과정이 Ollama의 기본 컨텍스트를 채웠을 가능성이 큽니다. <RuntimeFact id="ollama-default-ctx" />. 생각 과정이 길면 4k 컨텍스트는 금방 찹니다. `OLLAMA_CONTEXT_LENGTH`로 컨텍스트를 늘리세요. RTX 4060처럼 8GB인 카드라면 16k에 q8_0 KV 캐시를 함께 쓰세요. 그러면 DeepSeek R1 0528 Qwen3 8B가 GPU에 전부 들어가 쾌적하게 돌아갑니다<Expect model="deepseek-r1-0528-qwen3-8b" gpu="rtx-4060" ctx="16384" kv="q8_0" verdict="S" mode="full-gpu" />.
+
+### 딥시크 R1의 생각 과정을 끌 수 있나요?
+
+Ollama에서는 `--think=false`나 `/set nothink`로 끌 수 있습니다. 다만 DeepSeek의 1월 모델 카드는 생각을 건너뛰면 답이 나빠질 수 있다고 경고합니다. `--hidethinking`은 생각 과정을 화면에서 숨길 뿐, 모델은 그대로 생각합니다. CanRun은 생각을 끈 경우에도 생각 모드 기준을 그대로 적용합니다.
+
+## 출처
+
+- [DeepSeek-R1 모델 카드](https://huggingface.co/deepseek-ai/DeepSeek-R1): 원본 R1의 전체 671B·활성 37B 파라미터와 128k 컨텍스트, DeepSeek-V3-Base 기반 학습, 증류 모델의 바탕 모델과 라이선스, 평가 때 최대 생성 길이 32k 토큰, 시스템 프롬프트를 넣지 말라는 권고와 `<think>\n` 강제 권고
+- [DeepSeek-R1-0528 모델 카드](https://huggingface.co/deepseek-ai/DeepSeek-R1-0528): 마이너 버전 업그레이드, 최대 생성 길이 64k 토큰, 시스템 프롬프트 지원, `<think>\n`을 강제하지 않아도 된다는 설명, 상업적 사용과 증류 허용
+- [DeepSeek-R1-0528-Qwen3-8B 모델 카드](https://huggingface.co/deepseek-ai/DeepSeek-R1-0528-Qwen3-8B)와 [설정 파일](https://huggingface.co/deepseek-ai/DeepSeek-R1-0528-Qwen3-8B/blob/main/config.json): R1-0528의 생각 과정으로 Qwen3 8B Base를 추가 학습, Qwen3-8B와 같은 구조, 36층·KV 헤드 8개·슬라이딩 윈도 없음
+- [DeepSeek-R1-Distill-Llama-8B 모델 카드](https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Llama-8B): Llama-3.1-8B를 바탕으로 한 증류 모델
+- [DeepSeek-R1-Distill-Qwen-14B 모델 카드](https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-14B): Qwen2.5-14B를 바탕으로 한 증류 모델
+- [DeepSeek-R1-Distill-Qwen-32B 모델 카드](https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-32B)와 [설정 파일](https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-32B/blob/main/config.json): 여러 벤치마크에서 OpenAI-o1-mini보다 낫다는 제작사 설명, 64층·KV 헤드 8개·슬라이딩 윈도 없음, 모델 종류 qwen2
+- [DeepSeek-V3 모델 카드](https://huggingface.co/deepseek-ai/DeepSeek-V3): 전체 671B·활성 37B 파라미터, 128k 컨텍스트
+- [DeepSeek-V4-Flash 모델 카드](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash): V4 시리즈 미리 보기 버전, V4-Pro(전체 1.6T·활성 49B)와 V4-Flash(전체 284B·활성 13B), 1M 컨텍스트
+- [DeepSeek-R1 출시 글](https://api-docs.deepseek.com/news/news250120/): 2025년 1월 20일 공개, 작은 모델 6개 공개, MIT 라이선스
+- [DeepSeek-R1-0528 출시 글](https://api-docs.deepseek.com/news/news250528): 2025년 5월 28일 업데이트
+- [Ollama deepseek-r1 라이브러리](https://ollama.com/library/deepseek-r1)와 [태그 목록](https://ollama.com/library/deepseek-r1/tags): 태그별 모델과 같은 파일을 가리키는 태그, 0528 업그레이드가 들어간 8B·671B 태그, `:14b`·`:32b` 태그의 qwen2 구조
+- [Ollama 블로그: 생각 모드](https://ollama.com/blog/thinking): `--think=false`·`/set nothink`로 생각 끄기, `--hidethinking`으로 생각 과정 숨기기
+- [Ollama 컨텍스트 길이 문서](https://docs.ollama.com/context-length): GPU 메모리에 따른 기본 컨텍스트, `OLLAMA_CONTEXT_LENGTH`, `ollama ps`의 PROCESSOR·CONTEXT 열
+- [Ollama FAQ](https://docs.ollama.com/faq): KV 캐시 양자화(q8_0·q4_0의 정밀도 손실, GQA 수치가 높은 모델에 주는 영향), 플래시 어텐션, `100% GPU` 표시

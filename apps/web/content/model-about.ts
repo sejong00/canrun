@@ -11,6 +11,8 @@
  * - 순서 = id 알파벳순(표시에는 쓰지 않는다).
  */
 export const MODEL_ABOUT = {
+  'deepseek-r1-0528-qwen3-8b': '2026-10-19',
+  'deepseek-r1-distill-14b': '2026-10-19',
   'deepseek-r1-distill-32b': '2026-10-19',
   'deepseek-r1-distill-8b': '2026-10-19',
   'exaone-4.0-1.2b': '2026-10-19',

@@ -1,0 +1,210 @@
+Qwen3.6 27B and Qwen3.8 27B share one architecture, so they need nearly the same memory: both fit fully on a 24GB RTX 3090 and Run great there.<Expect model="qwen3.6-27b" gpu="rtx-3090" verdict="S" mode="full-gpu" /><Expect model="qwen3.8-27b" gpu="rtx-3090" verdict="S" mode="full-gpu" /> At Q4_K_M neither fits in the 16GB RTX 5060 Ti, so part of each model stays in system RAM and each Runs slowly, a calibrated estimate.<Expect model="qwen3.6-27b" gpu="rtx-5060-ti-16gb" verdict="B" mode="partial-offload" /><Expect model="qwen3.8-27b" gpu="rtx-5060-ti-16gb" verdict="B" mode="partial-offload" /> IQ4_XS brings either one up to Runs well on that card.<Expect model="qwen3.6-27b" gpu="rtx-5060-ti-16gb" quant="IQ4_XS" verdict="A" mode="partial-offload" /><Expect model="qwen3.8-27b" gpu="rtx-5060-ti-16gb" quant="IQ4_XS" verdict="A" mode="partial-offload" /> Qwen3.6 35B-A3B, an MoE model that uses about 3B parameters per token, needs more memory: it Runs great fully on the RTX 3090,<Expect model="qwen3.6-35b-a3b" gpu="rtx-3090" verdict="S" mode="full-gpu" confidence="calibrated" /> and on a 16GB card it keeps part of its experts in system RAM.<Expect model="qwen3.6-35b-a3b" gpu="rtx-5060-ti-16gb" fits="true" mode="cpu-moe" />
+
+## What changed from Qwen3.6 to Qwen3.8
+
+Qwen released Qwen3.6 35B-A3B in April 2026 and Qwen3.6 27B later that month, then Qwen3.8 27B in August 2026. Qwen's GitHub repository groups all three in one open-model series with Qwen3.5, and the Qwen3.8 card says the model is built on the Qwen3.5 architecture.
+
+<ModelFacts models="qwen3.6-27b,qwen3.8-27b,qwen3.6-35b-a3b" />
+
+The two 27Bs share one design. Their configuration files declare the same architecture type and the same <Num kind="layers" model="qwen3.6-27b" /> layers, where three linear-attention (Gated DeltaNet) layers are followed by one full-attention layer, so one layer in four uses full attention. Both have <Num kind="params" model="qwen3.8-27b" /> parameters and a native context of <Num kind="maxContext" model="qwen3.8-27b" /> tokens, which Qwen says some serving engines can stretch to about a million with RoPE scaling (YaRN). Both are released under Apache 2.0 and take image and video input.
+
+According to Qwen, what changed is the focus and the thinking controls. Qwen describes Qwen3.6 as aimed at agentic coding, with an option to keep earlier turns' reasoning. For Qwen3.8 it claims broad gains in coding, professional work, research and long multi-step agent tasks. Qwen3.8 also adds a `reasoning_effort` setting (`xhigh` by default, `medium` or `low`) and keeps earlier turns' reasoning by default (`preserve_thinking`). Qwen3.6 keeps only the latest turn's reasoning unless you turn `preserve_thinking` on.
+
+The Qwen3.8 27B card puts Qwen3.6 27B in its benchmark tables and reports a higher score for 3.8 on every row that lists both. Those are Qwen's own figures. CanRun does not measure answer quality, so this guide compares memory and speed only.
+
+In CanRun's data, the two 27Bs differ in their GGUF files, as the GGUF source column shows. Qwen3.6 27B is calculated from unsloth's files, while Qwen3.8 27B and Qwen3.6 35B-A3B are calculated from bartowski's. So the quant sets differ: the 2-bit file is UD-Q2_K_XL for Qwen3.6 and Q2_K for Qwen3.8.
+
+There is no Qwen3.8 35B-A3B. Qwen's Hugging Face page, checked in October 2026, lists for Qwen3.8 only the 27B (plus an FP8 version) and much larger models that CanRun does not calculate, and it lists no Qwen3.7 model. The newest 35B-A3B is therefore Qwen3.6's. It has about 35B parameters in total, and each token uses 8 of its 256 routed experts plus 1 shared expert, about 3B parameters in all. Its 40 layers follow the same one-in-four full-attention pattern. Neither newer version has a small model, so the grid's smallest model, Qwen3.5 9B, comes from the Qwen3.5 release.
+
+## How much memory each model needs
+
+The table counts what a graphics card has to hold at an 8k context: the GPU part of the Q4_K_M file (the usual 4-bit quant), an f16 KV cache (the memory that holds the context) and a working buffer.
+
+<ModelMemoryTable models="qwen3.5-9b,qwen3.6-27b,qwen3.8-27b,qwen3.6-35b-a3b" />
+
+At 8k, Qwen3.6 27B needs <Num kind="needGB" model="qwen3.6-27b" /> and Qwen3.8 27B needs <Num kind="needGB" model="qwen3.8-27b" />. The gap comes from the files: unsloth's Qwen3.6 27B Q4_K_M file is <Num kind="fileGB" model="qwen3.6-27b" />, and bartowski's Qwen3.8 27B file is <Num kind="fileGB" model="qwen3.8-27b" />. Two publishers' Q4_K_M files differ a little in size, so the gap says nothing about the models themselves.
+
+A 16GB card can use <Num kind="usableGB" gpu="rtx-5060-ti-16gb" /> and a 24GB card <Num kind="usableGB" gpu="rtx-3090" />. Both 27Bs need more than the 16GB card can use, so part of each model has to sit in system RAM,<Expect model="qwen3.6-27b" gpu="rtx-5060-ti-16gb" fits="true" mode="partial-offload" /><Expect model="qwen3.8-27b" gpu="rtx-5060-ti-16gb" fits="true" mode="partial-offload" /> while on the 24GB card they fit with plenty of room.<Expect model="qwen3.6-27b" gpu="rtx-3090" fits="true" mode="full-gpu" /><Expect model="qwen3.8-27b" gpu="rtx-3090" fits="true" mode="full-gpu" />
+
+The KV cache stays small because only one layer in four keeps one. At 32k, Qwen3.6 27B's cache takes <Num kind="kvGB" model="qwen3.6-27b" ctx="32768" />. Qwen3 32B, with full attention on every layer, needs <Num kind="kvGB" model="qwen3-32b" ctx="32768" /> at the same length, about four times as much. Qwen3.6 27B reaches that amount only at 128k (<Num kind="kvGB" model="qwen3.6-27b" ctx="131072" />). The 35B-A3B has only 2 KV heads, so its cache at 128k is just <Num kind="kvGB" model="qwen3.6-35b-a3b" ctx="131072" />.
+
+Qwen3.6 35B-A3B needs <Num kind="needGB" model="qwen3.6-35b-a3b" />, more than either 27B. Each token reads only about 3B parameters, but the router can pick any expert, so the whole file has to be in memory. Qwen3.5 9B needs <Num kind="needGB" model="qwen3.5-9b" />, against the <Num kind="usableGB" gpu="rtx-4060" /> an 8GB card can use, so it fits fully on the 8GB RTX 4060.<Expect model="qwen3.5-9b" gpu="rtx-4060" fits="true" mode="full-gpu" />
+
+These figures cover the language-model file only. Each of these GGUF repos also has a vision projector (mmproj) file, which lets the model read images. `llama-server -hf` downloads and loads it by default (`--no-mmproj` turns it off), and Ollama's library tags bundle one. CanRun does not count it, so when the margin is tight, check `ollama ps` after loading.
+
+## Dense 27B or MoE 35B-A3B on 8GB to 32GB cards
+
+The grid follows the four models on eight NVIDIA cards. Every cell assumes an 8k context, an f16 KV cache, 32GB of DDR5 system RAM and Windows, and because all four models think by default, the stricter thresholds for thinking models apply.
+
+<ComboGrid grid="qwen36" />
+
+On every grid card from 8GB to 16GB, both 27Bs Run slowly with part of the model in system RAM, a calibrated estimate.<Expect model="qwen3.6-27b" gpu="rtx-4060" verdict="B" mode="partial-offload" /><Expect model="qwen3.8-27b" gpu="rtx-4060" verdict="B" mode="partial-offload" /><Expect model="qwen3.6-27b" gpu="rtx-3060-12gb" verdict="B" mode="partial-offload" /><Expect model="qwen3.8-27b" gpu="rtx-3060-12gb" verdict="B" mode="partial-offload" /><Expect model="qwen3.6-27b" gpu="rtx-4070" verdict="B" mode="partial-offload" /><Expect model="qwen3.8-27b" gpu="rtx-4070" verdict="B" mode="partial-offload" /><Expect model="qwen3.6-27b" gpu="rtx-5070" verdict="B" mode="partial-offload" /><Expect model="qwen3.8-27b" gpu="rtx-5070" verdict="B" mode="partial-offload" /><Expect model="qwen3.6-27b" gpu="rtx-5060-ti-16gb" verdict="B" mode="partial-offload" /><Expect model="qwen3.8-27b" gpu="rtx-5060-ti-16gb" verdict="B" mode="partial-offload" /> A dense model reads every weight for every token, so the share left in system RAM sets the pace.
+
+Qwen3.6 35B-A3B Runs well on every grid card up to 16GB, with part of its experts in system RAM.<Expect model="qwen3.6-35b-a3b" gpu="rtx-4060" verdict="A" mode="cpu-moe" confidence="theoretical" /><Expect model="qwen3.6-35b-a3b" gpu="rtx-3060-12gb" verdict="A" mode="cpu-moe" confidence="theoretical" /><Expect model="qwen3.6-35b-a3b" gpu="rtx-4070" verdict="A" mode="cpu-moe" confidence="theoretical" /><Expect model="qwen3.6-35b-a3b" gpu="rtx-5070" verdict="A" mode="cpu-moe" confidence="theoretical" /><Expect model="qwen3.6-35b-a3b" gpu="rtx-5060-ti-16gb" verdict="A" mode="cpu-moe" confidence="theoretical" /> These are theoretical estimates (±30%). Each token reads only the experts the router picks, so little of each token's work comes from RAM, and Runs well is the best verdict this mode can get.
+
+With 16GB of system RAM instead of 32GB, the 35B-A3B does not fit on the 8GB RTX 4060 or the RTX 3060 12GB,<Expect model="qwen3.6-35b-a3b" gpu="rtx-4060" ram="16" fits="false" /><Expect model="qwen3.6-35b-a3b" gpu="rtx-3060-12gb" ram="16" fits="false" /> but it does fit on the RTX 5060 Ti 16GB, which holds more of its experts in VRAM.<Expect model="qwen3.6-35b-a3b" gpu="rtx-5060-ti-16gb" ram="16" fits="true" /> <GuideLink slug="moe-cpu-offload" /> explains the split.
+
+On the 24GB and 32GB cards, the two 27Bs and the 35B-A3B fit fully on the GPU and Run great.<Expect model="qwen3.6-27b" gpu="rtx-3090" verdict="S" mode="full-gpu" /><Expect model="qwen3.8-27b" gpu="rtx-3090" verdict="S" mode="full-gpu" /><Expect model="qwen3.6-35b-a3b" gpu="rtx-3090" verdict="S" mode="full-gpu" /><Expect model="qwen3.6-27b" gpu="rtx-4090" verdict="S" mode="full-gpu" /><Expect model="qwen3.6-27b" gpu="rtx-5090" verdict="S" mode="full-gpu" /><Expect model="qwen3.8-27b" gpu="rtx-4090" verdict="S" mode="full-gpu" /><Expect model="qwen3.8-27b" gpu="rtx-5090" verdict="S" mode="full-gpu" /><Expect model="qwen3.6-35b-a3b" gpu="rtx-4090" verdict="S" mode="full-gpu" /><Expect model="qwen3.6-35b-a3b" gpu="rtx-5090" verdict="S" mode="full-gpu" /> The grid shows how far apart dense and MoE are there: on the same card, the 35B-A3B's estimate is several times the 27B's. The Qwen3.8 27B cells on the RTX 4090 and RTX 5090 are public benchmarks.<Expect model="qwen3.8-27b" gpu="rtx-4090" verdict="S" confidence="measured" /><Expect model="qwen3.8-27b" gpu="rtx-5090" verdict="S" confidence="measured" /> On all eight cards, the two 27Bs get the same verdict.
+
+The 35B-A3B fits on the RTX 3090 with little room. It needs <Num kind="needGB" model="qwen3.6-35b-a3b" /> against <Num kind="usableGB" gpu="rtx-3090" /> usable, so it fits with under two gigabytes to spare.<Expect model="qwen3.6-35b-a3b" gpu="rtx-3090" fits="true" mode="full-gpu" /> With the vision file loaded, the spare room drops below a gigabyte, so check `ollama ps` after loading it.
+
+Qwen3.5 9B Runs great on every card in the grid.<Expect model="qwen3.5-9b" gpu="rtx-4070" verdict="S" /><Expect model="qwen3.5-9b" gpu="rtx-5070" verdict="S" /><Expect model="qwen3.5-9b" gpu="rtx-5060-ti-16gb" verdict="S" /><Expect model="qwen3.5-9b" gpu="rtx-3090" verdict="S" /><Expect model="qwen3.5-9b" gpu="rtx-4090" verdict="S" /><Expect model="qwen3.5-9b" gpu="rtx-5090" verdict="S" /> On the 8GB RTX 4060 it only just clears the stricter line,<Expect model="qwen3.5-9b" gpu="rtx-4060" verdict="S" mode="full-gpu" /> and its RTX 3060 12GB cell is a public benchmark.<Expect model="qwen3.5-9b" gpu="rtx-3060-12gb" verdict="S" confidence="measured" />
+
+## Which quant fits a 16GB card
+
+On the 16GB RTX 5060 Ti, the quant decides how the 27Bs run. The first ladder shows each quant of Qwen3.8 27B on that card, and every cell is calibrated.
+
+<QuantLadder model="qwen3.8-27b" gpu="rtx-5060-ti-16gb" />
+
+At Q4_K_M, part of the model stays in system RAM and it Runs slowly.<Expect model="qwen3.8-27b" gpu="rtx-5060-ti-16gb" verdict="B" mode="partial-offload" /> IQ4_XS sits in the same Good balance quality group as Q4_K_M. It still needs more than the card can use, so some of the model stays in system RAM, but with at least 90% on the GPU it Runs well.<Expect model="qwen3.8-27b" gpu="rtx-5060-ti-16gb" quant="IQ4_XS" verdict="A" mode="partial-offload" /><Expect model="qwen3.6-27b" gpu="rtx-5060-ti-16gb" quant="IQ4_XS" verdict="A" mode="partial-offload" /> It only just clears the stricter line. IQ4_XS is the quant CanRun suggests for Qwen3.8 27B on this card, and Qwen3.6 27B behaves the same way.
+
+The 2-bit files, Q2_K for Qwen3.8 (bartowski) and UD-Q2_K_XL for Qwen3.6 (unsloth), fit fully on the GPU. Both Run well, not great,<Expect model="qwen3.8-27b" gpu="rtx-5060-ti-16gb" quant="Q2_K" verdict="A" mode="full-gpu" /><Expect model="qwen3.6-27b" gpu="rtx-5060-ti-16gb" quant="UD-Q2_K_XL" verdict="A" mode="full-gpu" /> because their estimates clear the normal Runs great line but not the stricter one. Both are in the Heavy loss quality group, so CanRun does not suggest them (see <GuideLink slug="gguf-quantization" />). Q8_0 needs far more than the card can use, and with about half of the model in system RAM it Won't run.<Expect model="qwen3.8-27b" gpu="rtx-5060-ti-16gb" quant="Q8_0" verdict="F" />
+
+The second ladder shows Qwen3.6 35B-A3B on the same card.
+
+<QuantLadder model="qwen3.6-35b-a3b" gpu="rtx-5060-ti-16gb" />
+
+At Q4_K_M and IQ4_XS, the 35B-A3B keeps part of its experts in system RAM and Runs well.<Expect model="qwen3.6-35b-a3b" gpu="rtx-5060-ti-16gb" verdict="A" mode="cpu-moe" confidence="theoretical" /><Expect model="qwen3.6-35b-a3b" gpu="rtx-5060-ti-16gb" quant="IQ4_XS" verdict="A" mode="cpu-moe" confidence="theoretical" /> Both are theoretical estimates. Q2_K fits fully on the GPU and Runs great, a calibrated estimate,<Expect model="qwen3.6-35b-a3b" gpu="rtx-5060-ti-16gb" quant="Q2_K" verdict="S" mode="full-gpu" confidence="calibrated" /> but it is in the Heavy loss group. CanRun keeps Q4_K_M as the default for this card and does not suggest Q2_K here, so the 2-bit row is not a recommendation.
+
+Even Q8_0, in the Near-lossless group, fits with 32GB of system RAM. Most of its experts then sit in RAM, and it Runs well.<Expect model="qwen3.6-35b-a3b" gpu="rtx-5060-ti-16gb" quant="Q8_0" verdict="A" mode="cpu-moe" confidence="theoretical" /> That is a theoretical estimate whose band reaches below the Runs well line.
+
+### On a 12GB card
+
+On the RTX 3060 12GB, Qwen3.8's Q2_K fits fully on the GPU with little margin, and only without the vision file (`--no-mmproj`); it then Runs well.<Expect model="qwen3.8-27b" gpu="rtx-3060-12gb" quant="Q2_K" verdict="A" mode="full-gpu" /> Qwen3.6's larger UD-Q2_K_XL file does not fit fully, so part of it stays in system RAM and it Runs slowly.<Expect model="qwen3.6-27b" gpu="rtx-3060-12gb" quant="UD-Q2_K_XL" verdict="B" mode="partial-offload" /> Both are Heavy loss files.
+
+## Long context and Qwen3.6's 128K advice
+
+Both Qwen3.6 cards, for the 27B and the 35B-A3B, advise keeping the context at 128K tokens or more so the model keeps its thinking ability. The Qwen3.8 card gives no such advice. <RuntimeFact id="ollama-default-ctx" />. A 24GB card therefore starts at 32k and a 16GB card at 4k, so following Qwen's advice means setting the context yourself (see <GuideLink slug="ollama-context-length" />).
+
+The table shows Qwen3.6 27B on the RTX 3090 at each context and KV cache type, and every cell is calibrated.
+
+<CtxTable model="qwen3.6-27b" gpu="rtx-3090" />
+
+With an f16 cache, Qwen3.6 27B stays on the GPU up to 64k and Runs great there, only just over the line.<Expect model="qwen3.6-27b" gpu="rtx-3090" ctx="65536" verdict="S" mode="full-gpu" /> At 128k with f16, part of it moves to system RAM and it Runs slowly.<Expect model="qwen3.6-27b" gpu="rtx-3090" ctx="131072" verdict="B" mode="partial-offload" /> A q8_0 (8-bit) cache keeps 128k on the GPU with little margin, and it Runs great, again only just over the line.<Expect model="qwen3.6-27b" gpu="rtx-3090" ctx="131072" kv="q8_0" verdict="S" mode="full-gpu" /> Check `ollama ps` there and leave out the vision file. A q4_0 cache leaves more room.<Expect model="qwen3.6-27b" gpu="rtx-3090" ctx="131072" kv="q4_0" verdict="S" mode="full-gpu" />
+
+For Qwen3.8 27B at 128k with a q8_0 cache, CanRun rates it Runs well, not great.<Expect model="qwen3.8-27b" gpu="rtx-3090" ctx="131072" kv="q8_0" verdict="A" mode="full-gpu" /> The two 27Bs' estimates fall on either side of the stricter line there, so this is a split at the line, not a real speed gap. The margin is under a gigabyte, too little for the vision file. With a q4_0 cache, Qwen3.8 27B Runs great.<Expect model="qwen3.8-27b" gpu="rtx-3090" ctx="131072" kv="q4_0" verdict="S" mode="full-gpu" />
+
+The 35B-A3B moves experts to system RAM once VRAM runs out. On the RTX 3090 it stays fully on the GPU at 32k with an f16 cache and Runs great, with little margin.<Expect model="qwen3.6-35b-a3b" gpu="rtx-3090" ctx="32768" verdict="S" mode="full-gpu" /> Ollama starts a 24GB card at 32k, and the bundled vision file may not leave room there, so check `ollama ps`. At 64k with f16, part of its experts move to RAM and it Runs well, a theoretical estimate.<Expect model="qwen3.6-35b-a3b" gpu="rtx-3090" ctx="65536" verdict="A" mode="cpu-moe" /> A q8_0 cache keeps 64k on the GPU, where it Runs great, again with little margin.<Expect model="qwen3.6-35b-a3b" gpu="rtx-3090" ctx="65536" kv="q8_0" verdict="S" mode="full-gpu" /> At 128k with f16 it Runs well, also a theoretical estimate.<Expect model="qwen3.6-35b-a3b" gpu="rtx-3090" ctx="131072" verdict="A" mode="cpu-moe" />
+
+On the 16GB RTX 5060 Ti, Qwen3.6 27B at 128k with an f16 cache Won't run,<Expect model="qwen3.6-27b" gpu="rtx-5060-ti-16gb" ctx="131072" verdict="F" /> and a q4_0 cache brings it up to Runs slowly.<Expect model="qwen3.6-27b" gpu="rtx-5060-ti-16gb" ctx="131072" kv="q4_0" verdict="B" mode="partial-offload" /> The 35B-A3B at 128k with f16 Runs well on that card, a theoretical estimate.<Expect model="qwen3.6-35b-a3b" gpu="rtx-5060-ti-16gb" ctx="131072" verdict="A" mode="cpu-moe" />
+
+<RuntimeFact id="ollama-kv-cache-type" />. On Windows, quit the Ollama app from the taskbar and start the server from PowerShell:
+
+```powershell
+$env:OLLAMA_CONTEXT_LENGTH="131072"; $env:OLLAMA_FLASH_ATTENTION="1"; $env:OLLAMA_KV_CACHE_TYPE="q8_0"; ollama serve
+```
+
+On macOS or Linux:
+
+```bash
+OLLAMA_CONTEXT_LENGTH=131072 OLLAMA_FLASH_ATTENTION=1 OLLAMA_KV_CACHE_TYPE=q8_0 ollama serve
+```
+
+In llama.cpp, add `-fa on --cache-type-k q8_0 --cache-type-v q8_0` to the llama-server command. <GuideLink slug="kv-cache-context" /> explains what each cache type costs.
+
+## Thinking mode: the stricter bar and how to turn it off
+
+All four models think by default, so CanRun holds them to 1.5× stricter speed thresholds, because a thinking reply costs many more tokens. The verdict follows the model, so turning thinking off does not change it. The 2-bit Qwen3.8 27B on the RTX 5060 Ti 16GB shows the bar: it sits fully on the GPU and still Runs well, because its estimate clears the normal Runs great line but not the stricter one.<Expect model="qwen3.8-27b" gpu="rtx-5060-ti-16gb" quant="Q2_K" verdict="A" mode="full-gpu" />
+
+To turn thinking off in Ollama, run `ollama run qwen3.8:27b --think=false`, or type `/set nothink` inside a session. Through Ollama's API, send `"think": false`; on its OpenAI-compatible `/v1` endpoint, send `"reasoning_effort": "none"`. In llama-server, start with `--reasoning off` (`-rea off`), or send `"chat_template_kwargs": {"enable_thinking": false}` with a request, the form both model cards show. The Qwen3.6 card says Qwen3's `/think` and `/nothink` tags are not officially supported.
+
+Qwen3.8's chat template accepts a `reasoning_effort` of `xhigh` (the default), `medium` or `low`, and raises an error for any other value. llama-server's `--reasoning-effort low` passes the level to the template. Qwen3.6's template has no levels.
+
+Qwen3.8 also keeps earlier turns' thinking by default, while Qwen3.6 keeps only the latest turn's unless you turn `preserve_thinking` on. If your runtime sends that thinking back with the chat history, it takes up context like any other text, so a long chat fills the context sooner. <GuideLink slug="thinking-models" /> covers the speed cost in more detail.
+
+## Ollama tags and llama.cpp commands
+
+In Ollama's library, `qwen3.6` (the `qwen3.6:latest` tag) is the 35B-A3B, the same file as `qwen3.6:35b-a3b`, and the dense model is `qwen3.6:27b`. `qwen3.8` (`latest`) is `qwen3.8:27b`; there is no 35B-A3B under qwen3.8. The default tags are Q4_K_M with a vision projector bundled, and the library also lists q8_0, bf16 and mtp variants. On a 16GB card, a Q4_K_M Qwen3.8 27B is the partial-offload case from the grid, where it Runs slowly.<Expect model="qwen3.8-27b" gpu="rtx-5060-ti-16gb" verdict="B" mode="partial-offload" />
+
+Ollama's library files are Ollama's own builds. To run the files CanRun calculates, pull them from Hugging Face with the `hf.co/` form:
+
+```powershell
+ollama run hf.co/bartowski/Qwen3.8-27B-GGUF:IQ4_XS
+ollama run hf.co/unsloth/Qwen3.6-27B-GGUF:IQ4_XS
+ollama run hf.co/bartowski/Qwen_Qwen3.6-35B-A3B-GGUF:Q4_K_M
+```
+
+To set the context, quit the Ollama app from the taskbar first. Then start the server in PowerShell with `$env:OLLAMA_CONTEXT_LENGTH="8192"; ollama serve` and run the model in a second window. On macOS or Linux the server line is `OLLAMA_CONTEXT_LENGTH=8192 ollama serve`.
+
+For llama.cpp, CanRun's calculation gives these commands for the RTX 5060 Ti 16GB. On Windows, run them in PowerShell from the llama.cpp folder; on macOS or Linux, use `llama-server` instead of `.\llama-server.exe`.
+
+```powershell
+.\llama-server.exe -hf bartowski/Qwen3.8-27B-GGUF:Q4_K_M -c 8192 -ngl 52 -fa on
+.\llama-server.exe -hf bartowski/Qwen_Qwen3.6-35B-A3B-GGUF:Q4_K_M -c 8192 -ngl all --n-cpu-moe 15 -fa on
+```
+
+In the second command, `-ngl all` puts every layer on the GPU and `--n-cpu-moe 15` sends the experts of the first 15 layers to system RAM, because in CanRun's calculation the 35B-A3B keeps part of its experts there.<Expect model="qwen3.6-35b-a3b" gpu="rtx-5060-ti-16gb" fits="true" mode="cpu-moe" /> For IQ4_XS, leave the split to `--fit`: `.\llama-server.exe -hf bartowski/Qwen3.8-27B-GGUF:IQ4_XS -c 8192`. Add `--no-mmproj` for text-only use and `--reasoning off` to turn thinking off.
+
+Your runtime may place the model differently from CanRun's calculation. Check the PROCESSOR column of `ollama ps` or the llama.cpp startup log; <GuideLink slug="moe-cpu-offload" /> explains the MoE split.
+
+## How sure are these numbers?
+
+Memory is calculated by formula from the GGUF headers, so it carries no error band. MTP blocks and vision files are left out, and the speed estimates assume MTP is off. Calibrated speeds are ±12% for a dense model fully on an NVIDIA card, and ±20% for an MoE model or partial offload. Theoretical speeds are ±30%, used here when experts sit in system RAM.
+
+In this grid, the Qwen3.8 27B cells on the RTX 4090 and RTX 5090 are public benchmarks,<Expect model="qwen3.8-27b" gpu="rtx-4090" verdict="S" confidence="measured" /><Expect model="qwen3.8-27b" gpu="rtx-5090" verdict="S" confidence="measured" /> and so are the Qwen3.5 9B cells on the RTX 3060 12GB and the RTX 4090.<Expect model="qwen3.5-9b" gpu="rtx-3060-12gb" verdict="S" confidence="measured" /><Expect model="qwen3.5-9b" gpu="rtx-4090" verdict="S" confidence="measured" /> Qwen3.6 35B-A3B on the 8GB to 16GB cards is theoretical, and everything else is calibrated.
+
+The first result below comes from a llama.cpp GitHub issue thread. It was run on Linux with llama-bench (a 1k-token prompt and 400 generated tokens), using Ollama's own Q4_K_M file, which is a little smaller than the bartowski file CanRun calculates with. In that run, Qwen3.8 27B Runs great on the RTX 4090.<Expect model="qwen3.8-27b" gpu="rtx-4090" verdict="S" confidence="measured" /> It is not a CanRun run, and the block shows it next to CanRun's 8k estimate band. The measured speed sits above that band, which may come partly from the smaller file and the different OS.
+
+<Measured model="qwen3.8-27b" gpu="rtx-4090" />
+
+The second result is Qwen3.6 35B-A3B on the <HubLink gpu="amd-strix-halo" />, a unified-memory PC that CanRun shows here with 64GB. It is not a graphics card: the whole file sits in memory that the GPU reads directly. The figure comes from a llama.cpp issue comment (llama-bench with the Vulkan backend), which does not say whose GGUF file was used. With that result, CanRun rates the model Runs great on its 64GB setup.<Expect model="qwen3.6-35b-a3b" gpu="amd-strix-halo" ram="64" verdict="S" confidence="measured" />
+
+<Measured model="qwen3.6-35b-a3b" gpu="amd-strix-halo" />
+
+Setups with experts in system RAM on a graphics card keep the theoretical label. Against public results, that part of the formula was off by about 10% on average, but by close to 40% in some setups (see <GuideLink slug="moe-cpu-offload" />).
+
+All verdicts assume Windows with the card driving the display, 32GB of DDR5-5600 dual-channel system RAM, an 8k context, an f16 KV cache, one model loaded and one request at a time. The legend below shows the normal thresholds; for these four thinking models, multiply each speed in it by 1.5.
+
+<Threshold />
+
+## Where to go next
+
+- <GuideLink slug="moe-cpu-offload" />: how experts end up in system RAM, and how much RAM each card needs.
+- <GuideLink slug="gguf-quantization" />: quant levels and quality groups, including the 2-bit files.
+- <GuideLink slug="thinking-models" />: the speed cost of thinking and how to turn it off.
+- <GuideLink slug="kv-cache-context" />: why some models' KV cache grows faster than others.
+- <GuideLink slug="ollama-context-length" />: Ollama's default context and how to change it.
+- <GuideLink slug="gpu-by-budget" />: what each memory size runs.
+- Model pages <HubLink model="qwen3.6-27b" />, <HubLink model="qwen3.8-27b" />, <HubLink model="qwen3.6-35b-a3b" /> and <HubLink model="qwen3.5-9b" /> list every card.
+
+## FAQ
+
+### Is Qwen3.8 27B better than Qwen3.6 27B?
+
+Qwen's own benchmarks say so, but CanRun does not measure answer quality. The Qwen3.8 27B card reports a higher score for 3.8 on every benchmark row that lists both models, and those are the maker's own figures. In memory and speed the two are nearly the same. Both Run great on the RTX 3090.<Expect model="qwen3.6-27b" gpu="rtx-3090" verdict="S" /><Expect model="qwen3.8-27b" gpu="rtx-3090" verdict="S" />
+
+### Does Qwen3.8 27B need more VRAM than Qwen3.6 27B?
+
+Almost no more, and the small gap does not come from the model. The two share one architecture, and their GGUF files come from different publishers: at 8k, Qwen3.6 27B needs <Num kind="needGB" model="qwen3.6-27b" /> and Qwen3.8 27B needs <Num kind="needGB" model="qwen3.8-27b" />. At Q4_K_M both Run slowly on the RTX 5060 Ti 16GB, with part of the model in system RAM.<Expect model="qwen3.6-27b" gpu="rtx-5060-ti-16gb" verdict="B" mode="partial-offload" /><Expect model="qwen3.8-27b" gpu="rtx-5060-ti-16gb" verdict="B" mode="partial-offload" />
+
+### Can a 16GB GPU run Qwen3.6 27B or Qwen3.6 35B-A3B?
+
+On the RTX 5060 Ti 16GB, both run, in different ways. The 35B-A3B fits with part of its experts in system RAM.<Expect model="qwen3.6-35b-a3b" gpu="rtx-5060-ti-16gb" fits="true" mode="cpu-moe" /> The 27B at Q4_K_M Runs slowly with part of the model in system RAM,<Expect model="qwen3.6-27b" gpu="rtx-5060-ti-16gb" verdict="B" mode="partial-offload" /> and IQ4_XS brings it up to Runs well.<Expect model="qwen3.6-27b" gpu="rtx-5060-ti-16gb" quant="IQ4_XS" verdict="A" /> The 2-bit UD-Q2_K_XL file fits fully on the GPU,<Expect model="qwen3.6-27b" gpu="rtx-5060-ti-16gb" quant="UD-Q2_K_XL" fits="true" mode="full-gpu" /> but it is in the Heavy loss group.
+
+### Is there a Qwen3.8 35B-A3B?
+
+No. As of October 2026, Qwen's Hugging Face page lists none. The Qwen3.8 models there are the 27B and much larger models, so the newest 35B-A3B is Qwen3.6's, which Runs great fully on the RTX 3090.<Expect model="qwen3.6-35b-a3b" gpu="rtx-3090" verdict="S" mode="full-gpu" />
+
+### How do I turn off thinking in Qwen3.6 and Qwen3.8?
+
+Use `--think=false` in Ollama, `--reasoning off` in llama-server, or `"enable_thinking": false` inside `chat_template_kwargs` in an API request. The Qwen3.6 card says Qwen3's `/think` and `/nothink` tags are not officially supported. CanRun's verdict stays the same with thinking off, because it follows the model.
+
+## Sources
+
+- [Qwen3.6-27B model card](https://huggingface.co/Qwen/Qwen3.6-27B): the layer layout, native context and its extension, the advice to keep the context at 128K or more, `/think` and `/nothink` not officially supported, `enable_thinking`, `preserve_thinking` as an opt-in, Apache 2.0.
+- [Qwen3.8-27B model card](https://huggingface.co/Qwen/Qwen3.8-27B): built on the Qwen3.5 architecture, the claimed gains, thinking on by default, the `reasoning_effort` levels, `preserve_thinking` on by default, benchmark tables that include Qwen3.6 27B, native context and its extension.
+- [Qwen3.6-35B-A3B model card](https://huggingface.co/Qwen/Qwen3.6-35B-A3B): 35B total and 3B active parameters, 256 experts with 8 routed and 1 shared, 40 layers, the 128K advice.
+- [Qwen3.8-27B chat template](https://huggingface.co/Qwen/Qwen3.8-27B/blob/main/chat_template.jinja): `reasoning_effort` defaults to `xhigh` and accepts only `xhigh`, `medium` and `low`; earlier thinking is kept unless `preserve_thinking` is false.
+- [Qwen3.6-27B configuration](https://huggingface.co/Qwen/Qwen3.6-27B/blob/main/config.json) and [Qwen3.8-27B configuration](https://huggingface.co/Qwen/Qwen3.8-27B/blob/main/config.json): the same architecture type, 64 layers, full attention on every fourth layer.
+- [QwenLM/Qwen3.8 on GitHub](https://github.com/QwenLM/Qwen3.8): release dates in the news list, and one open-model series covering Qwen3.5, Qwen3.6 and Qwen3.8.
+- [unsloth/Qwen3.6-27B-GGUF](https://huggingface.co/unsloth/Qwen3.6-27B-GGUF), [bartowski/Qwen3.8-27B-GGUF](https://huggingface.co/bartowski/Qwen3.8-27B-GGUF) and [bartowski/Qwen_Qwen3.6-35B-A3B-GGUF](https://huggingface.co/bartowski/Qwen_Qwen3.6-35B-A3B-GGUF): the file lists, including the 2-bit files and the mmproj vision files.
+- [Ollama library: qwen3.6 tags](https://ollama.com/library/qwen3.6/tags) and [qwen3.8 tags](https://ollama.com/library/qwen3.8/tags): which tag points to which model, and the Q4_K_M default with a bundled vision projector.
+- [Ollama docs: thinking](https://docs.ollama.com/capabilities/thinking): the `think` field in API requests.
+- [Ollama blog: thinking](https://ollama.com/blog/thinking): `--think=false` on the command line and `/set nothink` inside a session.
+- [Ollama v0.40.4 source: openai/openai.go](https://github.com/ollama/ollama/blob/v0.40.4/openai/openai.go): on the OpenAI-compatible endpoint, `reasoning_effort` `none` turns thinking off.
+- [Ollama docs: context length](https://docs.ollama.com/context-length): the default context by GPU memory.
+- [Ollama FAQ](https://docs.ollama.com/faq): the PROCESSOR column of `ollama ps`, and `OLLAMA_KV_CACHE_TYPE`.
+- [Hugging Face: using Ollama with GGUF models on the Hub](https://huggingface.co/docs/hub/ollama): the `ollama run hf.co/user/repo:quant` form.
+- [llama.cpp: server README](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md): `-hf` downloads the mmproj file by default and `--no-mmproj` turns it off; `--reasoning`, `--reasoning-effort`, `--chat-template-kwargs`, `--fit`, `--n-cpu-moe`, `--cache-type-k` and `--cache-type-v`, `-fa`.
+- [llama.cpp issue 28196, comment](https://github.com/ggml-org/llama.cpp/issues/28196#issuecomment-5644215426): the measured Qwen3.8 27B result on the RTX 4090.
+- [llama.cpp issue 22375, comment](https://github.com/ggml-org/llama.cpp/issues/22375#issuecomment-4321169662): the measured Qwen3.6 35B-A3B result on the Strix Halo.
