@@ -51,7 +51,7 @@ export const GUIDE_SLUGS = [
   'laptop-gpu-llm',
   'multi-gpu',
   'cpu-only-llm',
-  // 10-19 D103: 검색 유입용 새 가이드 초안 4편(자동완성 조사 10-16) — 게시는 사용자 승인 슬러그만(D40)
+  // 10-19 D103: 검색 유입용 새 가이드 4편(자동완성 조사 10-16) — 10-19 사용자 게시 승인(D108)
   'gemma-4-models',
   'qwen3.6-vs-qwen3.8',
   'deepseek-local',
@@ -69,8 +69,8 @@ const PUBLISHED = { status: 'published', reviewedAt: '2026-09-30', datePublished
 /** 10-15 D75·D76·D77 배치 1·2·3 — 사용자가 채팅으로 12편 모두 게시 승인(D84, D40). 날짜는 UTC(배포일) */
 const PUBLISHED_1015 = { status: 'published', reviewedAt: '2026-10-15', datePublished: '2026-10-15', dateModified: '2026-10-15', author: 'CanRun' } as const;
 
-/** 10-19 D103 초안 — URL 로만 열리고 noindex. 게시 승인 시 PUBLISHED_* 로 바꾼다 */
-const DRAFT_1019 = { status: 'draft', datePublished: '2026-10-19', dateModified: '2026-10-19', author: 'CanRun' } as const;
+/** 10-19 D103 — 사용자가 채팅으로 4편 모두 게시 승인(D108, D40). 날짜는 UTC(배포일) */
+const PUBLISHED_1019 = { status: 'published', reviewedAt: '2026-10-19', datePublished: '2026-10-19', dateModified: '2026-10-19', author: 'CanRun' } as const;
 
 export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
   'vram-requirements': {
@@ -122,7 +122,7 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
     // 10-03 D62: 필요량 정의(그래픽카드에 올라가는 가중치)·여유 문장 갱신
     dateModified: '2026-10-03',
     grids: {},
-    related: ['vram-requirements', 'kv-cache-context', 'korean-open-llms'],
+    related: ['qwen3.6-vs-qwen3.8', 'vram-requirements', 'kv-cache-context'],
     locales: {
       en: {
         title: 'GGUF quantization: Q4_K_M vs IQ4_XS vs Q8_0 — which to download',
@@ -247,7 +247,7 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
         models: ['gpt-oss-20b', 'gemma-4-26b-a4b', 'qwen3-30b-a3b-2507', 'qwen3.6-35b-a3b', 'gpt-oss-120b', 'qwen3.5-122b-a10b'],
       },
     },
-    related: ['vram-requirements', 'kv-cache-context', 'gguf-quantization'],
+    related: ['gemma-4-models', 'vram-requirements', 'kv-cache-context'],
     locales: {
       en: {
         title: 'Running MoE models bigger than your GPU: gpt-oss-120b with system RAM',
@@ -328,7 +328,7 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
     ...PUBLISHED_1015,
     // 그리드 없음 — KvPerTokenTable·CtxTable(qwen3-32b × rtx-4090)·MemoryBreakdown·Measured 로 기본값의 메모리 차이를 보인다
     grids: {},
-    related: ['ollama-context-length', 'kv-cache-context', 'gpu-offload-check'],
+    related: ['ollama-lm-studio-requirements', 'ollama-context-length', 'kv-cache-context'],
     locales: {
       en: {
         title: 'Ollama vs llama.cpp vs LM Studio: same engine, different defaults',
@@ -353,7 +353,7 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
         models: ['phi-4', 'qwen3-14b', 'gemma-3-27b', 'qwen3-32b', 'gemma-4-26b-a4b', 'gpt-oss-20b'],
       },
     },
-    related: ['ollama-context-length', 'kv-cache-context', 'vram-requirements'],
+    related: ['deepseek-local', 'ollama-context-length', 'kv-cache-context'],
     locales: {
       en: {
         title: 'Thinking models on local hardware: the speed cost and how to turn thinking off',
@@ -514,7 +514,7 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
     },
   },
   'gemma-4-models': {
-    ...DRAFT_1019,
+    ...PUBLISHED_1019,
     grids: {
       // 8~32GB 데스크톱 dGPU 8종 × Gemma 4 세 크기 — 배치 2 의 Gemma 4 dGPU 콤보를 덮는다. E2B·E4B 는 카탈로그 밖(D98)이라 본문 산문으로만
       gemma4: {
@@ -537,7 +537,7 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
     },
   },
   'qwen3.6-vs-qwen3.8': {
-    ...DRAFT_1019,
+    ...PUBLISHED_1019,
     grids: {
       // gemma4 와 같은 8종 × Qwen 3.5~3.8 — 9B 는 작은 대안. 배치 2 의 qwen3.5-9b·qwen3.8-27b·qwen3.6-35b-a3b dGPU 콤보를 덮는다
       qwen36: {
@@ -560,7 +560,7 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
     },
   },
   'deepseek-local': {
-    ...DRAFT_1019,
+    ...PUBLISHED_1019,
     grids: {
       // 8~32GB dGPU 6종 × R1 소형 4종 — 0528-qwen3-8b 는 Ollama deepseek-r1 기본 태그, distill-14b 는 :14b (10-19 추가).
       // 원본 R1·V3·V4 는 카탈로그 밖이라 모델 카드 출처의 산문으로만
@@ -584,7 +584,7 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
     },
   },
   'ollama-lm-studio-requirements': {
-    ...DRAFT_1019,
+    ...PUBLISHED_1019,
     grids: {
       // 8·12·16·24·32GB 한 장씩 × 크기 순 모델 6 — gpt-oss-20b·qwen3-14b 칸은 배치 1 이라 링크된다
       ollamaTiers: {

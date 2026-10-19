@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { isCalendarDate, parseGpus, parseModels } from '@canrun/data';
+import { publishedCompares } from '@/content/compares';
 import { GUIDES, GUIDE_SLUGS } from '@/content/guides';
 import { STATIC_PAGE_SLUGS } from '@/content/pages';
 import { SITE_UPDATES, latestSiteUpdate } from '@/content/updates';
@@ -111,6 +112,9 @@ describe('static page MDX internal links (<SiteLink to>) point at pages that exi
     ...STATIC_PAGE_SLUGS.map((slug) => `/${slug}`),
     ...(published.length > 0 ? ['/guides'] : []),
     ...published.map((slug) => `/guides/${slug}`),
+    // GPU 비교 (10-19 D106) — 게시 쌍과, 게시 쌍이 있을 때의 목차
+    ...(publishedCompares().length > 0 ? ['/compare'] : []),
+    ...publishedCompares().map((slug) => `/compare/${slug}`),
   ]);
   const exists = (to: string) => {
     const hub = /^\/(model|gpu)\/([^/]+)$/.exec(to);

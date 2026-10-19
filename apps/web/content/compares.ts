@@ -53,89 +53,89 @@ export const COMPARE_SLUGS = [
 
 export type CompareSlug = (typeof COMPARE_SLUGS)[number];
 
-/** 10-19 D106 v1 — 전부 초안(사용자 게시 승인 전) */
-const DRAFT_1019 = { status: 'draft', dateModified: '2026-10-19' } as const;
+/** 10-19 D106 v1 — 10-19 사용자가 채팅으로 12쌍 모두 게시 승인(D108). 날짜는 UTC(배포일) */
+const PUBLISHED_1019 = { status: 'published', reviewedAt: '2026-10-19', dateModified: '2026-10-19' } as const;
 
 export const COMPARES: Readonly<Record<CompareSlug, CompareEntry>> = {
   'rtx-5060-ti-16gb-vs-rtx-5070': {
-    ...DRAFT_1019,
+    ...PUBLISHED_1019,
     a: 'rtx-5060-ti-16gb',
     b: 'rtx-5070',
     group: 'entry',
     demand: "Naver '5060ti 16gb 5070 12gb'",
   },
   'rtx-4060-ti-16gb-vs-rtx-5060-ti-16gb': {
-    ...DRAFT_1019,
+    ...PUBLISHED_1019,
     a: 'rtx-4060-ti-16gb',
     b: 'rtx-5060-ti-16gb',
     group: 'entry',
     demand: "Google '4060ti 16gb vs 5060ti 16gb llm'",
   },
   'rtx-3060-12gb-vs-rtx-4060': {
-    ...DRAFT_1019,
+    ...PUBLISHED_1019,
     a: 'rtx-3060-12gb',
     b: 'rtx-4060',
     group: 'entry',
     demand: "Google '3060 vs 4060 llm'",
   },
   'rtx-5060-ti-8gb-vs-rtx-5060-ti-16gb': {
-    ...DRAFT_1019,
+    ...PUBLISHED_1019,
     a: 'rtx-5060-ti-8gb',
     b: 'rtx-5060-ti-16gb',
     group: 'entry',
     demand: "Google ko '5060ti 8gb 16gb 차이'",
   },
   'rtx-5070-ti-vs-rtx-5060-ti-16gb': {
-    ...DRAFT_1019,
+    ...PUBLISHED_1019,
     a: 'rtx-5070-ti',
     b: 'rtx-5060-ti-16gb',
     group: 'midrange',
     demand: "Google '5070ti vs 5060ti llm'",
   },
   'rx-9070-xt-vs-rtx-5070': {
-    ...DRAFT_1019,
+    ...PUBLISHED_1019,
     a: 'rx-9070-xt',
     b: 'rtx-5070',
     group: 'midrange',
     demand: "Google '9070xt vs 5070 llm'",
   },
   'rtx-4090-vs-rtx-5090': {
-    ...DRAFT_1019,
+    ...PUBLISHED_1019,
     a: 'rtx-4090',
     b: 'rtx-5090',
     group: 'high-end',
     demand: "Google '4090 vs 5090 llm'; competitor localai.co.kr compare page on Naver",
   },
   'rtx-3090-vs-rtx-4090': {
-    ...DRAFT_1019,
+    ...PUBLISHED_1019,
     a: 'rtx-3090',
     b: 'rtx-4090',
     group: 'high-end',
     demand: "Google '3090 vs 4090 llm'",
   },
   'rtx-3090-vs-rtx-5090': {
-    ...DRAFT_1019,
+    ...PUBLISHED_1019,
     a: 'rtx-3090',
     b: 'rtx-5090',
     group: 'high-end',
     demand: "Google '3090 vs 5090 llm'",
   },
   'amd-strix-halo-vs-nvidia-dgx-spark': {
-    ...DRAFT_1019,
+    ...PUBLISHED_1019,
     a: 'amd-strix-halo',
     b: 'nvidia-dgx-spark',
     group: 'cross-platform',
     demand: "Google 'ai max 395 vs dgx spark'",
   },
   'amd-strix-halo-vs-rtx-5070-ti': {
-    ...DRAFT_1019,
+    ...PUBLISHED_1019,
     a: 'amd-strix-halo',
     b: 'rtx-5070-ti',
     group: 'cross-platform',
     demand: "Naver 'Ai max 395 5070ti비교', Google 'ai max 395 vs 5070 ti'",
   },
   'apple-m4-pro-vs-rtx-5060-ti-16gb': {
-    ...DRAFT_1019,
+    ...PUBLISHED_1019,
     a: 'apple-m4-pro',
     b: 'rtx-5060-ti-16gb',
     group: 'cross-platform',
