@@ -378,7 +378,7 @@ function guideCardElement(g: GuideCardText): Node {
 }
 
 function compareCardElement(c: CompareCardText): Node {
-  const size = c.title.length > 44 ? '50px' : c.title.length > 30 ? '60px' : '72px';
+  const size = c.title.length > 56 ? '44px' : c.title.length > 44 ? '50px' : c.title.length > 30 ? '60px' : '72px';
   return frame([
     h('div', { display: 'flex', flexDirection: 'column' }, [
       h('div', { fontSize: size, lineHeight: 1.1, letterSpacing: '-1px' }, c.title),

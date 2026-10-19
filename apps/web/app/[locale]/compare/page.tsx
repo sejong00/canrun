@@ -89,11 +89,14 @@ export default async function CompareIndexPage({ params }: Props) {
                       </a>
                       {speed && <p className="text-sm">{speed}</p>}
                       <p className="text-sm text-muted-foreground">
+                        {/* 쾌적·원활을 따로 — 합만 보이면 같은 VRAM 카드끼리 같은 숫자가 된다(GPU 목록 D101 과 같은 이유) */}
                         {compare('cardCounts', {
                           a: compareNameWithMemory(t, locale, cmp.a),
                           b: compareNameWithMemory(t, locale, cmp.b),
-                          goodA: cmp.a.counts.S + cmp.a.counts.A,
-                          goodB: cmp.b.counts.S + cmp.b.counts.A,
+                          greatA: cmp.a.counts.S,
+                          wellA: cmp.a.counts.A,
+                          greatB: cmp.b.counts.S,
+                          wellB: cmp.b.counts.A,
                           total: cmp.rows.length,
                         })}
                       </p>

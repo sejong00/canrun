@@ -816,7 +816,7 @@
     "cardTitle": "{a} vs {b}",
     "cardFaster": "The {faster} is about {ratio}× faster (median of estimates).",
     "cardSame": "About the same speed (median of estimates).",
-    "cardCounts": "Runs great or well: {goodA} on the {a}, {goodB} on the {b} (of {total} models).",
+    "cardCounts": "{a}: Great {greatA} · Well {wellA}; {b}: Great {greatB} · Well {wellB} (of {total} models).",
     "hubTitle": "Compare the {gpu} with"
   },
   "Faq": {

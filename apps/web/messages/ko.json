@@ -816,7 +816,7 @@
     "cardTitle": "{a} vs {b}",
     "cardFaster": "{faster} 쪽이 약 {ratio}배 빠릅니다(추정치 중앙값).",
     "cardSame": "속도는 거의 같습니다(추정치 중앙값).",
-    "cardCounts": "쾌적·원활: {a} {goodA}개, {b} {goodB}개(전체 {total}개).",
+    "cardCounts": "{a}: 쾌적 {greatA} · 원활 {wellA}, {b}: 쾌적 {greatB} · 원활 {wellB}(전체 {total}개).",
     "hubTitle": "다른 기기와 {gpu} 비교"
   },
   "Faq": {
