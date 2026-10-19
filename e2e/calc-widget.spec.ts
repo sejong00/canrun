@@ -2,7 +2,7 @@
  * 상세 페이지 계산기 위젯 (10-19 D107 — 검색으로 콤보·허브·비교 페이지에 들어온 사람이 계산기를 바로 써 보게).
  * 정적 HTML 계약(위젯 1개·action·숨은 값·딥 링크 쿼리)은 test/export-invariants.spec.ts 가 전 페이지에서 본다.
  * 여기는 브라우저에서만 드러나는 것: 판정이 위젯보다 위, 미리 고른 GPU 그대로 제출·다른 GPU 로 바꿔 제출, 모델 허브의 빈 칸 → 모델 모드,
- * 하이드레이션 오류·실패 요청 0.
+ * 하이드레이션 오류·실패 요청 0, JS 없이(하이드레이션 전) 칸에 친 GPU 가 그대로 가는지(리뷰 반영).
  */
 import { expect, test, type Page } from '@playwright/test';
 import { collectProblems, LOCALES, localePath, open } from './helpers';
@@ -98,6 +98,59 @@ for (const locale of LOCALES) {
       await page.waitForLoadState('networkidle');
       await expect(page.locator('[data-result-card]').first()).toBeVisible();
       expect(problems, 'console errors / failed requests').toEqual([]);
+    });
+  });
+
+  // 스크립트가 돌기 전(느린 휴대폰)·JS 를 끈 브라우저 — 칸에 친 GPU 가 미리 고른 GPU·숨은 mode 에 덮이지 않는다 (D107 리뷰 반영)
+  test.describe(`${locale} calculator widget without JavaScript`, () => {
+    test.use({ javaScriptEnabled: false });
+    const gpuBox = (page: Page) => widget(page).locator('input[id$="-gpu"]');
+    // JS 를 끄면 브라우저가 스크립트 요청을 'csp' 로 막는다 — 그 밖의 실패 요청·4xx 는 없어야 한다 (calculator.spec 과 같다)
+    const realProblems = (problems: string[]) => problems.filter((p) => !/^requestfailed: GET \S+\.js — csp$/.test(p));
+
+    test('combo and model hub: a GPU typed into the box is what the calculator gets, and the calculator reads it', async ({ page, browser }) => {
+      const problems = collectProblems(page);
+      await open(page, localePath(locale, COMBO.path));
+      await expect(gpuBox(page)).toHaveValue(/RTX 4060/);
+      await gpuBox(page).fill('RTX 4070');
+      await widget(page).locator('button[type="submit"]').click();
+      await page.waitForURL((u) => u.pathname === calc);
+      expect(params(page)).toEqual({ m: COMBO.model, gpu: 'RTX 4070' });
+      const comboTarget = page.url();
+
+      await open(page, localePath(locale, MODEL_HUB.path));
+      await expect(gpuBox(page)).toHaveValue('');
+      await gpuBox(page).fill('RTX 4070');
+      await widget(page).locator('button[type="submit"]').click();
+      await page.waitForURL((u) => u.pathname === calc);
+      expect(params(page)).toEqual({ m: MODEL_HUB.model, gpu: 'RTX 4070' });
+      expect(realProblems(problems)).toEqual([]);
+
+      // 같은 주소를 JS 가 있는 브라우저로 열면 계산기가 이름을 그 GPU 로 읽고 모델을 강조한다(D31).
+      // 새 컨텍스트도 이 describe 의 use 옵션을 물려받으므로 JS 를 명시적으로 켠다
+      const context = await browser.newContext({ javaScriptEnabled: true });
+      try {
+        const calcPage = await context.newPage();
+        const calcProblems = collectProblems(calcPage);
+        await open(calcPage, comboTarget);
+        await calcPage.waitForURL((u) => u.searchParams.get('gpu') === 'rtx-4070');
+        await expect(calcPage.locator(`[data-result-card][data-model-id="${COMBO.model}"]`)).toHaveAttribute('aria-current', 'true');
+        expect(calcProblems, 'console errors / failed requests').toEqual([]);
+      } finally {
+        await context.close();
+      }
+    });
+
+    test('combo: submitting the prefilled box unchanged sends the page GPU by name', async ({ page }) => {
+      const problems = collectProblems(page);
+      await open(page, localePath(locale, COMBO.path));
+      await widget(page).locator('button[type="submit"]').click();
+      await page.waitForURL((u) => u.pathname === calc);
+      const sent = params(page);
+      expect(sent.m).toBe(COMBO.model);
+      expect(sent.gpu).toMatch(/RTX 4060$/);
+      expect(Object.keys(sent).sort()).toEqual(['gpu', 'm']);
+      expect(realProblems(problems)).toEqual([]);
     });
   });
 }

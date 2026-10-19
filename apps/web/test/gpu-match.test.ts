@@ -99,6 +99,18 @@ describe('matchGpu — catalog self-resolution', () => {
     expect(bad).toEqual([]);
   });
 
+  it('the picker display name (en/ko) resolves to exactly that GPU — a prefilled widget submits it before hydration (D107 review fix)', () => {
+    const bad: string[] = [];
+    for (const names of [enNames, koNames]) {
+      for (const gpu of gpus) {
+        const label = names[gpu.id] ?? gpu.name;
+        const m = matchGpu(label, gpus, { names });
+        if (!(m.kind === 'exact' && m.id === gpu.id)) bad.push(`${gpu.id} ← "${label}" → ${JSON.stringify(m)}`);
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+
   it('another GPU\'s full name never resolves to me alone', () => {
     const bad: string[] = [];
     for (const gpu of gpus) {

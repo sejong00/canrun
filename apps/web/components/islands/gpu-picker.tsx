@@ -30,7 +30,9 @@ type Props = {
  * 계산기와 같은 목록(`GpuListbox` — 6그룹 둘러보기·검색 순위)을 쓴다. 폼 자체는 서버 컴포넌트 `CalcWidget` 의 GET 폼 그대로라
  * JS 가 없거나 하이드레이션 전이면 `input list` + datalist(표시명만, 그룹 순)로 동작한다.
  * 목록에서 고르면 숨은 `gpu=<id>` 를 보내고, 직접 친 텍스트는 그대로 보내 계산기가 해석한다(D31).
- * 상세 페이지(10-19 D107)는 `initialGpuId` 로 그 페이지의 GPU 를 미리 고른 채 그린다 — SSR 부터 숨은 `gpu=<id>` 가 있어 JS 없이도 그 GPU 로 열린다.
+ * 상세 페이지(10-19 D107)는 `initialGpuId` 로 그 페이지의 GPU 를 미리 고른 채 그린다. 숨은 값(`gpu=<id>`·`emptyFields`)은 하이드레이션 뒤에만 —
+ * 그 전(JS 없음·느린 기기)엔 보이는 칸이 `name="gpu"` 로 표시명을 보내고 계산기가 그 이름을 해석한다(D31). 그래야 스크립트가 돌기 전에
+ * 다른 GPU 를 쳐도 숨은 값이 그 글자를 덮지 않는다 (리뷰 반영).
  */
 export function GpuPicker({ locale, gpus, dict, inputId, label, placeholder, initialGpuId, emptyFields }: Props) {
   const hydrated = useHydrated();
@@ -62,8 +64,10 @@ export function GpuPicker({ locale, gpus, dict, inputId, label, placeholder, ini
   const options = browsing ? browseOrder(ranked) : ranked;
   const listId = `${inputId}-list`;
   const picked = chosen && gpuName(t.names, chosen) === text ? chosen : undefined;
+  // 숨은 값은 하이드레이션 뒤에만 보낸다 — 그 전엔 상태(text)가 칸에 친 글자를 모른다. 보이는 칸이 name="gpu" 로 글자 그대로 보낸다
+  const sentGpu = hydrated ? picked : undefined;
   // 비워 둔 칸 — `emptyFields` 가 있으면 빈 gpu= 대신 그 값들을 보낸다 (모델 허브: 비우면 계산기 모델 모드)
-  const emptySubmit = emptyFields !== undefined && !picked && text.trim() === '';
+  const emptySubmit = hydrated && emptyFields !== undefined && !picked && text.trim() === '';
   const activeOption = active >= 0 ? options[active] : undefined;
   const activeOptionId = hydrated && open && activeOption ? `${listId}-${activeOption.id}` : undefined;
   useEffect(() => {
@@ -129,9 +133,9 @@ export function GpuPicker({ locale, gpus, dict, inputId, label, placeholder, ini
       <input
         ref={inputRef}
         id={inputId}
-        // 목록에서 고른 GPU 는 숨은 입력이 id 로 보낸다 — 표시명 텍스트는 보내지 않는다
-        name={picked || emptySubmit ? undefined : 'gpu'}
-        required={!picked && emptyFields === undefined}
+        // 목록에서 고른 GPU 는 숨은 입력이 id 로 보낸다 — 표시명 텍스트는 보내지 않는다 (하이드레이션 전엔 칸이 보낸다)
+        name={sentGpu || emptySubmit ? undefined : 'gpu'}
+        required={!sentGpu && emptyFields === undefined}
         defaultValue={initialName || undefined}
         inputMode="search"
         enterKeyHint="go"
@@ -167,7 +171,7 @@ export function GpuPicker({ locale, gpus, dict, inputId, label, placeholder, ini
         }}
         onKeyDown={onKey}
       />
-      {picked && <input type="hidden" name="gpu" value={picked.id} />}
+      {sentGpu && <input type="hidden" name="gpu" value={sentGpu.id} />}
       {emptySubmit &&
         Object.entries(emptyFields).map(([name, value]) => <input key={name} type="hidden" name={name} value={value} />)}
       {hydrated ? (

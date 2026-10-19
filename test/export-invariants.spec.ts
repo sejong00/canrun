@@ -1310,25 +1310,28 @@ describe('calculator widget on detail pages (10-19 D107 — 검색으로 들어�
       const form = page.calcWidgetForms[0]!;
       expect(form.action, `${page.file} action`).toBe(localePath(page.locale, '/calculator'));
       expect(form.home, `${page.file} data-home-form`).toBe(false);
+      // 서버 HTML 에선 보이는 칸이 gpu 를 보낸다 — 숨은 gpu=<id> 는 하이드레이션 뒤에만 (JS 전에 친 GPU 를 덮지 않게, 리뷰 반영).
+      // 미리 채운 표시명은 계산기가 이름으로 해석한다(D31 — 표시명 자기 해석은 apps/web/test/gpu-match.test.ts)
+      expect(form.gpuInputName, `${page.file} GPU field name`).toBe('gpu');
       const id = page.urlPath.split('/').pop()!;
       if (page.kind === 'combo') {
         const { gpuId, modelId } = page.combo!;
-        expect(form.hidden, `${page.file} hidden fields`).toEqual({ m: modelId, gpu: gpuId });
+        expect(form.hidden, `${page.file} hidden fields`).toEqual({ m: modelId });
         expect(form.gpuText, `${page.file} GPU field`).toBe(displayName(page.locale, gpuId));
         expect(page.calcDeepLinks.map((l) => l.kind), `${page.file} deep links`).toEqual(['combo']);
         expectDeepLink(page, page.calcDeepLinks[0]!.href, gpuId, modelId);
       } else if (page.kind === 'gpu') {
-        expect(form.hidden, `${page.file} hidden fields`).toEqual({ gpu: id });
+        expect(form.hidden, `${page.file} hidden fields`).toEqual({});
         expect(form.gpuText, `${page.file} GPU field`).toBe(displayName(page.locale, id));
         expect(page.calcDeepLinks, `${page.file} deep links`).toEqual([]);
       } else if (page.kind === 'model') {
-        // GPU 칸은 비어 있고, 비운 채 보내면 계산기 모델 모드 (GPU 를 고르면 숨은 mode 가 사라진다 — 아일랜드, E2E)
-        expect(form.hidden, `${page.file} hidden fields`).toEqual({ m: id, mode: 'model' });
+        // GPU 칸은 비어 있다. 숨은 mode=model(비운 채 보내면 계산기 모델 모드)은 하이드레이션 뒤에 아일랜드가 붙인다 — E2E
+        expect(form.hidden, `${page.file} hidden fields`).toEqual({ m: id });
         expect(form.gpuText, `${page.file} GPU field`).toBe('');
         expect(page.calcDeepLinks, `${page.file} deep links`).toEqual([]);
       } else {
         const entry = COMPARES[page.compareSlug as keyof typeof COMPARES];
-        expect(form.hidden, `${page.file} hidden fields`).toEqual({ gpu: entry.a });
+        expect(form.hidden, `${page.file} hidden fields`).toEqual({});
         expect(form.gpuText, `${page.file} GPU field`).toBe(displayName(page.locale, entry.a));
         expect(page.calcDeepLinks.map((l) => l.kind), `${page.file} deep links`).toEqual(['a', 'b']);
         expectDeepLink(page, page.calcDeepLinks[0]!.href, entry.a);
@@ -1346,6 +1349,7 @@ describe('calculator widget on detail pages (10-19 D107 — 검색으로 들어�
       for (const form of page.calcWidgetForms) {
         expect(form.hidden, `${page.file} hidden fields`).toEqual({});
         expect(form.gpuText, `${page.file} GPU field`).toBe('');
+        expect(form.gpuInputName, `${page.file} GPU field name`).toBe('gpu');
         expect(form.home, `${page.file} data-home-form`).toBe(page.kind === 'home');
       }
     }

@@ -18,7 +18,10 @@ export type CalcWidgetPrefill = {
   gpuId?: string;
   /** 계산기에 함께 넘길 모델 id (숨은 `m`) — 콤보·모델 허브 */
   modelId?: string;
-  /** GPU 칸을 비워 둔 채 제출하면 계산기 모델 모드(`mode=model`)로 연다 — 모델 허브 */
+  /**
+   * GPU 칸을 비워 둔 채 제출하면 계산기 모델 모드(`mode=model`)로 연다 — 모델 허브. 숨은 `mode` 는 하이드레이션 뒤에만 붙는다
+   * (그 전엔 칸에 친 GPU 를 덮지 않게 — 비운 채 보내면 빈 `gpu=` 와 `m` 으로 하드웨어 모드가 열린다)
+   */
   modelModeWhenEmpty?: boolean;
   /** 제목 아래 한 줄 안내 */
   note: string;
@@ -29,7 +32,8 @@ export type CalcWidgetPrefill = {
 /**
  * 계산기 위젯 (P1-3 D25 · P1-4 D45 · 10-19 D107) — no-JS GET 폼이 `/calculator?gpu=…` 로 보낸다. 홈·모든 가이드·상세 페이지가 같은 컴포넌트를 쓴다.
  * GPU 입력은 클라이언트 아일랜드 `GpuPicker`(계산기와 같은 그룹 목록 — 09-30 사용자 요청으로 D45 의 "JS 0" 을 대체).
- * 폼·버튼·링크는 서버 렌더 그대로라 JS 없이도 GET 으로 동작한다(하이드레이션 전엔 표시명만 담은 datalist).
+ * 폼·버튼·링크는 서버 렌더 그대로라 JS 없이도 GET 으로 동작한다(하이드레이션 전엔 표시명만 담은 datalist, 칸이 `name="gpu"` 로 글자를 보낸다 —
+ * 미리 고른 GPU 도 표시명으로 가고 계산기가 해석한다 D31).
  * `idPrefix` 로 label·input·datalist id 를 가른다(한 페이지 여러 개여도 a11y label 짝이 맞게).
  * 홈은 `data-home-form`(E2E·export 계약)을 유지하고, 모든 위젯은 `data-calc-widget` 을 단다.
  * 상세 페이지(`prefill`)는 그 페이지의 GPU·모델을 미리 채운 작은 폼 — 검색으로 들어온 사람이 계산기를 바로 써 보게 (10-19 사용자 요청).

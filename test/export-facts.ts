@@ -124,9 +124,9 @@ export type PageFacts = {
   formActions: string[];
   /**
    * 계산기 위젯 `form[data-calc-widget]`(홈·가이드 D45 · 상세 페이지 10-19 D107) — action(엔티티 디코딩)·홈 폼 여부·숨은 입력(name → value)·
-   * GPU 칸(`#…-gpu`)의 SSR 값(미리 고른 GPU 의 표시명, 없으면 '')
+   * GPU 칸(`#…-gpu`)의 SSR 값(미리 고른 GPU 의 표시명, 없으면 '')·name(없으면 '' — SSR 엔 늘 'gpu': 하이드레이션 전엔 칸이 글자를 보낸다, 리뷰 반영)
    */
-  calcWidgetForms: Array<{ action: string; home: boolean; hidden: Record<string, string>; gpuText: string }>;
+  calcWidgetForms: Array<{ action: string; home: boolean; hidden: Record<string, string>; gpuText: string; gpuInputName: string }>;
   /** 위젯 아래 딥 링크 `a[data-calc-deep-link]` — kind(값)·href(엔티티 디코딩), 문서 순서 (10-19 D107) */
   calcDeepLinks: Array<{ kind: string; href: string }>;
   /** 첫 `<datalist>` 의 `<option>` 수 */
@@ -648,6 +648,7 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
   const calcWidgetForms = elementsWithAttr(noScript, 'data-calc-widget').map((e) => {
     const hidden: Record<string, string> = {};
     let gpuText = '';
+    let gpuInputName = '';
     for (const input of e.inner.matchAll(/<input\b[^>]*>/g)) {
       const tag = input[0];
       const name = attrValue(tag, 'name');
@@ -655,9 +656,16 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
         if (name !== undefined) hidden[name] = decodeEntities(attrValue(tag, 'value') ?? '');
       } else if (attrValue(tag, 'id')?.endsWith('-gpu')) {
         gpuText = decodeEntities(attrValue(tag, 'value') ?? '');
+        gpuInputName = name ?? '';
       }
     }
-    return { action: decodeEntities(attrValue(e.openTag, 'action') ?? ''), home: hasAttr(e.openTag, 'data-home-form'), hidden, gpuText };
+    return {
+      action: decodeEntities(attrValue(e.openTag, 'action') ?? ''),
+      home: hasAttr(e.openTag, 'data-home-form'),
+      hidden,
+      gpuText,
+      gpuInputName,
+    };
   });
   const datalist = html.match(/<datalist\b[^>]*>([\s\S]*?)<\/datalist>/)?.[1] ?? '';
   const datalistOptionCount = (datalist.match(/<option\b/g) ?? []).length;
