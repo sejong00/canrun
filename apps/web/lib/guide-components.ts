@@ -5,6 +5,8 @@
  * MDX 에서 prop 은 **문자열 리터럴만**(`{…}` 식 금지 — 빌드 시 임의 JS·D21 위반 방지). 목록은 쉼표 구분 문자열.
  * id 형 prop 은 테스트가 카탈로그로 검증한다.
  */
+import { RUNTIME_FACTS, type RuntimeFactId } from './runtime-facts';
+
 export type PropKind =
   | 'gpu'
   | 'model'
@@ -54,8 +56,9 @@ export type ExpectMode = (typeof EXPECT_MODES)[number];
 /** Expect confidence — 엔진 신뢰 라벨. "공개 벤치마크가 표에 있다", "이론 추정이다"처럼 라벨을 말하는 문장을 고정한다 (10-14 D74 리뷰) */
 export const EXPECT_CONFIDENCES = ['measured', 'calibrated', 'theoretical'] as const;
 
-export const RUNTIME_FACT_IDS = ['ollama-default-ctx', 'ollama-kv-cache-type'] as const;
-export type RuntimeFactId = (typeof RUNTIME_FACT_IDS)[number];
+/** 외부 도구 사실 id — 레코드(`lib/runtime-facts.ts`)의 키에서 나온다 (10-19 — 사실을 더할 때 이 목록은 손대지 않는다) */
+export const RUNTIME_FACT_IDS = Object.keys(RUNTIME_FACTS) as readonly RuntimeFactId[];
+export type { RuntimeFactId };
 
 export const GUIDE_COMPONENTS: Readonly<Record<string, ComponentSpec>> = {
   // 블록 데이터 (자체 데이터 인용)

@@ -369,7 +369,13 @@
     "kib": "{value} KiB",
     "factOllamaDefaultCtx": "Ollama는 감지한 GPU 메모리가 24GiB 미만이면 4k, 24~48GiB면 32k, 48GiB 이상이면 256k 토큰을 기본 컨텍스트 길이로 씁니다",
     "factOllamaKvCacheType": "Ollama는 서버를 띄울 때 OLLAMA_KV_CACHE_TYPE(f16·q8_0·q4_0)을 지정하고 플래시 어텐션을 켜야만 KV 캐시를 양자화합니다. 이 설정은 그 서버가 돌리는 모든 모델에 적용됩니다",
-    "factSource": "Ollama 문서, {date} 확인"
+    "factOllamaWindowsReq": "Windows 10 22H2 이상(Home·Pro), NVIDIA 그래픽카드는 드라이버 551.61 이상",
+    "factOllamaMacosReq": "macOS Sonoma(14) 이상, Apple M 시리즈 칩(CPU·GPU 사용) 또는 Intel 맥(CPU만 사용)",
+    "factOllamaNvidiaReq": "Compute Capability 5.0 이상인 NVIDIA GPU와 드라이버 550 이상(Compute Capability 5.0–6.2 카드는 드라이버 570 이상)",
+    "factLmStudioWindowsReq": "AVX2를 지원하는 CPU(x64 PC), 권장 RAM 16GB 이상·전용 VRAM 4GB 이상",
+    "factLmStudioMacReq": "Apple Silicon(M1–M4) 맥과 macOS 14.0 이상, 권장 RAM 16GB 이상(Intel 맥 미지원)",
+    "factSourceOllama": "Ollama 문서, {date} 확인",
+    "factSourceLmStudio": "LM Studio 문서, {date} 확인"
   },
   "Detect": {
     "button": "내 GPU 감지",
