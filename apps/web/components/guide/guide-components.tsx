@@ -550,7 +550,7 @@ export function UnifiedTierTable({ gpus }: { gpus: string }) {
                       <a href={hub(gpuHref(gpu.id))}>{gpuName(names, gpu)}</a>
                     </th>
                     <td className="tabular-nums">{tCommon('gb', { value: formatInt(locale, config.ramGB) })}</td>
-                    <td className="tabular-nums whitespace-nowrap">{t('gbps', { value: formatInt(locale, gpu.memBandwidthGBs) })}</td>
+                    <td className="tabular-nums whitespace-nowrap">{t('gbps', { value: formatInt(locale, config.hw.memBandwidthGBs) })}</td>
                     <td className="tabular-nums">{tCommon('gb', { value: formatGB(locale, usableGB(config.hw)) })}</td>
                     {(['S', 'A', 'B', 'F'] as const).map((v) => (
                       <td key={v} className="tabular-nums">

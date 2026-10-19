@@ -102,6 +102,30 @@ describe('structural refinements', () => {
     expect(GpuSchema.safeParse(products([mini, mini])).success).toBe(false);
   });
 
+  it('per-memory-size bandwidth (10-20 — Apple M6): unified only, a listed size, once, below the chip value', () => {
+    const spec = 'https://support.apple.com/en-us/128108';
+    const m6 = {
+      ...validGpu,
+      id: 'apple-test',
+      name: 'Apple Test',
+      vendor: 'apple',
+      kind: 'unified',
+      vramGB: undefined,
+      ramOptionsGB: [16, 24, 32],
+      memBandwidthGBs: 170.6,
+      effClass: 'apple',
+      sources: [spec],
+      products: [{ line: 'mac-mini', model: 'Mac mini (M6 or M5 Pro)', memoryGB: [16, 24, 32], sources: [spec] }],
+    };
+    const by = (list: unknown[]) => ({ ...m6, memBandwidthByRam: list });
+    expect(GpuSchema.safeParse(by([{ ramGB: 16, memBandwidthGBs: 153.6 }])).success).toBe(true);
+    expect(GpuSchema.safeParse(by([])).success).toBe(false);
+    expect(GpuSchema.safeParse(by([{ ramGB: 48, memBandwidthGBs: 153.6 }])).success).toBe(false);
+    expect(GpuSchema.safeParse(by([{ ramGB: 16, memBandwidthGBs: 153.6 }, { ramGB: 16, memBandwidthGBs: 150 }])).success).toBe(false);
+    expect(GpuSchema.safeParse(by([{ ramGB: 16, memBandwidthGBs: 170.6 }])).success).toBe(false);
+    expect(GpuSchema.safeParse({ ...validGpu, memBandwidthByRam: [{ ramGB: 16, memBandwidthGBs: 100 }] }).success).toBe(false);
+  });
+
   it('every Apple chip in the seed names at least one Mac', () => {
     const apple = loadSeed().gpus.filter((g) => g.vendor === 'apple');
     expect(apple.length).toBeGreaterThan(0);

@@ -246,25 +246,37 @@ export function hardwareConfigs(
   const ramOptions = opts.ramGB !== undefined ? [opts.ramGB] : (gpu.ramOptionsGB ?? []);
   // Apple 실리콘은 macOS 고정, 그 외 통합·CPU 는 기본 linux (계산기가 windows 를 고를 수 있다)
   const os: Os = gpu.vendor === 'apple' ? 'macos' : opts.os === 'windows' ? 'windows' : 'linux';
-  return ramOptions.map((ramGB) => ({
-    gpuId: gpu.id,
-    ramGB,
-    assumedRam: false,
-    hw: {
-      kind: gpu.kind,
-      os,
-      memBandwidthGBs: gpu.memBandwidthGBs,
-      fp16Tflops: gpu.fp16Tflops,
-      ...(gpu.fp16MatrixTflops !== undefined ? { fp16MatrixTflops: gpu.fp16MatrixTflops } : {}),
-      // M5 계열 — pp 는 Neural Accelerator 계수(10-16 D86)
-      ...(gpu.neuralAccelerators ? { neuralAccel: true } : {}),
+  return ramOptions.map((ramGB) => {
+    // 구성마다 대역폭이 다른 칩(10-20 Apple M6) — 그 밖의 칩은 칩 값 그대로
+    const bandwidth = memBandwidthAt(gpu, ramGB);
+    return {
+      gpuId: gpu.id,
       ramGB,
-      // 통합 메모리·CPU 프로필은 시스템 RAM 이 곧 메모리 풀이다
-      ramBandwidthGBs:
-        gpu.kind === 'unified' ? unifiedCpuBandwidth(gpu) : gpu.memBandwidthGBs,
-      effClass: gpu.effClass,
-    },
-  }));
+      assumedRam: false,
+      hw: {
+        kind: gpu.kind,
+        os,
+        memBandwidthGBs: bandwidth,
+        fp16Tflops: gpu.fp16Tflops,
+        ...(gpu.fp16MatrixTflops !== undefined ? { fp16MatrixTflops: gpu.fp16MatrixTflops } : {}),
+        // M5 계열·M6 — pp 는 Neural Accelerator 계수(10-16 D86)
+        ...(gpu.neuralAccelerators ? { neuralAccel: true } : {}),
+        ramGB,
+        // 통합 메모리·CPU 프로필은 시스템 RAM 이 곧 메모리 풀이다
+        ramBandwidthGBs:
+          gpu.kind === 'unified' ? unifiedCpuBandwidth({ effClass: gpu.effClass, memBandwidthGBs: bandwidth }) : bandwidth,
+        effClass: gpu.effClass,
+      },
+    };
+  });
+}
+
+/**
+ * 이 메모리 구성의 대역폭 — 구성별 값(`memBandwidthByRam`, 10-20 Apple M6 16GB)이 있으면 그 값, 없으면 칩 값.
+ * 허브·콤보·계산기의 엔진 입력(`hardwareConfigs`)과 콤보 사양 줄이 같은 값을 쓴다
+ */
+export function memBandwidthAt(gpu: Pick<GpuCore, 'memBandwidthGBs' | 'memBandwidthByRam'>, ramGB: number): number {
+  return gpu.memBandwidthByRam?.find((b) => b.ramGB === ramGB)?.memBandwidthGBs ?? gpu.memBandwidthGBs;
 }
 
 /**

@@ -22,6 +22,7 @@ import {
   summarizeGpu,
   summarizeModel,
   unifiedCpuBandwidth,
+  memBandwidthAt,
   verdictRank,
   type ComboAssessment,
 } from '../src/index';
@@ -133,6 +134,23 @@ describe('measured join (결정 D4)', () => {
     expect(c.baseline.result.confidence).toBe('measured');
     expect(c.baseline.measured?.values).toEqual([19]);
     expect(combo('cpu-ddr5-5600-2ch', 'qwen3-30b-a3b-2507', 1).baseline.result.confidence).toBe('calibrated');
+  });
+});
+
+describe('구성별 대역폭 (10-20 — Apple M6, 애플 사양 128108)', () => {
+  it('16GB 는 153.6, 24·32GB 는 칩 값 170.6 — 엔진 입력(GPU·CPU 경로)이 구성 값을 쓴다', () => {
+    const m6 = gpu('apple-m6');
+    const configs = hardwareConfigs(m6, seed.gpus);
+    expect(configs.map((c) => [c.ramGB, c.hw.memBandwidthGBs, c.hw.ramBandwidthGBs])).toEqual([
+      [16, 153.6, 153.6],
+      [24, 170.6, 170.6],
+      [32, 170.6, 170.6],
+    ]);
+    // 계산기 경로(RAM 하나를 고른 경우)도 같다
+    expect(hardwareConfigs(m6, seed.gpus, { ramGB: 16 })[0]!.hw.memBandwidthGBs).toBe(153.6);
+    expect(memBandwidthAt(m6, 32)).toBe(170.6);
+    // 구성별 값이 없는 칩은 그대로
+    for (const config of hardwareConfigs(gpu('apple-m5'), seed.gpus)) expect(config.hw.memBandwidthGBs).toBe(153.6);
   });
 });
 

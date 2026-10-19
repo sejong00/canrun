@@ -219,8 +219,9 @@ describe('alternatives (docs/04 §4 ⑥, D4)', () => {
 
   it('unified page prefers the next chip of the same vendor over a dGPU (apple-m4 × qwen3-14b)', () => {
     // 10-01 D59: 생각 모드 임계로 Q2_K 대안이 원활에 못 미쳐 빠졌다가, 10-15 D83(apple dense 0.60 → 0.76)에
-    // Q2_K 가 원활(생각 모드 기준 12 tok/s 이상)에 들어 다시 들어온다. 다음 칩은 여전히 dGPU 가 아니라 M4 Pro
-    expect(altsFor('apple-m4', 'qwen3-14b').map(label)).toEqual(['smaller-model:gemma-3-12b', 'lower-quant:Q2_K', 'chip:apple-m4-pro']);
+    // Q2_K 가 원활(생각 모드 기준 12 tok/s 이상)에 들어 다시 들어온다. 다음 칩은 여전히 dGPU 가 아니다 —
+    // 10-20 M6(170.6GB/s) 추가로 M4 Pro 대신 대역폭이 바로 위인 M6 가 판정이 오르는 첫 칩이 됐다(M5 153.6 은 판정이 같다)
+    expect(altsFor('apple-m4', 'qwen3-14b').map(label)).toEqual(['smaller-model:gemma-3-12b', 'lower-quant:Q2_K', 'chip:apple-m6']);
   });
 
   it('CPU profile falls back to a faster model at the same verdict', () => {
@@ -291,6 +292,11 @@ describe('twinGpus (D22) / titleVerdict (D14)', () => {
     expect(twinGpus(gpu('rx-9070'), seed.gpus).map((g) => g.id)).toEqual(['rx-9070-xt']);
     expect(twinGpus(gpu('rtx-5060'), seed.gpus).map((g) => g.id)).toEqual(['rtx-3070', 'rtx-5060-ti-8gb']);
     expect(twinGpus(gpu('rtx-4060'), seed.gpus)).toEqual([]);
+    // 10-20 M6: 16GB 는 M5 와 같은 153.6 이지만 24·32GB 가 170.6 이라 쌍둥이가 아니다 — 구성별 대역폭까지 같아야 쌍둥이
+    expect(twinGpus(gpu('apple-m6'), seed.gpus)).toEqual([]);
+    const m6 = gpu('apple-m6');
+    expect(twinGpus(m6, [...seed.gpus, { ...m6, id: 'm6-copy' }]).map((g) => g.id)).toEqual(['m6-copy']);
+    expect(twinGpus(m6, [...seed.gpus, { ...m6, id: 'm6-flat', memBandwidthByRam: undefined }])).toEqual([]);
     const groups = new Set(
       seed.gpus.filter((g) => twinGpus(g, seed.gpus).length > 0).map((g) => [g.id, ...twinGpus(g, seed.gpus).map((t) => t.id)].sort().join(',')),
     );

@@ -266,7 +266,15 @@ export default async function GpuListPage({ params }: Props) {
                           </th>
                           <td className="tabular-nums">{memory(gpu)}</td>
                           <td className="whitespace-nowrap tabular-nums">
-                            {tHub('specBandwidthValue', { value: formatGB(locale, gpu.memBandwidthGBs) })}
+                            {tHub('specBandwidthValue', {
+                              // 구성마다 대역폭이 다른 칩(10-20 Apple M6)은 가장 낮은 값–가장 높은 값 (GPU 허브 사양 표와 같다)
+                              value: gpu.memBandwidthByRam
+                                ? tCommon('range', {
+                                    low: formatGB(locale, Math.min(...gpu.memBandwidthByRam.map((b) => b.memBandwidthGBs))),
+                                    high: formatGB(locale, gpu.memBandwidthGBs),
+                                  })
+                                : formatGB(locale, gpu.memBandwidthGBs),
+                            })}
                           </td>
                           <td className="text-xs">{price(gpu)}</td>
                           <td className="whitespace-nowrap tabular-nums" data-good-cell>

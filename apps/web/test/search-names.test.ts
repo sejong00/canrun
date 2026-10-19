@@ -96,6 +96,8 @@ describe('Mac product names on Apple chip hubs (10-16 D97 — data/gpus.json pro
     // M4 Pro 64GB 는 맥 미니뿐 — 맥북 프로 14·16형은 48GB 까지(애플 사양 121553·121554)
     expect(macLines(gpu('apple-m4-pro'), 64)).toEqual(['mac-mini']);
     expect(macLines(gpu('apple-m2-ultra'))).toEqual(['mac-studio', 'mac-pro']);
+    // M6 는 맥 미니뿐(애플 사양 128108 — 10-20)
+    expect(macLines(gpu('apple-m6'))).toEqual(['mac-mini']);
     expect(macLines(gpu('rtx-5090'))).toEqual([]);
   });
 

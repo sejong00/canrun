@@ -15,8 +15,9 @@ Gpu { id, name, aliases[],  // 검색 별칭 + P1-3 계산기 콤보박스·GPU 
      vramGB?,            // dgpu 필수 (decimal GB)
      ramOptionsGB?: number[],   // unified/cpu 필수 — 선택 가능한 RAM 구성 GB (min 1)
      memBandwidthGBs, fp16Tflops?,   // FP16 크리플(GTX 10)이면 실효값
+     memBandwidthByRam?: { ramGB, memBandwidthGBs }[],   // unified 전용 — 메모리 구성마다 대역폭이 다른 칩(Apple M6 16GB 153.6, 10-20). memBandwidthGBs 는 가장 높은 구성 값, 여기 값은 그보다 낮고 ramOptionsGB 안의 구성만 → 엔진 입력·콤보 사양 줄이 구성 값을 쓴다(hardwareConfigs)
      effClass:'nvidia'|'amd'|'intel-arc'|'apple'|'apple-ultra'|'strix'|'dgx-spark'|'cpu',
-     neuralAccelerators?: true,   // GPU 코어마다 행렬곱 가속기(Apple M5 계열 — 애플 뉴스룸) → pp 계수 PP_COEF_NEURAL_ACCEL (docs/02 §3.5, 10-16 D86)
+     neuralAccelerators?: true,   // GPU 코어마다 행렬곱 가속기(Apple M5 계열·M6 — 애플 뉴스룸, M6 는 10-20) → pp 계수 PP_COEF_NEURAL_ACCEL (docs/02 §3.5, 10-16 D86)
      launchYear:2015..2026, msrpUSD?, streetUSD?, streetKRW?,
      priceAsOf?,         // streetUSD/KRW 존재 시 필수 (CLAUDE.md 규칙 2)
      popular:boolean, note?,
@@ -124,13 +125,14 @@ Submission (P2, D1 — 미구현) { BenchPoint + submitterHash, ip rate-limit fi
 
 통합 메모리 (kind:'unified', usable = ram×0.7):
 
-Apple 의 fp16Tflops: 애플이 밝히지 않아 위키백과 'Apple silicon' 표의 FP32 이론값(애플 GPU 는 FP16 이 FP32 와 같은 속도) — M4 3.76 · M4 Pro 8.08 · M4 Max 12.92/16.16 · M5 4.15 · M5 Pro 8.29 · M5 Max 13.27/16.59 · M5 Ultra 33.18 · M3 Ultra 28.26 · M2 Ultra 27.2 (10-16 D87 — 시드 값은 FP32×2).
+Apple 의 fp16Tflops: 애플이 밝히지 않아 위키백과 'Apple silicon' 표의 FP32 이론값(애플 GPU 는 FP16 이 FP32 와 같은 속도) — M4 3.76 · M4 Pro 8.08 · M4 Max 12.92/16.16 · M5 4.15 · M5 Pro 8.29 · M5 Max 13.27/16.59 · M5 Ultra 33.18 · M6 5.33 · M3 Ultra 28.26 · M2 Ultra 27.2 (10-16 D87 — 시드 값은 FP32×2).
 
 | id | BW | RAM 구성 | 비고 |
 |---|---|---|---|
 | apple-m4 / m4-pro / m4-max | 120 / 273 / 410~546 | 16-32 / 24-64 / 36-128 | m4-max GPU 코어수로 BW 분기 |
 | apple-m5 / m5-pro / m5-max | 153.6 / 307 / 460~614 | 12-32 / 24-64 / 36-128 | M5 Pro/Max 2026-03 출시 · `neuralAccelerators` (pp 계수 179 — 10-16 D86·D87) |
 | apple-m5-ultra | 1228 | 96 / 256 | effClass 'apple-ultra' · 2026-09 출시(Mac Studio, 애플 사양 128107 — 64·80코어 GPU 모두 1.2TB/s). 512GB 는 애플이 10월 말 출시라 밝혀 출시 확인 후 추가 (10-16 D85) · `neuralAccelerators`(애플 뉴스룸 2026-08, 10-16 D86) |
+| apple-m6 | 153.6 / 170.6 | 16 / 24-32 | 2026-09 출시(맥 미니만, 애플 사양 128108 — 16GB 153GB/s · 24·32GB 170GB/s → `memBandwidthByRam`). #4167 실측(32GB) tg −6.0% · `neuralAccelerators`(애플 뉴스룸 2026-08 "a Neural Accelerator in each core", #4167 pp512 실측이 계수 179 로 −3.5% — 10-20) |
 | apple-m3-ultra / m2-ultra | 819 / 800 | 96-512 / 64-192 | effClass 'apple-ultra' |
 | amd-strix-halo (Ryzen AI Max+ 395) | 256 | ~128 | Framework Desktop $1,999 |
 | nvidia-dgx-spark | 273 | 128 | $3,999 |

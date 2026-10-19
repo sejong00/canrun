@@ -261,6 +261,8 @@ export default async function ComboPage({ params }: Props) {
 
   // fp16Tflops 가 없는 칩은 FP16 구절을 뺀다(10-16 D85 — 지금 카탈로그엔 이런 칩이 없다. M5 Ultra 는 D87 에서 위키백과 표 값을 넣었다)
   const fp16 = gpu.fp16Tflops;
+  // 통합·CPU 는 이 페이지 메모리 구성의 대역폭(엔진 입력과 같은 값 — 구성마다 다른 칩: 10-20 Apple M6)
+  const configBandwidth = gb(page.config.hw.memBandwidthGBs);
   const spec =
     gpu.kind === 'dgpu'
       ? fp16 !== undefined
@@ -268,9 +270,9 @@ export default async function ComboPage({ params }: Props) {
         : t.combo('specDgpuNoFp16', { vram: formatInt(locale, gpu.vramGB ?? 0), bandwidth: gb(gpu.memBandwidthGBs) })
       : gpu.kind === 'unified'
         ? fp16 !== undefined
-          ? t.combo('specUnified', { ram: formatInt(locale, page.config.ramGB), bandwidth: gb(gpu.memBandwidthGBs), fp16: gb(fp16) })
-          : t.combo('specUnifiedNoFp16', { ram: formatInt(locale, page.config.ramGB), bandwidth: gb(gpu.memBandwidthGBs) })
-        : t.combo('specCpu', { ram: formatInt(locale, page.config.ramGB), bandwidth: gb(gpu.memBandwidthGBs) });
+          ? t.combo('specUnified', { ram: formatInt(locale, page.config.ramGB), bandwidth: configBandwidth, fp16: gb(fp16) })
+          : t.combo('specUnifiedNoFp16', { ram: formatInt(locale, page.config.ramGB), bandwidth: configBandwidth })
+        : t.combo('specCpu', { ram: formatInt(locale, page.config.ramGB), bandwidth: configBandwidth });
   const ramFloor = HUB_POLICY.comboRamGB[0]!;
   const ramCeil = HUB_POLICY.comboRamGB.at(-1)!;
   const assumption =
@@ -293,7 +295,11 @@ export default async function ComboPage({ params }: Props) {
   let twinText: string | undefined;
   if (twin) {
     const twinName = gpuName(t.names, twin);
-    twinText = t.combo('twin', { twin: twinName, memory: configLabel, bandwidth: gb(gpu.memBandwidthGBs) });
+    twinText = t.combo('twin', {
+      twin: twinName,
+      memory: configLabel,
+      bandwidth: gpu.kind === 'dgpu' ? gb(gpu.memBandwidthGBs) : configBandwidth,
+    });
     const ppTwinRow = page.modelHub.gpuRows.find((r) => r.gpu.id === twin.id);
     const ppTwin = ppTwinRow ? ppRange(ppTwinRow.combo.display) : undefined;
     if (page.pp && ppTwin) {

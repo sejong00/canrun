@@ -276,8 +276,16 @@ export function ramVerdictChanges(steps: readonly RamStep[]): boolean {
 
 /** 메모리 구성(kind·VRAM/RAM 옵션·대역폭·클래스)이 같아 생성 속도가 동일한 GPU — FP16 만 다르다. */
 export function twinGpus<G extends GpuCore>(gpu: G, gpus: readonly G[]): G[] {
+  // 구성별 대역폭(10-20 Apple M6)도 같아야 쌍둥이다
   const key = (g: GpuCore) =>
-    [g.kind, g.vramGB ?? '', (g.ramOptionsGB ?? []).join('/'), g.memBandwidthGBs, g.effClass].join('|');
+    [
+      g.kind,
+      g.vramGB ?? '',
+      (g.ramOptionsGB ?? []).join('/'),
+      g.memBandwidthGBs,
+      (g.memBandwidthByRam ?? []).map((b) => `${b.ramGB}:${b.memBandwidthGBs}`).join('/'),
+      g.effClass,
+    ].join('|');
   const mine = key(gpu);
   return gpus.filter((g) => g.id !== gpu.id && key(g) === mine).sort((a, b) => a.id.localeCompare(b.id));
 }

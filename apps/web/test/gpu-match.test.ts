@@ -53,6 +53,7 @@ describe('interpretDetection — renderer strings', () => {
     ['Intel Arc B580', { renderer: ANGLE('Intel, Intel(R) Arc(TM) B580 Graphics (0x0000E20B) Direct3D11 vs_5_0 ps_5_0, D3D11') }, { kind: 'exact', id: 'arc-b580' }],
     ['Apple M4 (Chrome macOS)', { renderer: ANGLE('Apple, ANGLE Metal Renderer: Apple M4, Unspecified Version'), mac: true }, { kind: 'exact', id: 'apple-m4' }],
     ['Apple M4 Pro', { renderer: ANGLE('Apple, ANGLE Metal Renderer: Apple M4 Pro, Unspecified Version'), mac: true }, { kind: 'exact', id: 'apple-m4-pro' }],
+    ['Apple M6', { renderer: ANGLE('Apple, ANGLE Metal Renderer: Apple M6, Unspecified Version'), mac: true }, { kind: 'exact', id: 'apple-m6' }],
     ['Apple M4 Max → 32c/40c', { renderer: ANGLE('Apple, ANGLE Metal Renderer: Apple M4 Max, Unspecified Version'), mac: true }, { kind: 'ambiguous', candidates: ['apple-m4-max-32c', 'apple-m4-max-40c'] }],
     ['Safari macOS "Apple GPU" + WebGPU apple', { renderer: 'Apple GPU', vendor: 'apple', architecture: 'common-3', mac: true }, { kind: 'apple-unknown' }],
     ['Safari raw Apple M2 Ultra', { renderer: 'Apple M2 Ultra', mac: true }, { kind: 'exact', id: 'apple-m2-ultra' }],
@@ -140,6 +141,7 @@ describe('matchGpu — catalog self-resolution', () => {
     expect(matchGpu('gtx 1080', gpus)).toEqual({ kind: 'none' }); // 1080 Ti 만
     expect(matchGpu('5070 laptop', gpus)).toEqual({ kind: 'none' }); // 5070 Ti Laptop 만
     expect(matchGpu('m5', gpus)).toEqual({ kind: 'exact', id: 'apple-m5' }); // Pro/Max 로 새지 않는다
+    expect(matchGpu('m6', gpus)).toEqual({ kind: 'exact', id: 'apple-m6' });
     expect(matchGpu('9060 xt', gpus)).toEqual({ kind: 'exact', id: 'rx-9060-xt-16gb' }); // 메모리 용량만 남는 건 허용
     expect(matchGpu('7900', gpus)).toEqual({ kind: 'none' }); // XT/XTX 를 골라야 한다
     // 메모리 표기는 원래 라벨에서 먼저 뺀다 — 모델 번호가 용량으로 읽혀 VRAM 숫자만으로 확정되지 않는다 (재검증)

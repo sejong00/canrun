@@ -19,6 +19,8 @@ export const GPU_CORE_KEYS = [
   'vramGB',
   'ramOptionsGB',
   'memBandwidthGBs',
+  // 구성별 대역폭(10-20 — Apple M6 16GB) — 계산기도 `hardwareConfigs` 로 같은 값을 쓴다
+  'memBandwidthByRam',
   'fp16Tflops',
   // pp 추정의 행렬 FP16(10-16 D91 — AMD)
   'fp16MatrixTflops',

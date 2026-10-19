@@ -97,6 +97,14 @@ export const GpuSchema = z
     /** unified/cpu: 선택 가능한 RAM 구성 (GB) */
     ramOptionsGB: z.array(z.number().positive()).min(1).optional(),
     memBandwidthGBs: z.number().positive(),
+    /**
+     * 통합 메모리 칩 중 메모리 구성마다 대역폭이 다른 칩의 구성별 값 (10-20 — Apple M6: 16GB 153GB/s · 24·32GB 170GB/s, 애플 사양 128108).
+     * memBandwidthGBs 는 가장 높은 구성 값(사양 표·목록 정렬·비교가 쓴다)이고, 여기 적은 구성만 엔진 입력이 이 값으로 바뀐다(`hardwareConfigs`)
+     */
+    memBandwidthByRam: z
+      .array(z.object({ ramGB: z.number().positive(), memBandwidthGBs: z.number().positive() }))
+      .min(1)
+      .optional(),
     /** GTX 10 시리즈처럼 FP16 크리플이면 실효값(예: 0.18). Apple 은 위키백과 Apple silicon 표의 FP32 이론값 — 애플 미공개, 애플 GPU 는 FP16 이 FP32 와 같은 속도(10-16 D87) */
     fp16Tflops: z.number().positive().optional(),
     /**
@@ -138,6 +146,22 @@ export const GpuSchema = z
     }
     if (gpu.kind !== 'dgpu' && gpu.ramOptionsGB === undefined) {
       ctx.addIssue({ code: 'custom', message: `${gpu.id}: unified/cpu requires ramOptionsGB` });
+    }
+    if (gpu.memBandwidthByRam) {
+      if (gpu.kind !== 'unified') {
+        ctx.addIssue({ code: 'custom', message: `${gpu.id}: memBandwidthByRam is for unified memory chips only` });
+      }
+      const seen = new Set<number>();
+      for (const { ramGB, memBandwidthGBs } of gpu.memBandwidthByRam) {
+        const where = `${gpu.id} memBandwidthByRam ${ramGB} GB`;
+        if (!(gpu.ramOptionsGB ?? []).includes(ramGB)) ctx.addIssue({ code: 'custom', message: `${where}: not in ramOptionsGB` });
+        if (seen.has(ramGB)) ctx.addIssue({ code: 'custom', message: `${where}: listed twice` });
+        seen.add(ramGB);
+        // memBandwidthGBs 는 가장 높은 구성 값 — 구성별 값은 그보다 낮아야 한다
+        if (memBandwidthGBs >= gpu.memBandwidthGBs) {
+          ctx.addIssue({ code: 'custom', message: `${where}: must be below memBandwidthGBs (the highest configuration)` });
+        }
+      }
     }
     if ((gpu.vendor === 'apple') !== (gpu.products !== undefined)) {
       ctx.addIssue({

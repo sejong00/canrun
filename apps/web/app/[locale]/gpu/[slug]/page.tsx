@@ -368,7 +368,15 @@ export default async function GpuHubPage({ params }: Props) {
             <div>
               <dt className="text-muted-foreground">{tSpec('specBandwidth')}</dt>
               <dd className="font-medium">
-                {tSpec('specBandwidthValue', { value: formatGB(locale, gpu.memBandwidthGBs) })}
+                {tSpec('specBandwidthValue', {
+                  // 구성마다 대역폭이 다른 칩(10-20 Apple M6)은 가장 낮은 값–가장 높은 값
+                  value: gpu.memBandwidthByRam
+                    ? t.common('range', {
+                        low: formatGB(locale, Math.min(...gpu.memBandwidthByRam.map((b) => b.memBandwidthGBs))),
+                        high: formatGB(locale, gpu.memBandwidthGBs),
+                      })
+                    : formatGB(locale, gpu.memBandwidthGBs),
+                })}
               </dd>
             </div>
             {gpu.fp16Tflops !== undefined && (
