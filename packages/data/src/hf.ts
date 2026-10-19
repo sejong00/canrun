@@ -85,10 +85,11 @@ export function parseHfInput(text: string): string | undefined {
  * 비-UD quant 는 플레인 파일 우선, 플레인이 없으면 UD- 접두 변형(unsloth Dynamic)으로 폴백 —
  * 둘 다 배포하는 repo 의 합산 오염은 막고, UD 만 배포하는 repo(MTP 계열)는 실파일을 취한다.
  * 드래프트·보조 파일은 모델 가중치가 아니므로 제외 (basename 접두, 대소문자 무시):
- * mmproj-*(비전 프로젝터) · mtp-*(MTP 드래프트 헤드) · eagle3-*(EAGLE 드래프트) — P1-2 에서
+ * mmproj-*(비전 프로젝터) · mtp-*(MTP 드래프트 헤드) · eagle3-*(EAGLE 드래프트) · dflash-*(DFlash 투기적 디코딩 드래프트 —
+ * 10-20, ggml-org/Qwen3.6-27B-GGUF 의 dflash-Qwen3.6-27B-Q8_0.gguf 가 본 파일과 겹쳐 Q8_0 행을 못 골랐다 — D98·PROGRESS §5) — P1-2 에서
  * 드래프트 합산 버그(gemma-4 Q8_0 에 mtp 0.46GB 합산)를 고쳤다. repo 이름의 'MTP' 는 무관.
  */
-const DRAFT_FILE_PREFIX = /^(?:mmproj|mtp-|eagle3-)/i;
+const DRAFT_FILE_PREFIX = /^(?:mmproj|mtp-|eagle3-|dflash-)/i;
 
 export function matchQuantFiles(entries: readonly TreeEntry[], quant: QuantId): TreeEntry[] {
   const esc = quant.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

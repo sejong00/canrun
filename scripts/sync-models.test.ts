@@ -75,11 +75,13 @@ describe('matchQuantFiles', () => {
     expect(matchQuantFiles(udOnly, 'Q4_K_M').map((e) => e.path)).toEqual(['m-UD-Q4_K_M.gguf']);
   });
 
-  it('excludes draft heads (mtp-*, eagle3-*) by basename prefix only — repo names with MTP are unaffected', () => {
+  it('excludes draft heads (mtp-*, eagle3-*, dflash-*) by basename prefix only — repo names with MTP are unaffected', () => {
     const entries = [
       file('MTP/mtp-gemma-4-12b-it-Q8_0.gguf', 470_000_000),
       file('mtp-gemma-4-12b-it.gguf', 460_000_000),
       file('eagle3-gpt-oss-20b-Q8_0.gguf', 920_000_000),
+      // ggml-org/Qwen3.6-27B-GGUF 실제 배치 (10-20)
+      file('dflash-Qwen3.6-27B-Q8_0.gguf', 1_200_000_000),
       file('gemma-4-12b-it-Q8_0.gguf', 12_670_000_000),
       file('Qwen3.5-9B-MTP-Q8_0.gguf', 9_790_000_000),
     ];
