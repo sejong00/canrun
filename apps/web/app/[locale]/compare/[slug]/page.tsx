@@ -8,7 +8,7 @@ import { CompareTable } from '@/components/compare-table';
 import { Faq } from '@/components/faq';
 import { BenchTable, ScrollTable, TABLE_CLASS } from '@/components/hub-table';
 import { PageShell } from '@/components/page-shell';
-import { VerdictBadge } from '@/components/verdict';
+import { VerdictBadge, VerdictLegend } from '@/components/verdict';
 import { COMPARE_SLUGS, isComparePublished } from '@/content/compares';
 import type { Locale } from '@/i18n/routing';
 import { catalog } from '@/lib/catalog';
@@ -272,6 +272,8 @@ export default async function ComparePage({ params }: Props) {
               </li>
             ))}
           </ul>
+          {/* GPU·모델 허브와 같은 판정 기준 — 표 아래 생각 모드 안내(Common.reasoningNote)가 이 기준을 1.5배로 잡는다 */}
+          <VerdictLegend className="mt-2" />
         </section>
 
         <section aria-labelledby="differ-heading" className="flex flex-col gap-3">

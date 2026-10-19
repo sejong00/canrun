@@ -71,8 +71,8 @@ export type PageFacts = {
   hangulWords: string[];
   /**
    * 규칙 3 검사 대상 문장: description · og:description · FAQ 답 · [data-verdict-sentence] ·
-   * [data-alt-card] · 콤보 페이지의 `<dd>` (허브의 판정 범례 `<dd>` 는 임계값 "20 tok/s or more" 를
-   * 밴드 없이 인용하는 정책 문장이라 제외)
+   * [data-alt-card] · 콤보 페이지의 `<dd>` · GPU 비교 속도 요약의 문장 단위 (허브·비교 페이지의 판정 범례 `<dd>` 는
+   * 임계값 "20 tok/s or more" 를 밴드 없이 인용하는 정책 문장이라 제외)
    */
   speedTexts: string[];
   /**
@@ -679,12 +679,12 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
     .filter((text) => !thresholdTexts.has(text));
   // 허브 소개글 문단도 규칙 3 검사 대상 (10-14 D74 — 산문 숫자는 데이터 컴포넌트뿐이지만 렌더 결과로 한 번 더)
   const hubIntroTexts = collectElements(hubIntro, UNIT_TAGS).map((u) => elementText(u.inner));
-  // GPU 비교(10-19 D103): 속도 요약 블록 전체·그 페이지의 `<dd>`(요약의 기준 모델 속도·pp)·소개글 문단도 규칙 3 검사 대상
+  // GPU 비교(10-19 D103): 속도 요약 블록의 문장 단위(요약 문장·기준 모델 속도·pp `<dd>` — 블록 통째가 아니라 단위마다)·소개글 문단도 규칙 3 검사 대상.
+  // 판정 범례(`VerdictLegend`)의 `<dd>` 는 요약 밖이라 넣지 않는다 — 밴드 없는 정책 문장이다(가이드 `[data-threshold]` 와 같은 이유)
   const compareTexts =
     kind === 'compare'
       ? [
-          elementText(compareSummary?.inner ?? ''),
-          ...collectElements(noScript, new Set(['dd'])).map((u) => elementText(u.inner)),
+          ...collectElements(compareSummary?.inner ?? '', UNIT_TAGS).map((u) => elementText(u.inner)),
           ...collectElements(compareIntro, UNIT_TAGS).map((u) => elementText(u.inner)),
         ]
       : [];

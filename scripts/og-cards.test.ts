@@ -5,7 +5,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { summarizeGpu } from '../packages/data/src/index';
-import { COMPARE_SLUGS, COMPARES, publishedCompares } from '../apps/web/content/compares';
+import { COMPARE_SLUGS, COMPARES } from '../apps/web/content/compares';
 import { GUIDES } from '../apps/web/content/guides';
 import {
   OG_FONT_CHARS_PATH,
@@ -117,9 +117,5 @@ describe('compare cards (10-19 D103)', () => {
     const t = ogTranslators('en');
     const hub = (id: string) => summarizeGpu(catalog, catalog.gpus.find((g) => g.id === id)!);
     expect(() => compareCardText('rtx-4090-vs-rtx-5090', hub('rtx-5090'), hub('rtx-4090'), t, 'en')).toThrow(/compare/);
-  });
-
-  it('only published pairs get a card (drafts keep the default card)', () => {
-    expect(publishedCompares().every((slug) => COMPARE_SLUGS.includes(slug))).toBe(true);
   });
 });

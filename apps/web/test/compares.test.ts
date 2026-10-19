@@ -208,6 +208,21 @@ describe('rendered compare text (titles · descriptions · summary · FAQ)', () 
     expect(problems).toEqual([]);
   });
 
+  it('the speed ratio, the reference model and the description name the baseline quant (FAQ Q2 may name a larger model at a smaller quant)', () => {
+    // 비율·기준 모델은 기준 양자화(Q4_K_M 또는 가장 가까운 것)가 둘 다 전부 올라가는 모델에서만 낸다 — `compareGpus`.
+    // FAQ Q2(허브와 같은 `largestFullGpu`)는 더 작은 양자화까지 보므로, 조건을 밝히지 않으면 같은 페이지에서 말이 엇갈린다
+    for (const locale of LOCALES) {
+      const t = translators(locale);
+      for (const slug of COMPARE_SLUGS) {
+        const { cmp } = getCompare(slug)!;
+        const names = compareNames(t, locale, cmp);
+        expect(speedSentence(t, locale, cmp, names), `${locale} ${slug} summary`).toContain('Q4_K_M');
+        expect(compareDescription(t, locale, cmp, names), `${locale} ${slug} description`).toContain('Q4_K_M');
+      }
+      expect(messages[locale].Compare!.refModelValue, `${locale} Compare.refModelValue`).toContain('Q4_K_M');
+    }
+  });
+
   it('the description answers first: the speed ratio (or "about the same") before the counts, with the memory of each side', () => {
     const t = translators('en');
     const { cmp } = getCompare('rtx-5060-ti-16gb-vs-rtx-5070')!;
