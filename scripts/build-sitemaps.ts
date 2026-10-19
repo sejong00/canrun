@@ -1,12 +1,14 @@
 /**
  * 사이트맵·robots.txt·RSS 생성 (P1-5, docs/04 §3·§5) — postbuild 마지막 단계에서 `out/` 에 쓴다.
  *
- * - 분할(docs/04 §3): sitemap.xml(인덱스) → pages · gpus · models · guides(published 만) · combos-en/-ko(`indexableCombos()` 만 —
- *   공개 콤보가 0 이면 파일·인덱스 항목을 만들지 않는다). URL 마다 en/ko/x-default `xhtml:link` 대체 링크(HTML hreflang 과 같은 규칙).
+ * - 분할(docs/04 §3): sitemap.xml(인덱스) → pages · gpus · models · guides(published 만) · compare(published GPU 비교 쌍 + 쌍이 있을 때 목차 —
+ *   10-19 D103) · combos-en/-ko(`indexableCombos()` 만 — 공개 콤보가 0 이면 파일·인덱스 항목을 만들지 않는다. 다른 파일도 항목이 0 이면 같다).
+ *   URL 마다 en/ko/x-default `xhtml:link` 대체 링크(HTML hreflang 과 같은 규칙).
  * - lastmod: 가이드 = 레지스트리 dateModified, 업데이트 소식 = max(dataUpdated, 최신 항목 날짜 — content/updates.ts),
  *   엔진 수치를 그리는 페이지(계산기·GPU·모델 허브·콤보·GPU 목록) = max(dataUpdated, 엔진 `ENGINE_SPEC_DATE` — 10-16 D93: 엔진 개정은
  *   데이터 없이도 모든 수치를 바꾼다), 소개글이 붙은 허브는 여기에 content/hubs.ts HUB_INTROS_UPDATED 까지 넣은 최댓값,
  *   모델 소개("어떤 모델인가요", 10-19 D102)가 붙은 모델 허브는 여기에 그 모델의 소개 수정일(content/model-about.ts)까지 넣은 최댓값,
+ *   GPU 비교 = 수치 기준일과 그 쌍의 dateModified(content/compares.ts) 중 늦은 날, 비교 목차 = 게시 쌍 lastmod 의 최댓값(10-19 D103),
  *   모델 목록 = 여기에 모델 30일 다운로드 기준일(`hfDownloadsAsOf`) 최댓값까지(10-19 D101 — 다운로드 수만 바뀐 주간 동기화는
  *   dataUpdated 를 올리지 않는데 목록은 그 수를 보인다), 나머지(홈·정적 페이지) = `data/meta.json` dataUpdated — 빌드 시각을 쓰지 않는다(D21 결정론).
  * - robots.txt: 전부 허용(네이버 Yeti 포함) + Sitemap 줄 + 맨 끝 다음(Daum) 웹마스터도구 확인 줄(D99). `/can-i-run/` 를 막지 않는다(막으면 noindex 를 못 읽는다 — PROGRESS §5).
@@ -21,6 +23,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { indexableCombos, parseGpus, parseMeta, parseModels, parsePublish } from '../packages/data/src/index';
 import { ENGINE_SPEC_DATE } from '../packages/engine/src/index';
+import { COMPARES, publishedCompares, type CompareSlug } from '../apps/web/content/compares';
 import { GUIDES, GUIDE_SLUGS } from '../apps/web/content/guides';
 import { GPU_INTRO_IDS, HUB_INTROS_UPDATED, MODEL_INTRO_IDS } from '../apps/web/content/hubs';
 import { MODEL_ABOUT, hasModelAbout } from '../apps/web/content/model-about';
@@ -69,6 +72,15 @@ function urlset(urls: readonly string[]): string {
 }
 
 const maxDate = (dates: readonly string[]) => dates.reduce((a, b) => (b > a ? b : a));
+
+/**
+ * GPU 비교 사이트맵 항목 (10-19 D103) — 게시 쌍만(초안은 noindex), 목차는 게시 쌍이 1개 이상일 때만(가이드 목차와 같은 규칙).
+ * 쌍 lastmod = 수치 기준일(데이터·엔진)과 그 쌍의 dateModified 중 늦은 날, 목차 = 쌍 lastmod 의 최댓값. 게시 쌍이 0 이면 빈 배열(파일을 만들지 않는다)
+ */
+export function compareSitemapEntries(published: readonly CompareSlug[], numbersUpdated: string): Entry[] {
+  const pairs = published.map((slug) => ({ path: `/compare/${slug}`, lastmod: maxDate([numbersUpdated, COMPARES[slug].dateModified]) }));
+  return pairs.length > 0 ? [{ path: '/compare', lastmod: maxDate(pairs.map((e) => e.lastmod)) }, ...pairs] : [];
+}
 
 /** RFC 822 (RSS pubDate) — 고정 날짜 문자열을 변환할 뿐 빌드 시각이 아니다 */
 const rfc822 = (isoDate: string) => new Date(`${isoDate}T00:00:00Z`).toUTCString();
@@ -201,6 +213,9 @@ export function buildSitemaps(repoRoot: string, outDir: string): string[] {
 
   const guideEntries = published.map((slug) => ({ path: `/guides/${slug}`, lastmod: GUIDES[slug].dateModified }));
   add('sitemap-guides.xml', guideEntries, urlset(both(guideEntries)));
+
+  const compareEntries = compareSitemapEntries(publishedCompares(), numbersUpdated);
+  add('sitemap-compare.xml', compareEntries, urlset(both(compareEntries)));
 
   // 콤보: 로캘별 분할 (docs/04 §3) — comboKey = `gpu/model`, URL = /can-i-run/{model}/on/{gpu}
   const comboEntries = [...indexableCombos(plan)].sort().map((key) => {

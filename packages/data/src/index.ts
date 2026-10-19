@@ -41,6 +41,7 @@ export * from './license';
 export * from './publish';
 export * from './snippet';
 export * from './combo';
+export * from './compare';
 export * from './manual';
 
 /**

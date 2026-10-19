@@ -28,6 +28,9 @@ export const calculatorHref = (query = '') => `/calculator${query}`;
 /** 가이드 목차·글 (docs/04 §2, P1-4) — 슬러그는 로캘 불변 */
 export const guidesHref = () => `/guides`;
 export const guideHref = (slug: string) => `/guides/${slug}`;
+/** GPU 비교 목차·페이지 (10-19 D103) — 슬러그 `{a}-vs-{b}` 는 로캘 불변 (content/compares.ts) */
+export const comparesHref = () => `/compare`;
+export const compareHref = (slug: string) => `/compare/${slug}`;
 /** 정적 페이지 (P1-5) — 소개·계산 방법·개인정보처리방침·문의 */
 export const staticHref = (slug: string) => `/${slug}`;
 /** 로캘별 RSS (P1-5) — en `/rss.xml`, ko `/ko/rss.xml` */

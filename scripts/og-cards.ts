@@ -6,6 +6,7 @@
  *   미공개 콤보는 기본 카드 그대로(전 조합을 그리면 파일 수 한도 D18 를 먹는다). 카드 = 페이지 제목의 판정 + description 의
  *   필요 메모리·속도 밴드·신뢰 라벨(규칙 3 — 숫자만 따로 두지 않는다). 같은 갈래인지는 export 테스트가 페이지와 대조한다
  * - 가이드는 published 만(초안은 noindex 라 기본 카드), 제목만 싣는다
+ * - GPU 비교(10-19 D103)는 published 쌍만(초안·비교 목차는 기본 카드) — 두 기기 이름·판정 수·속도 배율(추정 중앙값, 페이지 요약과 같은 규칙)
  * 네이버는 og:image 를 검색 결과 썸네일로 쓰고, 여러 페이지에 같은 이미지가 반복되면 무시할 수 있다 — 그래서 페이지마다 다른 카드.
  *
  * 렌더러는 Next 에 들어 있는 OG 이미지 렌더러(@vercel/og = satori + resvg, wasm)를 그대로 쓴다 — 새 의존성 없음.
@@ -18,6 +19,7 @@ import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
+  compareGpus,
   indexableCombos,
   parseBenchmarks,
   parseGpus,
@@ -35,10 +37,12 @@ import {
   type PublishPlan,
   type SeedCatalog,
 } from '../packages/data/src/index';
+import { COMPARES, publishedCompares, type CompareSlug } from '../apps/web/content/compares';
 import { GUIDES, GUIDE_SLUGS, type GuideSlug } from '../apps/web/content/guides';
+import { compareNames, speedFactorText, speedVerdict } from '../apps/web/lib/compare-phrases';
 import { formatGB, formatSpeed, formatTokS } from '../apps/web/lib/format';
 import { makeT, pickMessages, type MessageSpec, type TranslateWithHas } from '../apps/web/lib/i18n-lite';
-import { comboOgImage, guideOgImage, hubOgImage } from '../apps/web/lib/og-images';
+import { comboOgImage, compareOgImage, guideOgImage, hubOgImage } from '../apps/web/lib/og-images';
 import { confidenceText, gpuName, quantText, titleVerdictLabel, type Translate } from '../apps/web/lib/phrases';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -126,7 +130,15 @@ export function modelCardText(catalog: SeedCatalog, model: Model, m: Messages): 
 /** 콤보·가이드 카드가 쓰는 메시지 — 페이지(제목·description)와 같은 키 */
 const OG_MESSAGE_SPEC: MessageSpec = {
   namespaces: ['OgCard', 'Verdict', 'Confidence', 'GpuName'],
-  keys: ['Combo.titleVerdictQuant', 'Combo.titleVerdictRam', 'Combo.metaSplitRam', 'Hint.quantDesperate'],
+  keys: [
+    'Combo.titleVerdictQuant',
+    'Combo.titleVerdictRam',
+    'Combo.metaSplitRam',
+    'Hint.quantDesperate',
+    // GPU 비교 카드 (10-19 D103) — 페이지와 같은 이름 규칙·제목
+    'Compare.nameMemory',
+    'Compare.cardTitle',
+  ],
 };
 
 export type OgTranslators = {
@@ -136,12 +148,21 @@ export type OgTranslators = {
   confidence: Translate;
   hint: Translate;
   names: TranslateWithHas;
+  compare: Translate;
 };
 
 export function ogTranslators(locale: OgLocale): OgTranslators {
   const dict = pickMessages(loadMessages(locale) as unknown as Record<string, unknown>, OG_MESSAGE_SPEC);
   const t = (ns: string) => makeT(dict, locale, ns);
-  return { og: t('OgCard'), verdict: t('Verdict'), combo: t('Combo'), confidence: t('Confidence'), hint: t('Hint'), names: t('GpuName') };
+  return {
+    og: t('OgCard'),
+    verdict: t('Verdict'),
+    combo: t('Combo'),
+    confidence: t('Confidence'),
+    hint: t('Hint'),
+    names: t('GpuName'),
+    compare: t('Compare'),
+  };
 }
 
 export type ComboCardText = {
@@ -211,6 +232,44 @@ export type GuideCardText = { kicker: string; title: string };
 
 export function guideCardText(slug: GuideSlug, t: OgTranslators, locale: OgLocale): GuideCardText {
   return { kicker: t.og('guideKicker'), title: GUIDES[slug].locales[locale].title };
+}
+
+export type CompareCardText = {
+  /** 페이지 브레드크럼·목차 카드와 같은 "{a} vs {b}" */
+  title: string;
+  subtitle: string;
+  /** 두 기기의 이름과 판정 수 (GPU 허브 요약 구성 — 페이지 "판정 요약"과 같은 값) */
+  sides: Array<{ name: string; counts: Record<Verdict, number> }>;
+  labels: Record<Verdict, string>;
+  /** 속도 배율 — 페이지 요약과 같은 규칙(추정 중앙값, 0.95–1.05 는 "거의 같다"). 두 기기 모두에 전부 올라가는 모델이 없으면 없음 */
+  speed?: string;
+};
+
+/** GPU 비교 카드 문구 (10-19 D103) — 비교 페이지(lib/compares.ts getCompare)와 같은 `compareGpus`·같은 이름 규칙 */
+export function compareCardText(slug: CompareSlug, hubA: GpuHubData, hubB: GpuHubData, t: OgTranslators, locale: OgLocale): CompareCardText {
+  const entry = COMPARES[slug];
+  if (hubA.gpu.id !== entry.a || hubB.gpu.id !== entry.b) throw new Error(`og card: compare ${slug} got ${hubA.gpu.id} / ${hubB.gpu.id}`);
+  const cmp = compareGpus(hubA, hubB);
+  const names = compareNames(t, locale, cmp);
+  const counts = (side: typeof cmp.a) => ({ S: side.counts.S, A: side.counts.A, B: side.counts.B, F: side.counts.F });
+  let speed: string | undefined;
+  if (cmp.speed) {
+    const v = speedVerdict(cmp.speed.ratio);
+    speed =
+      v.kind === 'same'
+        ? t.og('compareSame')
+        : t.og('compareFaster', { gpu: v.faster === 'a' ? names.a : names.b, ratio: speedFactorText(locale, v.factor) });
+  }
+  return {
+    title: t.compare('cardTitle', names),
+    subtitle: t.og('compareSubtitle'),
+    sides: [
+      { name: names.a, counts: counts(cmp.a) },
+      { name: names.b, counts: counts(cmp.b) },
+    ],
+    labels: Object.fromEntries(VERDICTS.map((v) => [v, t.verdict(v)])) as Record<Verdict, string>,
+    ...(speed ? { speed } : {}),
+  };
 }
 
 /** 카드에 나올 수 있는 모든 글자 — 글꼴 서브셋의 기준 (og-font.ts·테스트 공용) */
@@ -318,6 +377,25 @@ function guideCardElement(g: GuideCardText): Node {
   ]);
 }
 
+function compareCardElement(c: CompareCardText): Node {
+  const size = c.title.length > 44 ? '50px' : c.title.length > 30 ? '60px' : '72px';
+  return frame([
+    h('div', { display: 'flex', flexDirection: 'column' }, [
+      h('div', { fontSize: size, lineHeight: 1.1, letterSpacing: '-1px' }, c.title),
+      h('div', { marginTop: '14px', fontSize: '32px', color: '#94a3b8' }, c.subtitle),
+    ]),
+    h('div', { display: 'flex', flexDirection: 'column', gap: '18px' }, [
+      ...c.sides.map((side) =>
+        h('div', { display: 'flex', flexDirection: 'column', gap: '8px' }, [
+          h('div', { fontSize: '30px', color: '#e2e8f0' }, side.name),
+          h('div', { display: 'flex', gap: '12px' }, VERDICTS.map((v) => chip(v, `${c.labels[v]} ${side.counts[v]}`, '24px'))),
+        ]),
+      ),
+      ...(c.speed ? [h('div', { fontSize: '34px', color: '#f8fafc' }, c.speed)] : []),
+    ]),
+  ]);
+}
+
 type ImageResponseCtor = new (element: unknown, init: Record<string, unknown>) => Response;
 
 async function loadRenderer(): Promise<ImageResponseCtor> {
@@ -328,11 +406,11 @@ async function loadRenderer(): Promise<ImageResponseCtor> {
   return mod.ImageResponse;
 }
 
-export type OgRenderStats = { hubs: number; combos: number; guides: number };
+export type OgRenderStats = { hubs: number; combos: number; guides: number; compares: number };
 
 /**
  * out/ 아래에 카드를 쓴다 — 허브 `og/{gpu,model}/<id>-<locale>.png`, 공개 콤보 `og/combo/<model>/<gpu>-<locale>.png`,
- * 게시 가이드 `og/guide/<slug>-<locale>.png` (apps/web/lib/og-images.ts). 반환: 종류별 장 수
+ * 게시 가이드 `og/guide/<slug>-<locale>.png`, 게시 GPU 비교 `og/compare/<slug>-<locale>.png` (apps/web/lib/og-images.ts). 반환: 종류별 장 수
  */
 export async function renderOgImages(
   outDir: string,
@@ -342,7 +420,7 @@ export async function renderOgImages(
   const ImageResponse = await loadRenderer();
   const font = readFileSync(OG_FONT_PATH);
   const fonts = [{ name: 'Noto Sans KR', data: font, weight: 700, style: 'normal' }];
-  const stats: OgRenderStats = { hubs: 0, combos: 0, guides: 0 };
+  const stats: OgRenderStats = { hubs: 0, combos: 0, guides: 0, compares: 0 };
   const write = async (sitePath: string, element: Node, kind: keyof OgRenderStats) => {
     const res = new ImageResponse(element, { width: 1200, height: 630, fonts });
     const png = Buffer.from(await res.arrayBuffer());
@@ -372,6 +450,10 @@ export async function renderOgImages(
       await write(comboOgImage(modelId, gpuId, locale), comboCardElement(comboCardText(gpuHub(gpuId), modelId, t, locale)), 'combos');
     }
     for (const slug of publishedGuides()) await write(guideOgImage(slug, locale), guideCardElement(guideCardText(slug, t, locale)), 'guides');
+    for (const slug of publishedCompares()) {
+      const { a, b } = COMPARES[slug];
+      await write(compareOgImage(slug, locale), compareCardElement(compareCardText(slug, gpuHub(a), gpuHub(b), t, locale)), 'compares');
+    }
   }
   return stats;
 }

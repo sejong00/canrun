@@ -5,11 +5,13 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { summarizeGpu } from '../packages/data/src/index';
+import { COMPARE_SLUGS, COMPARES, publishedCompares } from '../apps/web/content/compares';
 import { GUIDES } from '../apps/web/content/guides';
 import {
   OG_FONT_CHARS_PATH,
   OG_LOCALES,
   comboCardText,
+  compareCardText,
   gpuCardText,
   guideCardText,
   loadCatalog,
@@ -86,5 +88,38 @@ describe('combo and guide cards (D96)', () => {
       const t = ogTranslators(locale);
       for (const slug of slugs) expect(guideCardText(slug, t, locale).title).toBe(GUIDES[slug].locales[locale].title);
     }
+  });
+});
+
+describe('compare cards (10-19 D103)', () => {
+  it('every registry pair renders a card whose text the font subset covers: "a vs b", two count rows over the whole catalog, a speed line', () => {
+    const subset = new Set(readFileSync(OG_FONT_CHARS_PATH, 'utf8').replace(/\r?\n$/, ''));
+    const gpuById = new Map(catalog.gpus.map((g) => [g.id, g]));
+    const missing = new Set<string>();
+    for (const locale of OG_LOCALES) {
+      const t = ogTranslators(locale);
+      for (const slug of COMPARE_SLUGS) {
+        const { a, b } = COMPARES[slug];
+        const card = compareCardText(slug, summarizeGpu(catalog, gpuById.get(a)!), summarizeGpu(catalog, gpuById.get(b)!), t, locale);
+        const where = `${locale} ${slug}`;
+        expect(card.title, where).toBe(`${card.sides[0]!.name} vs ${card.sides[1]!.name}`);
+        for (const side of card.sides) expect(side.counts.S + side.counts.A + side.counts.B + side.counts.F, where).toBe(catalog.models.length);
+        expect(card.speed, where).toMatch(/×|거의 같|same/);
+        for (const text of [card.title, card.subtitle, card.speed ?? '', ...card.sides.map((s) => s.name), ...Object.values(card.labels)]) {
+          for (const ch of text) if (!subset.has(ch) && ch.trim() !== '') missing.add(ch);
+        }
+      }
+    }
+    expect([...missing]).toEqual([]);
+  });
+
+  it('refuses hubs that do not match the pair', () => {
+    const t = ogTranslators('en');
+    const hub = (id: string) => summarizeGpu(catalog, catalog.gpus.find((g) => g.id === id)!);
+    expect(() => compareCardText('rtx-4090-vs-rtx-5090', hub('rtx-5090'), hub('rtx-4090'), t, 'en')).toThrow(/compare/);
+  });
+
+  it('only published pairs get a card (drafts keep the default card)', () => {
+    expect(publishedCompares().every((slug) => COMPARE_SLUGS.includes(slug))).toBe(true);
   });
 });
