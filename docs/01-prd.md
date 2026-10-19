@@ -89,7 +89,7 @@
 
 ### Phase 3 — 수익 고도화·확장
 - Build Advisor(목표: 모델+tok/s → 최저 비용 하드웨어 조합, 신품/중고/클라우드 3열 비교) — `07-monetization.md`
-- 비교 페이지(`/compare/{gpu}-vs-{gpu}` LLM 관점), 임베드 배지/위젯(백링크 엔진), 공개 API(rate-limited), Danawa/쿠팡 가격 연동(ko)
+- 비교 페이지(`/compare/{gpu}-vs-{gpu}` LLM 관점 — 10-19 엄선 12쌍으로 앞당김, 초안 게이트: PROGRESS §4 D106), 임베드 배지/위젯(백링크 엔진), 공개 API(rate-limited), Danawa/쿠팡 가격 연동(ko)
 
 ## 5. 페이지 인벤토리와 콘텐츠 소스
 
