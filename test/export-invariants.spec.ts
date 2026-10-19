@@ -21,6 +21,7 @@ import { GUIDES, GUIDE_SLUGS, type GuideSlug } from '../apps/web/content/guides'
 import { GPU_INTRO_IDS, HUB_INTROS_UPDATED, MODEL_INTRO_IDS } from '../apps/web/content/hubs';
 import { MODEL_ABOUT, MODEL_ABOUT_IDS, hasModelAbout } from '../apps/web/content/model-about';
 import { seriesMembers } from '../apps/web/content/model-series';
+import { RUNTIME_FACTS, RUNTIME_FACT_SOURCE_KEYS, isRuntimeFactId } from '../apps/web/lib/runtime-facts';
 import { SITE_UPDATES, latestSiteUpdate } from '../apps/web/content/updates';
 import { ADSENSE_CLIENT, DAUM_WEBMASTER_LINE, INDEXNOW_KEY } from '../apps/web/lib/site';
 import { ENGINE_SPEC_DATE } from '../packages/engine/src/index';
@@ -561,6 +562,28 @@ describe('structured data (docs/04 §5)', () => {
       expect(entities.length, page.file).toBe(3);
       expect(entities, page.file).toEqual(page.faq);
     }
+  });
+});
+
+describe('runtime facts (10-19 — 가이드 <RuntimeFact>, lib/runtime-facts.ts)', () => {
+  it('every rendered fact is "sentence (source line)" in the page locale, with one link to its record’s source and the checked date', () => {
+    const guideData = Object.fromEntries(
+      (['en', 'ko'] as const).map((locale) => [locale, readJson<{ GuideData: Record<string, string> }>(`apps/web/messages/${locale}.json`).GuideData]),
+    ) as Record<'en' | 'ko', Record<string, string>>;
+    const seen: Record<'en' | 'ko', number> = { en: 0, ko: 0 };
+    for (const page of pages) {
+      for (const fact of page.runtimeFacts) {
+        seen[page.locale] += 1;
+        expect(isRuntimeFactId(fact.id), `${page.file} unknown fact ${fact.id}`).toBe(true);
+        const record = RUNTIME_FACTS[fact.id as keyof typeof RUNTIME_FACTS];
+        const messages = guideData[page.locale];
+        const sourceLine = messages[RUNTIME_FACT_SOURCE_KEYS[record.tool]]!.replace('{date}', record.checked);
+        expect(fact.hrefs, `${page.file} ${fact.id} source link`).toEqual([record.source]);
+        expect(fact.text, `${page.file} ${fact.id} text`).toBe(`${messages[record.message]} (${sourceLine})`);
+      }
+    }
+    expect(seen.en, 'en pages render runtime facts').toBeGreaterThan(0);
+    expect(seen.ko, 'ko pages render runtime facts').toBeGreaterThan(0);
   });
 });
 

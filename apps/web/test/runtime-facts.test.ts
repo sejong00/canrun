@@ -78,6 +78,8 @@ describe('runtime facts (guide <RuntimeFact>, 10-19)', () => {
         expect(text, `${locale} GuideData.${fact.message} (${id})`).toBeTypeOf('string');
         // 문장은 가이드 문장 안에 그대로 들어간다 — 끼워 넣을 값이 없다
         expect(text, `${locale} ${fact.message} has an ICU argument`).not.toMatch(/[{}]/);
+        // 컴포넌트가 뒤에 ` (출처 줄)` 을 붙이고 가이드 문장이 마침표를 찍는다 — 괄호·마침표로 끝나면 `…) (…)`·`…. (…).` 가 된다
+        expect(text, `${locale} ${fact.message} ends with a bracket or a full stop`).not.toMatch(/[).]$/);
       }
     }
     const sourceKeys = new Set<string>(Object.values(RUNTIME_FACT_SOURCE_KEYS));

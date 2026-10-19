@@ -195,6 +195,11 @@ export type PageFacts = {
    * 표가 없으면 undefined
    */
   modelSeries?: { hrefs: string[]; currentRows: number };
+  /**
+   * 외부 도구 사실 `[data-runtime-fact]`(가이드 `<RuntimeFact>`, 10-19) — id·안쪽 링크 href(문서 순서)·텍스트(태그를 공백 없이 뗀 것,
+   * "문장 (출처 줄)" 그대로)
+   */
+  runtimeFacts: Array<{ id: string; hrefs: string[]; text: string }>;
 };
 
 // ---------------------------------------------------------------------------
@@ -802,6 +807,11 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
     krwNote: /환율\(1달러 [\d,]+원\)/.test(visible),
     ...(koModelName ? { koModelName } : {}),
     qwenHangul: /큐웬|큐원/.test(`${title ?? ''} ${description ?? ''} ${visible}`),
+    runtimeFacts: elementsWithAttr(noScript, 'data-runtime-fact').map((e) => ({
+      id: attrValue(e.openTag, 'data-runtime-fact') ?? '',
+      hrefs: [...e.inner.matchAll(/<a\b[^>]*\shref="([^"]*)"/g)].map((m) => decodeEntities(m[1]!)),
+      text: decodeEntities(e.inner.replace(TAG_RE, '')).replace(/\s+/g, ' ').trim(),
+    })),
     ...(seriesEl
       ? {
           modelSeries: {
