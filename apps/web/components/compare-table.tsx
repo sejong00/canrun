@@ -39,7 +39,7 @@ function VerdictCell({ combo, side, modelId, modelName }: { combo: ComboAssessme
 }
 
 /**
- * GPU 비교 표 (10-19 D103) — 모델마다 두 기기의 판정·예상 속도를 나란히. 서버 컴포넌트, 클라이언트 JS 0.
+ * GPU 비교 표 (10-19 D106) — 모델마다 두 기기의 판정·예상 속도를 나란히. 서버 컴포넌트, 클라이언트 JS 0.
  * 속도 칸은 허브 표와 같은 `SpeedCell`(밴드 + 신뢰 라벨, 실측이면 8k 추정 병기 — 규칙 3). 행 순서는 `compareGpus` 그대로
  */
 export function CompareTable({ rows, a, b, caption }: { rows: readonly CompareRow[]; a: Side; b: Side; caption: string }) {

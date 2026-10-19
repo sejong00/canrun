@@ -334,6 +334,7 @@
     "ladderCaption": "{model} on the {gpu}: verdict by quantization (8k context, f16 KV cache)",
     "ctxCaption": "{model} on the {gpu} ({quant}): memory and verdict by context length and KV cache type",
     "unifiedCaption": "How many of our {total} catalog models each configuration runs, by verdict (8k context, f16 KV cache)",
+    "vramPeersCaption": "Every {vram} GB graphics card in our catalog ({count}), highest memory bandwidth first, and how many of our {total} models each runs by verdict (8k context, f16 KV cache, 32 GB DDR5 system RAM)",
     "factsCaption": "Specs, license and GGUF source",
     "breakdownCaption": "Where the memory goes: {model} ({quant}) on the {gpu}",
     "measuredTitle": "Measured: {model} ({quant}) on the {gpu}",

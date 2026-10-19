@@ -55,7 +55,7 @@ describe('buildRedirects', () => {
   });
 });
 
-describe('compareRedirects (GPU 비교 뒤집은 순서 — 10-19 D103)', () => {
+describe('compareRedirects (GPU 비교 뒤집은 순서 — 10-19 D106)', () => {
   it('301s the reversed slug of every registry pair to the registry slug, in both locales', () => {
     const rules = compareRedirects();
     expect(rules).toHaveLength(COMPARE_SLUGS.length * 2);

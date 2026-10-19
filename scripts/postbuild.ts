@@ -15,10 +15,10 @@
  *   1. `out/en.html` → `out/index.html` (en 루트 HTML)
  *   2. `out/en/**` 를 `out/**` 루트로 평탄화 (en = 루트, docs/04 §2) — 같은 볼륨이라 최상위 항목별 renameSync,
  *      충돌은 즉시 실패
- *   3. `data/aliases.json` + GPU 비교 뒤집은 순서 슬러그(10-19 D103) → `out/_redirects` 생성 (scripts/build-redirects.ts)
+ *   3. `data/aliases.json` + GPU 비교 뒤집은 순서 슬러그(10-19 D106) → `out/_redirects` 생성 (scripts/build-redirects.ts)
  *   4. 사이트맵·robots.txt·RSS(가이드 본문 포함 — D93)·ads.txt·IndexNow 키 파일 생성 (scripts/build-sitemaps.ts — P1-5)
  *   5. 공유 카드 PNG — GPU·모델 허브 `out/og/{gpu,model}/<id>-<locale>.png`(D60), 공개 콤보 `out/og/combo/<model>/<gpu>-<locale>.png`·
- *      게시 가이드 `out/og/guide/<slug>-<locale>.png`(D96)·게시 GPU 비교 `out/og/compare/<slug>-<locale>.png`(10-19 D103) (scripts/og-cards.ts)
+ *      게시 가이드 `out/og/guide/<slug>-<locale>.png`(D96)·게시 GPU 비교 `out/og/compare/<slug>-<locale>.png`(10-19 D106) (scripts/og-cards.ts)
  *
  * 검증: test/export-invariants.spec.ts (pnpm test:export) — 허용목록 외 `.txt` 0건·`__next` 0·파일 수 한도,
  * 뒤로가기(history) 경로에서 실패 요청 0 은 e2e/smoke.spec.ts 가 본다.

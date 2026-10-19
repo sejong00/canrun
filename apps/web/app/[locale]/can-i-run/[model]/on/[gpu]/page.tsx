@@ -281,7 +281,7 @@ export default async function ComboPage({ params }: Props) {
       ? t.combo('ramSame', { min: formatInt(locale, ramFloor), max: formatInt(locale, ramCeil) })
       : undefined;
 
-  // pp 는 항상 범위 + rough 라벨 (규칙 3, D13) — 문장은 GPU 비교(10-19 D103)와 같은 `ppPhrase`
+  // pp 는 항상 범위 + rough 라벨 (규칙 3, D13) — 문장은 GPU 비교(10-19 D106)와 같은 `ppPhrase`
   const ppText = (r: PpRange) => ppPhrase(t.combo, t.confidence, locale, r);
 
   // 쌍둥이 GPU 형제 문장 (D22) — 메모리 구성 동일이라 속도 *추정* 이 같고, FP16(pp)만 다름

@@ -25,7 +25,9 @@ export type PropKind =
   | 'memoryKind'
   | 'mode'
   | 'ram'
-  | 'confidence';
+  | 'confidence'
+  /** 그래픽카드 VRAM 용량(정수 GB) — 카탈로그에 그 용량의 dGPU 가 1장 이상 (VramPeers, 10-19 D105) */
+  | 'vram';
 
 export type ComponentSpec = {
   /** 표·블록 요소 — MDX 에서 자기 줄에만 (문단 안에 넣으면 `<p><div>` 하이드레이션 불일치) */
@@ -73,6 +75,7 @@ export const GUIDE_COMPONENTS: Readonly<Record<string, ComponentSpec>> = {
   ModelFacts: { block: true, data: true, props: { models: req('modelList') } },
   MemoryBreakdown: { block: true, data: true, props: { model: req('model'), gpu: req('gpu') } },
   Measured: { block: true, data: true, props: { model: req('model'), gpu: req('gpu') } },
+  VramPeers: { block: true, data: true, props: { vram: req('vram') } },
   Threshold: { block: true, data: false, props: {} },
   // 인라인
   Num: {

@@ -91,7 +91,7 @@ describe('combo and guide cards (D96)', () => {
   });
 });
 
-describe('compare cards (10-19 D103)', () => {
+describe('compare cards (10-19 D106)', () => {
   it('every registry pair renders a card whose text the font subset covers: "a vs b", two count rows over the whole catalog, a speed line', () => {
     const subset = new Set(readFileSync(OG_FONT_CHARS_PATH, 'utf8').replace(/\r?\n$/, ''));
     const gpuById = new Map(catalog.gpus.map((g) => [g.id, g]));
@@ -104,7 +104,7 @@ describe('compare cards (10-19 D103)', () => {
         const where = `${locale} ${slug}`;
         expect(card.title, where).toBe(`${card.sides[0]!.name} vs ${card.sides[1]!.name}`);
         for (const side of card.sides) expect(side.counts.S + side.counts.A + side.counts.B + side.counts.F, where).toBe(catalog.models.length);
-        expect(card.speed, where).toMatch(/×|거의 같|same/);
+        expect(card.speed, where).toMatch(/×|배 빠릅니다|거의 같|same/);
         for (const text of [card.title, card.subtitle, card.speed ?? '', ...card.sides.map((s) => s.name), ...Object.values(card.labels)]) {
           for (const ch of text) if (!subset.has(ch) && ch.trim() !== '') missing.add(ch);
         }

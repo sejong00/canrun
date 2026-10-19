@@ -1,4 +1,4 @@
-/** GPU 대 GPU 비교 (packages/data/src/compare.ts, 10-19 D103) — 행 조인·정렬·속도 비율(순수 추정 중앙값)·기준 모델·밴드 겹침 */
+/** GPU 대 GPU 비교 (packages/data/src/compare.ts, 10-19 D106) — 행 조인·정렬·속도 비율(순수 추정 중앙값)·기준 모델·밴드 겹침 */
 import { describe, expect, it } from 'vitest';
 import {
   bandsOverlap,

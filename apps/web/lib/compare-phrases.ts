@@ -1,5 +1,5 @@
 /**
- * GPU 비교 문장 조립 (10-19 D103) — 제목·설명·요약·FAQ(JSON-LD 와 같은 문자열)·목차 카드·공유 카드가 **같은 문자열**을 쓰도록 한 곳에서.
+ * GPU 비교 문장 조립 (10-19 D106) — 제목·설명·요약·FAQ(JSON-LD 와 같은 문자열)·목차 카드·공유 카드가 **같은 문자열**을 쓰도록 한 곳에서.
  * 순수 함수(번역 함수를 받는다) — 페이지는 next-intl, 공유 카드 스크립트(scripts/og-cards.ts)·유닛 테스트는 다른 번역 함수로 같은 문장을 만든다.
  * **상대 import 만**(`@/` 금지 — 루트 tsconfig 의 스크립트가 읽는다). 속도 문장은 늘 밴드 + 신뢰 라벨(규칙 3 — `speedPhrase`·`ppPhrase`).
  */
@@ -54,7 +54,7 @@ export function compareNameWithMemory(
 /** 한쪽이라도 그래픽카드가 아니면 제목이 "VRAM" 대신 "메모리"를 쓴다 */
 export const isUnifiedPair = (cmp: Pick<GpuComparison, 'a' | 'b'>) => cmp.a.gpu.kind !== 'dgpu' || cmp.b.gpu.kind !== 'dgpu';
 
-/** 이 비율 안이면 "거의 같은 속도" — 표시 정책(엔진 상수 아님, 10-19 D103). 추정 밴드(±12% 이상)보다 훨씬 좁다 */
+/** 이 비율 안이면 "거의 같은 속도" — 표시 정책(엔진 상수 아님, 10-19 D106). 추정 밴드(±12% 이상)보다 훨씬 좁다 */
 export const SAME_SPEED = { min: 0.95, max: 1.05 } as const;
 
 export type SpeedVerdict = { kind: 'same' } | { kind: 'faster'; faster: 'a' | 'b'; factor: number };

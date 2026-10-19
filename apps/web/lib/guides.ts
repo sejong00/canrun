@@ -101,6 +101,10 @@ const LOADERS: Readonly<Record<GuideSlug, Readonly<Record<Locale, () => Promise<
     en: () => import('@/content/en/guides/deepseek-local.mdx') as Promise<GuideModule>,
     ko: () => import('@/content/ko/guides/deepseek-local.mdx') as Promise<GuideModule>,
   },
+  'ollama-lm-studio-requirements': {
+    en: () => import('@/content/en/guides/ollama-lm-studio-requirements.mdx') as Promise<GuideModule>,
+    ko: () => import('@/content/ko/guides/ollama-lm-studio-requirements.mdx') as Promise<GuideModule>,
+  },
 };
 
 export function isGuideSlug(slug: string): slug is GuideSlug {

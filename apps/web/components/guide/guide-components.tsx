@@ -454,6 +454,62 @@ export function CtxTable({ model: modelId, gpu: gpuId }: { model: string; gpu: s
   );
 }
 
+/**
+ * 같은 VRAM 용량의 그래픽카드 전부 (10-19 D105) — 카탈로그 dGPU(데스크톱·노트북)를 메모리 대역폭이 높은 순으로, 카드마다 판정 분포.
+ * CanRun 계산에서 들어가는지는 쓸 수 있는 메모리만 보므로 같은 용량끼리 판정이 갈리는 것은 속도 때문이다. 목록은 카탈로그에서 나온다(카드가 들어오면 늘어난다)
+ */
+export function VramPeers({ vram }: { vram: string }) {
+  const { locale, hub } = useHub();
+  const t = useTranslations('GuideData');
+  const tVerdict = useTranslations('Verdict');
+  const names = useNames();
+  const gb = Number(vram);
+  const list = catalog.gpus
+    .filter((g) => g.kind === 'dgpu' && g.vramGB === gb)
+    .sort((a, b) => b.memBandwidthGBs - a.memBandwidthGBs || a.id.localeCompare(b.id));
+  if (list.length === 0) throw new Error(`guide VramPeers: no ${vram}GB graphics card in the catalog`);
+  const caption = t('vramPeersCaption', { vram: formatInt(locale, gb), count: list.length, total: catalog.models.length });
+  return (
+    <DataBlock kind="vram-peers">
+      <ScrollTable label={caption}>
+        <table className={TABLE_CLASS}>
+          <caption>{caption}</caption>
+          <thead>
+            <tr>
+              <th scope="col">{t('colHardware')}</th>
+              <th scope="col">{t('colBandwidth')}</th>
+              {(['S', 'A', 'B', 'F'] as const).map((v) => (
+                <th key={v} scope="col">
+                  {tVerdict(v)}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {list.map((gpu) => {
+              const data = getGpuHub(gpu.id)!;
+              const counts = data.counts[data.primaryIndex]!;
+              return (
+                <tr key={gpu.id}>
+                  <th scope="row">
+                    <a href={hub(gpuHref(gpu.id))}>{gpuName(names, gpu)}</a>
+                  </th>
+                  <td className="tabular-nums whitespace-nowrap">{t('gbps', { value: formatInt(locale, gpu.memBandwidthGBs) })}</td>
+                  {(['S', 'A', 'B', 'F'] as const).map((v) => (
+                    <td key={v} className="tabular-nums">
+                      {counts[v]}
+                    </td>
+                  ))}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </ScrollTable>
+    </DataBlock>
+  );
+}
+
 /** 통합 메모리 기기 × RAM 구성별 판정 분포 — GPU 허브의 구성별 카운트 */
 export function UnifiedTierTable({ gpus }: { gpus: string }) {
   const { locale, hub } = useHub();
@@ -781,6 +837,7 @@ export const GUIDE_MDX_COMPONENTS = {
   QuantLadder,
   CtxTable,
   UnifiedTierTable,
+  VramPeers,
   ModelFacts,
   MemoryBreakdown,
   Measured,

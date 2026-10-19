@@ -27,6 +27,8 @@ export const catalogIds = {
   gpus: new Set(seed.gpus.map((g) => g.id)),
   models: new Set(seed.models.map((m) => m.id)),
   quants: new Set<string>(seed.quantDefs.map((q) => q.id)),
+  /** dGPU VRAM 용량(GB) — VramPeers prop */
+  dgpuVram: new Set(seed.gpus.filter((g) => g.kind === 'dgpu' && g.vramGB !== undefined).map((g) => g.vramGB as number)),
 };
 
 export function validProp(kind: PropKind, value: string): boolean {
@@ -67,6 +69,8 @@ export function validProp(kind: PropKind, value: string): boolean {
       return /^[1-9]\d*$/.test(value);
     case 'confidence':
       return (EXPECT_CONFIDENCES as readonly string[]).includes(value);
+    case 'vram':
+      return /^[1-9]\d*$/.test(value) && catalogIds.dgpuVram.has(Number(value));
   }
 }
 

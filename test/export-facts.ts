@@ -25,7 +25,7 @@ export type PageKind =
   /** 목록 페이지 (10-19) — `/models`·`/gpus` */
   | 'models-index'
   | 'gpus-index'
-  /** GPU 비교 (10-19 D103) — `/compare/{a}-vs-{b}`(레지스트리 슬러그만)·목차 `/compare` */
+  /** GPU 비교 (10-19 D106) — `/compare/{a}-vs-{b}`(레지스트리 슬러그만)·목차 `/compare` */
   | 'compare'
   | 'compare-index'
   | 'other';
@@ -92,7 +92,7 @@ export type PageFacts = {
   adjacentHrefs: string[];
   /** `a[data-combo-link]` href (허브·가이드 그리드의 판정 링크, 홈 "많이 찾는 조합", 가이드 ComboLink, GPU 비교 표) */
   comboLinkHrefs: string[];
-  /** `a[data-compare-link]` href — GPU 허브의 "다른 기기와 비교" 블록 (10-19 D103, 게시 쌍만) */
+  /** `a[data-compare-link]` href — GPU 허브의 "다른 기기와 비교" 블록 (10-19 D106, 게시 쌍만) */
   compareLinkHrefs: string[];
   /** GPU 비교 페이지면 URL 의 슬러그 (레지스트리 슬러그만 — kindOf 와 같은 규칙) */
   compareSlug?: string;
@@ -149,7 +149,7 @@ export type PageFacts = {
     guideDraft: boolean;
     /** `[data-guides-empty]` 목차 빈 상태 */
     guidesEmpty: boolean;
-    /** `[data-compares-empty]` GPU 비교 목차 빈 상태 (10-19 D103) */
+    /** `[data-compares-empty]` GPU 비교 목차 빈 상태 (10-19 D106) */
     comparesEmpty: boolean;
     /** `[data-compare-summary]` GPU 비교 속도 요약 유무 · 소개글 `[data-compare-intro]` 문단 수(없으면 0) */
     compareSummary: boolean;
@@ -690,7 +690,7 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
     .filter((text) => !thresholdTexts.has(text));
   // 허브 소개글 문단도 규칙 3 검사 대상 (10-14 D74 — 산문 숫자는 데이터 컴포넌트뿐이지만 렌더 결과로 한 번 더)
   const hubIntroTexts = collectElements(hubIntro, UNIT_TAGS).map((u) => elementText(u.inner));
-  // GPU 비교(10-19 D103): 속도 요약 블록의 문장 단위(요약 문장·기준 모델 속도·pp `<dd>` — 블록 통째가 아니라 단위마다)·소개글 문단도 규칙 3 검사 대상.
+  // GPU 비교(10-19 D106): 속도 요약 블록의 문장 단위(요약 문장·기준 모델 속도·pp `<dd>` — 블록 통째가 아니라 단위마다)·소개글 문단도 규칙 3 검사 대상.
   // 판정 범례(`VerdictLegend`)의 `<dd>` 는 요약 밖이라 넣지 않는다 — 밴드 없는 정책 문장이다(가이드 `[data-threshold]` 와 같은 이유)
   const compareTexts =
     kind === 'compare'

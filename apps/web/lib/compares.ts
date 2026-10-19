@@ -1,5 +1,5 @@
 /**
- * GPU 비교 페이지 조회 (10-19 D103) — 레지스트리(`content/compares.ts`) 슬러그 → 두 허브 요약(`getGpuHub` 캐시)을 맞댄 `compareGpus` 결과.
+ * GPU 비교 페이지 조회 (10-19 D106) — 레지스트리(`content/compares.ts`) 슬러그 → 두 허브 요약(`getGpuHub` 캐시)을 맞댄 `compareGpus` 결과.
  * 빌드 워커 프로세스 단위 메모(정적 export 전용 — `lib/hubs.ts` 와 같다). 서버 전용.
  * 이름·속도 판정 등 문장 조립은 `lib/compare-phrases.ts` 한 곳에 있다(공유 카드 스크립트·유닛 테스트도 같은 함수를 쓴다).
  */

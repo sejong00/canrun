@@ -155,7 +155,7 @@ describe('buildSitemaps on a minimal out/ (RSS body · IndexNow key · lastmod)'
   });
 });
 
-describe('compareSitemapEntries (GPU 비교 — 10-19 D103)', () => {
+describe('compareSitemapEntries (GPU 비교 — 10-19 D106)', () => {
   it('lists the index first and each published pair, lastmod = the later of the numbers date and the pair date; nothing without a published pair', () => {
     expect(compareSitemapEntries([], '2026-10-19')).toEqual([]);
     const slugs = ['rtx-4090-vs-rtx-5090', 'rtx-3090-vs-rtx-4090'] as const;

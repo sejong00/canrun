@@ -20,7 +20,7 @@ const GROUP_KEY: Readonly<Record<CompareGroup, string>> = {
 };
 
 /**
- * GPU 비교 목차 (10-19 D103) — published 쌍만 묶음별로. published 가 0이면 빈 안내 + noindex·미링크(가이드 목차와 같은 규칙, D40)
+ * GPU 비교 목차 (10-19 D106) — published 쌍만 묶음별로. published 가 0이면 빈 안내 + noindex·미링크(가이드 목차와 같은 규칙, D40)
  * — 초안은 URL 로만 열린다. 헤더 내비 링크는 v1 에 두지 않는다(GPU 허브의 비교 블록이 입구)
  */
 export async function generateMetadata({ params }: Props): Promise<Metadata> {

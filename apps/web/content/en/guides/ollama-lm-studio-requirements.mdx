@@ -1,0 +1,217 @@
+Ollama and LM Studio ask little of the PC itself: a supported OS, plus an AVX2 CPU for LM Studio on x64. The model you load decides how much RAM and VRAM you need; on the 8GB <HubLink gpu="rtx-4060" />, Qwen3 8B fits fully on the GPU and Runs great.<Expect model="qwen3-8b" gpu="rtx-4060" verdict="S" mode="full-gpu" /> On the <HubLink gpu="rtx-5060-ti-16gb" />, gpt-oss-20b Runs great, and a public benchmark backs that speed.<Expect model="gpt-oss-20b" gpu="rtx-5060-ti-16gb" verdict="S" mode="full-gpu" confidence="measured" /> On the 24GB <HubLink gpu="rtx-3090" />, the MoE model Qwen3.6 35B-A3B fits entirely on the GPU and Runs great.<Expect model="qwen3.6-35b-a3b" gpu="rtx-3090" verdict="S" mode="full-gpu" />
+
+## What Ollama and LM Studio need to install
+
+### Ollama
+
+Ollama's Windows page asks for <RuntimeFact id="ollama-windows-req" />. It installs into your home folder without administrator rights. Models need disk space of their own, many gigabytes for large ones; to move them, set `OLLAMA_MODELS` under "Edit environment variables for your account".
+
+Ollama's hardware support page asks for <RuntimeFact id="ollama-nvidia-req" />. The two pages give different minimum NVIDIA drivers. `nvidia-smi` shows yours; if it is older than either page asks, update it. The RTX 4060, RTX 3060, RTX 5060 Ti, RTX 3090 and RTX 5090 all appear in that page's compute capability table.
+
+On a Mac, Ollama needs <RuntimeFact id="ollama-macos-req" />. None of these requirement sections lists a RAM or VRAM minimum. Ollama's quickstart recommends VRAM only for its example model, Gemma 4 E2B, which CanRun does not calculate. With less VRAM, it adds, Ollama can use system RAM but may answer more slowly.
+
+### LM Studio
+
+For Windows PCs, LM Studio lists <RuntimeFact id="lmstudio-windows-req" />. AVX2 is required on x64, while the RAM and VRAM figures are recommendations, not minimums. It also runs on Windows on Arm (Snapdragon X Elite).
+
+For Macs, it lists <RuntimeFact id="lmstudio-mac-req" />. So an Intel Mac can run Ollama, on the CPU only, but not LM Studio.
+
+### AMD, Intel and Linux
+
+Ollama runs supported Radeon cards through ROCm; its [hardware support page](https://docs.ollama.com/gpu) has separate Windows and Linux lists, and the Windows list is shorter. Other GPUs, AMD and Intel included, run through Vulkan, which is on by default and comes with most Windows drivers. For some RX 6000-series (RDNA2) systems that may not expose ROCm on current Windows drivers, the Windows page recommends Vulkan.
+
+LM Studio has separate llama.cpp runtimes for CUDA, Vulkan, ROCm and the CPU, and Ctrl+Shift+R opens the screen where you pick one.
+
+On Linux, Ollama installs with a script, and the CUDA and ROCm drivers are separate, optional installs. LM Studio ships as an AppImage for x64 and ARM64. For Radeon and Arc cards, see <GuideLink slug="amd-intel-gpus" />.
+
+## Minimum and recommended specs come from the model
+
+Neither app decides how much memory you need; the model, its quant and the context do. Qwen3 8B, the smallest model here, needs <Num kind="needGB" model="qwen3-8b" /> at 8k, which is already more VRAM than LM Studio's recommendation. Qwen3.6 35B-A3B needs <Num kind="needGB" model="qwen3.6-35b-a3b" />.
+
+The table uses Q4_K_M, the usual 4-bit default, except for gpt-oss-20b in MXFP4, its native 4-bit format. Totals include the KV cache, the memory that holds the conversation. Three models are MoE: a mixture-of-experts model reads only a few experts per token, so experts that do not fit can sit in system RAM.
+
+<ModelMemoryTable models="qwen3-8b,gemma-4-12b,qwen3-14b,gpt-oss-20b,gemma-4-26b-a4b,qwen3.6-35b-a3b" />
+
+Read "minimum" as the smallest card whose usable memory covers the 8k total. The OS keeps some VRAM on a display GPU, so an 8GB card has <Num kind="usableGB" gpu="rtx-4060" /> to use. Qwen3 8B fits on 8GB.<Expect model="qwen3-8b" gpu="rtx-4060" fits="true" mode="full-gpu" /> Gemma 4 12B needs more than that, so part of it goes to system RAM,<Expect model="gemma-4-12b" gpu="rtx-4060" fits="true" mode="partial-offload" /> but it fits fully on 12GB.<Expect model="gemma-4-12b" gpu="rtx-3060-12gb" fits="true" mode="full-gpu" /> Qwen3 14B fits on 12GB with little margin — check `ollama ps`.<Expect model="qwen3-14b" gpu="rtx-3060-12gb" fits="true" mode="full-gpu" />
+
+gpt-oss-20b needs just over what a 12GB card can use, so some experts go to RAM there,<Expect model="gpt-oss-20b" gpu="rtx-3060-12gb" fits="true" mode="cpu-moe" /> and it fits fully on 16GB.<Expect model="gpt-oss-20b" gpu="rtx-5060-ti-16gb" fits="true" mode="full-gpu" /> Gemma 4 26B-A4B and Qwen3.6 35B-A3B keep experts in RAM on 16GB<Expect model="gemma-4-26b-a4b" gpu="rtx-5060-ti-16gb" fits="true" mode="cpu-moe" /><Expect model="qwen3.6-35b-a3b" gpu="rtx-5060-ti-16gb" fits="true" mode="cpu-moe" /> and fit fully on 24GB.<Expect model="gemma-4-26b-a4b" gpu="rtx-3090" fits="true" mode="full-gpu" /><Expect model="qwen3.6-35b-a3b" gpu="rtx-3090" fits="true" mode="full-gpu" />
+
+"Recommended" means the minimum plus room for the context you want, because the KV cache grows with it. <GuideLink slug="vram-requirements" /> works through that headroom tier by tier.
+
+System RAM counts too, because spilled layers and experts live there. In CanRun's calculation, Qwen3.6 35B-A3B on an 8GB card does not fit with 16GB of system RAM,<Expect model="qwen3.6-35b-a3b" gpu="rtx-4060" ram="16" fits="false" /> and at 32GB it fits with experts in RAM.<Expect model="qwen3.6-35b-a3b" gpu="rtx-4060" ram="32" fits="true" mode="cpu-moe" />
+
+## What to run on 8GB to 32GB cards
+
+The summary counts our whole catalog by verdict on one card per tier, at 8k, f16 KV cache and 32GB of DDR5.
+
+<GpuTierSummary gpus="rtx-4060,rtx-3060-12gb,rtx-5060-ti-16gb,rtx-3090,rtx-5090" />
+
+The grid shows this guide's six models under the same conditions; the Qwen3 14B and gpt-oss-20b cells link to combo pages. Its legend sets one rule for MoE models: a model with experts in system RAM is capped at Runs well, because Runs great needs the whole model on the GPU.
+
+<ComboGrid grid="ollamaTiers" />
+
+### 8GB: 8B models, and MoE models with system RAM
+
+On the RTX 4060, `qwen3:8b` Runs great.<Expect model="qwen3-8b" gpu="rtx-4060" verdict="S" mode="full-gpu" confidence="calibrated" /> At 8k it has little margin — check `ollama ps` — but Ollama starts this card at 4k anyway. `gemma4:12b` puts a small part in system RAM and Runs well;<Expect model="gemma-4-12b" gpu="rtx-4060" verdict="A" mode="partial-offload" /> the IQ4_XS route is in the LM Studio section.
+
+On the same card, `qwen3:14b` puts part of its weights in system RAM and Runs slowly.<Expect model="qwen3-14b" gpu="rtx-4060" verdict="B" mode="partial-offload" /> A dense model reads every weight per token, so the part in system RAM slows every token.
+
+<MemoryBreakdown model="qwen3-14b" gpu="rtx-4060" />
+
+The three MoE models do better on this card. gpt-oss-20b, Gemma 4 26B-A4B and Qwen3.6 35B-A3B each Runs well with experts in RAM,<Expect model="gpt-oss-20b" gpu="rtx-4060" verdict="A" mode="cpu-moe" confidence="theoretical" /><Expect model="gemma-4-26b-a4b" gpu="rtx-4060" verdict="A" mode="cpu-moe" confidence="theoretical" /><Expect model="qwen3.6-35b-a3b" gpu="rtx-4060" verdict="A" mode="cpu-moe" confidence="theoretical" /> all as theoretical estimates (±30%). Qwen3.6 35B-A3B needs 32GB of system RAM for this, not 16GB.<Expect model="qwen3.6-35b-a3b" gpu="rtx-4060" ram="16" fits="false" /><Expect model="qwen3.6-35b-a3b" gpu="rtx-4060" ram="32" fits="true" mode="cpu-moe" />
+
+### 12GB: Gemma 4 12B and Qwen3 14B on the GPU
+
+On the RTX 3060 12GB, `gemma4:12b` Runs great.<Expect model="gemma-4-12b" gpu="rtx-3060-12gb" verdict="S" mode="full-gpu" /> `qwen3:14b` stays on the GPU and Runs well, with little margin — check `ollama ps`.<Expect model="qwen3-14b" gpu="rtx-3060-12gb" verdict="A" mode="full-gpu" />
+
+Our page for <ComboLink model="qwen3-14b" gpu="rtx-3060-12gb" /> shows where longer contexts start to spill.
+
+`gpt-oss:20b` needs just over what the card can use, so experts go to RAM and it Runs well,<Expect model="gpt-oss-20b" gpu="rtx-3060-12gb" verdict="A" mode="cpu-moe" confidence="theoretical" /> a theoretical estimate.
+
+### 16GB: gpt-oss-20b on the GPU alone
+
+On the RTX 5060 Ti 16GB, `qwen3:14b` Runs great.<Expect model="qwen3-14b" gpu="rtx-5060-ti-16gb" verdict="S" mode="full-gpu" /> `gpt-oss:20b` fits on the GPU alone and Runs great,<Expect model="gpt-oss-20b" gpu="rtx-5060-ti-16gb" verdict="S" mode="full-gpu" confidence="measured" /> and its speed comes from a public llama.cpp benchmark (llama-bench, not an Ollama run).
+
+<Measured model="gpt-oss-20b" gpu="rtx-5060-ti-16gb" />
+
+`gemma4:26b` Runs well with experts in RAM,<Expect model="gemma-4-26b-a4b" gpu="rtx-5060-ti-16gb" verdict="A" mode="cpu-moe" confidence="theoretical" /> a theoretical estimate. The smaller IQ4_XS file fits fully, with about a gigabyte to spare, and Runs great:<Expect model="gemma-4-26b-a4b" gpu="rtx-5060-ti-16gb" quant="IQ4_XS" verdict="S" mode="full-gpu" />
+
+```powershell
+ollama run hf.co/unsloth/gemma-4-26B-A4B-it-GGUF:UD-IQ4_XS
+```
+
+`qwen3.6:35b` also Runs well with experts in RAM, again as a theoretical estimate.<Expect model="qwen3.6-35b-a3b" gpu="rtx-5060-ti-16gb" verdict="A" mode="cpu-moe" confidence="theoretical" /> Even its IQ4_XS file keeps experts in RAM on this card.<Expect model="qwen3.6-35b-a3b" gpu="rtx-5060-ti-16gb" quant="IQ4_XS" fits="true" mode="cpu-moe" />
+
+### 24GB and 32GB: the whole grid on the GPU
+
+On both the <HubLink gpu="rtx-3090" /> and the <HubLink gpu="rtx-5090" />, each of the six grid models Runs great: Qwen3 8B, Gemma 4 12B, Qwen3 14B, gpt-oss-20b, Gemma 4 26B-A4B and Qwen3.6 35B-A3B.<Expect model="qwen3-8b" gpu="rtx-3090" verdict="S" /><Expect model="gemma-4-12b" gpu="rtx-3090" verdict="S" /><Expect model="qwen3-14b" gpu="rtx-3090" verdict="S" /><Expect model="gpt-oss-20b" gpu="rtx-3090" verdict="S" /><Expect model="gemma-4-26b-a4b" gpu="rtx-3090" verdict="S" /><Expect model="qwen3.6-35b-a3b" gpu="rtx-3090" verdict="S" mode="full-gpu" /><Expect model="qwen3-8b" gpu="rtx-5090" verdict="S" /><Expect model="gemma-4-12b" gpu="rtx-5090" verdict="S" /><Expect model="qwen3-14b" gpu="rtx-5090" verdict="S" /><Expect model="gpt-oss-20b" gpu="rtx-5090" verdict="S" /><Expect model="gemma-4-26b-a4b" gpu="rtx-5090" verdict="S" /><Expect model="qwen3.6-35b-a3b" gpu="rtx-5090" verdict="S" mode="full-gpu" /> Here the standard `gemma4:26b` and `qwen3.6:35b` tags need no smaller quant.
+
+What 32GB adds is room for context. In CanRun's calculation, Qwen3.6 35B-A3B stays fully on the GPU of the RTX 5090 even at 128k with an f16 KV cache.<Expect model="qwen3.6-35b-a3b" gpu="rtx-5090" ctx="131072" fits="true" mode="full-gpu" /> The <HubLink model="qwen3.6-35b-a3b" /> page compares other cards.
+
+## Ollama tags and the context Ollama starts with
+
+<RuntimeFact id="ollama-default-ctx" />. Ollama's code puts the cut-offs slightly below the documented values, so 24GB cards such as the RTX 3090 start at 32k, as does the 32GB RTX 5090. The 8, 12 and 16GB cards start at 4k.
+
+On the RTX 4060, Qwen3 8B fits fully at 4k,<Expect model="qwen3-8b" gpu="rtx-4060" ctx="4096" fits="true" mode="full-gpu" /> while Gemma 4 12B spills even at 4k.<Expect model="gemma-4-12b" gpu="rtx-4060" ctx="4096" fits="true" mode="partial-offload" /> Raising Qwen3 8B to 16k with an f16 KV cache pushes part of its weights into system RAM,<Expect model="qwen3-8b" gpu="rtx-4060" ctx="16384" fits="true" mode="partial-offload" /> and a q8_0 KV cache keeps it on the GPU.<Expect model="qwen3-8b" gpu="rtx-4060" ctx="16384" kv="q8_0" fits="true" mode="full-gpu" /> <RuntimeFact id="ollama-kv-cache-type" />. <GuideLink slug="ollama-context-length" /> shows how to change the context.
+
+On the RTX 3090, Qwen3.6 35B-A3B at Ollama's 32k fits on the GPU with little margin<Expect model="qwen3.6-35b-a3b" gpu="rtx-3090" ctx="32768" fits="true" mode="full-gpu" /> — check `ollama ps`, because the `qwen3.6:35b` tag also bundles a vision projector that CanRun does not count. At 64k with an f16 KV cache, some experts move to system RAM;<Expect model="qwen3.6-35b-a3b" gpu="rtx-3090" ctx="65536" fits="true" mode="cpu-moe" /> with a q8_0 KV cache, 64k stays on the GPU.<Expect model="qwen3.6-35b-a3b" gpu="rtx-3090" ctx="65536" kv="q8_0" fits="true" mode="full-gpu" /> The table shows the speeds.
+
+<CtxTable model="qwen3.6-35b-a3b" gpu="rtx-3090" />
+
+In a public report, an Ollama user on Windows 11 with an RTX 3090 ran `gemma4:26b` at a 32k context with flash attention off, and `ollama ps` showed 100% GPU. Gemma 4 26B-A4B Runs great on the RTX 3090, and the table below shows this report's speed.<Expect model="gemma-4-26b-a4b" gpu="rtx-3090" verdict="S" confidence="measured" /> That build is now listed as `gemma4:26b-a4b-it-q4_K_M`; `gemma4:26b` points to a different one. CanRun also keeps 32k fully on the GPU.<Expect model="gemma-4-26b-a4b" gpu="rtx-3090" ctx="32768" fits="true" mode="full-gpu" />
+
+<Measured model="gemma-4-26b-a4b" gpu="rtx-3090" />
+
+What the tag pages listed when we checked (= marks the same build):
+
+- `qwen3:8b` = `qwen3:8b-q4_K_M` = `qwen3:latest`, and `qwen3:14b` = `qwen3:14b-q4_K_M`.
+- `gpt-oss:20b` = `gpt-oss:latest`, Ollama's own MXFP4 build.
+- `gemma4:12b` and `gemma4:26b` (= `gemma4:26b-a4b`) list MLX and llama.cpp variants. The llama.cpp one is Q4_K_M plus a vision projector and a small "draft" model.
+- `qwen3.6:35b` = `qwen3.6:35b-a3b` = `qwen3.6:latest`, with the same two variants; the llama.cpp one is Q4_K_M plus a vision projector.
+- Bare `gemma4` is E4B, which CanRun does not calculate, so always name the size.
+
+These are Ollama's own builds, not the Hugging Face GGUF files CanRun calculates. For the exact files, use the `hf.co` form:
+
+```powershell
+ollama run hf.co/unsloth/Qwen3-8B-GGUF:Q4_K_M
+ollama run hf.co/unsloth/Qwen3-14B-GGUF:Q4_K_M
+ollama run hf.co/ggml-org/gpt-oss-20b-GGUF:MXFP4
+ollama run hf.co/bartowski/Qwen_Qwen3.6-35B-A3B-GGUF:Q4_K_M
+```
+
+To match CanRun's 8k on Windows, use the context slider in the app's settings, or quit the app and start the server in PowerShell:
+
+```powershell
+$env:OLLAMA_CONTEXT_LENGTH="8192"; ollama serve
+```
+
+On macOS and Linux, run `OLLAMA_CONTEXT_LENGTH=8192 ollama serve`. `ollama ps` then shows SIZE, PROCESSOR (100% GPU, 100% CPU or a CPU/GPU split) and CONTEXT; for a split you did not expect, see <GuideLink slug="gpu-offload-check" />.
+
+## LM Studio: memory estimate and GPU offload
+
+LM Studio's model search (Ctrl+Shift+M) browses Hugging Face, so you can download the same GGUF repos CanRun calculates. Search for `unsloth/gemma-4-12b-it-GGUF`, for example.
+
+<QuantLadder model="gemma-4-12b" gpu="rtx-4060" />
+
+Gemma 4 12B's IQ4_XS file fits fully on the RTX 4060 and Runs well,<Expect model="gemma-4-12b" gpu="rtx-4060" quant="IQ4_XS" verdict="A" mode="full-gpu" /> with little margin — check `ollama ps` if you run it as `ollama run hf.co/unsloth/gemma-4-12b-it-GGUF:IQ4_XS`. UD-Q2_K_XL Runs great,<Expect model="gemma-4-12b" gpu="rtx-4060" quant="UD-Q2_K_XL" verdict="S" mode="full-gpu" /> but it is a Heavy loss quant, and LM Studio's own advice is to choose a 4-bit option or higher if your machine can run it. Q8_0 spills part of its weights and Runs slowly.<Expect model="gemma-4-12b" gpu="rtx-4060" quant="Q8_0" verdict="B" mode="partial-offload" />
+
+The load panel has sliders for context length and GPU offload. The memory estimate updates as you move them, and LM Studio warns you before loading if you are likely to run out of memory, a guardrail you can override. From the command line, without loading:
+
+```powershell
+lms load --estimate-only <model> --context-length 8192 --gpu max
+```
+
+`--gpu` takes `max`, `off` or a value from 0 to 1; left unset, LM Studio picks the offload itself. For LM Studio, its own estimate is a better guide than CanRun's tables. Its documentation gives no default context, so set `8192` to match CanRun.
+
+## No graphics card, or a Mac
+
+Without a GPU, the whole model sits in system RAM. Qwen3 8B fits in 16GB,<Expect model="qwen3-8b" gpu="cpu-ddr5-5600-2ch" ram="16" fits="true" mode="cpu-only" /> and on dual-channel DDR5-5600 it lands at Runs slowly, the cap CanRun puts on every CPU-only setup.<Expect model="qwen3-8b" gpu="cpu-ddr5-5600-2ch" verdict="B" confidence="calibrated" /> gpt-oss-20b does not fit in 16GB<Expect model="gpt-oss-20b" gpu="cpu-ddr5-5600-2ch" ram="16" fits="false" /> but fits in 32GB.<Expect model="gpt-oss-20b" gpu="cpu-ddr5-5600-2ch" ram="32" fits="true" mode="cpu-only" /> <GuideLink slug="cpu-only-llm" /> covers each RAM size.
+
+On a Mac, CanRun counts the whole model as needed memory and about 70% of unified memory as usable by the GPU. On a 16GB M4, Qwen3 8B stays on the GPU and Runs well.<Expect model="qwen3-8b" gpu="apple-m4" ram="16" verdict="A" mode="full-gpu" /> gpt-oss-20b needs <Num kind="needGB" model="gpt-oss-20b" gpu="apple-m4" /> on a Mac, so it does not fit on the 16GB M4<Expect model="gpt-oss-20b" gpu="apple-m4" ram="16" fits="false" /> and needs the 24GB configuration.<Expect model="gpt-oss-20b" gpu="apple-m4" ram="24" fits="true" mode="full-gpu" /> Both apps' MLX engines are outside CanRun's calculation. See <GuideLink slug="mac-local-llm" />.
+
+## How sure are these numbers?
+
+Memory is calculated by formula from the GGUF files and model configs. Speeds are estimates with a band and a confidence label. Calibrated means ±12% for dense models fully on an NVIDIA or AMD card, and ±20% for MoE models, partial offload and other hardware. Theoretical (±30%) covers every cell with MoE experts in RAM on the 8, 12 and 16GB cards. Measured cells rest on a public benchmark: gpt-oss-20b on the 16, 24 and 32GB cards,<Expect model="gpt-oss-20b" gpu="rtx-5060-ti-16gb" confidence="measured" /><Expect model="gpt-oss-20b" gpu="rtx-3090" confidence="measured" /><Expect model="gpt-oss-20b" gpu="rtx-5090" confidence="measured" /> Gemma 4 26B-A4B on the 24 and 32GB cards,<Expect model="gemma-4-26b-a4b" gpu="rtx-3090" confidence="measured" /><Expect model="gemma-4-26b-a4b" gpu="rtx-5090" confidence="measured" /> and Qwen3 8B on the RTX 5090.<Expect model="qwen3-8b" gpu="rtx-5090" verdict="S" confidence="measured" />
+
+CanRun counts only the language-model file, not the vision projector and draft model that the gemma4 and qwen3.6 tags bundle. Ollama's builds also differ from CanRun's files, so check `ollama ps`. The tables assume Windows with the card driving the display, 32GB of DDR5 system RAM, and one model and one request at a time.
+
+Verdict names in the text refer to 8k with an f16 KV cache. Qwen3 8B, Qwen3 14B and Qwen3.6 35B-A3B think by default and gpt-oss-20b always thinks, so their speed thresholds are 1.5× higher. Gemma 4 has thinking off by default. The thresholds:
+
+<Threshold />
+
+## Where to go next
+
+- <GuideLink slug="ollama-vs-llama-cpp-lm-studio" />: how the three apps differ.
+- <GuideLink slug="ollama-context-length" />: setting Ollama's context and keeping it in VRAM.
+- <GuideLink slug="moe-cpu-offload" />: how MoE experts in system RAM work.
+- <GuideLink slug="kv-cache-context" />: how the KV cache grows and what q8_0 saves.
+- <GuideLink slug="korean-open-llms" />: Korean models and how to run them.
+- <GuideLink slug="gemma-4-models" />: the Gemma 4 sizes side by side.
+
+## FAQ
+
+### What are Ollama's minimum requirements?
+
+Ollama's requirement pages set OS and GPU-driver requirements, not a RAM or VRAM minimum, so the model you load decides the memory. On Windows it asks for <RuntimeFact id="ollama-windows-req" />. For scale, Qwen3 8B fits fully on an 8GB card,<Expect model="qwen3-8b" gpu="rtx-4060" fits="true" mode="full-gpu" /> and without a GPU it fits in 16GB of system RAM.<Expect model="qwen3-8b" gpu="cpu-ddr5-5600-2ch" ram="16" fits="true" mode="cpu-only" />
+
+### What can I run on 8GB of VRAM?
+
+Qwen3 8B fits fully on an 8GB card, and on the RTX 4060 it Runs great.<Expect model="qwen3-8b" gpu="rtx-4060" verdict="S" mode="full-gpu" /> On the same card, Gemma 4 12B puts a small part in system RAM and Runs well.<Expect model="gemma-4-12b" gpu="rtx-4060" verdict="A" mode="partial-offload" /> gpt-oss-20b fits with experts in system RAM;<Expect model="gpt-oss-20b" gpu="rtx-4060" fits="true" mode="cpu-moe" /> its speed there is a theoretical estimate (see the grid).
+
+### Does LM Studio need a better PC than Ollama?
+
+Not for the model: both run GGUF files on llama.cpp, so the weights and KV cache take the same memory in either app. The differences are platform rules and defaults. LM Studio needs AVX2 on x64 PCs and does not support Intel Macs, while Ollama starts at a 4k context on cards below 24GB. <GuideLink slug="ollama-vs-llama-cpp-lm-studio" /> compares the rest.
+
+### How much system RAM do I need?
+
+Enough for the part of the model that does not fit in VRAM, plus what the OS uses; CanRun's tables assume 32GB. With an 8GB card, gpt-oss-20b fits with 16GB.<Expect model="gpt-oss-20b" gpu="rtx-4060" ram="16" fits="true" mode="cpu-moe" /> Qwen3.6 35B-A3B does not fit with 16GB<Expect model="qwen3.6-35b-a3b" gpu="rtx-4060" ram="16" fits="false" /> and needs 32GB.<Expect model="qwen3.6-35b-a3b" gpu="rtx-4060" ram="32" fits="true" mode="cpu-moe" /> Without a GPU the whole model sits in RAM, so gpt-oss-20b does not fit in 16GB<Expect model="gpt-oss-20b" gpu="cpu-ddr5-5600-2ch" ram="16" fits="false" /> but fits in 32GB.<Expect model="gpt-oss-20b" gpu="cpu-ddr5-5600-2ch" ram="32" fits="true" mode="cpu-only" />
+
+### Which model should I pull for Korean?
+
+CanRun does not rank models for Korean, because it does not rate answer quality in any language; it shows fit and speed. Korean models such as EXAONE, Kanana and HyperCLOVA X SEED are covered in <GuideLink slug="korean-open-llms" />, with `hf.co` commands. Kanana 1.5 8B, for example, fits fully on the RTX 4060 with about a gigabyte to spare.<Expect model="kanana-1.5-8b" gpu="rtx-4060" fits="true" mode="full-gpu" />
+
+## Sources
+
+- [Ollama: Windows](https://docs.ollama.com/windows): requirements, install, `OLLAMA_MODELS`, AMD.
+- [Ollama: macOS](https://docs.ollama.com/macos): macOS and chip requirements.
+- [Ollama: hardware support](https://docs.ollama.com/gpu): NVIDIA requirements, AMD lists, Vulkan.
+- [Ollama: Linux](https://docs.ollama.com/linux): install script and optional drivers.
+- [Ollama: quickstart](https://docs.ollama.com/quickstart): the example model's VRAM recommendation.
+- [Ollama: context length](https://docs.ollama.com/context-length): defaults, slider, `ollama ps`.
+- [Ollama FAQ](https://docs.ollama.com/faq): PROCESSOR column, KV cache type.
+- [Ollama: server/routes.go](https://github.com/ollama/ollama/blob/main/server/routes.go): default-context thresholds in code.
+- [Ollama library: qwen3 tags](https://ollama.com/library/qwen3/tags): Qwen3 aliases.
+- [Ollama library: gpt-oss tags](https://ollama.com/library/gpt-oss/tags): the MXFP4 build.
+- [Ollama library: gemma4 tags](https://ollama.com/library/gemma4/tags): E4B default, 26B builds.
+- [Ollama library: gemma4:12b](https://ollama.com/library/gemma4:12b): variants, projector, draft model.
+- [Ollama library: gemma4:26b](https://ollama.com/library/gemma4:26b): variants, projector, draft model.
+- [Ollama library: qwen3.6 tags](https://ollama.com/library/qwen3.6/tags): Qwen3.6 aliases.
+- [Ollama library: qwen3.6:35b](https://ollama.com/library/qwen3.6:35b): variants, vision projector.
+- [Hugging Face: Ollama](https://huggingface.co/docs/hub/ollama): the `hf.co` form.
+- [LM Studio: system requirements](https://lmstudio.ai/docs/app/system-requirements): Windows, Mac and Linux.
+- [LM Studio: download a model](https://lmstudio.ai/docs/app/basics/download-model): the 4-bit advice.
+- [LM Studio blog: load estimates](https://lmstudio.ai/blog/lmstudio-v0.3.27): memory estimate and guardrail.
+- [LM Studio: lms load](https://lmstudio.ai/docs/cli/local-models/load): `--estimate-only` and `--gpu`.
+- [LM Studio blog: Model Search](https://lmstudio.ai/blog/0.4.0): the shortcut.
+- [llama.cpp: gpt-oss benchmarks](https://github.com/ggml-org/llama.cpp/discussions/15396): the RTX 5060 Ti 16GB run.
+- [Ollama issue: gemma4 on RTX 3090](https://github.com/ollama/ollama/issues/15237): the 32k run, flash attention off.

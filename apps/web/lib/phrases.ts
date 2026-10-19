@@ -61,7 +61,7 @@ export function speedPhrase(
 
 /**
  * pp(프롬프트 처리) 문장 — 늘 범위 + 대략적 추정 라벨 (규칙 3, D13): "about 1,709 tok/s (1,025–2,393, rough estimate ±40%)".
- * 콤보 페이지·GPU 비교(10-19 D103)가 같이 쓴다. `tCombo` = Combo 네임스페이스(ppValue)
+ * 콤보 페이지·GPU 비교(10-19 D106)가 같이 쓴다. `tCombo` = Combo 네임스페이스(ppValue)
  */
 export function ppPhrase(tCombo: Translate, tConfidence: Translate, locale: string, r: PpRange): string {
   return tCombo('ppValue', {

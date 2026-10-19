@@ -55,6 +55,7 @@ export const GUIDE_SLUGS = [
   'gemma-4-models',
   'qwen3.6-vs-qwen3.8',
   'deepseek-local',
+  'ollama-lm-studio-requirements',
 ] as const;
 
 export type GuideSlug = (typeof GUIDE_SLUGS)[number];
@@ -74,8 +75,8 @@ const DRAFT_1019 = { status: 'draft', datePublished: '2026-10-19', dateModified:
 export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
   'vram-requirements': {
     ...PUBLISHED,
-    // 10-03 D62: 필요량 정의(그래픽카드에 올라가는 가중치)·여유 문장 갱신. 10-03 D63: en "5090 이 더하는 모델 없음" → Nemotron 3.5 Lightning
-    dateModified: '2026-10-03',
+    // 10-03 D62: 필요량 정의(그래픽카드에 올라가는 가중치)·여유 문장 갱신. 10-03 D63: en "5090 이 더하는 모델 없음" → Nemotron 3.5 Lightning. 10-19 D105: 2026 모델(Gemma 4·Qwen3.6/3.8)·용량별 카드 표(VramPeers)
+    dateModified: '2026-10-19',
     grids: {
       tiers: {
         gpus: ['rtx-4060', 'rtx-3060-12gb', 'rtx-4070', 'rtx-5070', 'rtx-5060-ti-16gb', 'rtx-3090', 'rtx-4090', 'rtx-5090'],
@@ -579,6 +580,30 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
         title: '딥시크(DeepSeek) 로컬 사양 — R1 증류 모델 8B·14B·32B와 원본 R1을 돌리려면',
         description:
           '딥시크 R1을 내 PC에서 돌릴 때 필요한 사양을 정리했습니다. 증류 모델 8B·14B·32B의 VRAM, 긴 추론에 드는 컨텍스트 메모리, 원본 R1이 가정용 PC로 어려운 이유를 다룹니다.',
+      },
+    },
+  },
+  'ollama-lm-studio-requirements': {
+    ...DRAFT_1019,
+    grids: {
+      // 8·12·16·24·32GB 한 장씩 × 크기 순 모델 6 — gpt-oss-20b·qwen3-14b 칸은 배치 1 이라 링크된다
+      ollamaTiers: {
+        gpus: ['rtx-4060', 'rtx-3060-12gb', 'rtx-5060-ti-16gb', 'rtx-3090', 'rtx-5090'],
+        models: ['qwen3-8b', 'gemma-4-12b', 'qwen3-14b', 'gpt-oss-20b', 'gemma-4-26b-a4b', 'qwen3.6-35b-a3b'],
+      },
+    },
+    related: ['ollama-vs-llama-cpp-lm-studio', 'gpu-offload-check', 'vram-requirements'],
+    locales: {
+      en: {
+        title: 'Ollama and LM Studio system requirements: minimum specs, RAM and VRAM by model size',
+        description:
+          'What Ollama and LM Studio need to install and run: OS, CPU and GPU support, how much RAM and VRAM each model size takes, and what to pull on 8–32GB cards.',
+      },
+      ko: {
+        // '추천' — 10-19 사용자 채팅 승인(RECOMMEND_TITLE_APPROVED). 본문은 메모리 기준으로만 쓴다
+        title: '올라마(Ollama)·LM Studio 사양 — 최소·권장 사양과 VRAM별 추천 모델',
+        description:
+          'Ollama와 LM Studio를 설치하고 돌리는 데 필요한 OS·CPU·GPU 조건과, 모델 크기별로 드는 RAM·VRAM을 정리했습니다. 8~32GB 그래픽카드에서 받을 만한 모델도 함께 봅니다.',
       },
     },
   },

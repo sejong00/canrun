@@ -6,7 +6,7 @@ import type { CompareIntroBody } from '@/lib/compare-intros';
 const COMPONENTS = Object.fromEntries(COMPARE_INTRO_COMPONENTS.map((name) => [name, GUIDE_MDX_COMPONENTS[name]]));
 
 /**
- * GPU 비교 소개글 (10-19 D103) — 손으로 쓴 짧은 문단(로캘별 MDX). 서버 컴포넌트, 클라이언트 JS 0.
+ * GPU 비교 소개글 (10-19 D106) — 손으로 쓴 짧은 문단(로캘별 MDX). 서버 컴포넌트, 클라이언트 JS 0.
  * 수치·판정 주장은 허브 소개글과 같은 데이터 컴포넌트(`Num`·`Price`·`Expect`)로만 — 데이터가 바뀌면 빌드가 실패해 문장을 고치게 한다.
  * 소개글이 없는 쌍은 페이지가 이 블록을 그리지 않는다.
  */

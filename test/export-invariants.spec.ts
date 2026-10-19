@@ -74,7 +74,7 @@ const FILE_COUNT_MAX = 16_000;
 const FILE_SIZE_MAX = 25 * 1024 * 1024;
 /** IndexNow 키 파일 (10-16 D93 — 내용 = 키, 공개 값) */
 const INDEXNOW_KEY_FILE = `${INDEXNOW_KEY}.txt`;
-/** 허용 비-HTML 파일 (P1-5 사이트맵·robots·RSS·기본 공유 카드, ads·llms 대비 · 허브 카드 D60 · IndexNow 키 파일 D93 · 공개 콤보·게시 가이드 카드 D96 · favicon.ico D99 · 게시 GPU 비교 카드 D103) */
+/** 허용 비-HTML 파일 (P1-5 사이트맵·robots·RSS·기본 공유 카드, ads·llms 대비 · 허브 카드 D60 · IndexNow 키 파일 D93 · 공개 콤보·게시 가이드 카드 D96 · favicon.ico D99 · 게시 GPU 비교 카드 D106) */
 const ROOT_FILE_ALLOWLIST =
   /^(?:_redirects|icon\.svg|favicon\.ico|robots\.txt|sitemap[^/]*\.xml|ads\.txt|llms\.txt|[0-9a-f]{32}\.txt|rss\.xml|ko\/rss\.xml|og\/default-(?:en|ko)\.png|og\/(?:gpu|model|guide|compare)\/[a-z0-9.-]+-(?:en|ko)\.png|og\/combo\/[a-z0-9.-]+\/[a-z0-9.-]+-(?:en|ko)\.png)$/;
 const TXT_ALLOWLIST = new Set(['robots.txt', 'ads.txt', 'llms.txt', INDEXNOW_KEY_FILE]);
@@ -148,7 +148,7 @@ beforeAll(() => {
 
 const isHub = (page: PageFacts) => page.kind === 'gpu' || page.kind === 'model';
 const isCalculator = (page: PageFacts) => page.kind === 'calculator';
-/** GPU 비교 (10-19 D103) — 페이지·목차. 초안 쌍은 noindex·미링크, 목차는 게시 쌍이 0이면 noindex·미링크(가이드와 같은 규칙) */
+/** GPU 비교 (10-19 D106) — 페이지·목차. 초안 쌍은 noindex·미링크, 목차는 게시 쌍이 0이면 noindex·미링크(가이드와 같은 규칙) */
 const isCompare = (page: PageFacts) => page.kind === 'compare';
 const isCompareIndex = (page: PageFacts) => page.kind === 'compare-index';
 const PUBLISHED_COMPARES = publishedCompares();
@@ -534,7 +534,7 @@ describe('structured data (docs/04 §5)', () => {
         expect(urlToPath(items[1]!.item!), `${page.file} crumb 2`).toBe(localePath(page.locale, page.kind === 'gpu' ? '/gpus' : '/models'));
       }
       if (isCompare(page)) {
-        // 홈 › GPU 비교 목차 › 비교 (10-19 D103 — 가이드와 같은 3단)
+        // 홈 › GPU 비교 목차 › 비교 (10-19 D106 — 가이드와 같은 3단)
         expect(items.length, page.file).toBe(3);
         expect(urlToPath(items[1]!.item!), `${page.file} crumb 2`).toBe(localePath(page.locale, '/compare'));
       }
@@ -734,7 +734,7 @@ describe('internal linking (docs/04 §2 — 고아 페이지 0)', () => {
     // 가이드: published 만 링크 대상(초안은 URL 로만 — D40). 목차는 published ≥1 일 때만
     const linkedGuides = (p: PageFacts) =>
       (isGuide(p) && guidePublished(guideSlugOf(p.urlPath)!)) || (isGuidesIndex(p) && PUBLISHED_GUIDES.length > 0);
-    // GPU 비교: 게시 쌍만 링크 대상, 목차는 게시 쌍이 1개 이상일 때만 (10-19 D103)
+    // GPU 비교: 게시 쌍만 링크 대상, 목차는 게시 쌍이 1개 이상일 때만 (10-19 D106)
     const linkedCompares = (p: PageFacts) =>
       (isCompare(p) && comparePublished(p.compareSlug!)) || (isCompareIndex(p) && PUBLISHED_COMPARES.length > 0);
     for (const page of pages.filter((p) => isHub(p) || isCalculator(p) || linkedGuides(p) || isStatic(p) || isList(p) || linkedCompares(p))) {
@@ -768,7 +768,7 @@ describe('internal linking (docs/04 §2 — 고아 페이지 0)', () => {
         if (slug) expect(guidePublished(slug), `${page.file} links draft guide ${href}`).toBe(true);
         // 가이드 본문의 브레드크럼은 목차로 간다 — 목차가 비어 있으면(published 0) 그 가이드도 초안이라 미링크·noindex
         if (stripLocale(href) === '/guides' && !isGuide(page)) expect(PUBLISHED_GUIDES.length, `${page.file} links the empty guides index`).toBeGreaterThan(0);
-        // GPU 비교(10-19 D103): 초안 쌍으로는 링크하지 않는다. 비교 페이지의 브레드크럼·"전체 비교 목록"은 목차로 간다 — 목차가 비어 있으면 그 쌍도 초안이다
+        // GPU 비교(10-19 D106): 초안 쌍으로는 링크하지 않는다. 비교 페이지의 브레드크럼·"전체 비교 목록"은 목차로 간다 — 목차가 비어 있으면 그 쌍도 초안이다
         const compareSlug = compareSlugOf(href);
         if (compareSlug) expect(comparePublished(compareSlug), `${page.file} links draft compare page ${href}`).toBe(true);
         if (stripLocale(href) === '/compare' && !isCompare(page)) expect(PUBLISHED_COMPARES.length, `${page.file} links the empty compare index`).toBeGreaterThan(0);
@@ -897,7 +897,7 @@ describe('combo indexing gate (data/publish.json — 결정 D9, docs/04 §3)', (
     for (const page of pages.filter((p) => p.kind !== 'combo' && !isGuide(p) && !isGuidesIndex(p) && !isCompare(p) && !isCompareIndex(p))) {
       expect(page.robotsNoindex, `${page.file} must not be noindex`).toBe(false);
     }
-    // GPU 비교 감수 게이트 (10-19 D103 — 가이드 D40 과 같은 규칙): 쌍 noindex ⇔ 초안, 목차 noindex ⇔ 게시 쌍 0
+    // GPU 비교 감수 게이트 (10-19 D106 — 가이드 D40 과 같은 규칙): 쌍 noindex ⇔ 초안, 목차 noindex ⇔ 게시 쌍 0
     for (const page of pages.filter(isCompare)) {
       expect(page.robotsNoindex, `${page.file} noindex ⇔ draft`).toBe(!comparePublished(page.compareSlug!));
     }
@@ -939,7 +939,7 @@ describe('combo linking rules (docs/04 §3 — 공개 페이지는 공개 콤보
         isGuidesIndex(p) ||
         isStatic(p) ||
         (p.kind === 'combo' && indexableOf(p)) ||
-        // GPU 비교(10-19 D103): 게시 쌍과 목차 — 초안 쌍도 공개 콤보로만 링크한다(아래 compare 블록이 본다)
+        // GPU 비교(10-19 D106): 게시 쌍과 목차 — 초안 쌍도 공개 콤보로만 링크한다(아래 compare 블록이 본다)
         (isCompare(p) && comparePublished(p.compareSlug!)) ||
         isCompareIndex(p),
     );
@@ -1079,7 +1079,7 @@ describe('boilerplate ratio (결정 D16 — ≥50% 페이지에 나타나는 문
 // P1-3 계산기·홈·아일랜드 불변식 (결정 D24~D36)
 // ---------------------------------------------------------------------------
 
-describe('GPU comparison pages (10-19 D103 — /compare/{a}-vs-{b}, 레지스트리 쌍만)', () => {
+describe('GPU comparison pages (10-19 D106 — /compare/{a}-vs-{b}, 레지스트리 쌍만)', () => {
   const requireCompares = () => {
     const found = pages.filter(isCompare);
     expect(found.length, 'compare pages exported (en + ko)').toBe(COMPARE_SLUGS.length * 2);

@@ -1,5 +1,5 @@
 /**
- * GPU 비교 페이지 레지스트리 (10-19 D103) — `/compare/{a}-vs-{b}` 쌍·상태·묶음·검색 수요 근거의 단일 출처.
+ * GPU 비교 페이지 레지스트리 (10-19 D106) — `/compare/{a}-vs-{b}` 쌍·상태·묶음·검색 수요 근거의 단일 출처.
  *
  * **의존성 0**: `@/` 경로·JSX·`.mdx` import 금지 — export 테스트(`test/`)·사이트맵·리다이렉트·공유 카드 스크립트가 루트 tsconfig 에서 직접 읽는다.
  * 수치는 `lib/compares.ts`(허브 요약 `getGpuHub` → `@canrun/data` `compareGpus`), 소개글은 `content/{en,ko}/compare/<slug>.mdx`(로캘별 따로 집필,
@@ -53,7 +53,7 @@ export const COMPARE_SLUGS = [
 
 export type CompareSlug = (typeof COMPARE_SLUGS)[number];
 
-/** 10-19 D103 v1 — 전부 초안(사용자 게시 승인 전) */
+/** 10-19 D106 v1 — 전부 초안(사용자 게시 승인 전) */
 const DRAFT_1019 = { status: 'draft', dateModified: '2026-10-19' } as const;
 
 export const COMPARES: Readonly<Record<CompareSlug, CompareEntry>> = {
@@ -147,7 +147,20 @@ export const COMPARES: Readonly<Record<CompareSlug, CompareEntry>> = {
  * 손으로 쓴 소개글이 있는 쌍 — en·ko MDX `content/{en,ko}/compare/<slug>.mdx` + `lib/compare-intros.ts` 로더 맵 한 줄과 함께 늘린다
  * (유닛 테스트 `test/compare-intros.test.ts` 가 세 곳의 대칭을 본다). 여기 없는 쌍은 소개 없이 그린다 — 게시하려면 소개글이 있어야 한다
  */
-export const COMPARE_INTRO_SLUGS = [] as const satisfies readonly CompareSlug[];
+export const COMPARE_INTRO_SLUGS = [
+  'rtx-5060-ti-16gb-vs-rtx-5070',
+  'rtx-4060-ti-16gb-vs-rtx-5060-ti-16gb',
+  'rtx-3060-12gb-vs-rtx-4060',
+  'rtx-5060-ti-8gb-vs-rtx-5060-ti-16gb',
+  'rtx-5070-ti-vs-rtx-5060-ti-16gb',
+  'rx-9070-xt-vs-rtx-5070',
+  'rtx-4090-vs-rtx-5090',
+  'rtx-3090-vs-rtx-4090',
+  'rtx-3090-vs-rtx-5090',
+  'amd-strix-halo-vs-nvidia-dgx-spark',
+  'amd-strix-halo-vs-rtx-5070-ti',
+  'apple-m4-pro-vs-rtx-5060-ti-16gb',
+] as const satisfies readonly CompareSlug[];
 
 export type CompareIntroSlug = (typeof COMPARE_INTRO_SLUGS)[number];
 

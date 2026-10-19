@@ -334,6 +334,7 @@
     "ladderCaption": "{gpu}에서 {model}: 양자화별 판정 (8k 컨텍스트·f16 KV 캐시)",
     "ctxCaption": "{gpu}에서 {model} ({quant}): 컨텍스트 길이·KV 캐시 종류별 메모리와 판정",
     "unifiedCaption": "등록된 모델 {total}종이 구성마다 판정별로 몇 개씩인지 보여 줍니다(8k 컨텍스트, f16 KV 캐시 기준).",
+    "vramPeersCaption": "등록된 {vram}GB 그래픽카드 {count}종을 메모리 대역폭이 높은 순으로 놓고, 모델 {total}종이 카드마다 판정별로 몇 개씩인지 보여 줍니다(8k 컨텍스트, f16 KV 캐시, 시스템 RAM 32GB DDR5 기준).",
     "factsCaption": "사양·라이선스·GGUF 출처",
     "breakdownCaption": "메모리 사용 내역: {gpu}에서 {model} ({quant})",
     "measuredTitle": "벤치마크 결과: {gpu}에서 {model} ({quant})",
@@ -1098,7 +1099,7 @@
     "speedMeasured": "{est} tok/s",
     "guideKicker": "가이드",
     "compareSubtitle": "로컬 LLM 비교",
-    "compareFaster": "속도: {gpu} 약 {ratio}× (추정값 기준)",
-    "compareSame": "속도는 거의 같습니다(추정값 기준)"
+    "compareFaster": "{gpu} 쪽이 약 {ratio}배 빠릅니다(추정치 기준)",
+    "compareSame": "속도는 거의 같습니다(추정치 기준)"
   }
 }

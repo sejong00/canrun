@@ -6,7 +6,7 @@
  *   미공개 콤보는 기본 카드 그대로(전 조합을 그리면 파일 수 한도 D18 를 먹는다). 카드 = 페이지 제목의 판정 + description 의
  *   필요 메모리·속도 밴드·신뢰 라벨(규칙 3 — 숫자만 따로 두지 않는다). 같은 갈래인지는 export 테스트가 페이지와 대조한다
  * - 가이드는 published 만(초안은 noindex 라 기본 카드), 제목만 싣는다
- * - GPU 비교(10-19 D103)는 published 쌍만(초안·비교 목차는 기본 카드) — 두 기기 이름·판정 수·속도 배율(추정 중앙값, 페이지 요약과 같은 규칙)
+ * - GPU 비교(10-19 D106)는 published 쌍만(초안·비교 목차는 기본 카드) — 두 기기 이름·판정 수·속도 배율(추정 중앙값, 페이지 요약과 같은 규칙)
  * 네이버는 og:image 를 검색 결과 썸네일로 쓰고, 여러 페이지에 같은 이미지가 반복되면 무시할 수 있다 — 그래서 페이지마다 다른 카드.
  *
  * 렌더러는 Next 에 들어 있는 OG 이미지 렌더러(@vercel/og = satori + resvg, wasm)를 그대로 쓴다 — 새 의존성 없음.
@@ -135,7 +135,7 @@ const OG_MESSAGE_SPEC: MessageSpec = {
     'Combo.titleVerdictRam',
     'Combo.metaSplitRam',
     'Hint.quantDesperate',
-    // GPU 비교 카드 (10-19 D103) — 페이지와 같은 이름 규칙·제목
+    // GPU 비교 카드 (10-19 D106) — 페이지와 같은 이름 규칙·제목
     'Compare.nameMemory',
     'Compare.cardTitle',
   ],
@@ -245,7 +245,7 @@ export type CompareCardText = {
   speed?: string;
 };
 
-/** GPU 비교 카드 문구 (10-19 D103) — 비교 페이지(lib/compares.ts getCompare)와 같은 `compareGpus`·같은 이름 규칙 */
+/** GPU 비교 카드 문구 (10-19 D106) — 비교 페이지(lib/compares.ts getCompare)와 같은 `compareGpus`·같은 이름 규칙 */
 export function compareCardText(slug: CompareSlug, hubA: GpuHubData, hubB: GpuHubData, t: OgTranslators, locale: OgLocale): CompareCardText {
   const entry = COMPARES[slug];
   if (hubA.gpu.id !== entry.a || hubB.gpu.id !== entry.b) throw new Error(`og card: compare ${slug} got ${hubA.gpu.id} / ${hubB.gpu.id}`);

@@ -4,7 +4,7 @@
  * **의존성 0**: `@/` 별칭 import 금지 — 루트 tsconfig 의 postbuild 스크립트·export 테스트가 직접 읽는다.
  * 경로는 사이트 기준(`/og/…`, 로캘 프리픽스 없음) — 카드 자체에 로캘이 들어 있다.
  * - 기본 카드: 로캘별 1장(커밋된 PNG, scripts/make-og.ts) — 계산기·정적 페이지·미공개 콤보·초안 가이드
- * - 허브: GPU·모델마다 (D60) · 공개 콤보(indexable)·게시 가이드마다 (D96) · 게시 GPU 비교마다 (10-19 D103) — 빌드마다 다시 그린다
+ * - 허브: GPU·모델마다 (D60) · 공개 콤보(indexable)·게시 가이드마다 (D96) · 게시 GPU 비교마다 (10-19 D106) — 빌드마다 다시 그린다
  *   (초안 비교·비교 목차는 기본 카드)
  */
 export type OgLocale = 'en' | 'ko';
@@ -14,5 +14,5 @@ export const hubOgImage = (kind: 'gpu' | 'model', id: string, locale: OgLocale) 
 /** 콤보 URL(`/can-i-run/{model}/on/{gpu}`)처럼 모델이 앞 — 모델마다 디렉터리 하나 */
 export const comboOgImage = (modelId: string, gpuId: string, locale: OgLocale) => `/og/combo/${modelId}/${gpuId}-${locale}.png`;
 export const guideOgImage = (slug: string, locale: OgLocale) => `/og/guide/${slug}-${locale}.png`;
-/** GPU 비교 (10-19 D103) — 게시 쌍만 그린다, 초안은 기본 카드 */
+/** GPU 비교 (10-19 D106) — 게시 쌍만 그린다, 초안은 기본 카드 */
 export const compareOgImage = (slug: string, locale: OgLocale) => `/og/compare/${slug}-${locale}.png`;

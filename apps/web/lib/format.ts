@@ -40,7 +40,7 @@ export function formatUSD(locale: string, value: number): string {
   }).format(value);
 }
 
-/** 배율 (GPU 비교 10-19 D103) — 자릿수 채움 없이 최대 `digits` 자리: 1.5 → "1.5", 1.04 → "1.04", 2 → "2" */
+/** 배율 (GPU 비교 10-19 D106) — 자릿수 채움 없이 최대 `digits` 자리: 1.5 → "1.5", 1.04 → "1.04", 2 → "2" */
 export function formatRatio(locale: string, value: number, digits = 1): string {
   return new Intl.NumberFormat(locale, { maximumFractionDigits: digits }).format(value);
 }

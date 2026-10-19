@@ -1,5 +1,5 @@
 /**
- * GPU 비교 소개글 (10-19 D103) — 레지스트리(`content/compares.ts` COMPARE_INTRO_SLUGS) ↔ 로캘별 MDX(`content/{en,ko}/compare/<slug>.mdx`) ↔
+ * GPU 비교 소개글 (10-19 D106) — 레지스트리(`content/compares.ts` COMPARE_INTRO_SLUGS) ↔ 로캘별 MDX(`content/{en,ko}/compare/<slug>.mdx`) ↔
  * 로더 맵(`lib/compare-intros.ts`) 대칭, 허브 소개글(hub-intros.test.ts, AUTHORING §10)과 같은 MDX 규칙(컴포넌트 명세·산문 숫자 금지·금지 어구·
  * 인라인 컴포넌트만·`<Expect>` ≥1·데이터 컴포넌트 ≥1·2~3문단·짧게·이론 추정 라벨), 허용 컴포넌트 목록(COMPARE_INTRO_COMPONENTS),
  * 게시 쌍 ⇒ 소개글 en·ko. 소개글은 아직 없다(부모 세션이 쓴다) — 규칙이 공회전하지 않도록 아래 표본 문자열로 검사기 자체를 확인한다.

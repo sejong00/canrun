@@ -1,5 +1,5 @@
 /**
- * GPU 대 GPU 비교 (10-19 D103) — 두 GPU 허브 요약(`summarizeGpu`)을 모델 id 로 맞대어 비교 페이지(`/compare/{a}-vs-{b}`)의
+ * GPU 대 GPU 비교 (10-19 D106) — 두 GPU 허브 요약(`summarizeGpu`)을 모델 id 로 맞대어 비교 페이지(`/compare/{a}-vs-{b}`)의
  * 수치를 만든다. 엔진 무변경, 순수 함수(Date·random·fs 없음). 포맷팅(반올림·단위·문장)은 UI 레이어 몫(규칙 6).
  *
  * - 행: 같은 모델의 두 조합(각 허브의 요약 구성 — dGPU 는 허브 가정 RAM, 통합·CPU 는 가장 큰 메모리 `primaryIndex`).

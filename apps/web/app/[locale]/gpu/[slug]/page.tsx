@@ -264,7 +264,7 @@ export default async function GpuHubPage({ params }: Props) {
   const href = gpuHref(gpu.id);
   // 관련 가이드 2~3편 — 하드웨어 종류별, published 만 (10-16 D95, D40)
   const guides = gpuHubGuides(gpu);
-  // 이 GPU 가 든 게시 비교 쌍 (10-19 D103) — 초안은 링크하지 않는다(D40 과 같은 규칙), 없으면 블록을 그리지 않는다
+  // 이 GPU 가 든 게시 비교 쌍 (10-19 D106) — 초안은 링크하지 않는다(D40 과 같은 규칙), 없으면 블록을 그리지 않는다
   const compareNamesT = { compare: tCompare, names: t.names } as unknown as Pick<CompareTranslators, 'compare' | 'names'>;
   const compares = compareLinksForGpu(gpu.id).map(({ slug }) => ({
     slug,
