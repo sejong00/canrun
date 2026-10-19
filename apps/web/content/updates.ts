@@ -10,6 +10,7 @@
 export type SiteUpdate = { readonly id: string; readonly date: string };
 
 export const SITE_UPDATES = [
+  { id: 'model-about', date: '2026-10-19' },
   { id: 'browse-lists', date: '2026-10-19' },
   { id: 'prompt-speed-model-size', date: '2026-10-16' },
   { id: 'strix-halo-speed', date: '2026-10-16' },

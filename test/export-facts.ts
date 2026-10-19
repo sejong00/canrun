@@ -150,6 +150,13 @@ export type PageFacts = {
     /** 허브 소개글 `[data-hub-intro]` (10-14 D74) — 문단 `<p>` 수(없으면 0)·소개 안 `[data-guide-data]` 수 */
     hubIntroParagraphs: number;
     hubIntroData: number;
+    /**
+     * 모델 소개 `[data-model-about]` (10-19 D102) — 문단 `<p>` 수(없으면 0)·소개 안 링크 href(문서 순서)·
+     * 허브 소개글(`[data-hub-intro]`)과 모델 정보(`#facts-heading`)보다 앞에 오는지(소개가 없으면 false)
+     */
+    modelAboutParagraphs: number;
+    modelAboutHrefs: string[];
+    modelAboutFirst: boolean;
   };
   /** `a[data-related-guide]` href (콤보 → published 가이드, D44) */
   relatedGuideHrefs: string[];
@@ -605,6 +612,9 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
     return { id: data['model-id'] ?? data['gpu-id']!, data };
   });
   const hubIntro = elementsWithAttr(noScript, 'data-hub-intro')[0]?.inner ?? '';
+  const modelAbout = elementsWithAttr(noScript, 'data-model-about')[0]?.inner ?? '';
+  const aboutAt = noScript.search(/\sdata-model-about(?=[\s=>/])/);
+  const laterSections = [noScript.search(/\sdata-hub-intro(?=[\s=>/])/), noScript.indexOf('id="facts-heading"')].filter((i) => i >= 0);
   const markers: PageFacts['markers'] = {
     calculator: elementsWithAttr(noScript, 'data-calculator').length > 0,
     calcForm: elementsWithAttr(noScript, 'data-calc-form').length > 0,
@@ -624,9 +634,12 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
     guidesEmpty: elementsWithAttr(noScript, 'data-guides-empty').length > 0,
     ramToggle: elementsWithAttr(noScript, 'data-ram-toggle').length > 0,
     ...(calcModelLink === undefined ? {} : { calcModelLink }),
-    blockInParagraph: blockInParagraphCount(guideBody) + blockInParagraphCount(hubIntro),
+    blockInParagraph: blockInParagraphCount(guideBody) + blockInParagraphCount(hubIntro) + blockInParagraphCount(modelAbout),
     hubIntroParagraphs: (hubIntro.match(/<p[\s>]/g) ?? []).length,
     hubIntroData: elementsWithAttr(hubIntro, 'data-guide-data').length,
+    modelAboutParagraphs: (modelAbout.match(/<p[\s>]/g) ?? []).length,
+    modelAboutHrefs: [...modelAbout.matchAll(/<a\b[^>]*\shref="([^"]*)"/g)].map((m) => decodeEntities(m[1]!)),
+    modelAboutFirst: aboutAt >= 0 && laterSections.length > 0 && laterSections.every((i) => aboutAt < i),
   };
   // 가이드 본문의 문장 단위 — 규칙 3 검사 대상(임계값 범례 `[data-threshold]` 는 밴드 없는 정책 문장이라 제외)
   const thresholdTexts = new Set(

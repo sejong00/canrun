@@ -13,6 +13,7 @@ import { GgufSourceBadge, LicenseBadge, Pill } from '@/components/badges';
 import { Breadcrumbs } from '@/components/breadcrumbs';
 import { Faq } from '@/components/faq';
 import { HubIntro } from '@/components/hub-intro';
+import { ModelAbout } from '@/components/model-about';
 import {
   BenchTable,
   ComboCells,
@@ -28,6 +29,7 @@ import { catalog } from '@/lib/catalog';
 import { formatCtx, formatGB, formatInt, formatParams } from '@/lib/format';
 import { formatPrice, krwNote } from '@/lib/price';
 import { loadHubIntro } from '@/lib/hub-intros';
+import { loadModelAbout } from '@/lib/model-about';
 import { needAt8k } from '@/lib/model-need';
 import { getModelHub } from '@/lib/hubs';
 import type { QA } from '@/lib/jsonld';
@@ -215,6 +217,8 @@ export default async function ModelHubPage({ params }: Props) {
   const matrixOffGpuKey = offGpuNoteKey(hub);
   // 손으로 쓴 소개글(10-14 D74) — 레지스트리(content/hubs.ts)에 있는 허브만
   const Intro = await loadHubIntro('model', model.id, locale);
+  // "어떤 모델인가요" 한 문단(10-19 D102) — 레지스트리(content/model-about.ts)에 있는 모델만, 소개글·사양보다 먼저
+  const About = await loadModelAbout(model.id, locale);
 
   return (
     <PageShell locale={locale} href={href}>
@@ -251,6 +255,8 @@ export default async function ModelHubPage({ params }: Props) {
             ))}
           </div>
         </header>
+
+        {About && <ModelAbout Body={About} title={t.hub('aboutTitle', { model: model.name })} />}
 
         {Intro && <HubIntro Body={Intro} title={t.hub('introTitle', { model: model.name })} />}
 

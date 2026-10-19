@@ -19,6 +19,7 @@ import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { GUIDES, GUIDE_SLUGS, type GuideSlug } from '../apps/web/content/guides';
 import { GPU_INTRO_IDS, HUB_INTROS_UPDATED, MODEL_INTRO_IDS } from '../apps/web/content/hubs';
+import { MODEL_ABOUT, MODEL_ABOUT_IDS, hasModelAbout } from '../apps/web/content/model-about';
 import { SITE_UPDATES, latestSiteUpdate } from '../apps/web/content/updates';
 import { ADSENSE_CLIENT, DAUM_WEBMASTER_LINE, INDEXNOW_KEY } from '../apps/web/lib/site';
 import { ENGINE_SPEC_DATE } from '../packages/engine/src/index';
@@ -324,11 +325,40 @@ describe('hub intros (10-14 D74 — 손으로 쓴 소개글은 레지스트리 �
       const xml = readFileSync(join(outDir, file), 'utf8');
       for (const m of xml.matchAll(/<url><loc>([^<]+)<\/loc><lastmod>([^<]+)<\/lastmod>/g)) {
         const path = urlToPath(m[1]!).replace(/^\/ko(?=\/)/, '');
-        expect(m[2], `${file} ${m[1]} lastmod`).toBe(withIntro.has(path) ? introDate : numbersDate);
+        const hubDate = withIntro.has(path) ? introDate : numbersDate;
+        // 모델 소개(10-19 D102)가 붙은 모델 허브는 그 소개를 고친 날까지
+        const aboutId = path.startsWith('/model/') ? path.slice('/model/'.length) : '';
+        expect(m[2], `${file} ${m[1]} lastmod`).toBe(hasModelAbout(aboutId) ? laterDate(hubDate, MODEL_ABOUT[aboutId]) : hubDate);
         checked += 1;
       }
     }
     expect(checked, 'hub sitemap entries').toBeGreaterThan(withIntro.size * 2);
+  });
+});
+
+describe('model about (10-19 D102 — "어떤 모델인가요" 한 문단은 레지스트리 모델에만)', () => {
+  it('exactly the registered model hubs render it in both locales, before the hub intro and the specs: one paragraph + a source line led by the model card', () => {
+    const hfIds = new Map(readJson<Array<{ id: string; hfId: string }>>('data/models.json').map((m) => [m.id, m.hfId]));
+    const expected = MODEL_ABOUT_IDS.map((id) => `/model/${id}`).sort();
+    const seen: Record<'en' | 'ko', string[]> = { en: [], ko: [] };
+    for (const page of pages.filter(isHub)) {
+      const path = stripLocale(page.urlPath);
+      const { modelAboutParagraphs, modelAboutHrefs, modelAboutFirst } = page.markers;
+      if (modelAboutParagraphs === 0) {
+        // 소개가 없는 허브(GPU 허브 포함)는 지금과 같게 렌더된다
+        expect(modelAboutHrefs, `${page.file} stray about links`).toEqual([]);
+        continue;
+      }
+      seen[page.locale].push(path);
+      const id = path.slice('/model/'.length);
+      expect(page.kind, `${page.file} about on a non-model page`).toBe('model');
+      expect(modelAboutParagraphs, `${page.file} about paragraphs`).toBe(2);
+      expect(modelAboutFirst, `${page.file} about comes before the intro and the specs`).toBe(true);
+      expect(modelAboutHrefs[0], `${page.file} first source`).toBe(`https://huggingface.co/${hfIds.get(id)}`);
+      for (const href of modelAboutHrefs) expect(href, `${page.file} about link`).toMatch(/^https:\/\//);
+    }
+    expect(seen.en.sort(), 'en hubs with an about text').toEqual(expected);
+    expect(seen.ko.sort(), 'ko hubs with an about text').toEqual(expected);
   });
 });
 

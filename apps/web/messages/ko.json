@@ -610,6 +610,7 @@
     "metaTitle": "{model} 필요 사양: VRAM, 돌아가는 GPU, 예상 속도",
     "metaDescription": "{quant}·8k 컨텍스트 기준으로 {model}에는 그래픽카드 메모리가 약 {need}GB 필요합니다. 양자화·컨텍스트별 필요 메모리와 GPU·맥·CPU {gpus}종에서의 판정, 예상 속도 범위를 정리했습니다.",
     "h1": "{model} 필요 사양: VRAM과 돌아가는 GPU",
+    "aboutTitle": "{model}, 어떤 모델인가요",
     "introTitle": "{model}, 돌리기 전에 알아 둘 점",
     "factsTitle": "모델 정보",
     "factParams": "파라미터",

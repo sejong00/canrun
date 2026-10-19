@@ -6,6 +6,7 @@
  * - lastmod: 가이드 = 레지스트리 dateModified, 업데이트 소식 = max(dataUpdated, 최신 항목 날짜 — content/updates.ts),
  *   엔진 수치를 그리는 페이지(계산기·GPU·모델 허브·콤보·GPU 목록) = max(dataUpdated, 엔진 `ENGINE_SPEC_DATE` — 10-16 D93: 엔진 개정은
  *   데이터 없이도 모든 수치를 바꾼다), 소개글이 붙은 허브는 여기에 content/hubs.ts HUB_INTROS_UPDATED 까지 넣은 최댓값,
+ *   모델 소개("어떤 모델인가요", 10-19 D102)가 붙은 모델 허브는 여기에 그 모델의 소개 수정일(content/model-about.ts)까지 넣은 최댓값,
  *   모델 목록 = 여기에 모델 30일 다운로드 기준일(`hfDownloadsAsOf`) 최댓값까지(10-19 D101 — 다운로드 수만 바뀐 주간 동기화는
  *   dataUpdated 를 올리지 않는데 목록은 그 수를 보인다), 나머지(홈·정적 페이지) = `data/meta.json` dataUpdated — 빌드 시각을 쓰지 않는다(D21 결정론).
  * - robots.txt: 전부 허용(네이버 Yeti 포함) + Sitemap 줄 + 맨 끝 다음(Daum) 웹마스터도구 확인 줄(D99). `/can-i-run/` 를 막지 않는다(막으면 noindex 를 못 읽는다 — PROGRESS §5).
@@ -22,6 +23,7 @@ import { indexableCombos, parseGpus, parseMeta, parseModels, parsePublish } from
 import { ENGINE_SPEC_DATE } from '../packages/engine/src/index';
 import { GUIDES, GUIDE_SLUGS } from '../apps/web/content/guides';
 import { GPU_INTRO_IDS, HUB_INTROS_UPDATED, MODEL_INTRO_IDS } from '../apps/web/content/hubs';
+import { MODEL_ABOUT, hasModelAbout } from '../apps/web/content/model-about';
 import { STATIC_PAGE_SLUGS } from '../apps/web/content/pages';
 import { latestSiteUpdate } from '../apps/web/content/updates';
 import { ADSENSE_CLIENT, DAUM_WEBMASTER_LINE, INDEXNOW_KEY, SITE_URL } from '../apps/web/lib/site';
@@ -192,7 +194,9 @@ export function buildSitemaps(repoRoot: string, outDir: string): string[] {
   const gpuEntries = gpus.map((g) => ({ path: `/gpu/${g.id}`, lastmod: hubLastmod(GPU_INTRO_IDS, g.id) }));
   add('sitemap-gpus.xml', gpuEntries, urlset(both(gpuEntries)));
 
-  const modelEntries = models.map((m) => ({ path: `/model/${m.id}`, lastmod: hubLastmod(MODEL_INTRO_IDS, m.id) }));
+  // 모델 소개(10-19 D102)는 모델마다 고친 날이 다르다 — 매일 신모델과 함께 소개가 늘어난다
+  const modelLastmod = (id: string) => (hasModelAbout(id) ? maxDate([hubLastmod(MODEL_INTRO_IDS, id), MODEL_ABOUT[id]]) : hubLastmod(MODEL_INTRO_IDS, id));
+  const modelEntries = models.map((m) => ({ path: `/model/${m.id}`, lastmod: modelLastmod(m.id) }));
   add('sitemap-models.xml', modelEntries, urlset(both(modelEntries)));
 
   const guideEntries = published.map((slug) => ({ path: `/guides/${slug}`, lastmod: GUIDES[slug].dateModified }));

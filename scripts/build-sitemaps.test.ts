@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { GUIDES, GUIDE_SLUGS } from '../apps/web/content/guides';
 import { GPU_INTRO_IDS, HUB_INTROS_UPDATED, MODEL_INTRO_IDS } from '../apps/web/content/hubs';
+import { MODEL_ABOUT, hasModelAbout } from '../apps/web/content/model-about';
 import { INDEXNOW_KEY, SITE_URL } from '../apps/web/lib/site';
 import { ENGINE_SPEC_DATE } from '../packages/engine/src/index';
 import { buildSitemaps, cdata, guideFeedHtml, localePath } from './build-sitemaps';
@@ -141,7 +142,10 @@ describe('buildSitemaps on a minimal out/ (RSS body · IndexNow key · lastmod)'
       expect(hubs.size, file).toBeGreaterThan(introIds.length * 2);
       for (const [path, lastmod] of hubs) {
         const id = path.split('/').pop()!;
-        expect(lastmod, path).toBe((introIds as readonly string[]).includes(id) ? later(numbers, HUB_INTROS_UPDATED) : numbers);
+        const hub = (introIds as readonly string[]).includes(id) ? later(numbers, HUB_INTROS_UPDATED) : numbers;
+        // 모델 허브는 소개("어떤 모델인가요", D102)를 고친 날까지
+        const about = file === 'sitemap-models.xml' && hasModelAbout(id) ? MODEL_ABOUT[id] : undefined;
+        expect(lastmod, path).toBe(about ? later(hub, about) : hub);
       }
     }
     for (const locale of ['en', 'ko']) {

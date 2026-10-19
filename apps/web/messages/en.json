@@ -610,6 +610,7 @@
     "metaTitle": "{model} Hardware Requirements: VRAM, GPUs & Speed",
     "metaDescription": "{model} needs about {need} GB of graphics card memory at {quant} with 8k context. Memory by quant and context, plus verdicts with estimated speed bands for {gpus} GPUs, Macs and CPU setups.",
     "h1": "{model} hardware requirements",
+    "aboutTitle": "What is {model}?",
     "introTitle": "What to know before running {model}",
     "factsTitle": "About the model",
     "factParams": "Parameters",
