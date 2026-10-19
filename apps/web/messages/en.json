@@ -369,7 +369,13 @@
     "kib": "{value} KiB",
     "factOllamaDefaultCtx": "Ollama picks its default context length from the GPU memory it finds: 4k tokens below 24 GiB, 32k tokens from 24 to 48 GiB, and 256k tokens at 48 GiB or more",
     "factOllamaKvCacheType": "Ollama quantizes the KV cache only when the server starts with OLLAMA_KV_CACHE_TYPE (f16, q8_0 or q4_0) and flash attention on; the setting applies to every model the server runs",
-    "factSource": "Ollama docs, checked {date}"
+    "factOllamaWindowsReq": "Windows 10 22H2 or newer (Home or Pro), with NVIDIA driver 551.61 or newer on NVIDIA cards",
+    "factOllamaMacosReq": "macOS Sonoma (14) or newer on an Apple M-series chip (CPU and GPU) or an Intel (x86) Mac; Intel Macs run on the CPU only",
+    "factOllamaNvidiaReq": "an NVIDIA GPU with compute capability 5.0 or higher and driver 550 or newer; cards with compute capability 5.0–6.2 need driver 570 or newer",
+    "factLmStudioWindowsReq": "a CPU with AVX2 on x64 PCs, with at least 16 GB of RAM and 4 GB of dedicated VRAM recommended",
+    "factLmStudioMacReq": "an Apple Silicon Mac (M1–M4; Intel Macs are not supported) on macOS 14.0 or newer, with 16 GB of RAM or more recommended",
+    "factSourceOllama": "Ollama docs, checked {date}",
+    "factSourceLmStudio": "LM Studio docs, checked {date}"
   },
   "Detect": {
     "button": "Detect my GPU",
@@ -624,6 +630,12 @@
     "factCard": "Model card",
     "factKorean": "Korean model",
     "hfLink": "{model} on Hugging Face",
+    "seriesTitle": "Other sizes in this series",
+    "seriesCaption": "Graphics card memory each model needs at its baseline quant with 8k context, and its verdict on common graphics cards, smallest model first",
+    "seriesColQuant": "Baseline quant",
+    "seriesColNeed": "Memory needed (8k)",
+    "seriesThis": "this model",
+    "seriesNoteGemma4": "CanRun does not calculate Gemma 4 E2B and E4B yet.",
     "quantTitle": "GGUF files",
     "quantCaption": "Tracked quantizations of {model}, smallest first",
     "baselineMark": "baseline",

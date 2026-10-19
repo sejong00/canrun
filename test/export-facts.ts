@@ -190,6 +190,16 @@ export type PageFacts = {
   koModelName?: { name: string; title: boolean; description: boolean; h1: boolean; body: number };
   /** Qwen 의 한글 표기(큐웬·큐원)가 제목·설명·가시 텍스트에 있다 — 쓰지 않는다(D94) */
   qwenHangul: boolean;
+  /**
+   * 모델 허브 "같은 계열의 다른 크기" `[data-model-series]`(10-19) — 표 안 링크 href(문서 순서)·현재 모델 행 `[data-series-current]` 수.
+   * 표가 없으면 undefined
+   */
+  modelSeries?: { hrefs: string[]; currentRows: number };
+  /**
+   * 외부 도구 사실 `[data-runtime-fact]`(가이드 `<RuntimeFact>`, 10-19) — id·안쪽 링크 href(문서 순서)·텍스트(태그를 공백 없이 뗀 것,
+   * "문장 (출처 줄)" 그대로)
+   */
+  runtimeFacts: Array<{ id: string; hrefs: string[]; text: string }>;
 };
 
 // ---------------------------------------------------------------------------
@@ -612,6 +622,7 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
     return { id: data['model-id'] ?? data['gpu-id']!, data };
   });
   const hubIntro = elementsWithAttr(noScript, 'data-hub-intro')[0]?.inner ?? '';
+  const seriesEl = elementsWithAttr(noScript, 'data-model-series')[0];
   const modelAbout = elementsWithAttr(noScript, 'data-model-about')[0]?.inner ?? '';
   const aboutAt = noScript.search(/\sdata-model-about(?=[\s=>/])/);
   const laterSections = [noScript.search(/\sdata-hub-intro(?=[\s=>/])/), noScript.indexOf('id="facts-heading"')].filter((i) => i >= 0);
@@ -796,6 +807,19 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
     krwNote: /환율\(1달러 [\d,]+원\)/.test(visible),
     ...(koModelName ? { koModelName } : {}),
     qwenHangul: /큐웬|큐원/.test(`${title ?? ''} ${description ?? ''} ${visible}`),
+    runtimeFacts: elementsWithAttr(noScript, 'data-runtime-fact').map((e) => ({
+      id: attrValue(e.openTag, 'data-runtime-fact') ?? '',
+      hrefs: [...e.inner.matchAll(/<a\b[^>]*\shref="([^"]*)"/g)].map((m) => decodeEntities(m[1]!)),
+      text: decodeEntities(e.inner.replace(TAG_RE, '')).replace(/\s+/g, ' ').trim(),
+    })),
+    ...(seriesEl
+      ? {
+          modelSeries: {
+            hrefs: [...seriesEl.inner.matchAll(/<a\b[^>]*\shref="([^"]*)"/g)].map((m) => decodeEntities(m[1]!)),
+            currentRows: elementsWithAttr(seriesEl.inner, 'data-series-current').length,
+          },
+        }
+      : {}),
   };
 }
 

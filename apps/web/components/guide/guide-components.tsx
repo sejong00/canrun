@@ -17,18 +17,16 @@ import {
   GUIDE_COMPONENTS,
   MEMORY_KINDS,
   NUM_KINDS,
-  RUNTIME_FACT_IDS,
   splitList,
   type MemoryKind,
   type NumKind,
-  type RuntimeFactId,
 } from '@/lib/guide-components';
 import { findGuideGrid, guideEntry, isGuideSlug, isPublished } from '@/lib/guides';
 import { getGpuHub, getModelHub } from '@/lib/hubs';
 import { comboHref, gpuHref, guideHref, localeHref, modelHref } from '@/lib/links';
 import { gpuName, memoryText, type Translate } from '@/lib/phrases';
 import { isComboIndexable } from '@/lib/publish';
-import { RUNTIME_FACTS } from '@/lib/runtime-facts';
+import { isRuntimeFactId, RUNTIME_FACT_SOURCE_KEYS, RUNTIME_FACTS } from '@/lib/runtime-facts';
 
 /**
  * 가이드 MDX 컴포넌트 (P1-4 D42~D44) — 전부 서버 컴포넌트(훅은 next-intl 뿐, 클라이언트 JS 0).
@@ -715,16 +713,15 @@ export function Price({ gpu: gpuId }: { gpu: string }) {
   return <span data-guide-data="price">{text}</span>;
 }
 
-/** 외부 도구 동작 사실 — 출처·확인일 동반 */
+/** 외부 도구 동작 사실 — 출처·확인일 동반. 문장·출처 줄 이름은 레코드가 정한다(`lib/runtime-facts.ts`, 10-19) */
 export function RuntimeFact({ id }: { id: string }) {
   const t = useTranslations('GuideData');
-  if (!(RUNTIME_FACT_IDS as readonly string[]).includes(id)) throw new Error(`guide RuntimeFact: unknown id "${id}"`);
-  const fact = RUNTIME_FACTS[id as RuntimeFactId];
-  const key = id === 'ollama-default-ctx' ? 'factOllamaDefaultCtx' : 'factOllamaKvCacheType';
+  if (!isRuntimeFactId(id)) throw new Error(`guide RuntimeFact: unknown id "${id}"`);
+  const fact = RUNTIME_FACTS[id];
   return (
     <span data-runtime-fact={id}>
-      {t(key)} (
-      <a href={fact.source}>{t('factSource', { date: fact.checked })}</a>)
+      {t(fact.message)} (
+      <a href={fact.source}>{t(RUNTIME_FACT_SOURCE_KEYS[fact.tool], { date: fact.checked })}</a>)
     </span>
   );
 }

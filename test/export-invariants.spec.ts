@@ -20,6 +20,8 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { GUIDES, GUIDE_SLUGS, type GuideSlug } from '../apps/web/content/guides';
 import { GPU_INTRO_IDS, HUB_INTROS_UPDATED, MODEL_INTRO_IDS } from '../apps/web/content/hubs';
 import { MODEL_ABOUT, MODEL_ABOUT_IDS, hasModelAbout } from '../apps/web/content/model-about';
+import { seriesMembers } from '../apps/web/content/model-series';
+import { RUNTIME_FACTS, RUNTIME_FACT_SOURCE_KEYS, isRuntimeFactId } from '../apps/web/lib/runtime-facts';
 import { SITE_UPDATES, latestSiteUpdate } from '../apps/web/content/updates';
 import { ADSENSE_CLIENT, DAUM_WEBMASTER_LINE, INDEXNOW_KEY } from '../apps/web/lib/site';
 import { ENGINE_SPEC_DATE } from '../packages/engine/src/index';
@@ -362,6 +364,32 @@ describe('model about (10-19 D102 — "어떤 모델인가요" 한 문단은 레
   });
 });
 
+describe('model series table (10-19 — 같은 계열의 다른 크기, content/model-series.ts)', () => {
+  it('a model hub whose series has ≥2 members links every sibling hub exactly once, smallest first, and marks itself unlinked; other pages render no table', () => {
+    const catalogModels = readJson<Array<{ id: string; paramsB: number }>>('data/models.json');
+    let tables = 0;
+    for (const page of pages) {
+      const id = page.kind === 'model' ? stripLocale(page.urlPath).slice('/model/'.length) : undefined;
+      const members = id === undefined ? [] : seriesMembers(catalogModels, id);
+      if (members.length === 0) {
+        expect(page.modelSeries, `${page.file} renders a series table`).toBeUndefined();
+        continue;
+      }
+      tables += 1;
+      const series = page.modelSeries;
+      expect(series, `${page.file} series table`).toBeDefined();
+      // 순서까지 같다 = 형제마다 링크 한 번, 파라미터 작은 순 — 현재 모델은 링크가 아니라 표시 한 줄
+      expect(series!.hrefs, `${page.file} sibling links`).toEqual(
+        members.filter((m) => m.id !== id).map((m) => hubPath(page.locale, 'model', m.id)),
+      );
+      expect(series!.hrefs, `${page.file} links itself`).not.toContain(page.urlPath);
+      expect(series!.currentRows, `${page.file} current-model rows`).toBe(1);
+    }
+    expect(tables, 'model hubs with a series table (en + ko)').toBeGreaterThan(0);
+    expect(tables % 2, 'en/ko render the same tables').toBe(0);
+  });
+});
+
 describe('share cards (D60 허브별 · D96 공개 콤보·게시 가이드별 og:image)', () => {
   const ogPath = (page: PageFacts) => new URL(page.ogImage!).pathname;
 
@@ -534,6 +562,28 @@ describe('structured data (docs/04 §5)', () => {
       expect(entities.length, page.file).toBe(3);
       expect(entities, page.file).toEqual(page.faq);
     }
+  });
+});
+
+describe('runtime facts (10-19 — 가이드 <RuntimeFact>, lib/runtime-facts.ts)', () => {
+  it('every rendered fact is "sentence (source line)" in the page locale, with one link to its record’s source and the checked date', () => {
+    const guideData = Object.fromEntries(
+      (['en', 'ko'] as const).map((locale) => [locale, readJson<{ GuideData: Record<string, string> }>(`apps/web/messages/${locale}.json`).GuideData]),
+    ) as Record<'en' | 'ko', Record<string, string>>;
+    const seen: Record<'en' | 'ko', number> = { en: 0, ko: 0 };
+    for (const page of pages) {
+      for (const fact of page.runtimeFacts) {
+        seen[page.locale] += 1;
+        expect(isRuntimeFactId(fact.id), `${page.file} unknown fact ${fact.id}`).toBe(true);
+        const record = RUNTIME_FACTS[fact.id as keyof typeof RUNTIME_FACTS];
+        const messages = guideData[page.locale];
+        const sourceLine = messages[RUNTIME_FACT_SOURCE_KEYS[record.tool]]!.replace('{date}', record.checked);
+        expect(fact.hrefs, `${page.file} ${fact.id} source link`).toEqual([record.source]);
+        expect(fact.text, `${page.file} ${fact.id} text`).toBe(`${messages[record.message]} (${sourceLine})`);
+      }
+    }
+    expect(seen.en, 'en pages render runtime facts').toBeGreaterThan(0);
+    expect(seen.ko, 'ko pages render runtime facts').toBeGreaterThan(0);
   });
 });
 
