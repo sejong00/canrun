@@ -1057,6 +1057,7 @@
     "calcLink": "Open the calculator with this RAM",
     "resetAll": "Back to the page settings",
     "ctx": "Context",
+    "ctxPrefix": "Context: ",
     "kv": "KV cache",
     "reset": "Back to 8k / f16",
     "summary": "At {ctx} with a {kv} KV cache, {quant} needs {need} GB: {verdict}, {speed}.",

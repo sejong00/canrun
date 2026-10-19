@@ -32,6 +32,8 @@ export type CtxCellView = {
 export type CtxKvLabels = {
   title: string;
   ctx: string;
+  /** 슬라이더 위 "컨텍스트: 8k" 의 앞부분 — 구분 기호까지 로캘 문구(zh 는 전각 콜론, 10-19 D109) */
+  ctxPrefix: string;
   kv: string;
   reset: string;
   /** 이 설정엔 실행 명령이 없다 — 8k·f16 블록을 그대로 둔다 */
@@ -316,7 +318,7 @@ export function CtxKvControls(p: CtxKvProps) {
       )}
       <div className="flex min-w-56 flex-1 flex-col gap-1">
         <label htmlFor={`${id}-ctx`}>
-          {p.labels.ctx}: <output htmlFor={`${id}-ctx`}>{p.ctxLabels[current.ctxIdx]}</output>
+          {p.labels.ctxPrefix}<output htmlFor={`${id}-ctx`}>{p.ctxLabels[current.ctxIdx]}</output>
         </label>
         <input
           id={`${id}-ctx`}

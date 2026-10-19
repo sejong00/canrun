@@ -1057,6 +1057,7 @@
     "calcLink": "用这个内存容量打开计算器",
     "resetAll": "恢复本页设置",
     "ctx": "上下文",
+    "ctxPrefix": "上下文：",
     "kv": "KV 缓存",
     "reset": "恢复为 8k / f16",
     "summary": "在 {ctx} 上下文、{kv} KV 缓存下，{quant} 需要 {need} GB：{verdict}，{speed}。",

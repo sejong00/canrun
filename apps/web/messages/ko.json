@@ -1057,6 +1057,7 @@
     "calcLink": "이 RAM으로 계산기 열기",
     "resetAll": "처음 설정으로 되돌리기",
     "ctx": "컨텍스트",
+    "ctxPrefix": "컨텍스트: ",
     "kv": "KV 캐시",
     "reset": "8k·f16으로 되돌리기",
     "summary": "{ctx} 컨텍스트, KV {kv}에서 {quant}에는 {need}GB가 필요합니다. 판정: {verdict}, 속도: {speed}.",

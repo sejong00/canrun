@@ -519,6 +519,7 @@ export default async function ComboPage({ params }: Props) {
             labels={{
               title: tCtx(ramToggle ? 'titleWithRam' : 'title'),
               ctx: tCtx('ctx'),
+              ctxPrefix: tCtx('ctxPrefix'),
               kv: tCtx('kv'),
               reset: tCtx(ramToggle ? 'resetAll' : 'reset'),
               commandNone: tCtx('commandNone'),
