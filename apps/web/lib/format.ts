@@ -40,6 +40,11 @@ export function formatUSD(locale: string, value: number): string {
   }).format(value);
 }
 
+/** 배율 (GPU 비교 10-19 D103) — 자릿수 채움 없이 최대 `digits` 자리: 1.5 → "1.5", 1.04 → "1.04", 2 → "2" */
+export function formatRatio(locale: string, value: number, digits = 1): string {
+  return new Intl.NumberFormat(locale, { maximumFractionDigits: digits }).format(value);
+}
+
 /** 정수 */
 /** 입력한 메모리 크기 그대로 (자릿수 채움 없음): 8 → "8", 3.5 → "3.5" — 커스텀 하드웨어 문장·공유 문구 */
 export function formatMemGB(locale: string, value: number): string {

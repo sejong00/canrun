@@ -4,12 +4,13 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { COMPARES, publishedCompares } from '../apps/web/content/compares';
 import { GUIDES, GUIDE_SLUGS } from '../apps/web/content/guides';
 import { GPU_INTRO_IDS, HUB_INTROS_UPDATED, MODEL_INTRO_IDS } from '../apps/web/content/hubs';
 import { MODEL_ABOUT, hasModelAbout } from '../apps/web/content/model-about';
 import { INDEXNOW_KEY, SITE_URL } from '../apps/web/lib/site';
 import { ENGINE_SPEC_DATE } from '../packages/engine/src/index';
-import { buildSitemaps, cdata, guideFeedHtml, localePath } from './build-sitemaps';
+import { buildSitemaps, cdata, compareSitemapEntries, guideFeedHtml, localePath } from './build-sitemaps';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const PAGE_URL = `${SITE_URL}/guides/example`;
@@ -150,6 +151,37 @@ describe('buildSitemaps on a minimal out/ (RSS body · IndexNow key · lastmod)'
     }
     for (const locale of ['en', 'ko']) {
       for (const [path, lastmod] of lastmods(`sitemap-combos-${locale}.xml`)) expect(lastmod, path).toBe(numbers);
+    }
+  });
+});
+
+describe('compareSitemapEntries (GPU 비교 — 10-19 D103)', () => {
+  it('lists the index first and each published pair, lastmod = the later of the numbers date and the pair date; nothing without a published pair', () => {
+    expect(compareSitemapEntries([], '2026-10-19')).toEqual([]);
+    const slugs = ['rtx-4090-vs-rtx-5090', 'rtx-3090-vs-rtx-4090'] as const;
+    const pairDate = (slug: (typeof slugs)[number]) => COMPARES[slug].dateModified;
+    const later = (a: string, b: string) => (a > b ? a : b);
+    for (const numbers of ['2000-01-01', '2099-12-31']) {
+      const entries = compareSitemapEntries(slugs, numbers);
+      expect(entries.map((e) => e.path)).toEqual(['/compare', ...slugs.map((s) => `/compare/${s}`)]);
+      expect(entries.slice(1).map((e) => e.lastmod)).toEqual(slugs.map((s) => later(numbers, pairDate(s))));
+      expect(entries[0]!.lastmod).toBe(entries.slice(1).map((e) => e.lastmod).reduce(later));
+    }
+  });
+
+  it('buildSitemaps writes sitemap-compare.xml only when a pair is published (all drafts today → no file)', () => {
+    const out = mkdtempSync(join(tmpdir(), 'canrun-sitemaps-compare-'));
+    try {
+      for (const locale of ['en', 'ko'] as const) {
+        mkdirSync(join(out, localePath(locale, '/guides').slice(1)), { recursive: true });
+        for (const slug of GUIDE_SLUGS.filter((s) => GUIDES[s].status === 'published')) {
+          writeFileSync(join(out, `${localePath(locale, `/guides/${slug}`).slice(1)}.html`), page('<p>x</p>'), 'utf8');
+        }
+      }
+      const written = buildSitemaps(repoRoot, out);
+      expect(written.includes('sitemap-compare.xml')).toBe(publishedCompares().length > 0);
+    } finally {
+      rmSync(out, { recursive: true, force: true });
     }
   });
 });

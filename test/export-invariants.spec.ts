@@ -17,6 +17,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { COMPARES, COMPARE_SLUGS, publishedCompares } from '../apps/web/content/compares';
 import { GUIDES, GUIDE_SLUGS, type GuideSlug } from '../apps/web/content/guides';
 import { GPU_INTRO_IDS, HUB_INTROS_UPDATED, MODEL_INTRO_IDS } from '../apps/web/content/hubs';
 import { MODEL_ABOUT, MODEL_ABOUT_IDS, hasModelAbout } from '../apps/web/content/model-about';
@@ -28,11 +29,12 @@ import { ENGINE_SPEC_DATE } from '../packages/engine/src/index';
 import { CF_PAGES_REDIRECT_LINE_LIMIT } from '../scripts/build-redirects';
 import { comboCardText, loadCatalog, ogTranslators } from '../scripts/og-cards';
 import { MAC_LINES, summarizeGpu, type GpuHubData } from '../packages/data/src/index';
-import { comboOgImage, defaultOgImage, guideOgImage, hubOgImage } from '../apps/web/lib/og-images';
+import { comboOgImage, compareOgImage, defaultOgImage, guideOgImage, hubOgImage } from '../apps/web/lib/og-images';
 import {
   comboIndexable,
   comboOf,
   comboPath,
+  compareSlugOf,
   createFactsContext,
   extractPageFacts,
   hubPath,
@@ -72,9 +74,9 @@ const FILE_COUNT_MAX = 16_000;
 const FILE_SIZE_MAX = 25 * 1024 * 1024;
 /** IndexNow 키 파일 (10-16 D93 — 내용 = 키, 공개 값) */
 const INDEXNOW_KEY_FILE = `${INDEXNOW_KEY}.txt`;
-/** 허용 비-HTML 파일 (P1-5 사이트맵·robots·RSS·기본 공유 카드, ads·llms 대비 · 허브 카드 D60 · IndexNow 키 파일 D93 · 공개 콤보·게시 가이드 카드 D96 · favicon.ico D99) */
+/** 허용 비-HTML 파일 (P1-5 사이트맵·robots·RSS·기본 공유 카드, ads·llms 대비 · 허브 카드 D60 · IndexNow 키 파일 D93 · 공개 콤보·게시 가이드 카드 D96 · favicon.ico D99 · 게시 GPU 비교 카드 D103) */
 const ROOT_FILE_ALLOWLIST =
-  /^(?:_redirects|icon\.svg|favicon\.ico|robots\.txt|sitemap[^/]*\.xml|ads\.txt|llms\.txt|[0-9a-f]{32}\.txt|rss\.xml|ko\/rss\.xml|og\/default-(?:en|ko)\.png|og\/(?:gpu|model|guide)\/[a-z0-9.-]+-(?:en|ko)\.png|og\/combo\/[a-z0-9.-]+\/[a-z0-9.-]+-(?:en|ko)\.png)$/;
+  /^(?:_redirects|icon\.svg|favicon\.ico|robots\.txt|sitemap[^/]*\.xml|ads\.txt|llms\.txt|[0-9a-f]{32}\.txt|rss\.xml|ko\/rss\.xml|og\/default-(?:en|ko)\.png|og\/(?:gpu|model|guide|compare)\/[a-z0-9.-]+-(?:en|ko)\.png|og\/combo\/[a-z0-9.-]+\/[a-z0-9.-]+-(?:en|ko)\.png)$/;
 const TXT_ALLOWLIST = new Set(['robots.txt', 'ads.txt', 'llms.txt', INDEXNOW_KEY_FILE]);
 /** RSS 파일 크기 상한 (10-16 D93 — 본문 전체를 넣은 피드를 수집기가 한 번에 받도록 10MB 아래로. 정책 값) */
 const RSS_SIZE_MAX = 10 * 1000 * 1000;
@@ -146,7 +148,12 @@ beforeAll(() => {
 
 const isHub = (page: PageFacts) => page.kind === 'gpu' || page.kind === 'model';
 const isCalculator = (page: PageFacts) => page.kind === 'calculator';
-const isStructured = (page: PageFacts) => isHub(page) || page.kind === 'combo' || isCalculator(page);
+/** GPU 비교 (10-19 D103) — 페이지·목차. 초안 쌍은 noindex·미링크, 목차는 게시 쌍이 0이면 noindex·미링크(가이드와 같은 규칙) */
+const isCompare = (page: PageFacts) => page.kind === 'compare';
+const isCompareIndex = (page: PageFacts) => page.kind === 'compare-index';
+const PUBLISHED_COMPARES = publishedCompares();
+const comparePublished = (slug: string) => (PUBLISHED_COMPARES as readonly string[]).includes(slug);
+const isStructured = (page: PageFacts) => isHub(page) || page.kind === 'combo' || isCalculator(page) || isCompare(page);
 const isGuide = (page: PageFacts) => page.kind === 'guide';
 const isGuidesIndex = (page: PageFacts) => page.kind === 'guides-index';
 /** 모델·GPU 목록 (10-19) */
@@ -412,6 +419,11 @@ describe('share cards (D60 허브별 · D96 공개 콤보·게시 가이드별 o
         const { modelId, gpuId } = page.combo!;
         expect(path, page.file).toBe(indexableOf(page) ? comboOgImage(modelId, gpuId, page.locale) : defaultOgImage(page.locale));
         combos += 1;
+      } else if (isCompare(page)) {
+        const slug = page.compareSlug!;
+        expect(path, page.file).toBe(comparePublished(slug) ? compareOgImage(slug, page.locale) : defaultOgImage(page.locale));
+      } else if (isCompareIndex(page)) {
+        expect(path, page.file).toBe(defaultOgImage(page.locale));
       } else if (isGuide(page)) {
         const slug = guideSlugOf(page.urlPath)!;
         expect(path, page.file).toBe(guidePublished(slug) ? guideOgImage(slug, page.locale) : defaultOgImage(page.locale));
@@ -429,6 +441,7 @@ describe('share cards (D60 허브별 · D96 공개 콤보·게시 가이드별 o
     const count = (prefix: string) => outFiles.filter((f) => f.rel.startsWith(prefix)).length;
     expect(count('og/combo/'), 'combo cards = indexable combos × 2 locales').toBe(published * 2);
     expect(count('og/guide/'), 'guide cards = published guides × 2 locales').toBe(PUBLISHED_GUIDES.length * 2);
+    expect(count('og/compare/'), 'compare cards = published compare pairs × 2 locales').toBe(PUBLISHED_COMPARES.length * 2);
   });
 
   it('a combo card shows the title verdict and the description memory and speed band with its label (규칙 3)', () => {
@@ -519,6 +532,11 @@ describe('structured data (docs/04 §5)', () => {
       if (isHub(page)) {
         expect(items.length, page.file).toBe(3);
         expect(urlToPath(items[1]!.item!), `${page.file} crumb 2`).toBe(localePath(page.locale, page.kind === 'gpu' ? '/gpus' : '/models'));
+      }
+      if (isCompare(page)) {
+        // 홈 › GPU 비교 목차 › 비교 (10-19 D103 — 가이드와 같은 3단)
+        expect(items.length, page.file).toBe(3);
+        expect(urlToPath(items[1]!.item!), `${page.file} crumb 2`).toBe(localePath(page.locale, '/compare'));
       }
       if (page.combo) {
         // 홈 › 모델 허브 › 콤보(캐노니컬)
@@ -716,7 +734,10 @@ describe('internal linking (docs/04 §2 — 고아 페이지 0)', () => {
     // 가이드: published 만 링크 대상(초안은 URL 로만 — D40). 목차는 published ≥1 일 때만
     const linkedGuides = (p: PageFacts) =>
       (isGuide(p) && guidePublished(guideSlugOf(p.urlPath)!)) || (isGuidesIndex(p) && PUBLISHED_GUIDES.length > 0);
-    for (const page of pages.filter((p) => isHub(p) || isCalculator(p) || linkedGuides(p) || isStatic(p) || isList(p))) {
+    // GPU 비교: 게시 쌍만 링크 대상, 목차는 게시 쌍이 1개 이상일 때만 (10-19 D103)
+    const linkedCompares = (p: PageFacts) =>
+      (isCompare(p) && comparePublished(p.compareSlug!)) || (isCompareIndex(p) && PUBLISHED_COMPARES.length > 0);
+    for (const page of pages.filter((p) => isHub(p) || isCalculator(p) || linkedGuides(p) || isStatic(p) || isList(p) || linkedCompares(p))) {
       expect(inbound.get(page.urlPath) ?? 0, `orphan ${page.kind} ${page.urlPath}`).toBeGreaterThan(0);
     }
   });
@@ -747,6 +768,10 @@ describe('internal linking (docs/04 §2 — 고아 페이지 0)', () => {
         if (slug) expect(guidePublished(slug), `${page.file} links draft guide ${href}`).toBe(true);
         // 가이드 본문의 브레드크럼은 목차로 간다 — 목차가 비어 있으면(published 0) 그 가이드도 초안이라 미링크·noindex
         if (stripLocale(href) === '/guides' && !isGuide(page)) expect(PUBLISHED_GUIDES.length, `${page.file} links the empty guides index`).toBeGreaterThan(0);
+        // GPU 비교(10-19 D103): 초안 쌍으로는 링크하지 않는다. 비교 페이지의 브레드크럼·"전체 비교 목록"은 목차로 간다 — 목차가 비어 있으면 그 쌍도 초안이다
+        const compareSlug = compareSlugOf(href);
+        if (compareSlug) expect(comparePublished(compareSlug), `${page.file} links draft compare page ${href}`).toBe(true);
+        if (stripLocale(href) === '/compare' && !isCompare(page)) expect(PUBLISHED_COMPARES.length, `${page.file} links the empty compare index`).toBeGreaterThan(0);
       }
     }
   });
@@ -869,8 +894,16 @@ describe('combo indexing gate (data/publish.json — 결정 D9, docs/04 §3)', (
         !indexableOf(page),
       );
     }
-    for (const page of pages.filter((p) => p.kind !== 'combo' && !isGuide(p) && !isGuidesIndex(p))) {
+    for (const page of pages.filter((p) => p.kind !== 'combo' && !isGuide(p) && !isGuidesIndex(p) && !isCompare(p) && !isCompareIndex(p))) {
       expect(page.robotsNoindex, `${page.file} must not be noindex`).toBe(false);
+    }
+    // GPU 비교 감수 게이트 (10-19 D103 — 가이드 D40 과 같은 규칙): 쌍 noindex ⇔ 초안, 목차 noindex ⇔ 게시 쌍 0
+    for (const page of pages.filter(isCompare)) {
+      expect(page.robotsNoindex, `${page.file} noindex ⇔ draft`).toBe(!comparePublished(page.compareSlug!));
+    }
+    for (const page of pages.filter(isCompareIndex)) {
+      expect(page.robotsNoindex, `${page.file} index noindex ⇔ no published pair`).toBe(PUBLISHED_COMPARES.length === 0);
+      expect(page.markers.comparesEmpty, `${page.file} empty state`).toBe(PUBLISHED_COMPARES.length === 0);
     }
     // 가이드 감수 게이트 (P1-4 D40 — D24 의 '비콤보 noindex 금지'를 가이드·목차에 한해 대체)
     for (const page of pages.filter(isGuide)) {
@@ -899,7 +932,16 @@ describe('combo linking rules (docs/04 §3 — 공개 페이지는 공개 콤보
     requireCombos();
     const publicPages = pages.filter(
       (p) =>
-        p.kind === 'home' || isCalculator(p) || isHub(p) || isGuide(p) || isGuidesIndex(p) || isStatic(p) || (p.kind === 'combo' && indexableOf(p)),
+        p.kind === 'home' ||
+        isCalculator(p) ||
+        isHub(p) ||
+        isGuide(p) ||
+        isGuidesIndex(p) ||
+        isStatic(p) ||
+        (p.kind === 'combo' && indexableOf(p)) ||
+        // GPU 비교(10-19 D103): 게시 쌍과 목차 — 초안 쌍도 공개 콤보로만 링크한다(아래 compare 블록이 본다)
+        (isCompare(p) && comparePublished(p.compareSlug!)) ||
+        isCompareIndex(p),
     );
     for (const page of publicPages) {
       for (const { href } of page.links) {
@@ -1036,6 +1078,62 @@ describe('boilerplate ratio (결정 D16 — ≥50% 페이지에 나타나는 문
 // ---------------------------------------------------------------------------
 // P1-3 계산기·홈·아일랜드 불변식 (결정 D24~D36)
 // ---------------------------------------------------------------------------
+
+describe('GPU comparison pages (10-19 D103 — /compare/{a}-vs-{b}, 레지스트리 쌍만)', () => {
+  const requireCompares = () => {
+    const found = pages.filter(isCompare);
+    expect(found.length, 'compare pages exported (en + ko)').toBe(COMPARE_SLUGS.length * 2);
+    return found;
+  };
+
+  it('every registry pair has an en and a ko page, and the index exists in both locales; no stray /compare/* page', () => {
+    const urls = urlSet();
+    for (const slug of COMPARE_SLUGS) {
+      for (const locale of ['en', 'ko'] as const) expect(urls.has(localePath(locale, `/compare/${slug}`)), `${locale} ${slug}`).toBe(true);
+    }
+    expect(pages.filter(isCompareIndex).map((p) => p.urlPath).sort()).toEqual(['/compare', '/ko/compare']);
+    const stray = pages.filter((p) => /^(?:\/ko)?\/compare\/[^/]+$/.test(p.urlPath) && !isCompare(p)).map((p) => p.file);
+    expect(stray).toEqual([]);
+  });
+
+  it('one h1, the speed summary, links to both GPU hubs and to the index; combo links only to indexable combos (drafts too)', () => {
+    for (const page of requireCompares()) {
+      const { a, b } = COMPARES[page.compareSlug! as keyof typeof COMPARES];
+      expect(page.h1Count, `${page.file} h1`).toBe(1);
+      expect(page.markers.compareSummary, `${page.file} [data-compare-summary]`).toBe(true);
+      expect(page.markers.blockInParagraph, `${page.file} block inside <p>`).toBe(0);
+      const hrefs = new Set(page.links.filter((l) => !l.localeSwitch).map((l) => l.href));
+      expect(hrefs.has(hubPath(page.locale, 'gpu', a)), `${page.file} → ${a} hub`).toBe(true);
+      expect(hrefs.has(hubPath(page.locale, 'gpu', b)), `${page.file} → ${b} hub`).toBe(true);
+      expect(hrefs.has(localePath(page.locale, '/compare')), `${page.file} → /compare`).toBe(true);
+      for (const href of page.comboLinkHrefs) expect(hrefIndexable(href), `${page.file} a[data-combo-link] → ${href}`).toBe(true);
+      for (const { href } of page.links) {
+        if (hrefIndexable(href) === false) throw new Error(`${page.file} links non-indexable combo ${href}`);
+      }
+    }
+  });
+
+  it('GPU hubs link exactly the published pairs they belong to (none while every pair is a draft)', () => {
+    for (const page of pages.filter((p) => p.kind === 'gpu')) {
+      const gpuId = page.urlPath.split('/').pop()!;
+      const expected = PUBLISHED_COMPARES.filter((slug) => COMPARES[slug].a === gpuId || COMPARES[slug].b === gpuId).map((slug) =>
+        localePath(page.locale, `/compare/${slug}`),
+      );
+      expect(page.compareLinkHrefs, `${page.file} a[data-compare-link]`).toEqual(expected);
+    }
+    for (const page of pages.filter((p) => p.kind !== 'gpu')) expect(page.compareLinkHrefs, `${page.file} a[data-compare-link]`).toEqual([]);
+  });
+
+  it('the index lists exactly the published pairs, 2-level breadcrumb', () => {
+    for (const page of pages.filter(isCompareIndex)) {
+      const items = page.jsonLd.find((b) => b['@type'] === 'BreadcrumbList')!.itemListElement as Array<{ item: string }>;
+      expect(items.length, page.file).toBe(2);
+      expect(items.at(-1)!.item, page.file).toBe(page.canonical);
+      const listed = page.links.map((l) => l.href).filter((href) => compareSlugOf(href) !== undefined);
+      expect([...new Set(listed)].sort(), page.file).toEqual(PUBLISHED_COMPARES.map((slug) => localePath(page.locale, `/compare/${slug}`)).sort());
+    }
+  });
+});
 
 describe('calculator page (P1-3 D24·D29)', () => {
   it('exists in both locales, indexable, 2-level breadcrumb, form SSR markup and zero result cards in static HTML', () => {
@@ -1192,7 +1290,7 @@ describe('islands SSR (P1-3 D28 · price sort)', () => {
     for (const page of pages.filter((p) => p.kind === 'model')) {
       expect(page.markers.sortControl, `${page.file} [data-sort-control]`).toBe(true);
     }
-    for (const page of pages.filter((p) => p.kind === 'gpu' || p.kind === 'home' || isGuide(p) || isGuidesIndex(p) || isStatic(p))) {
+    for (const page of pages.filter((p) => p.kind === 'gpu' || p.kind === 'home' || isGuide(p) || isGuidesIndex(p) || isStatic(p) || isCompare(p) || isCompareIndex(p))) {
       expect(page.markers.sortControl || page.markers.ctxControls, `${page.file} has no island`).toBe(false);
     }
     // 목록 페이지(10-19)만 목록 정렬·거르기 컨트롤을 그린다

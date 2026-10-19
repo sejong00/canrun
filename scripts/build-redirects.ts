@@ -4,9 +4,11 @@
  * static export 는 Next redirects 를 지원하지 않으므로, alias→canonical 301 은
  * Pages 의 `_redirects` 파일로 처리한다. 정적 룰 한도는 2,000줄 — 초과 시 빌드를
  * 실패시켜 "수요 있는 alias만 301, 나머지는 캐노니컬 태그" 원칙을 강제한다.
+ * GPU 비교(10-19 D103)는 뒤집은 순서 슬러그(`/compare/{b}-vs-{a}`)를 정순으로 301 — `compareRedirects`.
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { reversedCompareSlugs } from '../apps/web/content/compares';
 
 /** Cloudflare Pages 정적 `_redirects` 룰 한도. source: https://developers.cloudflare.com/pages/configuration/redirects/ */
 export const CF_PAGES_REDIRECT_LINE_LIMIT = 2000;
@@ -76,6 +78,17 @@ export function buildRedirects(aliases: readonly AliasRecord[]): string {
   }
 
   return output;
+}
+
+/**
+ * GPU 비교 뒤집은 순서 → 정순 301 (10-19 D103) — en·ko 둘 다. 레지스트리 전 쌍(초안 포함 — 게시해도 URL 규칙이 바뀌지 않게).
+ * 쌍 12개(COMPARE_MAX) × 2 로캘 = 24줄 — 한도(2,000)에 비해 작다
+ */
+export function compareRedirects(): AliasRecord[] {
+  return reversedCompareSlugs().flatMap(({ reversed, slug }) => [
+    { from: `/compare/${reversed}`, to: `/compare/${slug}` },
+    { from: `/ko/compare/${reversed}`, to: `/ko/compare/${slug}` },
+  ]);
 }
 
 export function loadAliases(repoRoot: string): AliasRecord[] {

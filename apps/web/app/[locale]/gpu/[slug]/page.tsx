@@ -20,11 +20,13 @@ import { catalog } from '@/lib/catalog';
 import { formatGB, formatInt } from '@/lib/format';
 import { formatPrice, krwNote } from '@/lib/price';
 import { loadHubIntro } from '@/lib/hub-intros';
+import { compareNames, type CompareTranslators } from '@/lib/compare-phrases';
+import { compareLinksForGpu, getCompare } from '@/lib/compares';
 import { gpuHubGuides } from '@/lib/gpu-hub-guides';
 import { guideEntry } from '@/lib/guides';
 import { getGpuHub } from '@/lib/hubs';
 import type { QA } from '@/lib/jsonld';
-import { comboHref, gpuHref, gpusHref, guideHref, localeHref, modelHref } from '@/lib/links';
+import { comboHref, compareHref, comparesHref, gpuHref, gpusHref, guideHref, localeHref, modelHref } from '@/lib/links';
 import { hubOgImage } from '@/lib/og-images';
 import { isComboIndexable } from '@/lib/publish';
 import { gpuName, modeKey, quantText, speedPhrase, type Translate } from '@/lib/phrases';
@@ -256,11 +258,18 @@ export default async function GpuHubPage({ params }: Props) {
   const tTable = await getTranslations({ locale, namespace: 'Table' });
   const tBreadcrumb = await getTranslations({ locale, namespace: 'Breadcrumb' });
   const tGuides = await getTranslations({ locale, namespace: 'Guides' });
+  const tCompare = await getTranslations({ locale, namespace: 'Compare' });
   const { gpu } = hub;
   const name = gpuName(t.names, gpu);
   const href = gpuHref(gpu.id);
   // 관련 가이드 2~3편 — 하드웨어 종류별, published 만 (10-16 D95, D40)
   const guides = gpuHubGuides(gpu);
+  // 이 GPU 가 든 게시 비교 쌍 (10-19 D103) — 초안은 링크하지 않는다(D40 과 같은 규칙), 없으면 블록을 그리지 않는다
+  const compareNamesT = { compare: tCompare, names: t.names } as unknown as Pick<CompareTranslators, 'compare' | 'names'>;
+  const compares = compareLinksForGpu(gpu.id).map(({ slug }) => ({
+    slug,
+    text: tCompare('cardTitle', compareNames(compareNamesT, locale, getCompare(slug)!.cmp)),
+  }));
   const primary = primaryCombos(hub);
   const multiConfig = hub.configs.length > 1;
   const config = configSuffix(t.hub, hub, locale);
@@ -571,6 +580,26 @@ export default async function GpuHubPage({ params }: Props) {
                   <a href={localeHref(locale, guideHref(slug))}>{guideEntry(slug).locales[locale].title}</a>
                 </li>
               ))}
+            </ul>
+          </section>
+        )}
+
+        {compares.length > 0 && (
+          <section aria-labelledby="compare-heading" data-compare-links className="flex flex-col gap-3">
+            <h2 id="compare-heading" className="text-xl font-semibold tracking-tight">
+              {tCompare('hubTitle', { gpu: name })}
+            </h2>
+            <ul className="flex flex-col gap-2">
+              {compares.map(({ slug, text }) => (
+                <li key={slug}>
+                  <a href={localeHref(locale, compareHref(slug))} data-compare-link>
+                    {text}
+                  </a>
+                </li>
+              ))}
+              <li>
+                <a href={localeHref(locale, comparesHref())}>{tCompare('allLink')}</a>
+              </li>
             </ul>
           </section>
         )}

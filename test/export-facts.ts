@@ -8,6 +8,7 @@
  * 문장 단위(D16)는 `UnitTable` 로 인터닝해 페이지당 id 배열만 보유한다.
  */
 
+import { COMPARE_SLUGS } from '../apps/web/content/compares';
 import { koFamilyName } from '../apps/web/content/ko-names';
 import { STATIC_PAGE_SLUGS } from '../apps/web/content/pages';
 
@@ -24,6 +25,9 @@ export type PageKind =
   /** 목록 페이지 (10-19) — `/models`·`/gpus` */
   | 'models-index'
   | 'gpus-index'
+  /** GPU 비교 (10-19 D103) — `/compare/{a}-vs-{b}`(레지스트리 슬러그만)·목차 `/compare` */
+  | 'compare'
+  | 'compare-index'
   | 'other';
 
 export type GpuRecord = {
@@ -67,8 +71,8 @@ export type PageFacts = {
   hangulWords: string[];
   /**
    * 규칙 3 검사 대상 문장: description · og:description · FAQ 답 · [data-verdict-sentence] ·
-   * [data-alt-card] · 콤보 페이지의 `<dd>` (허브의 판정 범례 `<dd>` 는 임계값 "20 tok/s or more" 를
-   * 밴드 없이 인용하는 정책 문장이라 제외)
+   * [data-alt-card] · 콤보 페이지의 `<dd>` · GPU 비교 속도 요약의 문장 단위 (허브·비교 페이지의 판정 범례 `<dd>` 는
+   * 임계값 "20 tok/s or more" 를 밴드 없이 인용하는 정책 문장이라 제외)
    */
   speedTexts: string[];
   /**
@@ -86,8 +90,12 @@ export type PageFacts = {
   liveSummary?: string;
   /** `a[data-adjacent]` href */
   adjacentHrefs: string[];
-  /** `a[data-combo-link]` href (허브·가이드 그리드의 판정 링크, 홈 "많이 찾는 조합", 가이드 ComboLink) */
+  /** `a[data-combo-link]` href (허브·가이드 그리드의 판정 링크, 홈 "많이 찾는 조합", 가이드 ComboLink, GPU 비교 표) */
   comboLinkHrefs: string[];
+  /** `a[data-compare-link]` href — GPU 허브의 "다른 기기와 비교" 블록 (10-19 D103, 게시 쌍만) */
+  compareLinkHrefs: string[];
+  /** GPU 비교 페이지면 URL 의 슬러그 (레지스트리 슬러그만 — kindOf 와 같은 규칙) */
+  compareSlug?: string;
   /** 계산기 서버 렌더 예시(10-14 D73): `[data-start-gpu]` 하드웨어 id(문서 순서) · `a[data-start-pick]` 모델 링크 href(공개 콤보 또는 모델 허브) */
   startGpuIds: string[];
   startPickHrefs: string[];
@@ -141,11 +149,16 @@ export type PageFacts = {
     guideDraft: boolean;
     /** `[data-guides-empty]` 목차 빈 상태 */
     guidesEmpty: boolean;
+    /** `[data-compares-empty]` GPU 비교 목차 빈 상태 (10-19 D103) */
+    comparesEmpty: boolean;
+    /** `[data-compare-summary]` GPU 비교 속도 요약 유무 · 소개글 `[data-compare-intro]` 문단 수(없으면 0) */
+    compareSummary: boolean;
+    compareIntroParagraphs: number;
     /** `fieldset[data-ram-toggle]` — 콤보 아일랜드의 시스템 RAM 토글 (10-03 D64) */
     ramToggle: boolean;
     /** 모델 허브 `a[data-calc-model-link]` href — 엔티티(`&amp;`) 디코딩 (계산기 모델 모드, 10-03 D65) */
     calcModelLink?: string;
-    /** 가이드 본문·허브 소개글 안 `<p>` 속 블록 요소 수 (하이드레이션 불일치 원인 — 0 이어야 한다) */
+    /** 가이드 본문·허브 소개글·모델 소개·GPU 비교 소개글 안 `<p>` 속 블록 요소 수 (하이드레이션 불일치 원인 — 0 이어야 한다) */
     blockInParagraph: number;
     /** 허브 소개글 `[data-hub-intro]` (10-14 D74) — 문단 `<p>` 수(없으면 0)·소개 안 `[data-guide-data]` 수 */
     hubIntroParagraphs: number;
@@ -251,6 +264,12 @@ export function localePath(locale: Locale, bare: string): string {
   return bare === '/' ? '/ko' : `/ko${bare}`;
 }
 
+/** GPU 비교 URL(`/compare/{slug}`, `/ko/…`) → 레지스트리 슬러그 (레지스트리 밖이면 undefined) */
+export function compareSlugOf(urlPath: string): string | undefined {
+  const slug = /^(?:\/ko)?\/compare\/([^/]+)$/.exec(urlPath)?.[1];
+  return slug !== undefined && (COMPARE_SLUGS as readonly string[]).includes(slug) ? slug : undefined;
+}
+
 export function kindOf(urlPath: string): PageKind {
   const bare = stripLocale(urlPath);
   if (bare === '/') return 'home';
@@ -262,6 +281,8 @@ export function kindOf(urlPath: string): PageKind {
   if (bare === '/models') return 'models-index';
   if (bare === '/gpus') return 'gpus-index';
   if (/^\/guides\/[^/]+$/.test(bare)) return 'guide';
+  if (bare === '/compare') return 'compare-index';
+  if (compareSlugOf(urlPath) !== undefined) return 'compare';
   if ((STATIC_PAGE_SLUGS as readonly string[]).includes(bare.slice(1))) return 'static';
   return 'other';
 }
@@ -579,6 +600,7 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
   const links: PageFacts['links'] = [];
   const adjacentHrefs: string[] = [];
   const comboLinkHrefs: string[] = [];
+  const compareLinkHrefs: string[] = [];
   const startPickHrefs: string[] = [];
   let navCalculator: string | undefined;
   let openCalculator: string | undefined;
@@ -598,6 +620,7 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
     links.push({ href, localeSwitch: hasAttr(tag, 'data-locale-switch') });
     if (hasAttr(tag, 'data-adjacent')) adjacentHrefs.push(href);
     if (hasAttr(tag, 'data-combo-link')) comboLinkHrefs.push(href);
+    if (hasAttr(tag, 'data-compare-link')) compareLinkHrefs.push(href);
     if (hasAttr(tag, 'data-start-pick')) startPickHrefs.push(href);
     if (hasAttr(tag, 'data-nav-calculator')) navCalculator = href;
     if (hasAttr(tag, 'data-open-calculator')) openCalculator = href;
@@ -624,6 +647,8 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
   const hubIntro = elementsWithAttr(noScript, 'data-hub-intro')[0]?.inner ?? '';
   const seriesEl = elementsWithAttr(noScript, 'data-model-series')[0];
   const modelAbout = elementsWithAttr(noScript, 'data-model-about')[0]?.inner ?? '';
+  const compareIntro = elementsWithAttr(noScript, 'data-compare-intro')[0]?.inner ?? '';
+  const compareSummary = elementsWithAttr(noScript, 'data-compare-summary')[0];
   const aboutAt = noScript.search(/\sdata-model-about(?=[\s=>/])/);
   const laterSections = [noScript.search(/\sdata-hub-intro(?=[\s=>/])/), noScript.indexOf('id="facts-heading"')].filter((i) => i >= 0);
   const markers: PageFacts['markers'] = {
@@ -643,9 +668,13 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
     guideData: elementsWithAttr(noScript, 'data-guide-data').length,
     guideDraft: elementsWithAttr(noScript, 'data-guide-draft').length > 0,
     guidesEmpty: elementsWithAttr(noScript, 'data-guides-empty').length > 0,
+    comparesEmpty: elementsWithAttr(noScript, 'data-compares-empty').length > 0,
+    compareSummary: compareSummary !== undefined,
+    compareIntroParagraphs: (compareIntro.match(/<p[\s>]/g) ?? []).length,
     ramToggle: elementsWithAttr(noScript, 'data-ram-toggle').length > 0,
     ...(calcModelLink === undefined ? {} : { calcModelLink }),
-    blockInParagraph: blockInParagraphCount(guideBody) + blockInParagraphCount(hubIntro) + blockInParagraphCount(modelAbout),
+    blockInParagraph:
+      blockInParagraphCount(guideBody) + blockInParagraphCount(hubIntro) + blockInParagraphCount(modelAbout) + blockInParagraphCount(compareIntro),
     hubIntroParagraphs: (hubIntro.match(/<p[\s>]/g) ?? []).length,
     hubIntroData: elementsWithAttr(hubIntro, 'data-guide-data').length,
     modelAboutParagraphs: (modelAbout.match(/<p[\s>]/g) ?? []).length,
@@ -661,6 +690,15 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
     .filter((text) => !thresholdTexts.has(text));
   // 허브 소개글 문단도 규칙 3 검사 대상 (10-14 D74 — 산문 숫자는 데이터 컴포넌트뿐이지만 렌더 결과로 한 번 더)
   const hubIntroTexts = collectElements(hubIntro, UNIT_TAGS).map((u) => elementText(u.inner));
+  // GPU 비교(10-19 D103): 속도 요약 블록의 문장 단위(요약 문장·기준 모델 속도·pp `<dd>` — 블록 통째가 아니라 단위마다)·소개글 문단도 규칙 3 검사 대상.
+  // 판정 범례(`VerdictLegend`)의 `<dd>` 는 요약 밖이라 넣지 않는다 — 밴드 없는 정책 문장이다(가이드 `[data-threshold]` 와 같은 이유)
+  const compareTexts =
+    kind === 'compare'
+      ? [
+          ...collectElements(compareSummary?.inner ?? '', UNIT_TAGS).map((u) => elementText(u.inner)),
+          ...collectElements(compareIntro, UNIT_TAGS).map((u) => elementText(u.inner)),
+        ]
+      : [];
   const scriptSrcs = [...html.matchAll(/<script\b([^>]*)\bsrc="([^"]+)"([^>]*)>/g)]
     .filter((m) => !/\bnomodule\b/i.test(`${m[1]} ${m[3]}`))
     .map((m) => m[2]!);
@@ -747,6 +785,7 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
     ...ramStepTexts,
     ...guideTexts,
     ...hubIntroTexts,
+    ...compareTexts,
     ...altCardTexts,
     ...ddTexts,
   ].filter((text) => text !== '');
@@ -777,6 +816,8 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
     ...(verdictSentence === undefined ? {} : { verdictSentence }),
     adjacentHrefs,
     comboLinkHrefs,
+    compareLinkHrefs,
+    ...(kind === 'compare' ? { compareSlug: compareSlugOf(urlPath)! } : {}),
     startGpuIds: elementsWithAttr(noScript, 'data-start-gpu').map((e) => attrValue(e.openTag, 'data-start-gpu') ?? ''),
     startPickHrefs,
     snippets,

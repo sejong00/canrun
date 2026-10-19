@@ -3,7 +3,7 @@
  * 모든 속도 문장은 est. + 밴드 + 신뢰 라벨을 동반한다 (CLAUDE.md 규칙 3).
  */
 import type { Mode, Result } from '@canrun/engine';
-import type { ComboAssessment, GpuCore, MeasuredJoin, QuantAssessment, TitleVerdict } from '@canrun/data/client';
+import type { ComboAssessment, GpuCore, MeasuredJoin, PpRange, QuantAssessment, TitleVerdict } from '@canrun/data/client';
 import { formatCtx, formatGB, formatInt, formatSpeed, formatTokS } from './format';
 
 /** next-intl translator 의 최소 형태 (네임스페이스가 이미 바인딩된 t) */
@@ -56,6 +56,19 @@ export function speedPhrase(
     low: s.low,
     high: s.high,
     label: confidenceText(tConfidence, q.result),
+  });
+}
+
+/**
+ * pp(프롬프트 처리) 문장 — 늘 범위 + 대략적 추정 라벨 (규칙 3, D13): "about 1,709 tok/s (1,025–2,393, rough estimate ±40%)".
+ * 콤보 페이지·GPU 비교(10-19 D103)가 같이 쓴다. `tCombo` = Combo 네임스페이스(ppValue)
+ */
+export function ppPhrase(tCombo: Translate, tConfidence: Translate, locale: string, r: PpRange): string {
+  return tCombo('ppValue', {
+    est: formatInt(locale, r.est),
+    low: formatInt(locale, r.low),
+    high: formatInt(locale, r.high),
+    label: tConfidence('rough', { band: Math.round(r.band * 100) }),
   });
 }
 

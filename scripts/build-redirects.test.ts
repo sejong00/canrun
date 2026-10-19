@@ -1,8 +1,10 @@
 /** build-redirects 검증 규칙 — 외부 리뷰 반영 회귀. */
 import { describe, expect, it } from 'vitest';
+import { COMPARE_SLUGS, COMPARES } from '../apps/web/content/compares';
 import {
   buildRedirects,
   CF_PAGES_REDIRECT_LINE_LIMIT,
+  compareRedirects,
   isValidRedirectPath,
 } from './build-redirects';
 
@@ -50,5 +52,26 @@ describe('buildRedirects', () => {
     expect(() =>
       buildRedirects([...okAliases, { from: '/overflow', to: '/x' }]),
     ).toThrow(/exceeds Cloudflare Pages limit/);
+  });
+});
+
+describe('compareRedirects (GPU 비교 뒤집은 순서 — 10-19 D103)', () => {
+  it('301s the reversed slug of every registry pair to the registry slug, in both locales', () => {
+    const rules = compareRedirects();
+    expect(rules).toHaveLength(COMPARE_SLUGS.length * 2);
+    for (const slug of COMPARE_SLUGS) {
+      const { a, b } = COMPARES[slug];
+      expect(rules).toContainEqual({ from: `/compare/${b}-vs-${a}`, to: `/compare/${slug}` });
+      expect(rules).toContainEqual({ from: `/ko/compare/${b}-vs-${a}`, to: `/ko/compare/${slug}` });
+    }
+  });
+
+  it('never redirects a real compare page (no loop) and passes the path rules', () => {
+    const pages = new Set(COMPARE_SLUGS.flatMap((slug) => [`/compare/${slug}`, `/ko/compare/${slug}`]));
+    for (const rule of compareRedirects()) {
+      expect(pages.has(rule.from), rule.from).toBe(false);
+      expect(pages.has(rule.to), rule.to).toBe(true);
+    }
+    expect(buildRedirects(compareRedirects())).toContain(`/compare/rtx-5090-vs-rtx-4090 /compare/rtx-4090-vs-rtx-5090 301`);
   });
 });
