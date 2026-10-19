@@ -13,7 +13,7 @@ const byId: Compare = (a, b) => a.model.id.localeCompare(b.model.id);
 const rankOf = (c: SortableCard): number => verdictRank(c.combo.baseline.result.verdict);
 /** 표시 조건 tok/s — 미탑재는 -1 (빠른 순과 같은 규칙: 맨 뒤) */
 const speedOf = (c: SortableCard): number => (c.combo.display.fReason === 'no-fit' ? -1 : c.combo.display.result.tgTokS.est);
-/** 크기 구간 — 크기 필터와 같은 구간(9B 이하·10–24B·25–49B·50B 이상, MoE 는 총 파라미터). 클수록 큰 값 */
+/** 크기 구간 — 크기 필터와 같은 구간(10B 미만·10B~25B 미만·25B~50B 미만·50B 이상, MoE 는 총 파라미터). 클수록 큰 값 */
 const sizeRankOf = (c: SortableCard): number => SIZE_BUCKETS.indexOf(sizeBucket(c.model.paramsB));
 /** 못 돌리는(F) 모델은 1 — 인기순·다운로드 순도 돌릴 수 있는 모델을 먼저 둔다(10-06 D68 리뷰 반영) */
 const unrunnable = (c: SortableCard): number => (c.combo.baseline.result.verdict === 'F' ? 1 : 0);

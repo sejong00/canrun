@@ -6,7 +6,6 @@ import {
   type ModelHubData,
   type PricedOption,
 } from '@canrun/data';
-import { computeBufferGB, kvGB } from '@canrun/engine';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
@@ -29,6 +28,7 @@ import { catalog } from '@/lib/catalog';
 import { formatCtx, formatGB, formatInt, formatParams } from '@/lib/format';
 import { formatPrice, krwNote } from '@/lib/price';
 import { loadHubIntro } from '@/lib/hub-intros';
+import { needAt8k } from '@/lib/model-need';
 import { getModelHub } from '@/lib/hubs';
 import type { QA } from '@/lib/jsonld';
 import { calculatorHref, comboHref, gpuHref, hfUrl, localeHref, modelHref, modelsHref } from '@/lib/links';
@@ -64,27 +64,6 @@ async function translators(locale: Locale) {
     'hub' | 'faq' | 'common' | 'confidence' | 'verdict' | 'names' | 'hint',
     Tr
   >;
-}
-
-const REFERENCE_CTX = 8192;
-
-/**
- * 기준 quant·8k 필요 메모리 분해 (메모리 행렬과 같은 식 — 그래픽카드에 올라가는 가중치 + KV + 버퍼, 10-03 D62).
- * size = 파일, gpu = 그래픽카드 몫(입력 임베딩·MTP 블록 제외), mtp = MTP 블록이 있는 파일인지
- */
-function needAt8k(hub: ModelHubData, quant: string) {
-  const row = hub.matrix.rows.find((r) => r.quant === quant)!;
-  const record = hub.quants.find((q) => q.row.quant === quant)!.row;
-  const kv = kvGB(hub.model.arch.kvBytesPerTokenF16, REFERENCE_CTX);
-  const buffer = computeBufferGB(REFERENCE_CTX);
-  return {
-    size: row.fileGB,
-    gpu: row.gpuWeightsGB,
-    mtp: record.mtpGB !== undefined,
-    kv,
-    buffer,
-    total: row.gpuWeightsGB + kv + buffer,
-  };
 }
 
 /** 이보다 작은 차이(임베딩 공유 모델의 헤더 메타데이터 수십 MB)는 FAQ·행렬 캡션에서 따로 설명하지 않는다 */

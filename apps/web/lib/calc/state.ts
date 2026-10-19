@@ -19,7 +19,7 @@ export const CATEGORIES: readonly Category[] = ['chat', 'coding', 'reasoning', '
 
 export type SizeBucket = 's' | 'm' | 'l' | 'xl';
 export const SIZE_BUCKETS: readonly SizeBucket[] = ['s', 'm', 'l', 'xl'];
-/** 파라미터 수(B) → 크기 버킷: ≤9 / 10–24 / 25–49 / 50+ */
+/** 파라미터 수(B) → 크기 버킷: 10 미만 / 10~25 미만 / 25~50 미만 / 50 이상 (화면 라벨도 같은 경계 — 10-19 D101) */
 export function sizeBucket(paramsB: number): SizeBucket {
   if (paramsB < 10) return 's';
   if (paramsB < 25) return 'm';

@@ -1162,6 +1162,8 @@ describe('list pages (10-19 — /models·/gpus: 카탈로그 전 모델·전 GPU
         expect(row.data['sort-index'], `${page.file} ${row.id}`).toBe(String(i));
         expect(['s', 'm', 'l', 'xl'], `${page.file} ${row.id} size`).toContain(row.data.size);
         expect(row.data.released, `${page.file} ${row.id} released`).toMatch(/^\d{8}$/);
+        // 필요 메모리(D101) — 소수 1자리 GB, 거르기 값과 화면 값이 같은 반올림
+        expect(row.data.need, `${page.file} ${row.id} need`).toMatch(/^\d+(?:\.\d)?$/);
       });
     }
   });
@@ -1177,7 +1179,12 @@ describe('list pages (10-19 — /models·/gpus: 카탈로그 전 모델·전 GPU
       for (const row of page.listRows) {
         const hub = gpuHub(row.id);
         const counts = hub.counts[hub.primaryIndex]!;
-        expect(row.data.good, `${page.file} ${row.id} good`).toBe(String(counts.S + counts.A));
+        // 쾌적·원활을 따로(D101) — great = S, good = S+A, runs = S+A+B (CPU 전용은 B 까지라 runs 만 차이가 난다)
+        expect([row.data.great, row.data.good, row.data.runs], `${page.file} ${row.id} counts`).toEqual([
+          String(counts.S),
+          String(counts.S + counts.A),
+          String(counts.S + counts.A + counts.B),
+        ]);
       }
       // 가격 정렬 값은 dGPU 실거래가(priceAsOf 동반)만 — 규칙 2
       for (const row of page.listRows.filter((r) => r.data.price !== undefined)) {
@@ -1185,6 +1192,18 @@ describe('list pages (10-19 — /models·/gpus: 카탈로그 전 모델·전 GPU
         expect([gpu.kind, String(gpu.streetUSD), Boolean(gpu.priceAsOf)], `${page.file} ${row.id} price`).toEqual(['dgpu', row.data.price, true]);
       }
       if (page.locale === 'ko') expect([page.krwPrices > 0, page.krwNote], `${page.file} KRW`).toEqual([true, true]);
+      // 메모리 용량별 가장 싼 그래픽카드(D101) — VRAM 크기마다 데스크톱 그래픽카드 실거래가(priceAsOf 동반) 최저 1종, 크기 오름차순
+      const priced = (gpus as Array<GpuRecord & { form?: string; vramGB?: number; streetUSD?: number; priceAsOf?: string }>).filter(
+        (g) => g.kind === 'dgpu' && g.form !== 'laptop' && g.streetUSD !== undefined && Boolean(g.priceAsOf),
+      );
+      const sizes = [...new Set(priced.map((g) => g.vramGB!))].sort((a, b) => a - b);
+      const expected = sizes.map((gb) => {
+        const atSize = priced.filter((g) => g.vramGB === gb);
+        return `${gb}:${atSize.find((g) => g.streetUSD === Math.min(...atSize.map((x) => x.streetUSD!)))!.id}`;
+      });
+      const html = readFileSync(join(outDir, page.file), 'utf8');
+      const cheapest = [...html.matchAll(/<tr data-cheapest-vram="(\d+)">[\s\S]*?data-cheapest-gpu="([^"]+)"/g)].map((m) => `${m[1]}:${m[2]}`);
+      expect(cheapest, `${page.file} cheapest by memory`).toEqual(expected);
     }
   });
 
@@ -1198,12 +1217,16 @@ describe('list pages (10-19 — /models·/gpus: 카탈로그 전 모델·전 GPU
     }
   });
 
-  it('sitemap lastmod: the model list keeps the data date, the GPU list the later of the data and engine dates (its counts are verdicts)', () => {
+  it('sitemap lastmod: the model list follows the data, engine and download dates (memory needed · 30-day downloads — D101), the GPU list the data and engine dates (its counts are verdicts)', () => {
     const xml = readFileSync(join(outDir, 'sitemap-pages.xml'), 'utf8');
     const dataUpdated = readJson<{ dataUpdated: string }>('data/meta.json').dataUpdated;
     const lastmods = new Map([...xml.matchAll(/<url><loc>([^<]+)<\/loc><lastmod>([^<]+)<\/lastmod>/g)].map((m) => [urlToPath(m[1]!), m[2]!]));
     for (const locale of ['en', 'ko'] as const) {
-      expect(lastmods.get(localePath(locale, '/models')), `${locale} /models`).toBe(dataUpdated);
+      const downloadsDate = readJson<Array<{ hfDownloadsAsOf?: string }>>('data/models.json')
+        .map((m) => m.hfDownloadsAsOf)
+        .filter((d): d is string => d !== undefined)
+        .reduce(laterDate, laterDate(dataUpdated, ENGINE_SPEC_DATE));
+      expect(lastmods.get(localePath(locale, '/models')), `${locale} /models`).toBe(downloadsDate);
       expect(lastmods.get(localePath(locale, '/gpus')), `${locale} /gpus`).toBe(laterDate(dataUpdated, ENGINE_SPEC_DATE));
     }
   });

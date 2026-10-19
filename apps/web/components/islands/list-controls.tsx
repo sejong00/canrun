@@ -1,7 +1,7 @@
 'use client';
 import { useId, useState } from 'react';
 import { useHydrated } from '@/lib/hydration';
-import { isFiltered, orderRows, rowMatches, type ListFilterState } from '@/lib/list-order';
+import { isFiltered, orderRows, rowMatches, type ListCompare, type ListFilterState } from '@/lib/list-order';
 
 /**
  * 목록 페이지 정렬·거르기 컨트롤 (10-19 `/models`·`/gpus`) — 서버가 그린 정적 표(`[data-list="<list>"] tbody tr[data-sort-index …]`)의
@@ -15,6 +15,8 @@ export type ListSortOption = {
   /** 정렬에 쓰는 data 속성 이름 — 없으면 서버 기본 순서 */
   key?: string;
   desc?: boolean;
+  /** 값이 같을 때 차례로 보는 data 속성 (같은 방향) */
+  then?: readonly string[];
   /** 고른 뒤 읽어 줄 문장 */
   announce: string;
 };
@@ -24,6 +26,8 @@ export type ListSelectFilter = {
   /** 첫 항목(전체)의 라벨 */
   all: string;
   options: ReadonlyArray<{ value: string; label: string }>;
+  /** 값 비교 — 없으면 같은 값(eq), min = 이상, max = 이하 */
+  compare?: ListCompare;
 };
 export type ListToggleFilter = { name: string; label: string };
 
@@ -52,12 +56,13 @@ export function ListControls({
   const id = useId();
   const hydrated = useHydrated();
   const [sort, setSort] = useState(sorts[0]!.value);
-  const [state, setState] = useState<ListFilterState>({ selects: {}, toggles: [] });
+  const compare = Object.fromEntries(selects.map((f) => [f.name, f.compare ?? 'eq']));
+  const [state, setState] = useState<ListFilterState>({ selects: {}, toggles: [], compare });
   const [status, setStatus] = useState('');
 
   const apply = (nextSort: string, next: ListFilterState) => {
     const option = sorts.find((s) => s.value === nextSort) ?? sorts[0]!;
-    const names = [option.key, ...selects.map((f) => f.name), ...toggles.map((f) => f.name)].filter(
+    const names = [option.key, ...(option.then ?? []), ...selects.map((f) => f.name), ...toggles.map((f) => f.name)].filter(
       (name): name is string => name !== undefined,
     );
     let shown = 0;
@@ -67,12 +72,17 @@ export function ListControls({
         index: Number(el.dataset.sortIndex),
         data: Object.fromEntries(names.map((name) => [name, el.getAttribute(`data-${name}`) ?? undefined])),
       }));
+      let inTable = 0;
       for (const row of orderRows(rows, option)) {
         const match = rowMatches(row, next);
         row.el.hidden = !match;
-        if (match) shown += 1;
+        if (match) inTable += 1;
         tbody.append(row.el);
       }
+      shown += inTable;
+      // 묶음별 표(`data-list-section`)는 보이는 행이 없으면 묶음째 숨긴다
+      const section = tbody.closest<HTMLElement>('[data-list-section]');
+      if (section) section.hidden = inTable === 0;
     }
     setSort(option.value);
     setState(next);

@@ -7,7 +7,15 @@ import { ListControls } from '@/components/islands/list-controls';
 import { JsonLd } from '@/components/json-ld';
 import { PageShell } from '@/components/page-shell';
 import type { Locale } from '@/i18n/routing';
-import { gpuListGroups, gpuRowData, type GpuListGroup } from '@/lib/browse';
+import {
+  MEMORY_STEPS_GB,
+  cheapestByMemory,
+  gpuListGroups,
+  gpuRowData,
+  msrpOnlyCount,
+  type GoodCounts,
+  type GpuListGroup,
+} from '@/lib/browse';
 import { catalog } from '@/lib/catalog';
 import { formatGB, formatInt } from '@/lib/format';
 import { getGpuHub } from '@/lib/hubs';
@@ -22,15 +30,17 @@ import { absoluteUrl } from '@/lib/site';
 type Props = { params: Promise<{ locale: Locale }> };
 
 const GROUPS = gpuListGroups(catalog.gpus);
+const CHEAPEST = cheapestByMemory(catalog.gpus);
+const MSRP_ONLY = msrpOnlyCount(catalog.gpus);
 
 /**
- * "쾌적·원활" 수 — GPU 허브 "판정 한눈에" 와 같은 함수·같은 구성(`summarizeGpu` 의 요약 구성: 그래픽카드는 허브 가정 RAM,
- * 통합 메모리·CPU 는 가장 큰 메모리). 허브 캐시를 같이 쓴다
+ * 판정 수 — GPU 허브 "판정 요약" 과 같은 함수·같은 구성(`summarizeGpu` 의 요약 구성: 그래픽카드는 허브 가정 RAM,
+ * 통합 메모리·CPU 는 가장 큰 메모리). 쾌적·원활을 따로 보인다(합만 보이면 VRAM 이 같은 카드끼리 같은 숫자가 된다). 허브 캐시를 같이 쓴다
  */
-function goodCount(gpu: Gpu) {
+function verdictCounts(gpu: Gpu): { counts: GoodCounts; ramGB: number } {
   const hub = getGpuHub(gpu.id)!;
-  const counts = hub.counts[hub.primaryIndex]!;
-  return { good: counts.S + counts.A, total: hub.rows.length, ramGB: hub.configs[hub.primaryIndex]!.ramGB };
+  const { S, A, B } = hub.counts[hub.primaryIndex]!;
+  return { counts: { S, A, B }, ramGB: hub.configs[hub.primaryIndex]!.ramGB };
 }
 
 /**
@@ -99,12 +109,21 @@ export default async function GpuListPage({ params }: Props) {
     gpu.kind === 'dgpu'
       ? tHub('memoryVram', { vram: formatInt(locale, gpu.vramGB ?? 0) })
       : (gpu.ramOptionsGB ?? []).map((ram) => tHub('ramOption', { ram: formatInt(locale, ram) })).join(' · ');
+  // 통합 메모리 PC 의 출시가는 가장 큰 메모리 구성의 완제품 값(data/gpus.json note·출처) — 어느 구성인지 함께 적는다
   const price = (gpu: Gpu) =>
     gpu.streetUSD !== undefined && gpu.priceAsOf
       ? tHub('priceStreet', { price: formatPrice(tCommon, locale, gpu.streetUSD), date: gpu.priceAsOf })
       : gpu.msrpUSD !== undefined
-        ? tHub('priceMsrp', { price: formatPrice(tCommon, locale, gpu.msrpUSD) })
+        ? gpu.kind === 'unified' && gpu.ramOptionsGB?.length
+          ? t('priceMsrpConfig', { price: formatPrice(tCommon, locale, gpu.msrpUSD), ram: formatInt(locale, gpu.ramOptionsGB.at(-1)!) })
+          : tHub('priceMsrp', { price: formatPrice(tCommon, locale, gpu.msrpUSD) })
         : tCommon('none');
+  const countCell = (gpu: Gpu) => {
+    const { counts, ramGB } = verdictCounts(gpu);
+    const ram = formatInt(locale, ramGB);
+    if (gpu.kind === 'cpu') return t('runsAt', { runs: counts.S + counts.A + counts.B, ram });
+    return gpu.kind === 'dgpu' ? t('good', { great: counts.S, well: counts.A }) : t('goodAt', { great: counts.S, well: counts.A, ram });
+  };
   const note = krwNote(tCommon, locale);
 
   return (
@@ -141,6 +160,47 @@ export default async function GpuListPage({ params }: Props) {
           </nav>
         </header>
 
+        {CHEAPEST.length > 0 && (
+          <section aria-labelledby="cheapest-heading" className="flex flex-col gap-3">
+            <h2 id="cheapest-heading" className="text-xl font-semibold tracking-tight">
+              {t('cheapTitle')}
+            </h2>
+            <p className="text-sm text-muted-foreground">{t('cheapIntro')}</p>
+            <ScrollTable label={t('cheapTitle')}>
+              <table data-cheapest-by-memory className={TABLE_CLASS}>
+                <caption>{t('cheapCaption')}</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">{t('colVram')}</th>
+                    <th scope="col">{t('colCheapest')}</th>
+                    <th scope="col">{tTable('price')}</th>
+                    <th scope="col">{t('colGood')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {CHEAPEST.map(({ vramGB, gpu, usd, asOf }) => {
+                    const { counts } = verdictCounts(gpu);
+                    return (
+                      <tr key={vramGB} data-cheapest-vram={vramGB}>
+                        <th scope="row" className="whitespace-nowrap tabular-nums">
+                          {tHub('memoryVram', { vram: formatInt(locale, vramGB) })}
+                        </th>
+                        <td>
+                          <a href={localeHref(locale, gpuHref(gpu.id))} data-cheapest-gpu={gpu.id}>
+                            {gpuName(tNames, gpu)}
+                          </a>
+                        </td>
+                        <td className="text-xs">{tHub('priceStreet', { price: formatPrice(tCommon, locale, usd), date: asOf })}</td>
+                        <td className="whitespace-nowrap tabular-nums">{t('good', { great: counts.S, well: counts.A })}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </ScrollTable>
+          </section>
+        )}
+
         <ListControls
           list="gpus"
           sortLabel={tSort('label')}
@@ -148,16 +208,33 @@ export default async function GpuListPage({ params }: Props) {
             { value: 'lineup', label: t('sortDefault'), announce: t('announceDefault') },
             { value: 'memory', label: t('sortMemory'), key: 'memory', desc: true, announce: t('announceMemory') },
             { value: 'bandwidth', label: tSort('bandwidth'), key: 'bandwidth', desc: true, announce: t('announceBandwidth') },
-            { value: 'price', label: tSort('price'), key: 'price', announce: t('announcePrice') },
-            { value: 'good', label: t('sortGood'), key: 'good', desc: true, announce: t('announceGood') },
+            { value: 'price', label: tSort('price'), key: 'price', announce: t('announcePrice', { msrpOnly: MSRP_ONLY }) },
+            { value: 'good', label: t('sortGood'), key: 'great', then: ['good', 'runs'], desc: true, announce: t('announceGood') },
           ]}
+          selects={[
+            {
+              name: 'memory',
+              label: t('filterMemory'),
+              all: t('memoryAll'),
+              compare: 'min',
+              options: MEMORY_STEPS_GB.map((gb) => ({ value: String(gb), label: t('memoryAtLeast', { gb: formatInt(locale, gb) }) })),
+            },
+          ]}
+          shownTemplate={t('shown', { shown: '{shown}', total: catalog.gpus.length })}
+          emptyText={t('empty')}
         />
 
         {GROUPS.map(({ group, gpus }) => {
           const title = groupTitle(group);
           const groupNoteText = groupNote(group);
           return (
-            <section key={group} id={`group-${group}`} aria-labelledby={`group-${group}-heading`} className="flex scroll-mt-4 flex-col gap-3">
+            <section
+              key={group}
+              id={`group-${group}`}
+              aria-labelledby={`group-${group}-heading`}
+              data-list-section
+              className="flex scroll-mt-4 flex-col gap-3"
+            >
               <h2 id={`group-${group}-heading`} className="text-xl font-semibold tracking-tight">
                 {title}
               </h2>
@@ -171,15 +248,14 @@ export default async function GpuListPage({ params }: Props) {
                       <th scope="col">{tTable('memory')}</th>
                       <th scope="col">{tHub('specBandwidth')}</th>
                       <th scope="col">{tTable('price')}</th>
-                      <th scope="col">{t('colGood')}</th>
+                      <th scope="col">{group === 'cpu' ? t('colRuns') : t('colGood')}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {gpus.map((gpu, index) => {
-                      const { good, total, ramGB } = goodCount(gpu);
                       const macs = macLines(gpu);
                       return (
-                        <tr key={gpu.id} data-sort-index={index} data-gpu-id={gpu.id} {...gpuRowData(gpu, good)}>
+                        <tr key={gpu.id} data-sort-index={index} data-gpu-id={gpu.id} {...gpuRowData(gpu, verdictCounts(gpu).counts)}>
                           <th scope="row">
                             <a href={localeHref(locale, gpuHref(gpu.id))} data-browse-gpu>
                               {gpuName(tNames, gpu)}
@@ -194,9 +270,7 @@ export default async function GpuListPage({ params }: Props) {
                           </td>
                           <td className="text-xs">{price(gpu)}</td>
                           <td className="whitespace-nowrap tabular-nums" data-good-cell>
-                            {gpu.kind === 'dgpu'
-                              ? t('good', { good, total })
-                              : t('goodAt', { good, total, ram: formatInt(locale, ramGB) })}
+                            {countCell(gpu)}
                           </td>
                         </tr>
                       );

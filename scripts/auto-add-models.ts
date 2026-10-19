@@ -367,6 +367,8 @@ export type AddedModel = {
   thinking: ThinkingEstimate;
   categoryBasis: string;
   korean: { value: boolean; basis: string };
+  /** 개발 조직(hfId 앞부분)과 모델 목록에 보일 이름 — isNew 면 add-model 이 model-makers.ts 에 새로 넣은 조직(10-19 D101) */
+  maker?: { org: string; name: string; isNew: boolean };
   warnings: string[];
 };
 
@@ -430,6 +432,7 @@ export function toAddedModel(
     thinking: est.thinking,
     categoryBasis: fromConfig ? `${est.categoryBasis} · config 비전 인코더` : est.categoryBasis,
     korean: est.korean,
+    maker: { org: plan.maker.org, name: plan.maker.name, isNew: plan.maker.line !== undefined },
     warnings: plan.warnings,
   };
 }
@@ -461,11 +464,11 @@ const hf = (repo: string): string => `[${repo}](https://huggingface.co/${repo})`
 const num = (n: number): string => n.toLocaleString('en-US');
 
 /**
- * add-model 경고 중 자동 추가가 이미 다룬 것(옵션 안내 — 생각 모드·카테고리·표시명·최대 컨텍스트)은 보고서에서 뺀다.
- * 같은 내용은 "② 가 확인할 것" 체크리스트에 있다. 나머지(GGUF 헤더 측정 등)는 그대로 싣는다.
+ * add-model 경고 중 자동 추가가 이미 다룬 것(옵션 안내 — 생각 모드·카테고리·표시명·최대 컨텍스트, 새 조직 이름을 읽어 넣은 것)은
+ * 보고서에서 뺀다. 같은 내용은 "② 가 확인할 것" 체크리스트에 있다. 나머지(GGUF 헤더 측정·조직 이름을 못 읽은 것 등)는 그대로 싣는다.
  */
 export function reportWarnings(warnings: readonly string[]): string[] {
-  return warnings.filter((w) => !/^(?:생각 모드 미지정|카테고리는 기본값|최대 컨텍스트 \S+ 는 config 값|표시명 ")/.test(w));
+  return warnings.filter((w) => !/^(?:생각 모드 미지정|카테고리는 기본값|최대 컨텍스트 \S+ 는 config 값|표시명 "|처음 보는 조직 — )/.test(w));
 }
 
 /** 보고서(PR 본문·이슈 코멘트) — 합니다체 */
@@ -506,6 +509,11 @@ export function renderReport(r: ReportInput): string {
         `- [ ] **${m.hfId}** 용도 \`${m.category.join(',')}\` (⚠확인 필요 — 자동 추정은 카탈로그 관례와 절반쯤 다릅니다. 범용 대형 모델의 coding, 생각 모드가 있는 모델의 reasoning 은 카드 기준으로 정합니다)`,
         `- [ ] **${m.hfId}** 표시 이름 "${m.name}" · 최대 컨텍스트 ${num(m.maxContext)}(config 값이라 카드의 기본 길이와 다르면 고칩니다) · 라이선스 "${m.license}" · 인기도 ${m.popularity} — 고칠 값은 \`data/models.json\` 에서 고칩니다`,
       );
+      if (m.maker?.isNew) {
+        out.push(
+          `- [ ] **${m.hfId}** 처음 보는 개발 조직 \`${m.maker.org}\` — \`apps/web/content/model-makers.ts\` 에 "${m.maker.name}"(Hugging Face 조직 정보의 이름)을 넣었습니다. 모델 목록에 그대로 나오니 조직 페이지의 이름과 맞는지 봅니다`,
+        );
+      }
     }
     out.push(
       '- [ ] 봇이 연 PR 이라 CI 가 돌지 않습니다 — PR 을 닫았다 다시 열어 CI 가 통과하는지 확인한 뒤 머지합니다',
@@ -623,6 +631,7 @@ const SNAPSHOT_PATHS = [
   'data/model-quants.json',
   'data/meta.json',
   'packages/data/src/index.ts',
+  'apps/web/content/model-makers.ts',
   'apps/web/assets/og/NotoSansKR-Bold-subset.ttf',
   'apps/web/assets/og/subset-chars.txt',
 ];

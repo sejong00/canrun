@@ -19,8 +19,8 @@
 /calculator            도구 (AIO 방어 핵심)
 /gpu/rtx-4060          GPU 허브: 이 카드로 돌아가는 모델 전부 (T2 "{gpu} llm")
 /model/qwen3-14b       모델 허브: 요구사양+돌아가는 GPU 표 (T1 requirements)
-/models                모델 목록: 카탈로그 전 모델 한 표(개발 조직·파라미터·출시일·생각 모드·라이선스·최대 컨텍스트·30일 다운로드) — 허브 브레드크럼의 가운데 단계 (10-19 PROGRESS §4)
-/gpus                  GPU 목록: 전 GPU·칩·CPU 프로필을 종류별 표로(메모리·대역폭·가격·쾌적·원활 모델 수) — 같은 날
+/models                모델 목록: 카탈로그 전 모델 한 표(Hugging Face 조직·파라미터·Q4_K_M·8k 필요 메모리·공개일·생각 모드·라이선스·최대 컨텍스트·30일 다운로드) — 허브 브레드크럼의 가운데 단계 (10-19 PROGRESS §4 D100·D101)
+/gpus                  GPU 목록: 메모리 용량별 가장 싼 그래픽카드 + 전 GPU·칩·CPU 프로필을 종류별 표로(메모리·대역폭·가격·쾌적·원활 모델 수, CPU 전용은 돌아가는 모델 수) — 같은 날
 /can-i-run/qwen3-14b/on/rtx-4060   콤보 (T2 직격)
 /guides/{slug}         에디토리얼 (T1/T3)
 /methodology           방법론·오차 공개 (E-E-A-T + 백링크 유인)
@@ -29,7 +29,7 @@
 ```
 - 내부링크 규칙(스팸 방어 필수): 콤보 페이지는 항상 ①GPU 허브 ②모델 허브 ③관련 가이드 1개 ④인접 콤보 4개(같은 GPU 다른 모델 2, 같은 모델 다른 GPU 2)에서 링크 받도록 템플릿화 — 고아 페이지 0. ③의 구현(P1-4 D44): 가이드의 `<ComboGrid>`(레지스트리 그리드가 커버리지 단일 출처)가 공개 콤보로만 링크하고, 콤보는 자기를 커버하는 published 가이드로 `a[data-related-guide]` 역링크. export 테스트가 "indexable 콤보마다 published 가이드 인바운드 ≥1"을 강제(currentBatch 0 에선 공회전 단언).
 - **홈·GPU 허브 추가 링크(10-16 PROGRESS §4 D95)**: 홈 "많이 찾는 조합" — 공개 콤보 8개(GPU = 홈 "자주 찾는 GPU" 순 → 나머지 공개 GPU 는 `data/publish.json` 순, 모델 = `popularity` 순 → publish 순, i 번째 GPU × (i mod 공개 모델 수) 번째 모델 — 결정론, `apps/web/lib/popular-combos.ts`), 링크 텍스트는 콤보 제목과 같은 짧은 GPU 이름("RTX 4060에서 Llama 3.1 8B"). GPU 허브 끝 "관련 가이드" 2~3편 — 하드웨어 종류별 정책(데스크톱 NVIDIA: VRAM 등급·예산별 카드·그래픽카드 2장 / AMD·Intel: ROCm·Vulkan 가이드 먼저 / 노트북: 노트북 가이드 먼저 / 맥: 맥 가이드 + 128GB 이상 구성이면 128GB 비교 / 그 밖의 통합 메모리·CPU 전용 각각 — `apps/web/lib/gpu-hub-guides.ts`, published 만 — D40).
-- **목록 페이지(10-19 PROGRESS §4)**: `/models`·`/gpus`(+`/ko`)는 index, 전 페이지 헤더 내비·푸터·홈 "모두 보기"에서 링크. 서버 HTML 에 전 행(크롤 가능) — 정렬·거르기는 서버 행을 다시 놓고 숨기기만 하는 아일랜드(`components/islands/list-controls.tsx`, URL 상태 없음). 표 행은 허브로만 링크하고 콤보로는 링크하지 않는다(공개 콤보 규칙과 무관). 모델 목록 기본 순서 = 인기도 → 30일 다운로드 → 이름, GPU 목록 묶음 = 데스크톱 NVIDIA · 데스크톱 AMD · Intel · 노트북 · Apple · 그 밖의 통합 메모리 PC · CPU 전용(묶음 안 = `data/gpus.json` 순서), "쾌적·원활" 수 = GPU 허브 요약과 같은 함수·같은 구성(그래픽카드 = 허브 가정 RAM, 통합·CPU = 가장 큰 메모리 — 괄호로 표기).
+- **목록 페이지(10-19 PROGRESS §4)**: `/models`·`/gpus`(+`/ko`)는 index, 전 페이지 헤더 내비·푸터·홈 "모두 보기"에서 링크. 서버 HTML 에 전 행(크롤 가능) — 정렬·거르기는 서버 행을 다시 놓고 숨기기만 하는 아일랜드(`components/islands/list-controls.tsx`, URL 상태 없음). 표 행은 허브로만 링크하고 콤보로는 링크하지 않는다(공개 콤보 규칙과 무관). 모델 목록 기본 순서 = 인기도 → 30일 다운로드 → 이름, GPU 목록 묶음 = 데스크톱 NVIDIA · 데스크톱 AMD · Intel · 노트북 · Apple · 그 밖의 통합 메모리 PC · CPU 전용(묶음 안 = `data/gpus.json` 순서), "쾌적·원활" 수 = GPU 허브 요약과 같은 함수·같은 구성(그래픽카드 = 허브 가정 RAM, 통합·CPU = 가장 큰 메모리 — 괄호로 표기), 쾌적과 원활을 따로 적는다(D101). 모델 목록의 필요 메모리 = 모델 허브 FAQ·메모리 행렬과 같은 식(`lib/model-need.ts`).
 - 정규화: 대체 GPU 표기(4060 Ti 16GB 등) alias → canonical 슬러그 301/캐노니컬. **콤보 URL엔 alias 301을 만들지 않는다**(`_redirects` 정적 룰 2,000줄 한도 — `05` §3; 1,566쌍 × 2언어 × 별칭이 한도를 넘는다) — 콤보는 캐노니컬 태그만(P1-2, PROGRESS §4 09-29).
 - **정적 페이지**(`apps/web/content/pages.ts` 레지스트리 — 소개·계산 방법·업데이트 소식·개인정보처리방침·문의)는 전부 index, 모든 페이지 푸터에서 링크(고아 0), 사이트맵 pages 에 들어간다. `/updates` 의 lastmod = max(데이터 기준일, 최신 항목 날짜 — `content/updates.ts`). 업데이트 소식은 RSS(가이드 피드)에 넣지 않는다(항목마다 캐노니컬 페이지가 없다 — PROGRESS §4 D72).
 - **허브 소개글**(10-14 PROGRESS §4 D74): 인기 GPU 허브 10(배치 1 GPU)·모델 허브 10(`popularity` 5 + HF 다운로드 1위)에 손으로 쓴 소개 2~3문단(로캘별 MDX `apps/web/content/{en,ko}/hubs/**`, 레지스트리 `content/hubs.ts`) — 허브 머리말 바로 아래. 숫자는 데이터 컴포넌트, 판정·fit·실행 방식 주장은 조건까지 `<Expect>` 로 고정(데이터가 바뀌면 빌드 실패). 소개 안 콤보 링크는 `ComboLink`(공개 콤보만 링크 — §3 링크 규칙 그대로), 레지스트리 밖 허브는 소개 없이 그대로. 집필 규칙 `apps/web/content/AUTHORING.md` §10.
@@ -51,7 +51,7 @@
 - **P1-6 개방 절차** = `currentBatch: 1` 커밋·배포 + sitemap-combos 제출·GSC 색인 요청 → 이후 배치도 같은 방법. 주의: 오래 noindex였던 URL은 재크롤이 느리다 — **4주 게이트는 GSC에서 재크롤이 확인된 시점부터 기산**한다.
 - **쌍둥이 GPU 근접 중복 완화(D22)**: VRAM·대역폭·클래스가 같은 GPU 쌍(7그룹 — RX 9070/9070 XT, RTX 4090/3090 Ti, 5070 Ti/5080 Laptop 등)은 fit·tg 수치가 동일해 콤보 페이지가 거의 같다. 페이지에 형제 문장("{twin}도 메모리 구성이 같아 생성 속도는 동일, 프롬프트 처리만 다름 {pp} vs {ppTwin}")과 FP16 TFLOPS·pp·가격·인접 GPU 차이를 싣고, **같은 인덱싱 배치에 쌍둥이를 함께 넣지 않는다**.
 - 수요 없는 콤보(구형 GPU×비주류 모델)는 어느 배치에도 넣지 않는다(생성은 되지만 noindex 유지) → 인덱스 품질 보호.
-- sitemap: 유형별 분할(sitemap-gpus/models/combos-en/combos-ko/guides) + lastmod = 데이터 갱신일. 엔진 수치를 그리는 계산기·허브·콤보·GPU 목록(쾌적·원활 수)은 max(데이터 갱신일, 엔진 스펙 날짜 `ENGINE_SPEC_DATE`) — 엔진 개정은 데이터 없이도 모든 수치를 바꾼다(PROGRESS §4 D93). 가이드는 레지스트리 dateModified, 업데이트 소식·소개글 허브는 위 규칙대로.
+- sitemap: 유형별 분할(sitemap-gpus/models/combos-en/combos-ko/guides) + lastmod = 데이터 갱신일. 엔진 수치를 그리는 계산기·허브·콤보·GPU 목록(쾌적·원활 수)은 max(데이터 갱신일, 엔진 스펙 날짜 `ENGINE_SPEC_DATE`) — 엔진 개정은 데이터 없이도 모든 수치를 바꾼다(PROGRESS §4 D93). 모델 목록(필요 메모리·30일 다운로드)은 여기에 모델 다운로드 기준일(`hfDownloadsAsOf`)의 최댓값까지 — 다운로드 수만 바뀐 주간 동기화는 데이터 갱신일을 올리지 않는다(D101). 가이드는 레지스트리 dateModified, 업데이트 소식·소개글 허브는 위 규칙대로.
 
 ## 4. 콤보 페이지 품질 요건 (스케일드 콘텐츠 판정 방어 체크리스트)
 페이지당 **고유 데이터 ≥8개**: ①quant×fit 표(수치 전부 조합 고유) ②VRAM 분해 바 ③ctx별 메모리/속도 곡선 ④예상 pp/tg±밴드 ⑤실측 표(있으면) ⑥대안 3종 추천 로직 결과 ⑦실행 커맨드(플래그가 조합 의존: -ngl, --n-cpu-moe N 값) ⑧FAQ(수치 삽입형) — 선택 요소로 dGPU 콤보의 "시스템 RAM 용량별 판정"(16~128GB, 맨 위 판정이 RAM 에 따라 바뀌는 페이지만 — 10-03 D64, PROGRESS §4). 제목·description·헤더 판정·FAQ 는 RAM 32GB 가정 그대로라 RAM 목록이 이 불변식(FAQ 답 = JSON-LD, 제목 유일)을 바꾸지 않는다. "깊이 테스트": GPU명 가리고도 페이지 구분 가능해야 함 — P1-2 구현(D15): GPU명·id·별칭 마스킹 후 숫자 다중집합 지문이 로케일 내 전 콤보에서 유일 + 시드 PRNG 3페이지 기록(쌍둥이 GPU는 FP16·pp·가격·인접 GPU로 구분, §3 D22). 보일러플레이트 문장 비율 < 60% — 측정(D16): 콤보의 ≥50%에 나타나는 문장 단위(p/li/h/td/th/dt/dd/caption/code, 이름 마스킹) 글자 비율 < 0.6.

@@ -7,11 +7,24 @@
 /** 행 하나 — `index` = 서버 기본 순서, `data` = 쓰는 data 속성 값(`data-<이름>`, 없으면 undefined) */
 export type ListRowData = { index: number; data: Readonly<Record<string, string | undefined>> };
 
-/** 정렬 기준 — `key` 가 없으면 서버 기본 순서. 값이 없거나 숫자가 아닌 행은 늘 뒤(그 안에서는 기본 순서) */
-export type ListSortSpec = { key?: string; desc?: boolean };
+/**
+ * 정렬 기준 — `key` 가 없으면 서버 기본 순서. 값이 없거나 숫자가 아닌 행은 늘 뒤(그 안에서는 기본 순서).
+ * `then` = 같은 값일 때 차례로 보는 속성(같은 방향, 값이 없으면 0) — 그다음은 기본 순서
+ */
+export type ListSortSpec = { key?: string; desc?: boolean; then?: readonly string[] };
 
-/** 거르기 상태 — `selects`: data-<이름> 이 값과 같은 행만(빈 문자열 = 전체), `toggles`: data-<이름> 이 있는 행만 */
-export type ListFilterState = { selects: Readonly<Record<string, string>>; toggles: readonly string[] };
+/** 고르기 거르기 비교 — eq: 값이 같은 행, min: 값 이상(숫자), max: 값 이하(숫자). 숫자가 없는 행은 min·max 에서 빠진다 */
+export type ListCompare = 'eq' | 'min' | 'max';
+
+/**
+ * 거르기 상태 — `selects`: data-<이름> 을 고른 값과 비교(빈 문자열 = 전체, 비교 방법은 `compare`, 없으면 eq),
+ * `toggles`: data-<이름> 이 있는 행만
+ */
+export type ListFilterState = {
+  selects: Readonly<Record<string, string>>;
+  toggles: readonly string[];
+  compare?: Readonly<Record<string, ListCompare>>;
+};
 
 const numberOf = (row: ListRowData, key: string): number | undefined => {
   const raw = row.data[key];
@@ -25,18 +38,29 @@ export function orderRows<R extends ListRowData>(rows: readonly R[], sort: ListS
   const byIndex = (a: R, b: R) => a.index - b.index;
   const key = sort.key;
   if (!key) return [...rows].sort(byIndex);
+  const keys = [key, ...(sort.then ?? [])];
   const valued = rows.filter((r) => numberOf(r, key) !== undefined);
   const missing = rows.filter((r) => numberOf(r, key) === undefined).sort(byIndex);
   valued.sort((a, b) => {
-    const diff = numberOf(a, key)! - numberOf(b, key)!;
-    return (sort.desc ? -diff : diff) || byIndex(a, b);
+    for (const k of keys) {
+      const diff = (numberOf(a, k) ?? 0) - (numberOf(b, k) ?? 0);
+      if (diff !== 0) return sort.desc ? -diff : diff;
+    }
+    return byIndex(a, b);
   });
   return [...valued, ...missing];
 }
 
 export function rowMatches(row: ListRowData, state: ListFilterState): boolean {
   for (const [name, value] of Object.entries(state.selects)) {
-    if (value !== '' && row.data[name] !== value) return false;
+    if (value === '') continue;
+    const compare = state.compare?.[name] ?? 'eq';
+    if (compare === 'eq') {
+      if (row.data[name] !== value) return false;
+      continue;
+    }
+    const n = numberOf(row, name);
+    if (n === undefined || (compare === 'min' ? n < Number(value) : n > Number(value))) return false;
   }
   return state.toggles.every((name) => row.data[name] !== undefined);
 }

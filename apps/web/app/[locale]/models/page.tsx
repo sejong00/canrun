@@ -9,13 +9,15 @@ import { JsonLd } from '@/components/json-ld';
 import { PageShell } from '@/components/page-shell';
 import { modelMaker } from '@/content/model-makers';
 import type { Locale } from '@/i18n/routing';
-import { contextShort, downloadsAsOf, modelListOrder, modelRowData } from '@/lib/browse';
+import { MEMORY_STEPS_GB, contextShort, downloadsAsOf, modelListOrder, modelRowData, roundGB } from '@/lib/browse';
 import { SIZE_BUCKETS } from '@/lib/calc/state';
 import { catalog } from '@/lib/catalog';
-import { formatCompact, formatParams } from '@/lib/format';
-import { formatGuideDate } from '@/lib/guides';
+import { formatCompact, formatGB, formatInt, formatParams } from '@/lib/format';
+import { formatGuideDateRange } from '@/lib/guides';
+import { getModelHub } from '@/lib/hubs';
 import { itemListJsonLd } from '@/lib/jsonld';
-import { localeHref, modelHref, modelsHref } from '@/lib/links';
+import { calculatorHref, gpusHref, localeHref, modelHref, modelsHref } from '@/lib/links';
+import { needAt8k } from '@/lib/model-need';
 import { buildPageMetadata } from '@/lib/seo';
 import { absoluteUrl } from '@/lib/site';
 
@@ -24,9 +26,16 @@ type Props = { params: Promise<{ locale: Locale }> };
 /** 표·ItemList 순서 — 인기순 (lib/browse.ts) */
 const ORDERED = modelListOrder(catalog.models);
 
+/** 기준 양자화·8k 필요 메모리 — 모델 허브 FAQ·메타 설명과 같은 값(`lib/model-need.ts`, 허브 캐시를 같이 쓴다) */
+function baselineNeed(id: string): { quant: string; gb: number } {
+  const hub = getModelHub(id)!;
+  return { quant: hub.baselineQuant, gb: roundGB(needAt8k(hub, hub.baselineQuant).total) };
+}
+
 /**
  * 모델 목록 (10-19) — 카탈로그 전 모델을 한 표에. 서버 HTML 에 전 행이 들어가고(크롤러·JS 없는 방문자), 정렬·거르기는
- * `ListControls` 아일랜드가 행을 다시 놓고 숨기기만 한다. 페이지가 쓰는 수치는 데이터 값뿐(추정 없음 — 규칙 3 해당 없음)
+ * `ListControls` 아일랜드가 행을 다시 놓고 숨기기만 한다. 페이지가 쓰는 수치는 데이터 값과 허브 메모리 행렬과 같은 필요 메모리
+ * (가중치 + KV + 버퍼 — 속도 추정이 아니라 규칙 3 밴드 해당 없음)
  */
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale } = await params;
@@ -56,11 +65,7 @@ export default async function ModelListPage({ params }: Props) {
   const count = ORDERED.length;
   const sizes = ORDERED.map((m) => m.paramsB);
   const asOf = downloadsAsOf(ORDERED);
-  const asOfText = asOf
-    ? asOf.from === asOf.to
-      ? formatGuideDate(locale, asOf.to)
-      : `${formatGuideDate(locale, asOf.from)}–${formatGuideDate(locale, asOf.to)}`
-    : tCommon('none');
+  const asOfText = asOf ? formatGuideDateRange(locale, asOf.from, asOf.to) : tCommon('none');
 
   const thinkingLabel = (thinking: Model['thinking']) => {
     switch (thinking) {
@@ -110,6 +115,17 @@ export default async function ModelListPage({ params }: Props) {
           <h2 id="models-heading" className="text-xl font-semibold tracking-tight">
             {t('tableTitle')}
           </h2>
+          <p className="text-sm text-muted-foreground">
+            {t('fitHint')}{' '}
+            <a href={localeHref(locale, calculatorHref())} data-list-link="calculator">
+              {t('fitCalculator')}
+            </a>
+            {' · '}
+            <a href={localeHref(locale, gpusHref())} data-list-link="gpus">
+              {t('fitGpus')}
+            </a>
+          </p>
+          <p className="text-sm text-muted-foreground">{t('sortHint')}</p>
           <ListControls
             list="models"
             sortLabel={tSort('label')}
@@ -126,6 +142,13 @@ export default async function ModelListPage({ params }: Props) {
                 label: tCalc('filterSize'),
                 all: t('sizeAll'),
                 options: SIZE_BUCKETS.map((bucket) => ({ value: bucket, label: sizeLabel[bucket] })),
+              },
+              {
+                name: 'need',
+                label: t('filterNeed'),
+                all: t('needAll'),
+                compare: 'max',
+                options: MEMORY_STEPS_GB.map((gb) => ({ value: String(gb), label: t('needUpTo', { gb: formatInt(locale, gb) }) })),
               },
             ]}
             togglesLabel={t('togglesLabel')}
@@ -146,6 +169,7 @@ export default async function ModelListPage({ params }: Props) {
                   <th scope="col">{tTable('model')}</th>
                   <th scope="col">{t('colMaker')}</th>
                   <th scope="col">{t('colParams')}</th>
+                  <th scope="col">{t('colNeed')}</th>
                   <th scope="col">{t('colReleased')}</th>
                   <th scope="col">{t('colThinking')}</th>
                   <th scope="col">{t('colLicense')}</th>
@@ -156,8 +180,10 @@ export default async function ModelListPage({ params }: Props) {
               <tbody>
                 {ORDERED.map((model, index) => {
                   const cls = classifyLicense(model.license);
+                  const need = baselineNeed(model.id);
+                  const needText = formatGB(locale, need.gb);
                   return (
-                    <tr key={model.id} data-sort-index={index} data-model-id={model.id} {...modelRowData(model)}>
+                    <tr key={model.id} data-sort-index={index} data-model-id={model.id} {...modelRowData(model, need.gb)}>
                       <th scope="row" className="min-w-40">
                         <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
                           <a href={localeHref(locale, modelHref(model.id))} data-browse-model>
@@ -174,6 +200,9 @@ export default async function ModelListPage({ params }: Props) {
                               active: formatParams(locale, model.activeParamsB),
                             })
                           : t('paramsDense', { total: formatParams(locale, model.paramsB) })}
+                      </td>
+                      <td className="whitespace-nowrap tabular-nums" data-need-cell>
+                        {need.quant === 'Q4_K_M' ? t('need', { gb: needText }) : t('needQuant', { gb: needText, quant: need.quant })}
                       </td>
                       <td className="whitespace-nowrap tabular-nums">{model.releasedAt}</td>
                       <td className="whitespace-nowrap">{thinkingLabel(model.thinking)}</td>
@@ -202,6 +231,8 @@ export default async function ModelListPage({ params }: Props) {
           <ul className="flex list-disc flex-col gap-2 pl-5 text-sm text-muted-foreground">
             <li>{t('readMaker')}</li>
             <li>{t('readParams')}</li>
+            <li>{t('readNeed')}</li>
+            <li>{t('readReleased')}</li>
             <li>{t('readThinking')}</li>
             <li>{t('readLicense')}</li>
             <li>{t('readDownloads', { date: asOfText })}</li>

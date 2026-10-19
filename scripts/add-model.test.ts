@@ -2,15 +2,25 @@
 import { describe, expect, it } from 'vitest';
 import type { ModelQuantRecord } from '../packages/data/src/index';
 import type { TreeEntry } from './hf-common';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { MODEL_MAKERS } from '../apps/web/content/model-makers';
 import {
+  MODEL_MAKERS_PATH,
   activeFromName,
   catalogDates,
   classifyArch,
   displayName,
   downloadsFields,
   familyOf,
+  hasMakerEntry,
+  insertMakerLine,
+  makerLine,
+  makerNameFrom,
   mapLicense,
   measureRows,
+  orgDisplayName,
   parseArgs,
   popularityFrom,
   quantRowsFrom,
@@ -214,5 +224,42 @@ describe('dense — per-row offGpuGB from the GGUF header (10-03 D62)', () => {
     );
     expect(res.rows.map((r) => r.offGpuGB)).toEqual([undefined, undefined]);
     expect(res.warnings).toEqual([expect.stringContaining('측정한 파일 크기 6.5GB'), expect.stringContaining('25%')]);
+  });
+});
+
+describe('organization names for model-makers.ts (10-19 D101)', () => {
+  const registry = readFileSync(join(fileURLToPath(new URL('..', import.meta.url)), MODEL_MAKERS_PATH), 'utf8');
+
+  it('cleans the Hugging Face fullname the way the registry header says, falling back to the organization id', () => {
+    expect(orgDisplayName('Mistral AI_', 'mistralai')).toBe('Mistral AI');
+    expect(orgDisplayName('upstage', 'upstage')).toBe('Upstage');
+    expect(orgDisplayName('inclusionAI', 'inclusionAI')).toBe('inclusionAI');
+    expect(orgDisplayName('Kakao Corp.', 'kakaocorp')).toBe('Kakao Corp.');
+    expect(orgDisplayName(undefined, 'someone-new')).toBe('someone-new');
+    expect(orgDisplayName('  ', 'someone-new')).toBe('someone-new');
+  });
+
+  it('reads every registry entry back from the file (quoted and bare keys) and knows a missing one', () => {
+    for (const [org, name] of Object.entries(MODEL_MAKERS)) {
+      expect(hasMakerEntry(registry, org), org).toBe(true);
+      expect(makerNameFrom(registry, org), org).toBe(name);
+    }
+    expect(hasMakerEntry(registry, 'zai-org')).toBe(false);
+    expect(makerNameFrom(registry, 'zai-org')).toBeUndefined();
+    // 앞부분만 같은 조직 id 는 다른 조직
+    expect(hasMakerEntry(registry, 'Qwe')).toBe(false);
+  });
+
+  it('inserts one line before the end of MODEL_MAKERS, quoting keys that are not identifiers and escaping quotes', () => {
+    const line = makerLine('zai-org', "Z.ai's lab", '2026-10-19');
+    expect(line).toBe("  'zai-org': 'Z.ai\\'s lab', // add-model 2026-10-19 — https://huggingface.co/api/organizations/zai-org/overview");
+    expect(makerLine('tencent', 'Tencent', '2026-10-19')).toMatch(/^  tencent: 'Tencent', /);
+    const next = insertMakerLine(registry, line);
+    expect(next.split('\n').length).toBe(registry.split('\n').length + 1);
+    expect(hasMakerEntry(next, 'zai-org')).toBe(true);
+    expect(makerNameFrom(next, 'zai-org')).toBe("Z.ai's lab");
+    // 블록 밖(함수들)은 그대로
+    expect(next.slice(next.indexOf('/** `hfId` → Hugging Face 조직 id'))).toBe(registry.slice(registry.indexOf('/** `hfId` → Hugging Face 조직 id')));
+    expect(() => insertMakerLine('export const OTHER = {};', line)).toThrow(/MODEL_MAKERS/);
   });
 });

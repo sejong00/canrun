@@ -10,6 +10,7 @@ import { parseGpus, parseModels } from '@canrun/data';
 import { MODEL_MAKERS, hfOrgOf, modelMaker } from '@/content/model-makers';
 import {
   GPU_LIST_GROUPS,
+  cheapestByMemory,
   contextShort,
   downloadsAsOf,
   gpuListGroup,
@@ -18,6 +19,8 @@ import {
   gpuRowData,
   modelListOrder,
   modelRowData,
+  msrpOnlyCount,
+  roundGB,
 } from '@/lib/browse';
 import { isFiltered, orderRows, rowMatches } from '@/lib/list-order';
 
@@ -41,19 +44,22 @@ describe('model list order and row data', () => {
 
   it('row data carries the sort keys and only the flags a model has', () => {
     const qwen = models.find((x) => x.id === 'qwen3-30b-a3b-2507')!;
-    expect(modelRowData(qwen)).toEqual({
+    expect(modelRowData(qwen, 19.04)).toEqual({
       'data-released': qwen.releasedAt.replaceAll('-', ''),
       'data-downloads': String(qwen.hfDownloads30d),
       'data-params': String(qwen.paramsB),
       'data-size': 'l',
+      'data-need': '19',
       'data-moe': '1',
     });
     const exaone = models.find((x) => x.id === 'exaone-4.0-32b')!;
-    expect(modelRowData(exaone)).toMatchObject({ 'data-thinking': '1', 'data-korean': '1', 'data-size': 'l' });
-    expect(modelRowData(exaone)).not.toHaveProperty('data-moe');
+    expect(modelRowData(exaone, 21.26)).toMatchObject({ 'data-thinking': '1', 'data-korean': '1', 'data-size': 'l', 'data-need': '21.3' });
+    expect(modelRowData(exaone, 21.26)).not.toHaveProperty('data-moe');
     // 크기 구간은 MoE 도 총 파라미터 (계산기 크기 필터와 같다)
     const gptOss = models.find((x) => x.id === 'gpt-oss-120b')!;
-    expect(modelRowData(gptOss)['data-size']).toBe('xl');
+    expect(modelRowData(gptOss, 60)['data-size']).toBe('xl');
+    // 화면 GB 표기와 같은 소수 1자리
+    expect([roundGB(10.449), roundGB(10.45 + 1e-9), roundGB(7)]).toEqual([10.4, 10.5, 7]);
   });
 
   it('short context labels: 1024-token k, whole multiples of 2^20 as M', () => {
@@ -82,6 +88,11 @@ describe('model makers (Hugging Face organization names)', () => {
       expect(name.trim(), org).not.toBe('');
       expect(orgs.has(org), `${org} is not used by any catalog model`).toBe(true);
     }
+  });
+
+  it('every catalog organization has a registry name (D101 — add-model writes it for a new organization, from the Hugging Face organization overview)', () => {
+    const missing = [...new Set(models.map((x) => hfOrgOf(x.hfId)))].filter((org) => MODEL_MAKERS[org] === undefined);
+    expect(missing, 'add these to apps/web/content/model-makers.ts (fullname from https://huggingface.co/api/organizations/<org>/overview)').toEqual([]);
   });
 });
 
@@ -112,17 +123,47 @@ describe('GPU list groups', () => {
   it('row data: memory = VRAM or the largest option; price only for a dGPU street price with its date', () => {
     const card = gpus.find((x) => x.id === 'rtx-5060-ti-16gb')!;
     expect(gpuMemoryGB(card)).toBe(16);
-    expect(gpuRowData(card, 12)).toEqual({
+    expect(gpuRowData(card, { S: 17, A: 11, B: 9 })).toEqual({
       'data-memory': '16',
       'data-bandwidth': String(card.memBandwidthGBs),
       'data-price': String(card.streetUSD),
-      'data-good': '12',
+      'data-great': '17',
+      'data-good': '28',
+      'data-runs': '37',
     });
+    const zero = { S: 0, A: 0, B: 0 };
     const msrpOnly = gpus.find((x) => x.kind === 'dgpu' && x.streetUSD === undefined)!;
-    expect(gpuRowData(msrpOnly, 0)).not.toHaveProperty('data-price');
+    expect(gpuRowData(msrpOnly, zero)).not.toHaveProperty('data-price');
     const mac = gpus.find((x) => x.id === 'apple-m4-max-40c')!;
     expect(gpuMemoryGB(mac)).toBe(mac.ramOptionsGB!.at(-1));
-    expect(gpuRowData(gpus.find((x) => x.id === 'amd-strix-halo')!, 3)).not.toHaveProperty('data-price');
+    expect(gpuRowData(gpus.find((x) => x.id === 'amd-strix-halo')!, zero)).not.toHaveProperty('data-price');
+  });
+
+  it('cheapest card per VRAM size: desktop cards with a dated street price only, one per size, sizes ascending', () => {
+    const rows = cheapestByMemory(gpus);
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.map((r) => r.vramGB)).toEqual([...new Set(rows.map((r) => r.vramGB))].sort((a, b) => a - b));
+    for (const row of rows) {
+      expect([row.gpu.kind, row.gpu.form, row.gpu.vramGB, row.usd, row.asOf]).toEqual(['dgpu', 'desktop', row.vramGB, row.gpu.streetUSD, row.gpu.priceAsOf]);
+      const rivals = gpus.filter((x) => x.kind === 'dgpu' && x.form !== 'laptop' && x.vramGB === row.vramGB && x.streetUSD !== undefined && x.priceAsOf);
+      expect(Math.min(...rivals.map((x) => x.streetUSD!)), `${row.vramGB} GB`).toBe(row.usd);
+    }
+    // 실거래가가 있는 크기는 모두 나온다
+    const priced = new Set(gpus.filter((x) => x.kind === 'dgpu' && x.form !== 'laptop' && x.streetUSD !== undefined && x.priceAsOf).map((x) => x.vramGB));
+    expect(new Set(rows.map((r) => r.vramGB))).toEqual(priced);
+    const synthetic = [
+      { id: 'a', kind: 'dgpu', form: 'desktop', vramGB: 16, streetUSD: 500, priceAsOf: '2026-08-09' },
+      { id: 'b', kind: 'dgpu', form: 'desktop', vramGB: 16, streetUSD: 450, priceAsOf: '2026-08-09' },
+      { id: 'c', kind: 'dgpu', form: 'desktop', vramGB: 12, streetUSD: 300 },
+      { id: 'd', kind: 'dgpu', form: 'laptop', vramGB: 8, streetUSD: 100, priceAsOf: '2026-08-09' },
+    ] as const;
+    expect(cheapestByMemory(synthetic).map((r) => [r.vramGB, r.gpu.id])).toEqual([[16, 'b']]);
+  });
+
+  it('counts the desktop cards that only have a launch MSRP (they sort to the end of their group by price)', () => {
+    const expected = gpus.filter((x) => x.kind === 'dgpu' && x.form !== 'laptop' && !(x.streetUSD !== undefined && x.priceAsOf)).length;
+    expect(msrpOnlyCount(gpus)).toBe(expected);
+    expect(expected).toBeGreaterThan(0);
   });
 });
 
@@ -136,6 +177,12 @@ describe('list controls order and filter rules (lib/list-order.ts)', () => {
     expect(orderRows(rows, { key: 'v', desc: true }).map((r) => r.index)).toEqual([1, 0, 3, 2, 4]);
   });
 
+  it('tie-break keys run in the same direction before the server order; missing tie-break values count as 0', () => {
+    const tied = [row(0, { a: '1', b: '1' }), row(1, { a: '2', b: '0' }), row(2, { a: '1', b: '5' }), row(3, { a: '1' }), row(4, {})];
+    expect(orderRows(tied, { key: 'a', desc: true, then: ['b'] }).map((r) => r.index)).toEqual([1, 2, 0, 3, 4]);
+    expect(orderRows(tied, { key: 'a', then: ['b'] }).map((r) => r.index)).toEqual([3, 0, 2, 1, 4]);
+  });
+
   it('does not change the input array', () => {
     const copy = rows.map((r) => r.index);
     orderRows(rows, { key: 'v', desc: true });
@@ -147,6 +194,17 @@ describe('list controls order and filter rules (lib/list-order.ts)', () => {
     expect(rows.filter((r) => rowMatches(r, { selects: { size: '' }, toggles: [] }))).toHaveLength(rows.length);
     expect(rows.filter((r) => rowMatches(r, { selects: {}, toggles: ['tag'] })).map((r) => r.index)).toEqual([0]);
     expect(rows.filter((r) => rowMatches(r, { selects: { size: 's' }, toggles: ['tag'] }))).toHaveLength(0);
+  });
+
+  it('min and max selects compare numbers; rows without a number drop out', () => {
+    const sized = [row(0, { gb: '8' }), row(1, { gb: '12' }), row(2, { gb: '16.5' }), row(3, {})];
+    const pick = (value: string, compare: 'min' | 'max') =>
+      sized.filter((r) => rowMatches(r, { selects: { gb: value }, toggles: [], compare: { gb: compare } })).map((r) => r.index);
+    expect(pick('12', 'min')).toEqual([1, 2]);
+    expect(pick('12', 'max')).toEqual([0, 1]);
+    expect(pick('', 'max')).toEqual([0, 1, 2, 3]);
+    // compare 가 없으면 같은 값
+    expect(sized.filter((r) => rowMatches(r, { selects: { gb: '12' }, toggles: [] })).map((r) => r.index)).toEqual([1]);
   });
 
   it('isFiltered is true only when a select has a value or a toggle is on', () => {

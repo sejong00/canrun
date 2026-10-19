@@ -93,6 +93,7 @@ jobs:
           add-paths: |
             data/*.json
             packages/data/src/index.ts
+            apps/web/content/model-makers.ts
             apps/web/assets/og/*
           labels: new-model-add
 

@@ -315,6 +315,17 @@ describe('renderReport — PR 본문', () => {
     expect(md).toContain(`<!-- ${REPORT_MARKER} Qwen/Qwen4-9B -->`);
   });
 
+  it('a new organization gets a checklist line for the name add-model wrote to model-makers.ts (D101); a known one does not', () => {
+    const newOrg = renderReport({ ...base, added: [{ ...model, maker: { org: 'zai-org', name: 'Z.ai', isNew: true } }] });
+    expect(newOrg).toContain('- [ ] **Qwen/Qwen4-9B** 처음 보는 개발 조직 `zai-org` — `apps/web/content/model-makers.ts` 에 "Z.ai"');
+    const known = renderReport({ ...base, added: [{ ...model, maker: { org: 'Qwen', name: 'Qwen', isNew: false } }] });
+    expect(known).not.toContain('처음 보는 개발 조직');
+    // 이름을 읽어 넣은 경고는 체크리스트로 갈음하고, 못 읽은 경고는 싣는다
+    expect(reportWarnings(['처음 보는 조직 — apps/web/content/model-makers.ts 에 "Z.ai"', '조직 "x" 의 이름을 Hugging Face 에서 읽지 못해'])).toEqual([
+      '조직 "x" 의 이름을 Hugging Face 에서 읽지 못해',
+    ]);
+  });
+
   it('empty run and failed final check say no PR is made', () => {
     const empty = renderReport({ ...base, added: [], gate: { status: 'none' } });
     expect(empty).toContain('자동으로 넣은 모델이 없어 PR 을 만들지 않습니다.');

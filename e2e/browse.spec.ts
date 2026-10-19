@@ -86,6 +86,17 @@ for (const locale of LOCALES) {
       expect(new Set(sizes)).toEqual(new Set(['xl']));
       await page.locator('select[data-list-filter="size"]').selectOption('');
 
+      // 필요 메모리 12GB 이하 → 보이는 행은 모두 12 이하, 그 수가 상태 문장에 (D101)
+      const needs = (await visibleAttr(rows, 'data-need')).map(Number);
+      const fit12 = needs.filter((gb) => gb <= 12).length;
+      expect(fit12).toBeGreaterThan(0);
+      await page.locator('select[data-list-filter="need"]').selectOption('12');
+      const shownNeeds = (await visibleAttr(rows, 'data-need')).map(Number);
+      expect(shownNeeds.length).toBe(fit12);
+      expect(shownNeeds.every((gb) => gb <= 12)).toBe(true);
+      await expect(status).toContainText(String(fit12));
+      await page.locator('select[data-list-filter="need"]').selectOption('');
+
       // 생각 모드 있음 → 생각 모드가 있는 모델 수
       await page.locator('input[data-list-toggle="thinking"]').check();
       expect((await visibleAttr(rows, 'data-thinking')).length).toBe(models.filter((m) => m.thinking).length);
@@ -115,7 +126,7 @@ for (const locale of LOCALES) {
     const path = localePath(locale, '/gpus');
 
     test('renders every catalog GPU grouped by type; price and memory sorts work inside each group; a row opens its hub', async ({ page }) => {
-      const gpus = readSeed<Array<{ id: string }>>('gpus.json');
+      const gpus = readSeed<Array<{ id: string; vendor: string; vramGB?: number }>>('gpus.json');
       const problems = collectProblems(page);
       await open(page, path);
       await expect(page.locator('table[data-list="gpus"] tbody tr')).toHaveCount(gpus.length);
@@ -141,6 +152,29 @@ for (const locale of LOCALES) {
       const memory = (await visibleAttr(apple, 'data-memory')).map(Number);
       expect(memory).toEqual([...memory].sort((a, b) => b - a));
       await expect(page.locator('[data-list-status]')).not.toHaveText('');
+
+      // 쾌적 모델 많은 순: 쾌적 → 쾌적+원활 내림차순 (D101), CPU 전용 묶음은 돌아가는 수 내림차순
+      await sort.selectOption('good');
+      const pairs: Array<[number, number]> = [];
+      for (const row of await nvidia.all()) pairs.push([Number(await row.getAttribute('data-great')), Number(await row.getAttribute('data-good'))]);
+      expect(pairs).toEqual([...pairs].sort((a, b) => b[0] - a[0] || b[1] - a[1]));
+      const cpuRuns = (await visibleAttr(page.locator('table[data-gpu-group="cpu"] tbody tr'), 'data-runs')).map(Number);
+      expect(cpuRuns).toEqual([...cpuRuns].sort((a, b) => b - a));
+
+      // 메모리 16GB 이상 → 보이는 행은 모두 16 이상, 그런 행이 없는 묶음은 숨긴다
+      await page.locator('select[data-list-filter="memory"]').selectOption('16');
+      const allRows = page.locator('table[data-list="gpus"] tbody tr');
+      const shownMemory = (await visibleAttr(allRows, 'data-memory')).map(Number);
+      expect(shownMemory.length).toBeGreaterThan(0);
+      expect(shownMemory.every((gb) => gb >= 16)).toBe(true);
+      await expect(page.locator('#group-cpu')).toBeVisible();
+      // 인텔 묶음은 16GB 미만 카드뿐이면 통째로 숨는다(시드 기준)
+      if (Math.max(...gpus.filter((g) => g.vendor === 'intel').map((g) => g.vramGB ?? 0)) < 16) await expect(page.locator('#group-intel')).toBeHidden();
+      await page.locator('select[data-list-filter="memory"]').selectOption('');
+      await expect(page.locator('#group-intel')).toBeVisible();
+
+      // 메모리 용량별 가장 싼 그래픽카드 표 — 서버가 그린 정적 표
+      await expect(page.locator('table[data-cheapest-by-memory] tbody tr').first()).toBeVisible();
 
       await clickThrough(page, page.locator('table[data-gpu-group="apple"] a[data-browse-gpu]').first());
       expect(problems, 'console errors / failed requests').toEqual([]);

@@ -143,3 +143,11 @@ export function formatGuideDate(locale: Locale, isoDate: string): string {
     new Date(`${isoDate}T00:00:00Z`),
   );
 }
+
+/** 날짜 범위 — 겹치는 연·월은 한 번만("October 14 – 16, 2026", "2026년 10월 14일~16일"). 같은 날이면 날짜 하나 */
+export function formatGuideDateRange(locale: Locale, from: string, to: string): string {
+  return new Intl.DateTimeFormat(locale, { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' }).formatRange(
+    new Date(`${from}T00:00:00Z`),
+    new Date(`${to}T00:00:00Z`),
+  );
+}

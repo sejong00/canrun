@@ -12,10 +12,11 @@
  *     처음 보는 model_type, 반복 층·디스크 n-gram 임베딩·압축 어텐션 등은 "보류"로 멈춘다 — 엔진이 그 메모리를 모델링하지 않아 판정이 틀린다.
  *  3) GGUF 저장소를 고른다(공식 → ggml-org → bartowski → unsloth → lmstudio-community, Q4_K_M 이 있는 첫 곳) — 파일명·크기는 트리에서.
  *  4) 레코드를 쓰고(원본 저장소 최근 30일 다운로드 수·기준일 포함 — D68), MoE 면 MOE_ARCH 에 한 줄 넣어 nonExpertGB 를 유도, data/meta.json 기준일을 오늘로.
+ *     처음 보는 Hugging Face 조직이면 apps/web/content/model-makers.ts 에 그 조직의 이름(조직 정보 API 의 fullname)을 한 줄 넣는다(10-19 D101 — 모델 목록 열).
  *     양자화 행마다 GGUF 헤더를 Range 로 읽는다(scripts/gguf-header.ts): MoE 는 expertGB·nonExpertGB(10-01),
  *     dense 는 그래픽카드에 올리지 않는 몫 offGpuGB(10-03 D62), 둘 다 MTP 블록이 있으면 mtpGB.
  *     MoE 는 arch.experts/topK(config)를 기록하고, 헤더의 expert_count·expert_used_count 가 config 와 다르면 멈춘다.
- * 사람이 확인할 것(출력에 표시): 생각 모드(--thinking, 판정 기준 1.5배 — 모델 카드·채팅 템플릿, D59)·카테고리·표시명·인기도·처음 보는 라이선스 문자열.
+ * 사람이 확인할 것(출력에 표시): 생각 모드(--thinking, 판정 기준 1.5배 — 모델 카드·채팅 템플릿, D59)·카테고리·표시명·인기도·처음 보는 라이선스 문자열·새 조직 이름.
  * 실행 후: pnpm run validate-data → pnpm test → pnpm build → pnpm run test:export.
  * 매일 도는 신모델 자동 추가(scripts/auto-add-models.ts, 10-06 D71)가 planAddition·applyAddition 을 그대로 불러 쓴다.
  */
@@ -42,6 +43,7 @@ import {
   rankGgufRepos,
   slugFromHfId,
 } from '../packages/data/src/hf';
+import { hfOrgOf } from '../apps/web/content/model-makers';
 import { measureSplit } from './gguf-header';
 import { downloadsFields, fetchConfig, fetchTree, serializeRecords } from './hf-common';
 
@@ -167,6 +169,74 @@ export async function measureRows(
 }
 
 // ---------------------------------------------------------------------------
+// 개발 조직 이름 (10-19 D101 — apps/web/content/model-makers.ts, 모델 목록 "Hugging Face 조직" 열)
+// ---------------------------------------------------------------------------
+
+/** 레지스트리 파일 — 저장소 루트 기준 */
+export const MODEL_MAKERS_PATH = 'apps/web/content/model-makers.ts';
+
+/** 조직 정보 API — 조직이 아니면(개인 계정) 사용자 정보 API. 둘 다 `fullname` 을 준다 */
+export const orgOverviewUrls = (org: string): string[] => [
+  `https://huggingface.co/api/organizations/${org}/overview`,
+  `https://huggingface.co/api/users/${org}/overview`,
+];
+
+/**
+ * 레지스트리에 적는 이름 — model-makers.ts 머리말 규칙: 끝의 장식 문자(`_`·공백)를 빼고("Mistral AI_" → "Mistral AI"),
+ * 소문자로만 적힌 이름은 첫 글자를 대문자로("upstage" → "Upstage"). 이름이 없으면 조직 id
+ */
+export function orgDisplayName(fullname: string | undefined, org: string): string {
+  const name = (fullname ?? '').replace(/[\s_]+$/u, '').trim();
+  if (name === '') return org;
+  return name === name.toLowerCase() && /^[a-z]/.test(name) ? `${name[0]!.toUpperCase()}${name.slice(1)}` : name;
+}
+
+const objectKey = (key: string): string => (/^[A-Za-z_$][\w$]*$/.test(key) ? key : `'${key}'`);
+
+/** 레지스트리에 그 조직 키가 이미 있는지 — 파일 내용으로 본다(한 실행에서 같은 조직의 두 번째 모델이 줄을 또 넣지 않게) */
+const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const makerKeyPattern = (org: string): string => `^\\s*(?:'${escapeRegExp(org)}'|${escapeRegExp(org)})\\s*:`;
+
+export function hasMakerEntry(src: string, org: string): boolean {
+  return new RegExp(makerKeyPattern(org), 'm').test(src);
+}
+
+/** 레지스트리에 적힌 그 조직의 이름 — 없으면 undefined */
+export function makerNameFrom(src: string, org: string): string | undefined {
+  const raw = new RegExp(`${makerKeyPattern(org)}\\s*'((?:[^'\\\\]|\\\\.)*)'`, 'm').exec(src)?.[1];
+  return raw?.replace(/\\(.)/g, '$1');
+}
+
+/** MODEL_MAKERS 에 넣을 한 줄 — 출처(조직 정보 API)와 날짜를 주석으로 */
+export function makerLine(org: string, name: string, today: string): string {
+  const quoted = name.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  return `  ${objectKey(org)}: '${quoted}', // add-model ${today} — ${orgOverviewUrls(org)[0]}`;
+}
+
+/** MODEL_MAKERS 블록 끝(`};`) 앞에 한 줄을 넣는다 */
+export function insertMakerLine(src: string, line: string): string {
+  const start = src.indexOf('export const MODEL_MAKERS');
+  const end = start < 0 ? -1 : src.indexOf('\n};', start);
+  if (start < 0 || end < 0) throw new Error('MODEL_MAKERS 블록을 찾지 못함');
+  return `${src.slice(0, end + 1)}${line}\n${src.slice(end + 1)}`;
+}
+
+/** 조직 이름 읽기 — 못 읽으면 undefined(호출자가 조직 id 로 쓰고 경고) */
+async function fetchOrgFullname(org: string, headers: Record<string, string>): Promise<string | undefined> {
+  for (const url of orgOverviewUrls(org)) {
+    try {
+      const res = await fetch(url, { headers });
+      if (!res.ok) continue;
+      const fullname = ((await res.json()) as { fullname?: unknown }).fullname;
+      if (typeof fullname === 'string' && fullname.trim() !== '') return fullname;
+    } catch {
+      // 다음 주소로
+    }
+  }
+  return undefined;
+}
+
+// ---------------------------------------------------------------------------
 // 실행부 — planAddition(HF 읽기 → 레코드 계획, 쓰지 않음) · applyAddition(파일 쓰기).
 // CLI(main)와 신모델 자동 추가(scripts/auto-add-models.ts, 10-06 D71)가 같은 함수를 쓴다.
 // ---------------------------------------------------------------------------
@@ -251,6 +321,8 @@ export type AdditionPlan = {
   rows: ModelQuantRecord[];
   /** MoE 면 packages/data/src/index.ts MOE_ARCH 에 넣을 한 줄 */
   moeLine?: string;
+  /** 개발 조직(hfId 앞부분)과 레지스트리 이름 — `line` 이 있으면 처음 보는 조직이라 model-makers.ts 에 넣을 한 줄 */
+  maker: { org: string; name: string; line?: string };
   lines: string[];
   warnings: string[];
   summary: {
@@ -341,6 +413,23 @@ export async function planAddition(
 
   const popularity = opts.popularity ?? popularityFrom(info.downloads);
   const maxContext = opts.maxContext ?? arch.maxContext;
+
+  // 개발 조직 이름(D101) — 레지스트리에 없으면 조직 정보 API 의 fullname 으로 한 줄
+  const org = hfOrgOf(hfId);
+  const makersSrc = readFileSync(join(repoRoot, MODEL_MAKERS_PATH), 'utf8');
+  let maker: AdditionPlan['maker'];
+  let makerWarning: string | undefined;
+  if (hasMakerEntry(makersSrc, org)) {
+    maker = { org, name: makerNameFrom(makersSrc, org) ?? org };
+  } else {
+    const fullname = await fetchOrgFullname(org, headers);
+    const name = orgDisplayName(fullname, org);
+    maker = { org, name, line: makerLine(org, name, today) };
+    makerWarning =
+      fullname === undefined
+        ? `조직 "${org}" 의 이름을 Hugging Face 에서 읽지 못해 조직 id 를 그대로 ${MODEL_MAKERS_PATH} 에 넣음 — 조직 페이지 이름으로 고칠 것`
+        : `처음 보는 조직 — ${MODEL_MAKERS_PATH} 에 "${name}" (${orgOverviewUrls(org)[0]} fullname "${fullname}") 을 넣음`;
+  }
   const record: Record<string, unknown> = {
     id, family: familyOf(name), name, hfId, paramsB,
     ...(moeFields['activeParamsB'] !== undefined ? { activeParamsB: moeFields['activeParamsB'] } : {}),
@@ -389,12 +478,13 @@ export async function planAddition(
   if (!opts.thinking) warnings.push('생각 모드 미지정 — 모델 카드·채팅 템플릿에 thinking(enable_thinking·<think>·reasoning_effort)이 있으면 --thinking always|default-on|default-off|auto 로 다시 (판정 기준 1.5배, D59)');
   if (!opts.maxContext) warnings.push(`최대 컨텍스트 ${arch.maxContext} 는 config 값 — 모델 카드의 기본(네이티브) 길이와 다르면 --max-context 로 (예: Qwen3 은 카드 기준 32768, YaRN 확장 전)`);
   if (!opts.name) warnings.push(`표시명 "${name}" 은 자동 — 어색하면 --name 으로`);
+  if (makerWarning) warnings.push(makerWarning);
 
   const activeParamsB = moeFields['activeParamsB'] as number | undefined;
   return {
     kind: 'ok',
     plan: {
-      hfId, id, name, record, rows, ...(moeLine ? { moeLine } : {}), lines, warnings,
+      hfId, id, name, record, rows, ...(moeLine ? { moeLine } : {}), maker, lines, warnings,
       summary: {
         modelType: arch.modelType, attnType: arch.attnType, ...(arch.moe ? { moe: arch.moe } : {}), paramsB,
         ...(activeParamsB !== undefined ? { activeParamsB } : {}),
@@ -404,8 +494,16 @@ export async function planAddition(
   };
 }
 
-/** 계획을 쓴다 — MOE_ARCH 한 줄(MoE) · models.json · model-quants.json · meta.json 기준일. 교차 검증(validate-data)은 호출자 몫 */
+/**
+ * 계획을 쓴다 — MOE_ARCH 한 줄(MoE) · 처음 보는 조직 이름(model-makers.ts, D101) · models.json · model-quants.json · meta.json 기준일.
+ * 교차 검증(validate-data)은 호출자 몫
+ */
 export function applyAddition(plan: AdditionPlan, ctx: CatalogRaw & { today: string }, root = repoRoot): void {
+  if (plan.maker.line) {
+    const makersPath = join(root, MODEL_MAKERS_PATH);
+    const src = readFileSync(makersPath, 'utf8');
+    if (!hasMakerEntry(src, plan.maker.org)) writeFileSync(makersPath, insertMakerLine(src, plan.maker.line));
+  }
   if (plan.moeLine) {
     const idxPath = join(root, 'packages/data/src/index.ts');
     const src2 = readFileSync(idxPath, 'utf8');
@@ -446,7 +544,9 @@ async function main(): Promise<void> {
     process.exitCode = 1;
     return;
   }
-  console.log(`\n추가함: data/models.json · data/model-quants.json(+${plan.rows.length}) · data/meta.json${plan.moeLine ? ' · MOE_ARCH' : ''}. 다음: pnpm test → pnpm build → pnpm run test:export`);
+  console.log(
+    `\n추가함: data/models.json · data/model-quants.json(+${plan.rows.length}) · data/meta.json${plan.moeLine ? ' · MOE_ARCH' : ''}${plan.maker.line ? ` · ${MODEL_MAKERS_PATH}` : ''}. 다음: pnpm test → pnpm build → pnpm run test:export`,
+  );
 }
 
 if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
