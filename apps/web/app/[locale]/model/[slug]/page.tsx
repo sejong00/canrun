@@ -24,6 +24,7 @@ import {
 import { PriceSort } from '@/components/islands/price-sort';
 import { PageShell } from '@/components/page-shell';
 import { VerdictBadge, VerdictLegend } from '@/components/verdict';
+import { modelSeries, seriesMembers, seriesNoteKey } from '@/content/model-series';
 import type { Locale } from '@/i18n/routing';
 import { catalog } from '@/lib/catalog';
 import { formatCtx, formatGB, formatInt, formatParams } from '@/lib/format';
@@ -80,6 +81,16 @@ function offGpuNoteKey(hub: ModelHubData) {
   if (base.size - base.gpu < OFF_GPU_NOTE_MIN_GB) return undefined;
   if (!base.mtp) return 'modelVramOffGpu';
   return MTP_LOADABLE_MODELS.includes(hub.model.id) ? 'modelVramOffGpuMtp' : 'modelVramOffGpuMtpUnused';
+}
+
+/** 파라미터 수 — 모델 정보·같은 계열 표 공용 (MoE 는 전체·활성) */
+function paramsText(t: Awaited<ReturnType<typeof translators>>, model: ModelHubData['model'], locale: string) {
+  return model.activeParamsB !== undefined
+    ? t.hub('paramsMoe', {
+        total: formatParams(locale, model.paramsB),
+        active: formatParams(locale, model.activeParamsB),
+      })
+    : t.hub('paramsDense', { total: formatParams(locale, model.paramsB) });
 }
 
 function rowLabel(t: Awaited<ReturnType<typeof translators>>, row: ModelGpuRow, locale: string) {
@@ -219,6 +230,9 @@ export default async function ModelHubPage({ params }: Props) {
   const Intro = await loadHubIntro('model', model.id, locale);
   // "어떤 모델인가요" 한 문단(10-19 D102) — 레지스트리(content/model-about.ts)에 있는 모델만, 소개글·사양보다 먼저
   const About = await loadModelAbout(model.id, locale);
+  // 같은 계열의 다른 크기(10-19) — 계열은 id 규칙(content/model-series.ts), 형제 요약은 허브 캐시(getModelHub)라 FAQ·목록과 같은 값
+  const series = seriesMembers(catalog.models, model.id).map((m) => getModelHub(m.id)!);
+  const seriesNote = seriesNoteKey(catalog.models, model.id);
 
   return (
     <PageShell locale={locale} href={href}>
@@ -267,14 +281,7 @@ export default async function ModelHubPage({ params }: Props) {
           <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-3">
             <div>
               <dt className="text-muted-foreground">{t.hub('factParams')}</dt>
-              <dd className="font-medium">
-                {model.activeParamsB !== undefined
-                  ? t.hub('paramsMoe', {
-                      total: formatParams(locale, model.paramsB),
-                      active: formatParams(locale, model.activeParamsB),
-                    })
-                  : t.hub('paramsDense', { total: formatParams(locale, model.paramsB) })}
-              </dd>
+              <dd className="font-medium">{paramsText(t, model, locale)}</dd>
             </div>
             <div>
               <dt className="text-muted-foreground">{t.hub('factAttention')}</dt>
@@ -298,6 +305,66 @@ export default async function ModelHubPage({ params }: Props) {
             </div>
           </dl>
         </section>
+
+        {series.length > 0 && (
+          <section aria-labelledby="series-heading" data-model-series={modelSeries(model.id)} className="flex flex-col gap-3">
+            <h2 id="series-heading" className="text-xl font-semibold tracking-tight">
+              {t.hub('seriesTitle')}
+            </h2>
+            <ScrollTable label={t.hub('seriesTitle')}>
+              <table className={TABLE_CLASS}>
+                <caption>{t.hub('seriesCaption')}</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">{tTable('model')}</th>
+                    <th scope="col">{t.hub('factParams')}</th>
+                    <th scope="col">{t.hub('seriesColQuant')}</th>
+                    <th scope="col">{t.hub('seriesColNeed')}</th>
+                    {/* 허브 FAQ 의 대표 카드(HUB_POLICY.referenceGpuIds) — 형제 행도 같은 카드를 id 로 찾는다 */}
+                    {hub.referenceRows.map((ref) => (
+                      <th key={ref.gpu.id} scope="col">
+                        {gpuName(t.names, ref.gpu)}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {series.map((sibling) => {
+                    const current = sibling.model.id === model.id;
+                    return (
+                      <tr key={sibling.model.id} {...(current ? { 'data-series-current': '' } : {})}>
+                        <th scope="row" className="min-w-40">
+                          {current ? (
+                            <>
+                              {sibling.model.name}
+                              <span className="ml-2 text-xs font-normal text-muted-foreground">{t.hub('seriesThis')}</span>
+                            </>
+                          ) : (
+                            <a href={localeHref(locale, modelHref(sibling.model.id))}>{sibling.model.name}</a>
+                          )}
+                        </th>
+                        <td className="whitespace-nowrap tabular-nums">{paramsText(t, sibling.model, locale)}</td>
+                        <td className="whitespace-nowrap">{sibling.baselineQuant}</td>
+                        <td className="whitespace-nowrap tabular-nums">
+                          {t.common('gb', { value: formatGB(locale, needAt8k(sibling, sibling.baselineQuant).total) })}
+                        </td>
+                        {hub.referenceRows.map((ref) => {
+                          const row = sibling.referenceRows.find((r) => r.gpu.id === ref.gpu.id);
+                          return (
+                            <td key={ref.gpu.id}>
+                              {row ? <VerdictBadge verdict={row.combo.baseline.result.verdict} /> : t.common('none')}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </ScrollTable>
+            {seriesNote && <p className="text-xs text-muted-foreground">{t.hub(seriesNote)}</p>}
+          </section>
+        )}
 
         <section aria-labelledby="quants-heading" className="flex flex-col gap-3">
           <h2 id="quants-heading" className="text-xl font-semibold tracking-tight">
