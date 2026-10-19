@@ -122,6 +122,13 @@ export type PageFacts = {
   textChars: number;
   /** `<form action>` 전부 (홈 GET 폼·계산기 폼 — P1-3) */
   formActions: string[];
+  /**
+   * 계산기 위젯 `form[data-calc-widget]`(홈·가이드 D45 · 상세 페이지 10-19 D107) — action(엔티티 디코딩)·홈 폼 여부·숨은 입력(name → value)·
+   * GPU 칸(`#…-gpu`)의 SSR 값(미리 고른 GPU 의 표시명, 없으면 '')
+   */
+  calcWidgetForms: Array<{ action: string; home: boolean; hidden: Record<string, string>; gpuText: string }>;
+  /** 위젯 아래 딥 링크 `a[data-calc-deep-link]` — kind(값)·href(엔티티 디코딩), 문서 순서 (10-19 D107) */
+  calcDeepLinks: Array<{ kind: string; href: string }>;
   /** 첫 `<datalist>` 의 `<option>` 수 */
   datalistOptionCount: number;
   /** P1-3 마커: `[data-calculator]` · `form[data-calc-form]` · `input[list]` · `[data-result-card]` 수 · `[data-ctx-controls]` · `[data-sort-control]` */
@@ -141,7 +148,7 @@ export type PageFacts = {
     navGpus?: string;
     /** 10-19: 목록 페이지 정렬·거르기 아일랜드 `[data-list-controls="models|gpus"]` 의 값 */
     listControls?: string;
-    /** `form[data-calc-widget]` 수 (홈·가이드 — D45) */
+    /** `form[data-calc-widget]` 수 (홈·가이드 — D45, 콤보·허브·GPU 비교 — 10-19 D107) */
     calcWidgets: number;
     /** `[data-guide-data]` 수 — 가이드 자체 데이터 인용 (AC, D42) */
     guideData: number;
@@ -613,6 +620,7 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
   const browseAllHrefs: string[] = [];
   const relatedGuideHrefs: string[] = [];
   const addedModelHrefs: string[] = [];
+  const calcDeepLinks: PageFacts['calcDeepLinks'] = [];
   for (const m of html.matchAll(/<a\b[^>]*>/g)) {
     const tag = m[0];
     const href = tag.match(HREF_RE)?.[1];
@@ -633,8 +641,24 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
     if (hasAttr(tag, 'data-calc-model-link')) calcModelLink = decodeEntities(href);
     if (hasAttr(tag, 'data-related-guide')) relatedGuideHrefs.push(href);
     if (hasAttr(tag, 'data-added-model')) addedModelHrefs.push(href);
+    if (hasAttr(tag, 'data-calc-deep-link')) calcDeepLinks.push({ kind: attrValue(tag, 'data-calc-deep-link') ?? '', href: decodeEntities(href) });
   }
   const formActions = [...html.matchAll(/<form\b[^>]*\baction="([^"]*)"/g)].map((m) => decodeEntities(m[1]!));
+  // 계산기 위젯(10-19 D107) — 숨은 입력과 GPU 칸의 SSR 값 (datalist 의 <option> 은 <input> 이 아니라 섞이지 않는다)
+  const calcWidgetForms = elementsWithAttr(noScript, 'data-calc-widget').map((e) => {
+    const hidden: Record<string, string> = {};
+    let gpuText = '';
+    for (const input of e.inner.matchAll(/<input\b[^>]*>/g)) {
+      const tag = input[0];
+      const name = attrValue(tag, 'name');
+      if (attrValue(tag, 'type') === 'hidden') {
+        if (name !== undefined) hidden[name] = decodeEntities(attrValue(tag, 'value') ?? '');
+      } else if (attrValue(tag, 'id')?.endsWith('-gpu')) {
+        gpuText = decodeEntities(attrValue(tag, 'value') ?? '');
+      }
+    }
+    return { action: decodeEntities(attrValue(e.openTag, 'action') ?? ''), home: hasAttr(e.openTag, 'data-home-form'), hidden, gpuText };
+  });
   const datalist = html.match(/<datalist\b[^>]*>([\s\S]*?)<\/datalist>/)?.[1] ?? '';
   const datalistOptionCount = (datalist.match(/<option\b/g) ?? []).length;
   const guideBody = elementsWithAttr(noScript, 'data-guide-body')[0]?.inner ?? '';
@@ -831,6 +855,8 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
     textUnitIds,
     textChars,
     formActions,
+    calcWidgetForms,
+    calcDeepLinks,
     datalistOptionCount,
     relatedGuideHrefs,
     updateIds: elementsWithAttr(noScript, 'data-update').map((e) => attrValue(e.openTag, 'data-update') ?? ''),

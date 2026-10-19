@@ -32,6 +32,14 @@
     "allModels": "See all {count} models",
     "allGpus": "See all {count} GPUs, Macs and PCs"
   },
+  "CalcWidget": {
+    "title": "Check it on your own PC",
+    "note": "In the calculator you can change RAM and context length, or try another GPU or model.",
+    "noteModel": "Pick your GPU to check this model on your PC, or leave it empty to see how every GPU handles it.",
+    "submit": "Calculate",
+    "openCombo": "Open this GPU and model in the calculator",
+    "openGpu": "Open {gpu} in the calculator"
+  },
   "Calculator": {
     "metaTitle": "LLM VRAM Calculator: What Runs on Your GPU & RAM",
     "metaDescription": "Pick your GPU or Mac chip, RAM and OS to see which of {total} open LLMs run, at which GGUF quant, with an estimated tokens-per-second band and a confidence label. Detects your GPU in the browser; results share as a link.",

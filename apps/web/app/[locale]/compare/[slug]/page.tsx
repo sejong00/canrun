@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { Breadcrumbs } from '@/components/breadcrumbs';
+import { CalcWidget } from '@/components/calc-widget';
 import { CompareIntro } from '@/components/compare-intro';
 import { CompareTable } from '@/components/compare-table';
 import { Faq } from '@/components/faq';
@@ -11,6 +12,7 @@ import { PageShell } from '@/components/page-shell';
 import { VerdictBadge, VerdictLegend } from '@/components/verdict';
 import { COMPARE_SLUGS, isComparePublished } from '@/content/compares';
 import type { Locale } from '@/i18n/routing';
+import { calcDeepQuery } from '@/lib/calc-catalog';
 import { catalog } from '@/lib/catalog';
 import { loadCompareIntro } from '@/lib/compare-intros';
 import {
@@ -27,7 +29,7 @@ import {
 } from '@/lib/compare-phrases';
 import { compareOgImagePath, getCompare } from '@/lib/compares';
 import { formatGB, formatInt, formatRatio } from '@/lib/format';
-import { compareHref, comparesHref, gpuHref, localeHref } from '@/lib/links';
+import { calculatorHref, compareHref, comparesHref, gpuHref, localeHref } from '@/lib/links';
 import { gpuName, speedPhrase, type Translate } from '@/lib/phrases';
 import { formatPrice, krwNote } from '@/lib/price';
 import { buildPageMetadata } from '@/lib/seo';
@@ -122,6 +124,7 @@ export default async function ComparePage({ params }: Props) {
 
   const t = await translators(locale);
   const tTable = await getTranslations({ locale, namespace: 'Table' });
+  const tWidget = await getTranslations({ locale, namespace: 'CalcWidget' });
   const names = compareNames(t, locale, cmp);
   const href = compareHref(page.slug);
   const sides = [
@@ -190,6 +193,22 @@ export default async function ComparePage({ params }: Props) {
             </ul>
           )}
         </header>
+
+        {/* 계산기 위젯 (10-19 D107) — 앞쪽 기기를 미리 고른 채, 두 기기 각각 비교에 쓴 구성(통합·CPU 는 그 메모리)으로 여는 링크 */}
+        <CalcWidget
+          locale={locale}
+          idPrefix="compare-calc"
+          heading={tWidget('title')}
+          prefill={{
+            gpuId: cmp.a.gpu.id,
+            note: tWidget('note'),
+            links: (['a', 'b'] as const).map((kind) => ({
+              kind,
+              href: localeHref(locale, calculatorHref(calcDeepQuery({ gpuId: cmp[kind].gpu.id, ramGB: cmp[kind].config.ramGB }))),
+              text: tWidget('openGpu', { gpu: names[kind] }),
+            })),
+          }}
+        />
 
         {Intro && <CompareIntro Body={Intro} title={t.compare('introTitle')} />}
 

@@ -32,6 +32,14 @@
     "allModels": "모델 {count}종 모두 보기",
     "allGpus": "GPU·맥·PC {count}종 모두 보기"
   },
+  "CalcWidget": {
+    "title": "내 PC로 계산해 보기",
+    "note": "계산기에서 RAM과 컨텍스트 길이를 바꾸거나 다른 GPU·모델로도 확인해 볼 수 있습니다.",
+    "noteModel": "GPU를 고르면 내 PC 기준으로 계산하고, 비워 두면 GPU마다 이 모델을 얼마나 잘 돌리는지 보여 줍니다.",
+    "submit": "계산하기",
+    "openCombo": "이 조합을 계산기에서 열기",
+    "openGpu": "계산기에서 {gpu} 열기"
+  },
   "Calculator": {
     "metaTitle": "LLM·VRAM 계산기: 내 GPU·RAM으로 돌아가는 모델과 예상 속도",
     "metaDescription": "GPU(또는 맥 칩)와 RAM, OS를 고르면 오픈 LLM {total}종 가운데 어떤 모델이 어떤 GGUF 양자화로 돌아가는지 보여 줍니다. 예상 tok/s 범위와 신뢰 라벨도 함께 나옵니다. GPU는 브라우저에서 감지하고, 결과는 링크로 공유할 수 있습니다.",

@@ -16,6 +16,7 @@ import { AdjacentLinks } from '@/components/adjacent-links';
 import { AlternativeCards } from '@/components/alternative-cards';
 import { GgufSourceBadge, LicenseBadge, Pill } from '@/components/badges';
 import { Breadcrumbs } from '@/components/breadcrumbs';
+import { CalcWidget } from '@/components/calc-widget';
 import { CommandSnippet } from '@/components/command-snippet';
 import { ConfigVerdictList } from '@/components/config-verdict-list';
 import { CtxMatrixTable } from '@/components/ctx-matrix';
@@ -28,6 +29,7 @@ import { PageShell } from '@/components/page-shell';
 import { VerdictBadge } from '@/components/verdict';
 import { VramBar } from '@/components/vram-bar';
 import type { Locale } from '@/i18n/routing';
+import { calcDeepQuery } from '@/lib/calc-catalog';
 import { catalog } from '@/lib/catalog';
 import {
   comboDescription,
@@ -116,6 +118,7 @@ export default async function ComboPage({ params }: Props) {
   const tCommonNs = await getTranslations({ locale, namespace: 'Common' });
   const tMemory = await getTranslations({ locale, namespace: 'Memory' });
   const tCtx = await getTranslations({ locale, namespace: 'CtxControls' });
+  const tWidget = await getTranslations({ locale, namespace: 'CalcWidget' });
 
   const { gpu, model, combo, q } = page;
   const name = gpuName(t.names, gpu);
@@ -358,6 +361,26 @@ export default async function ComboPage({ params }: Props) {
             {twinText && <span data-twin> {twinText}</span>}
           </p>
         </header>
+
+        {/* 계산기 위젯 (10-19 D107) — 판정 바로 아래, 이 GPU·모델을 미리 채워 다른 RAM·컨텍스트·조합을 계산기에서 바로 해 보게.
+            딥 링크는 이 페이지가 가정한 구성(통합·CPU 메모리)까지 실어 같은 판정이 열린다 */}
+        <CalcWidget
+          locale={locale}
+          idPrefix="combo-calc"
+          heading={tWidget('title')}
+          prefill={{
+            gpuId: gpu.id,
+            modelId: model.id,
+            note: tWidget('note'),
+            links: [
+              {
+                kind: 'combo',
+                href: localeHref(locale, calculatorHref(calcDeepQuery({ gpuId: gpu.id, modelId: model.id, ramGB: page.config.ramGB }))),
+                text: tWidget('openCombo'),
+              },
+            ],
+          }}
+        />
 
         {page.configCombos.length > 1 && (
           <section aria-labelledby="config-heading" className="flex flex-col gap-2">

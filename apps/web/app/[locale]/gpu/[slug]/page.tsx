@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { Pill } from '@/components/badges';
 import { Breadcrumbs } from '@/components/breadcrumbs';
+import { CalcWidget } from '@/components/calc-widget';
 import { Faq } from '@/components/faq';
 import { HubIntro } from '@/components/hub-intro';
 import {
@@ -259,6 +260,7 @@ export default async function GpuHubPage({ params }: Props) {
   const tBreadcrumb = await getTranslations({ locale, namespace: 'Breadcrumb' });
   const tGuides = await getTranslations({ locale, namespace: 'Guides' });
   const tCompare = await getTranslations({ locale, namespace: 'Compare' });
+  const tWidget = await getTranslations({ locale, namespace: 'CalcWidget' });
   const { gpu } = hub;
   const name = gpuName(t.names, gpu);
   const href = gpuHref(gpu.id);
@@ -327,6 +329,14 @@ export default async function GpuHubPage({ params }: Props) {
           </div>
           <p className="text-muted-foreground">{assumption}</p>
         </header>
+
+        {/* 계산기 위젯 (10-19 D107) — 이 GPU 를 미리 고른 채. 허브의 가정 구성(통합·CPU = 가장 큰 메모리)이 계산기 기본값과 같다 */}
+        <CalcWidget
+          locale={locale}
+          idPrefix="gpu-calc"
+          heading={tWidget('title')}
+          prefill={{ gpuId: gpu.id, note: tWidget('note'), links: [] }}
+        />
 
         {Intro && <HubIntro Body={Intro} title={tSpec('introTitle', { gpu: name })} />}
 

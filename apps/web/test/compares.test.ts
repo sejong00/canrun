@@ -233,9 +233,23 @@ describe('rendered compare text (titles · descriptions · summary · FAQ)', () 
     expect(compareNameWithMemory(t, 'en', cmp.a)).toBe('RTX 5060 Ti 16GB');
     const unified = getCompare('apple-m4-pro-vs-rtx-5060-ti-16gb')!.cmp;
     expect(compareTitle(t, unified, compareNames(t, 'en', unified))).toBe(
-      'Apple M4 Pro 64GB vs RTX 5060 Ti 16GB for Local LLMs: Memory & Speed Compared',
+      'M4 Pro 64GB vs RTX 5060 Ti 16GB for Local LLMs: Memory & Speed Compared',
     );
     const ko = translators('ko');
-    expect(compareTitle(ko, unified, compareNames(ko, 'ko', unified))).toBe('Apple M4 Pro 64GB vs RTX 5060 Ti 16GB 로컬 LLM 비교 — 메모리·예상 속도');
+    expect(compareTitle(ko, unified, compareNames(ko, 'ko', unified))).toBe('M4 Pro 64GB vs RTX 5060 Ti 16GB 로컬 LLM 비교 — 메모리·예상 속도');
+  });
+
+  it('names unified-memory machines by their short name plus the compared memory, the way people search (10-19 D107)', () => {
+    for (const locale of LOCALES) {
+      const t = translators(locale);
+      expect(compareNames(t, locale, getCompare('amd-strix-halo-vs-nvidia-dgx-spark')!.cmp), locale).toEqual({
+        a: 'Ryzen AI Max+ 395 128GB',
+        b: 'DGX Spark 128GB',
+      });
+      expect(compareNames(t, locale, getCompare('apple-m4-pro-vs-rtx-5060-ti-16gb')!.cmp), locale).toEqual({
+        a: 'M4 Pro 64GB',
+        b: 'RTX 5060 Ti 16GB',
+      });
+    }
   });
 });

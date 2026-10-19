@@ -11,6 +11,7 @@ import { notFound } from 'next/navigation';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { GgufSourceBadge, LicenseBadge, Pill } from '@/components/badges';
 import { Breadcrumbs } from '@/components/breadcrumbs';
+import { CalcWidget } from '@/components/calc-widget';
 import { Faq } from '@/components/faq';
 import { HubIntro } from '@/components/hub-intro';
 import { ModelAbout } from '@/components/model-about';
@@ -213,6 +214,7 @@ export default async function ModelHubPage({ params }: Props) {
   const tCategory = await getTranslations({ locale, namespace: 'Category' });
   const tGpuHub = await getTranslations({ locale, namespace: 'GpuHub' });
   const tSort = await getTranslations({ locale, namespace: 'Sort' });
+  const tWidget = await getTranslations({ locale, namespace: 'CalcWidget' });
   /** 가격 순위 대상 = dGPU 실거래가(priceAsOf 동반)만 — MSRP·통합 메모리 기기는 순위 밖 (docs/01 §3, 규칙 2). 계산기 모델 모드와 같은 조건(D65) */
   const rankablePrice = (gpu: (typeof hub.gpuRows)[number]['gpu']): number | undefined => rankableStreet(gpu)?.usd;
   const unpricedRows = hub.gpuRows.filter((r) => rankablePrice(r.gpu) === undefined).length;
@@ -269,6 +271,15 @@ export default async function ModelHubPage({ params }: Props) {
             ))}
           </div>
         </header>
+
+        {/* 계산기 위젯 (10-19 D107) — 이 모델을 숨은 m 으로 싣는다. GPU 를 고르면 그 GPU 결과에서 이 모델을 강조하고,
+            비워 두면 계산기 모델 모드(GPU 표 위 링크와 같은 `?mode=model&m=`)로 열린다 */}
+        <CalcWidget
+          locale={locale}
+          idPrefix="model-calc"
+          heading={tWidget('title')}
+          prefill={{ modelId: model.id, modelModeWhenEmpty: true, note: tWidget('noteModel'), links: [] }}
+        />
 
         {About && <ModelAbout Body={About} title={t.hub('aboutTitle', { model: model.name })} />}
 

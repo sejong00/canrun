@@ -23,16 +23,17 @@ export type CompareTranslators = {
 };
 
 /**
- * 기기 이름 — 그래픽카드는 짧은 이름("RTX 5060 Ti 16GB" — 콤보 제목과 같은 `shortGpuName`), 통합 메모리·CPU 는 전체 이름 + 비교 구성 메모리
- * ("Apple M4 Pro 64GB" — 수치가 그 구성 하나의 것이다. 제품 이름처럼 붙여 쓴다)
+ * 기기 이름 — 콤보 제목과 같은 짧은 이름(`shortGpuName`): 그래픽카드 "RTX 5060 Ti 16GB", 통합 메모리·CPU 는 짧은 이름 + 비교 구성 메모리
+ * ("M4 Pro 64GB" · "Ryzen AI Max+ 395 128GB" · "DGX Spark 128GB" — 수치가 그 구성 하나의 것이다. 제품 이름처럼 붙여 쓴다).
+ * 10-19 D107: 사람들은 "ai max 395 vs dgx spark" 처럼 짧게 찾는다 — 전체 이름("… (Strix Halo) 128GB")은 제목을 늘리기만 했다
  */
 export function compareName(
   t: Pick<CompareTranslators, 'compare' | 'names'>,
   locale: string,
   side: Pick<CompareSide, 'gpu' | 'memoryGB'>,
 ): string {
-  const name = gpuName(t.names, side.gpu);
-  if (side.memoryGB === undefined) return shortGpuName(name);
+  const name = shortGpuName(gpuName(t.names, side.gpu));
+  if (side.memoryGB === undefined) return name;
   return t.compare('nameMemory', { name, ram: formatInt(locale, side.memoryGB) });
 }
 

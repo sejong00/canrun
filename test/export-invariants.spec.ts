@@ -1282,6 +1282,76 @@ describe('model hub → calculator model mode (10-03 D65)', () => {
   });
 });
 
+describe('calculator widget on detail pages (10-19 D107 — 검색으로 들어온 페이지에서 계산기를 바로 쓰게)', () => {
+  const DETAIL_KINDS = new Set(['combo', 'gpu', 'model', 'compare']);
+  const DEEP_LINK_KEYS = new Set(['gpu', 'ram', 'ddr', 'm']);
+  const gpuNames = (locale: 'en' | 'ko') => readJson<{ GpuName?: Record<string, string> }>(`apps/web/messages/${locale}.json`).GpuName ?? {};
+  const displayName = (locale: 'en' | 'ko', gpuId: string) => gpuNames(locale)[gpuId] ?? gpus.find((g) => g.id === gpuId)!.name;
+
+  /** 딥 링크 = 로캘 계산기 + 계산기 코덱이 읽는 키만, gpu = 카탈로그 id, ram = 통합·CPU 면 그 기기의 메모리 구성 중 하나 */
+  const expectDeepLink = (page: PageFacts, href: string, gpuId: string, modelId?: string) => {
+    const url = new URL(href, 'https://deep-link.invalid');
+    expect(url.pathname, `${page.file} ${href}`).toBe(localePath(page.locale, '/calculator'));
+    const params = Object.fromEntries(url.searchParams);
+    for (const key of Object.keys(params)) expect(DEEP_LINK_KEYS.has(key), `${page.file} ${href} key ${key}`).toBe(true);
+    expect(params.gpu, `${page.file} ${href} gpu`).toBe(gpuId);
+    expect(params.m, `${page.file} ${href} m`).toBe(modelId);
+    const gpu = gpus.find((g) => g.id === gpuId)!;
+    if (params.ram !== undefined) {
+      expect(gpu.kind === 'dgpu' ? [8, 16, 24, 32, 48, 64, 96, 128, 192, 256] : gpu.ramOptionsGB, `${page.file} ${href} ram`).toContain(Number(params.ram));
+    }
+  };
+
+  it('every combo, GPU hub, model hub and compare page has exactly one widget to the locale calculator, prefilled with the page GPU / model', () => {
+    const detail = pages.filter((p) => DETAIL_KINDS.has(p.kind));
+    for (const kind of DETAIL_KINDS) expect(detail.filter((p) => p.kind === kind).length, `${kind} pages`).toBeGreaterThan(0);
+    for (const page of detail) {
+      expect(page.markers.calcWidgets, `${page.file} calculator widget`).toBe(1);
+      const form = page.calcWidgetForms[0]!;
+      expect(form.action, `${page.file} action`).toBe(localePath(page.locale, '/calculator'));
+      expect(form.home, `${page.file} data-home-form`).toBe(false);
+      const id = page.urlPath.split('/').pop()!;
+      if (page.kind === 'combo') {
+        const { gpuId, modelId } = page.combo!;
+        expect(form.hidden, `${page.file} hidden fields`).toEqual({ m: modelId, gpu: gpuId });
+        expect(form.gpuText, `${page.file} GPU field`).toBe(displayName(page.locale, gpuId));
+        expect(page.calcDeepLinks.map((l) => l.kind), `${page.file} deep links`).toEqual(['combo']);
+        expectDeepLink(page, page.calcDeepLinks[0]!.href, gpuId, modelId);
+      } else if (page.kind === 'gpu') {
+        expect(form.hidden, `${page.file} hidden fields`).toEqual({ gpu: id });
+        expect(form.gpuText, `${page.file} GPU field`).toBe(displayName(page.locale, id));
+        expect(page.calcDeepLinks, `${page.file} deep links`).toEqual([]);
+      } else if (page.kind === 'model') {
+        // GPU 칸은 비어 있고, 비운 채 보내면 계산기 모델 모드 (GPU 를 고르면 숨은 mode 가 사라진다 — 아일랜드, E2E)
+        expect(form.hidden, `${page.file} hidden fields`).toEqual({ m: id, mode: 'model' });
+        expect(form.gpuText, `${page.file} GPU field`).toBe('');
+        expect(page.calcDeepLinks, `${page.file} deep links`).toEqual([]);
+      } else {
+        const entry = COMPARES[page.compareSlug as keyof typeof COMPARES];
+        expect(form.hidden, `${page.file} hidden fields`).toEqual({ gpu: entry.a });
+        expect(form.gpuText, `${page.file} GPU field`).toBe(displayName(page.locale, entry.a));
+        expect(page.calcDeepLinks.map((l) => l.kind), `${page.file} deep links`).toEqual(['a', 'b']);
+        expectDeepLink(page, page.calcDeepLinks[0]!.href, entry.a);
+        expectDeepLink(page, page.calcDeepLinks[1]!.href, entry.b);
+      }
+    }
+  });
+
+  it('home and guides keep the empty widget; no other page kind has a widget or a deep link', () => {
+    for (const page of pages) {
+      if (DETAIL_KINDS.has(page.kind)) continue;
+      const expected = page.kind === 'home' || isGuide(page) ? 1 : 0;
+      expect(page.markers.calcWidgets, `${page.file} calculator widgets`).toBe(expected);
+      expect(page.calcDeepLinks, `${page.file} deep links`).toEqual([]);
+      for (const form of page.calcWidgetForms) {
+        expect(form.hidden, `${page.file} hidden fields`).toEqual({});
+        expect(form.gpuText, `${page.file} GPU field`).toBe('');
+        expect(form.home, `${page.file} data-home-form`).toBe(page.kind === 'home');
+      }
+    }
+  });
+});
+
 describe('islands SSR (P1-3 D28 · price sort)', () => {
   it('every combo page renders the ctx/KV controls and keeps the static ctx table; every model hub renders the sort control', () => {
     for (const page of requireCombos()) {

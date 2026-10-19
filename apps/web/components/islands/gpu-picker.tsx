@@ -16,6 +16,13 @@ type Props = {
   inputId: string;
   label: string;
   placeholder: string;
+  /** 미리 고른 GPU id (콤보·GPU 허브·비교 페이지 — 10-19 D107). 바꾸지 않고 제출하면 그 GPU 로 계산기가 열린다 */
+  initialGpuId?: string;
+  /**
+   * 칸을 비워 둔 채 제출할 때 함께 보낼 숨은 값 (모델 허브 `{ mode: 'model' }` — D107). 주면 칸이 필수가 아니게 되고,
+   * 비어 있는 동안엔 빈 `gpu=` 대신 이 값들을 보낸다
+   */
+  emptyFields?: Readonly<Record<string, string>>;
 };
 
 /**
@@ -23,8 +30,9 @@ type Props = {
  * 계산기와 같은 목록(`GpuListbox` — 6그룹 둘러보기·검색 순위)을 쓴다. 폼 자체는 서버 컴포넌트 `CalcWidget` 의 GET 폼 그대로라
  * JS 가 없거나 하이드레이션 전이면 `input list` + datalist(표시명만, 그룹 순)로 동작한다.
  * 목록에서 고르면 숨은 `gpu=<id>` 를 보내고, 직접 친 텍스트는 그대로 보내 계산기가 해석한다(D31).
+ * 상세 페이지(10-19 D107)는 `initialGpuId` 로 그 페이지의 GPU 를 미리 고른 채 그린다 — SSR 부터 숨은 `gpu=<id>` 가 있어 JS 없이도 그 GPU 로 열린다.
  */
-export function GpuPicker({ locale, gpus, dict, inputId, label, placeholder }: Props) {
+export function GpuPicker({ locale, gpus, dict, inputId, label, placeholder, initialGpuId, emptyFields }: Props) {
   const hydrated = useHydrated();
   const t = useMemo(() => ({ calc: makeT(dict, locale, 'Calculator'), names: makeT(dict, locale, 'GpuName') }), [dict, locale]);
   const names = useMemo(() => {
@@ -34,8 +42,10 @@ export function GpuPicker({ locale, gpus, dict, inputId, label, placeholder }: P
   }, [dict]);
   const inputRef = useRef<HTMLInputElement>(null);
   const blurTimer = useRef<number | undefined>(undefined);
-  const [text, setText] = useState('');
-  const [chosen, setChosen] = useState<GpuCore | undefined>(undefined);
+  const initial = initialGpuId === undefined ? undefined : gpus.find((gpu) => gpu.id === initialGpuId);
+  const initialName = initial ? gpuName(t.names, initial) : '';
+  const [text, setText] = useState(initialName);
+  const [chosen, setChosen] = useState<GpuCore | undefined>(initial);
   const [open, setOpen] = useState(false);
   // -1 = 활성 옵션 없음 (APG — 포커스만으로 첫 옵션을 활성화하지 않는다)
   const [active, setActive] = useState(-1);
@@ -52,6 +62,8 @@ export function GpuPicker({ locale, gpus, dict, inputId, label, placeholder }: P
   const options = browsing ? browseOrder(ranked) : ranked;
   const listId = `${inputId}-list`;
   const picked = chosen && gpuName(t.names, chosen) === text ? chosen : undefined;
+  // 비워 둔 칸 — `emptyFields` 가 있으면 빈 gpu= 대신 그 값들을 보낸다 (모델 허브: 비우면 계산기 모델 모드)
+  const emptySubmit = emptyFields !== undefined && !picked && text.trim() === '';
   const activeOption = active >= 0 ? options[active] : undefined;
   const activeOptionId = hydrated && open && activeOption ? `${listId}-${activeOption.id}` : undefined;
   useEffect(() => {
@@ -118,8 +130,9 @@ export function GpuPicker({ locale, gpus, dict, inputId, label, placeholder }: P
         ref={inputRef}
         id={inputId}
         // 목록에서 고른 GPU 는 숨은 입력이 id 로 보낸다 — 표시명 텍스트는 보내지 않는다
-        name={picked ? undefined : 'gpu'}
-        required={!picked}
+        name={picked || emptySubmit ? undefined : 'gpu'}
+        required={!picked && emptyFields === undefined}
+        defaultValue={initialName || undefined}
         inputMode="search"
         enterKeyHint="go"
         autoComplete="off"
@@ -137,7 +150,9 @@ export function GpuPicker({ locale, gpus, dict, inputId, label, placeholder }: P
             }
           : { list: listId })}
         onChange={(e) => onInput(e.currentTarget.value)}
-        onFocus={() => {
+        onFocus={(e) => {
+          // 미리 고른 GPU 는 통째로 선택 — 바로 다른 이름을 치면 바뀐다
+          if (picked) e.currentTarget.select();
           setOpen(true);
           setActive(-1);
         }}
@@ -153,6 +168,8 @@ export function GpuPicker({ locale, gpus, dict, inputId, label, placeholder }: P
         onKeyDown={onKey}
       />
       {picked && <input type="hidden" name="gpu" value={picked.id} />}
+      {emptySubmit &&
+        Object.entries(emptyFields).map(([name, value]) => <input key={name} type="hidden" name={name} value={value} />)}
       {hydrated ? (
         open && options.length > 0 ? (
           <GpuListbox
