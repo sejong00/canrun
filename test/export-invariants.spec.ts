@@ -20,7 +20,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { GUIDES, GUIDE_SLUGS, type GuideSlug } from '../apps/web/content/guides';
 import { GPU_INTRO_IDS, HUB_INTROS_UPDATED, MODEL_INTRO_IDS } from '../apps/web/content/hubs';
 import { SITE_UPDATES, latestSiteUpdate } from '../apps/web/content/updates';
-import { ADSENSE_CLIENT, INDEXNOW_KEY } from '../apps/web/lib/site';
+import { ADSENSE_CLIENT, DAUM_WEBMASTER_LINE, INDEXNOW_KEY } from '../apps/web/lib/site';
 import { ENGINE_SPEC_DATE } from '../packages/engine/src/index';
 import { CF_PAGES_REDIRECT_LINE_LIMIT } from '../scripts/build-redirects';
 import { comboCardText, loadCatalog, ogTranslators } from '../scripts/og-cards';
@@ -69,9 +69,9 @@ const FILE_COUNT_MAX = 16_000;
 const FILE_SIZE_MAX = 25 * 1024 * 1024;
 /** IndexNow 키 파일 (10-16 D93 — 내용 = 키, 공개 값) */
 const INDEXNOW_KEY_FILE = `${INDEXNOW_KEY}.txt`;
-/** 허용 비-HTML 파일 (P1-5 사이트맵·robots·RSS·기본 공유 카드, ads·llms 대비 · 허브 카드 D60 · IndexNow 키 파일 D93 · 공개 콤보·게시 가이드 카드 D96) */
+/** 허용 비-HTML 파일 (P1-5 사이트맵·robots·RSS·기본 공유 카드, ads·llms 대비 · 허브 카드 D60 · IndexNow 키 파일 D93 · 공개 콤보·게시 가이드 카드 D96 · favicon.ico D99) */
 const ROOT_FILE_ALLOWLIST =
-  /^(?:_redirects|icon\.svg|robots\.txt|sitemap[^/]*\.xml|ads\.txt|llms\.txt|[0-9a-f]{32}\.txt|rss\.xml|ko\/rss\.xml|og\/default-(?:en|ko)\.png|og\/(?:gpu|model|guide)\/[a-z0-9.-]+-(?:en|ko)\.png|og\/combo\/[a-z0-9.-]+\/[a-z0-9.-]+-(?:en|ko)\.png)$/;
+  /^(?:_redirects|icon\.svg|favicon\.ico|robots\.txt|sitemap[^/]*\.xml|ads\.txt|llms\.txt|[0-9a-f]{32}\.txt|rss\.xml|ko\/rss\.xml|og\/default-(?:en|ko)\.png|og\/(?:gpu|model|guide)\/[a-z0-9.-]+-(?:en|ko)\.png|og\/combo\/[a-z0-9.-]+\/[a-z0-9.-]+-(?:en|ko)\.png)$/;
 const TXT_ALLOWLIST = new Set(['robots.txt', 'ads.txt', 'llms.txt', INDEXNOW_KEY_FILE]);
 /** RSS 파일 크기 상한 (10-16 D93 — 본문 전체를 넣은 피드를 수집기가 한 번에 받도록 10MB 아래로. 정책 값) */
 const RSS_SIZE_MAX = 10 * 1000 * 1000;
@@ -1229,6 +1229,15 @@ describe('sitemaps · robots.txt · RSS (P1-5)', () => {
     expect(robots).toMatch(/^User-agent: \*$/m);
     expect(robots).not.toMatch(/^Disallow:\s*\/\S/m);
     expect(robots).toContain(`Sitemap: ${origin()}/sitemap.xml`);
+    // 다음 웹마스터도구 확인 줄은 맨 끝 (D99)
+    if (DAUM_WEBMASTER_LINE) expect(robots.trimEnd().split('\n').at(-1)).toBe(DAUM_WEBMASTER_LINE);
+  });
+
+  it('serves /favicon.ico — 네이버 사이트 진단이 없는 파일을 접근 불가 페이지로 셌다 (D99)', () => {
+    const ico = readFileSync(join(outDir, 'favicon.ico'));
+    expect(ico.readUInt16LE(0)).toBe(0); // ICONDIR reserved
+    expect(ico.readUInt16LE(2)).toBe(1); // type = icon
+    expect(ico.readUInt16LE(4)).toBeGreaterThan(0);
   });
 
   it('RSS per locale lists exactly the published guides, linking their canonical URLs', () => {

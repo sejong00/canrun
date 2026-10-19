@@ -44,6 +44,13 @@ export const SEARCH_VERIFICATION = {
 export const ADSENSE_CLIENT: string = 'ca-pub-7918829214294284';
 
 /**
+ * 다음(Daum) 웹마스터도구 소유 확인 줄 (10-19 D99 — 공개 값). 다음이 robots.txt 맨 아래에 넣으라고 주는 한 줄을 그대로 둔다 —
+ * 로그인 PIN 원문이 아니라 다음이 만든 확인 문자열이다. 빈 문자열이면 robots.txt 에 넣지 않는다. 동의 24개월 뒤 초기화되면 다시 받는다.
+ */
+export const DAUM_WEBMASTER_LINE: string =
+  '#DaumWebMasterTool:e11bce749152e83ce0a16153afba6b9c14de519681427438f55ac95a196a1347:1T0ZRs6bn/unEVfM5aXupg==';
+
+/**
  * IndexNow 키 (10-16 D93 — 공개 값, 시크릿 아님). 프로토콜상 누구나 읽을 수 있어야 하는 값이다: postbuild 가 `out/<키>.txt` 에
  * 키 자체를 써서 사이트 루트에 올리고, 검색엔진(네이버·Bing 등)은 전송 요청의 `keyLocation` 에서 그 파일을 읽어 사이트 소유를 확인한다.
  * 배포 뒤 `scripts/indexnow.ts` 가 새로 생기거나 lastmod 가 바뀐 URL 을 이 키로 보낸다. 2026-10-16 node crypto 로 한 번 만든 32자리 hex.

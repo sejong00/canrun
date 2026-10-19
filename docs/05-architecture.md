@@ -111,6 +111,7 @@ Cloudflare Pages/Workers/D1 무료 티어 $0 + 도메인 ~$1 + Sentry $0 = **~$1
 | HF 토큰(선택 — 공개 API는 무토큰으로 충분) | Actions Secrets | 코드·JSON 하드코딩 금지 |
 | AdSense pub ID·어필리에이트 태그·Sentry DSN | 공개 성격 값 | 시크릿 아님 — 다만 env로 관리해 환경 분리 |
 | IndexNow 키(10-16 PROGRESS §4 D93) | `apps/web/lib/site.ts` `INDEXNOW_KEY` | 시크릿 아님 — 프로토콜상 사이트 루트 `/<키>.txt` 로 공개하는 값(검색엔진이 그 파일로 소유를 확인한다). 저장소가 공개라 다른 사람이 이 키를 써도 보낼 수 있는 것은 이 사이트의 URL 뿐이다. gitleaks 는 상수 선언 한 줄만 정규식으로 예외(`.gitleaks.toml`) |
+| 검색엔진 소유 확인 값(GSC·네이버 메타 태그, 다음 웹마스터도구 robots 줄 — 10-19 D99) | `apps/web/lib/site.ts` `SEARCH_VERIFICATION`·`DAUM_WEBMASTER_LINE` | 시크릿 아님 — 각 서비스가 페이지·robots.txt 에 공개로 걸라고 주는 값이다. 다음 웹마스터도구 로그인 PIN 은 저장소에 넣지 않는다 |
 | 로컬 개발 변수 | `.env.local` (gitignore) | `.env*` 커밋 금지, CI에 gitleaks 스캔 |
 
 **Phase 2(Workers+D1) 추가 규칙**: 서버 시크릿은 `wrangler secret`으로만 주입 · D1은 prepared statement만(문자열 SQL 조립 금지) · 제출 입력은 파서가 숫자·열거형 화이트리스트로 정규화, 자유 텍스트는 렌더 시 이스케이프(XSS 차단) · URL 필드는 도메인 화이트리스트 + `rel="nofollow noopener"` · rate limit용 IP는 **솔트 해시로만 저장(원문 IP 저장 금지, TTL 24h)** — PII 미수집 설계로 GDPR·개인정보보호법 부담 최소화(프라이버시 페이지에 명시).

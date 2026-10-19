@@ -7,7 +7,7 @@
  *   엔진 수치를 그리는 페이지(계산기·GPU·모델 허브·콤보) = max(dataUpdated, 엔진 `ENGINE_SPEC_DATE` — 10-16 D93: 엔진 개정은
  *   데이터 없이도 모든 수치를 바꾼다), 소개글이 붙은 허브는 여기에 content/hubs.ts HUB_INTROS_UPDATED 까지 넣은 최댓값,
  *   나머지(홈·정적 페이지) = `data/meta.json` dataUpdated — 빌드 시각을 쓰지 않는다(D21 결정론).
- * - robots.txt: 전부 허용(네이버 Yeti 포함) + Sitemap 줄. `/can-i-run/` 를 막지 않는다(막으면 noindex 를 못 읽는다 — PROGRESS §5).
+ * - robots.txt: 전부 허용(네이버 Yeti 포함) + Sitemap 줄 + 맨 끝 다음(Daum) 웹마스터도구 확인 줄(D99). `/can-i-run/` 를 막지 않는다(막으면 noindex 를 못 읽는다 — PROGRESS §5).
  * - IndexNow 키 파일 `<INDEXNOW_KEY>.txt`(10-16 D93 — 내용 = 키 자체, 공개 값). 배포 뒤 `scripts/indexnow.ts` 가 이 키로 바뀐 URL 을 보낸다.
  * - RSS 2.0: `rss.xml`(en)·`ko/rss.xml`(ko) — published 가이드, 게시일 최신순. 업데이트 소식은 넣지 않는다(채널이 가이드 피드이고,
  *   항목마다 페이지가 따로 없어 item link 가 캐노니컬이 아니게 된다 — D72). `<description>` = 요약, `<content:encoded>` = 본문 전체
@@ -23,7 +23,7 @@ import { GUIDES, GUIDE_SLUGS } from '../apps/web/content/guides';
 import { GPU_INTRO_IDS, HUB_INTROS_UPDATED, MODEL_INTRO_IDS } from '../apps/web/content/hubs';
 import { STATIC_PAGE_SLUGS } from '../apps/web/content/pages';
 import { latestSiteUpdate } from '../apps/web/content/updates';
-import { ADSENSE_CLIENT, INDEXNOW_KEY, SITE_URL } from '../apps/web/lib/site';
+import { ADSENSE_CLIENT, DAUM_WEBMASTER_LINE, INDEXNOW_KEY, SITE_URL } from '../apps/web/lib/site';
 
 /** 페이지 캐노니컬과 바이트 동일 — Next 메타데이터는 루트를 슬래시 없이 낸다(`https://…pages.dev`) */
 const absoluteUrl = (path: string) => (path === '/' ? SITE_URL : `${SITE_URL}${path}`);
@@ -214,7 +214,13 @@ export function buildSitemaps(repoRoot: string, outDir: string): string[] {
   ].join('\n');
   writeFileSync(join(outDir, 'sitemap.xml'), index, 'utf8');
 
-  writeFileSync(join(outDir, 'robots.txt'), `User-agent: *\nAllow: /\n\nSitemap: ${absoluteUrl('/sitemap.xml')}\n`, 'utf8');
+  // 다음 확인 줄은 다음 안내대로 맨 끝에 — `#` 주석 줄이라 다른 로봇은 무시한다 (10-19 D99)
+  const daumLine = DAUM_WEBMASTER_LINE ? `\n${DAUM_WEBMASTER_LINE}\n` : '';
+  writeFileSync(
+    join(outDir, 'robots.txt'),
+    `User-agent: *\nAllow: /\n\nSitemap: ${absoluteUrl('/sitemap.xml')}\n${daumLine}`,
+    'utf8',
+  );
 
   // ads.txt (Phase 1.5 AdSense) — 게시자 ID 가 있을 때만. 형식: IAB ads.txt, Google 의 인증 기관 ID f08c47fec0942fa0
   const adsTxt = ADSENSE_CLIENT ? [`google.com, ${ADSENSE_CLIENT.replace(/^ca-/, '')}, DIRECT, f08c47fec0942fa0`] : [];
