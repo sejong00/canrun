@@ -218,6 +218,10 @@ export function extractMoe(config: unknown): { experts: number; topK: number } |
  * gpt_oss(MXFP4 네이티브 — 기준 양자화가 다름)·solar_open2(하이브리드 특수)는 의도적으로 제외.
  * 10-03 D63: spark2_5·laguna(SWA 선례) · nemotron_h(Mamba2 하이브리드) · lfm2(short-conv 하이브리드) ·
  * bailing_hybrid(KDA + MLA — BailingMoeV3 만) — 셋은 아래 전용 분기가 층 지도를 얻을 때만 통과한다.
+ * 10-20: muse_glimmer_text(Meta Muse Glimmer — layer_types 3:1 SWA, 비전은 mmproj 별도. model_type 은 text_config 값,
+ * llama.cpp https://github.com/ggml-org/llama.cpp/pull/26841) · mellum(JetBrains Mellum2·2.1 — SWA 3:1 + MoE, 전 층 MoE 만,
+ * https://github.com/ggml-org/llama.cpp/pull/23966) · kolibri1(Aleph Alpha Kolibri-1 — SWA 4:1 + MoE,
+ * https://github.com/ggml-org/llama.cpp/pull/30673) — 셋 다 기존 슬라이딩 윈도 경로(Laguna·Spark 선례).
  */
 export const KNOWN_MODEL_TYPES: ReadonlySet<string> = new Set([
   'llama',
@@ -242,6 +246,9 @@ export const KNOWN_MODEL_TYPES: ReadonlySet<string> = new Set([
   'nemotron_h',
   'lfm2',
   'bailing_hybrid',
+  'muse_glimmer_text',
+  'mellum',
+  'kolibri1',
 ]);
 
 /**
@@ -366,6 +373,13 @@ export function classifyArch(config: unknown): ArchResult {
       cfg['gated_attention_proj_granularity_type'] === 'head_wise';
     if (!v3) return { kind: 'unsupported', reason: `llama.cpp 가 변환하지 않는 bailing_hybrid 변형(${archs.join(',') || 'architectures 없음'})` };
     branch = 'mla';
+  } else if (modelType === 'mellum') {
+    // llama.cpp mellum 은 모든 블록을 MoE 로 읽고(load_block — dense FFN 경로 없음) 변환기는 MellumForCausalLM 만 받는다 —
+    // dense 층이 섞인 변형·다른 클래스는 변환·로드되지 않는다 (10-20)
+    // 출처: https://github.com/ggml-org/llama.cpp/blob/master/src/models/mellum.cpp · https://github.com/ggml-org/llama.cpp/blob/master/conversion/mellum.py
+    const mlp = cfg['mlp_layer_types'];
+    if (!archs.includes('MellumForCausalLM')) return { kind: 'unsupported', reason: `llama.cpp 가 읽지 않는 mellum 변형(${archs.join(',') || 'architectures 없음'})` };
+    if (Array.isArray(mlp) && mlp.some((t) => t !== 'sparse')) return { kind: 'unsupported', reason: 'llama.cpp 가 읽지 않는 mellum 변형(dense 층 포함 — mlp_layer_types)' };
   }
   for (const [key, need] of Object.entries(BRANCH_KEYS)) {
     if (has(key) && need !== branch) return { kind: 'unsupported', reason: `엔진이 모델링하지 않는 구조 (${key})` };

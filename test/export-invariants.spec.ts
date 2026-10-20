@@ -149,8 +149,9 @@ beforeAll(() => {
   zhPages = [];
   for (const { rel } of outFiles) {
     if (!rel.endsWith('.html') || EXCLUDED.has(rel)) continue;
-    // HTML 은 이 스코프를 벗어나면 버려진다 (D17)
-    const facts = extractPageFacts(readFileSync(join(outDir, rel), 'utf8'), rel, ctx);
+    // HTML 은 이 스코프를 벗어나면 버려진다 (D17). 단 V8 은 정규식 일치·slice 로 얻은 부분 문자열이 원본 HTML 을 가리키게 둬서
+    // (sliced string) facts 의 문자열 하나만 남아도 페이지 HTML 전체가 힙에 남는다 — 복제로 끊는다(10-20: 8,998장에서 힙 4.1GB 로 Node 기본 상한을 넘어 메모리 부족 → 복제 후 0.3GB)
+    const facts = structuredClone(extractPageFacts(readFileSync(join(outDir, rel), 'utf8'), rel, ctx));
     if (facts.locale === 'zh') zhPages.push(facts);
     else pages.push(facts as IndexedPageFacts);
   }

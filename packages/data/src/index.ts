@@ -108,6 +108,8 @@ export const MOE_ARCH: Readonly<Record<string, MoeArch>> = Object.freeze({
   'ling-3.0-tiny': { totalParamsB: 7.89, activeParamsB: 1.3, experts: 128, topK: 8 }, // add-model 2026-10-03 — inclusionAI/Ling-3.0-tiny config
   'ling-3.0-flash': { totalParamsB: 127.49, activeParamsB: 5.1, experts: 512, topK: 8 }, // add-model 2026-10-03 — inclusionAI/Ling-3.0-flash config
   'minicpm-v-4.7-35b-a3b': { totalParamsB: 35.21, activeParamsB: 3, experts: 256, topK: 8 }, // add-model 2026-10-13 — openbmb/MiniCPM-V-4.7-35B-A3B config
+  'mellum2.1-12b-a2.5b-thinking': { totalParamsB: 12.15, activeParamsB: 2.5, experts: 64, topK: 8 }, // add-model 2026-10-20 — JetBrains/Mellum2.1-12B-A2.5B-Thinking config
+  'kolibri-1': { totalParamsB: 78.1, activeParamsB: 3.46, experts: 384, topK: 6 }, // add-model 2026-10-20 — Aleph-Alpha/Kolibri-1 config
 });
 
 /**

@@ -88,6 +88,10 @@ const LOADERS: Readonly<Record<ModelAboutId, Readonly<Record<ContentLocale, () =
     en: () => import('@/content/en/model-about/kanana-1.5-8b.mdx') as Promise<AboutModule>,
     ko: () => import('@/content/ko/model-about/kanana-1.5-8b.mdx') as Promise<AboutModule>,
   },
+  'kolibri-1': {
+    en: () => import('@/content/en/model-about/kolibri-1.mdx') as Promise<AboutModule>,
+    ko: () => import('@/content/ko/model-about/kolibri-1.mdx') as Promise<AboutModule>,
+  },
   'laguna-s-2.1': {
     en: () => import('@/content/en/model-about/laguna-s-2.1.mdx') as Promise<AboutModule>,
     ko: () => import('@/content/ko/model-about/laguna-s-2.1.mdx') as Promise<AboutModule>,
@@ -120,6 +124,10 @@ const LOADERS: Readonly<Record<ModelAboutId, Readonly<Record<ContentLocale, () =
     en: () => import('@/content/en/model-about/llama-3.3-70b.mdx') as Promise<AboutModule>,
     ko: () => import('@/content/ko/model-about/llama-3.3-70b.mdx') as Promise<AboutModule>,
   },
+  'mellum2.1-12b-a2.5b-thinking': {
+    en: () => import('@/content/en/model-about/mellum2.1-12b-a2.5b-thinking.mdx') as Promise<AboutModule>,
+    ko: () => import('@/content/ko/model-about/mellum2.1-12b-a2.5b-thinking.mdx') as Promise<AboutModule>,
+  },
   'minicpm-v-4.7-35b-a3b': {
     en: () => import('@/content/en/model-about/minicpm-v-4.7-35b-a3b.mdx') as Promise<AboutModule>,
     ko: () => import('@/content/ko/model-about/minicpm-v-4.7-35b-a3b.mdx') as Promise<AboutModule>,
@@ -135,6 +143,10 @@ const LOADERS: Readonly<Record<ModelAboutId, Readonly<Record<ContentLocale, () =
   'mistral-small-3.2-24b': {
     en: () => import('@/content/en/model-about/mistral-small-3.2-24b.mdx') as Promise<AboutModule>,
     ko: () => import('@/content/ko/model-about/mistral-small-3.2-24b.mdx') as Promise<AboutModule>,
+  },
+  'muse-glimmer-30b': {
+    en: () => import('@/content/en/model-about/muse-glimmer-30b.mdx') as Promise<AboutModule>,
+    ko: () => import('@/content/ko/model-about/muse-glimmer-30b.mdx') as Promise<AboutModule>,
   },
   'nemotron-3.5-lightning-30b-a3b': {
     en: () => import('@/content/en/model-about/nemotron-3.5-lightning-30b-a3b.mdx') as Promise<AboutModule>,
@@ -171,6 +183,10 @@ const LOADERS: Readonly<Record<ModelAboutId, Readonly<Record<ContentLocale, () =
   'qwen3.5-35b-a3b': {
     en: () => import('@/content/en/model-about/qwen3.5-35b-a3b.mdx') as Promise<AboutModule>,
     ko: () => import('@/content/ko/model-about/qwen3.5-35b-a3b.mdx') as Promise<AboutModule>,
+  },
+  'qwen3.5-4b': {
+    en: () => import('@/content/en/model-about/qwen3.5-4b.mdx') as Promise<AboutModule>,
+    ko: () => import('@/content/ko/model-about/qwen3.5-4b.mdx') as Promise<AboutModule>,
   },
   'qwen3.5-9b': {
     en: () => import('@/content/en/model-about/qwen3.5-9b.mdx') as Promise<AboutModule>,

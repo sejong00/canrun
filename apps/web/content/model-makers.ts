@@ -28,6 +28,9 @@ export const MODEL_MAKERS: Readonly<Record<string, string>> = {
   nvidia: 'NVIDIA',
   LiquidAI: 'Liquid AI',
   inclusionAI: 'inclusionAI',
+  'meta-models': 'Meta Inc.', // add-model 2026-10-20 — https://huggingface.co/api/organizations/meta-models/overview
+  JetBrains: 'JetBrains', // add-model 2026-10-20 — https://huggingface.co/api/organizations/JetBrains/overview
+  'Aleph-Alpha': 'Aleph Alpha', // add-model 2026-10-20 — https://huggingface.co/api/organizations/Aleph-Alpha/overview
 };
 
 /** `hfId` → Hugging Face 조직 id ("Qwen/Qwen3-8B" → "Qwen") */

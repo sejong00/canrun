@@ -554,6 +554,13 @@ const ling = (over: Record<string, unknown>) => ({
   ...over,
 });
 const LING_TINY = ling({ num_hidden_layers: 24, num_attention_heads: 16, num_key_value_heads: 16, max_position_embeddings: 131072, num_experts: 128, layer_group_size: 4, num_nextn_predict_layers: 0, first_k_dense_replace: 1 });
+/** JetBrains/Mellum2.1-12B-A2.5B-Thinking config 모양 (10-20) — 3 sliding : 1 full × 7, 전 층 sparse MoE 64 × top-8 */
+const MELLUM_CONFIG = {
+  architectures: ['MellumForCausalLM'], model_type: 'mellum', num_hidden_layers: 28, num_attention_heads: 32, num_key_value_heads: 4, head_dim: 128,
+  max_position_embeddings: 131072, sliding_window: 1024, use_sliding_window: true, num_experts: 64, num_experts_per_tok: 8,
+  mlp_layer_types: Array<string>(28).fill('sparse'),
+  layer_types: repeat(7, 'sliding_attention', 'sliding_attention', 'sliding_attention', 'full_attention'),
+};
 const LING_FLASH = ling({ num_hidden_layers: 42, num_attention_heads: 32, num_key_value_heads: 32, max_position_embeddings: 262144, num_experts: 512, layer_group_size: 6, num_nextn_predict_layers: 1, first_k_dense_replace: 2 });
 
 function okArch(config: unknown): Extract<ReturnType<typeof classifyArch>, { kind: 'ok' }> {
@@ -620,6 +627,42 @@ describe('classifyArch — new model types and constant-state hybrids (10-03 D63
     expect(flash.expertLayers).toHaveLength(40);
   });
 
+  it('Muse Glimmer (muse_glimmer_text in text_config, VLM) takes the existing sliding-window path (10-20)', () => {
+    // meta-models/Muse-Glimmer-30B config 모양 — 최상위 model_type 은 muse_glimmer 지만 분류기는 text_config 값을 본다
+    const muse = okArch({
+      architectures: ['MuseGlimmerForConditionalGeneration'], model_type: 'muse_glimmer', vision_config: {},
+      text_config: {
+        model_type: 'muse_glimmer_text', num_hidden_layers: 52, num_attention_heads: 32, num_key_value_heads: 2, head_dim: 128,
+        hidden_size: 6656, max_position_embeddings: 131072, sliding_window: 2048,
+        layer_types: repeat(13, 'sliding_attention', 'sliding_attention', 'sliding_attention', 'full_attention'),
+      },
+    });
+    expect(muse).toMatchObject({ attnType: 'swa', vision: true, maxContext: 131072, arch: { layers: 52, kvHeads: 2, headDim: 128, kvBytesPerTokenF16: 13 * 2 * 128 * 4 } });
+    expect(muse.arch.kvBytesPerTokenF16).toBe(13_312);
+    expect(muse.moe).toBeUndefined();
+    expect(muse.override?.reason).toContain('full attn 13/52');
+  });
+
+  it('Mellum2.1 (mellum MoE, every layer sparse) takes the existing sliding-window path (10-20)', () => {
+    const mellum = okArch(MELLUM_CONFIG);
+    expect(mellum).toMatchObject({ attnType: 'swa', vision: false, moe: { experts: 64, topK: 8 }, arch: { layers: 28, kvHeads: 4, headDim: 128, kvBytesPerTokenF16: 7 * 4 * 128 * 4 } });
+    expect(mellum.arch.kvBytesPerTokenF16).toBe(14_336);
+    expect(mellum.override?.reason).toContain('sliding win1024');
+    // 28층 전부 전문가 층 — 균등 근사가 정확하므로 층 지도를 적지 않는다
+    expect(mellum.expertLayers).toBeUndefined();
+  });
+
+  it('Kolibri-1 (kolibri1 MoE) takes the existing sliding-window path (10-20)', () => {
+    const kolibri = okArch({
+      architectures: ['Kolibri1ForCausalLM'], model_type: 'kolibri1', num_hidden_layers: 50, num_attention_heads: 48, num_key_value_heads: 4, head_dim: 128,
+      max_position_embeddings: 262144, use_sliding_window: true, sliding_window: 513, num_experts: 384, num_experts_per_tok: 6,
+      layer_types: repeat(10, 'sliding_attention', 'sliding_attention', 'sliding_attention', 'sliding_attention', 'full_attention'),
+    });
+    expect(kolibri).toMatchObject({ attnType: 'swa', moe: { experts: 384, topK: 6 }, arch: { layers: 50, kvHeads: 4, headDim: 128, kvBytesPerTokenF16: 10 * 4 * 128 * 4 } });
+    expect(kolibri.arch.kvBytesPerTokenF16).toBe(20_480);
+    expect(kolibri.expertLayers).toBeUndefined();
+  });
+
   it.each([
     ['looped layers (Nanbeige num_loops)', { model_type: 'nanbeige', num_loops: 2, num_hidden_layers: 22 }, '반복 층'],
     ['looped layers even on a known type', { model_type: 'llama', num_loops: 2, num_hidden_layers: 22, num_attention_heads: 8, head_dim: 128, max_position_embeddings: 4096 }, '반복 층'],
@@ -641,6 +684,8 @@ describe('classifyArch — new model types and constant-state hybrids (10-03 D63
     ['LFM2 without a layer map', { ...LFM2_CONFIG, layer_types: undefined }, 'layer_types'],
     ['conv state keys outside LFM2', { model_type: 'llama', conv_L_cache: 3, num_hidden_layers: 2 }, 'conv_L_cache'],
     ['Mamba keys outside Nemotron-H', { model_type: 'qwen3_5_text', ssm_state_size: 128, num_hidden_layers: 2 }, 'ssm_state_size'],
+    ['Mellum under another class (not converted by llama.cpp)', { ...MELLUM_CONFIG, architectures: ['MellumModel'] }, 'mellum 변형'],
+    ['Mellum with dense FFN layers (llama.cpp loads every block as MoE)', { ...MELLUM_CONFIG, mlp_layer_types: ['dense', ...Array<string>(27).fill('sparse')] }, 'dense 층'],
   ] as const)('refuses %s', (_name, config, reason) => {
     const r = classifyArch(config);
     expect(r.kind).toBe('unsupported');
