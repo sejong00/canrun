@@ -10,6 +10,7 @@
 export type SiteUpdate = { readonly id: string; readonly date: string };
 
 export const SITE_UPDATES = [
+  { id: 'k2-horizon-mova', date: '2026-10-21' },
   { id: 'gemma4-e-series', date: '2026-10-21' },
   { id: 'apple-m6', date: '2026-10-20' },
   { id: 'chinese-ui', date: '2026-10-19' },

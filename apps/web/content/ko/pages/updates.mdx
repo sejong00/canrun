@@ -2,6 +2,14 @@ CanRun은 자주 바뀝니다. 새 모델이 들어오고, 계산기에 기능�
 
 ## 바뀐 기능과 고친 계산
 
+<Update id="k2-horizon-mova">
+
+### K2-Horizon 두 모델과 값 전문가(MoVA) 구조를 계산합니다
+
+llama.cpp가 K2-Horizon을 지원하면서 <SiteLink to="/model/k2-horizon-7b">K2-Horizon 7B</SiteLink>와 <SiteLink to="/model/k2-horizon-mova-36b-a4b">K2-Horizon MoVA 36B-A4B</SiteLink>를 계산할 수 있게 됐습니다. MoVA 36B-A4B는 층마다 어텐션의 값을 여러 전문가 가운데 몇 개로 만드는데, llama.cpp는 MoE 전문가를 시스템 RAM으로 보낼 때도 이 값 전문가는 그래픽카드에 남깁니다. CanRun도 그렇게 세므로, 8k 컨텍스트의 Q4_K_M은 8GB인 RTX 4060에서 MoE 전문가를 RAM에 두어도 들어가지 않아 CPU 전용으로 계산했습니다. 속도는 값 전문가를 토큰마다 모두 읽는다고 보고 계산해 실제보다 낮게 나올 수 있어서, 이 모델은 모든 조합을 이론 추정으로 표시합니다.
+
+</Update>
+
 <Update id="gemma4-e-series">
 
 ### Gemma 4 E4B·E2B도 계산합니다

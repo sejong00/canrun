@@ -88,6 +88,14 @@ const LOADERS: Readonly<Record<ModelAboutId, Readonly<Record<ContentLocale, () =
     en: () => import('@/content/en/model-about/hyperclovax-seed-think-14b.mdx') as Promise<AboutModule>,
     ko: () => import('@/content/ko/model-about/hyperclovax-seed-think-14b.mdx') as Promise<AboutModule>,
   },
+  'k2-horizon-7b': {
+    en: () => import('@/content/en/model-about/k2-horizon-7b.mdx') as Promise<AboutModule>,
+    ko: () => import('@/content/ko/model-about/k2-horizon-7b.mdx') as Promise<AboutModule>,
+  },
+  'k2-horizon-mova-36b-a4b': {
+    en: () => import('@/content/en/model-about/k2-horizon-mova-36b-a4b.mdx') as Promise<AboutModule>,
+    ko: () => import('@/content/ko/model-about/k2-horizon-mova-36b-a4b.mdx') as Promise<AboutModule>,
+  },
   'kanana-1.5-15.7b-a3b': {
     en: () => import('@/content/en/model-about/kanana-1.5-15.7b-a3b.mdx') as Promise<AboutModule>,
     ko: () => import('@/content/ko/model-about/kanana-1.5-15.7b-a3b.mdx') as Promise<AboutModule>,

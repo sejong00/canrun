@@ -30,6 +30,8 @@ export const MODEL_ABOUT = {
   'granite-4.2-30b': '2026-10-19',
   'hyperclovax-seed-1.5b': '2026-10-19',
   'hyperclovax-seed-think-14b': '2026-10-19',
+  'k2-horizon-7b': '2026-10-21',
+  'k2-horizon-mova-36b-a4b': '2026-10-21',
   'kanana-1.5-15.7b-a3b': '2026-10-19',
   'kanana-1.5-8b': '2026-10-19',
   'kolibri-1': '2026-10-20',
