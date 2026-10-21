@@ -215,7 +215,9 @@ export function ResultCard({
           >
             {card.command}
           </code>
-          {card.commandFitAuto && <p className="text-xs text-muted-foreground">{t.calc('fitAutoNote')}</p>}
+          {card.commandFitAuto && (
+            <p className="text-xs text-muted-foreground">{t.calc(card.commandFitAuto === 'loops' ? 'fitAutoNoteLoops' : 'fitAutoNote')}</p>
+          )}
         </div>
       )}
       <p className="flex flex-wrap gap-3 text-sm">

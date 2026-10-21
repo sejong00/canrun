@@ -50,7 +50,9 @@ Model { id, family, name, hfId, paramsB, activeParamsB?,   // moe ⇒ activePara
      //   레코드 sources 에 config 와 llama.cpp 근거(nanbeige.cpp·llama-kv-cache.cpp 고정 커밋). layers 는 물리 층, kvBytesPerTokenF16 은 논리 층(layers × loops) 값 —
      //   validateAll·sync-models 의 전체 어텐션 공식이 × loops 로 센다(attnOverrides 없음 — 전체 어텐션). 데이터 계층(toModelQuant)이 엔진 loops·loopGB 로 넘겨
      //   읽기 바이트에 (loops − 1) × loopGB 를 더한다(엔진 0.12.0 — docs/02 §3.1). 추정 라벨은 이론 추정(assess isTheoretical — docs/02 §4 ⑨). 헤더 실측 행은 모두 loopGB(validateAll),
-     //   MoE 에는 둘 수 없다. sync-models 는 config num_loops 가 바뀌면 manual 로만 알린다. 스니펫 -ngl 은 논리 층 기준(docs/02 §3.4). 계산기 HF 불러오기는 반복 모델을 받지 않는다
+     //   MoE 에는 둘 수 없다. sync-models 는 config num_loops 가 바뀌면 manual 로만 알린다. 스니펫 -ngl 은 논리 층 기준(docs/02 §3.4), GPU 여러 장이면 -ngl 을 빼고 --fit
+     //   (물리 가중치가 앞쪽 카드에 몰린다 — docs/02 §9, 10-22 D114 리뷰). classifyArch 는 nanbeige config 에 layer_types·sliding_window(_pattern)·use_sliding_window 가 있으면
+     //   보류한다(llama.cpp nanbeige 는 모든 논리 층이 전체 어텐션). 계산기 HF 불러오기는 반복 모델을 받지 않는다
      attnOverrides?:{kvBytesPerTokenF16, reason, sources[]},  // 비-full 전용, arch.kvBytesPerTokenF16과 일치(미러) — 존재 시 sync가 arch 자동 갱신 안 함 (§5.1)
      maxContext, license, moe:boolean, nonExpertGB?,   // MoE attention+shared GB (derive.ts 균등 bpw 유도) — 10-01 부터 행 실측(ModelQuant.nonExpertGB)이 우선, 이 값은 bpw 사다리 폴백
      category:('chat'|'coding'|'reasoning'|'vision')[] (min 1),

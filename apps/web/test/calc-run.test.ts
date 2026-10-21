@@ -380,18 +380,24 @@ describe('assembleResults — mixed GPUs (10-03 D67, beta)', () => {
     expect(alone.all.some((c) => c.singleGpu)).toBe(false);
   });
 
-  it('several GPUs get their own llama.cpp command on every card that fits (the combo page command is for one card); cpu-moe leaves placement to --fit', () => {
+  it('several GPUs get their own llama.cpp command on every card that fits (the combo page command is for one card); cpu-moe and looped models leave placement to --fit', () => {
     for (const run of [pair, assembleResults(catalog, withGpu('rtx-4060', { ramGB: 64, gpus: 2 }))!]) {
       for (const c of run.all) {
         expect(c.command !== undefined, c.model.id).toBe(c.combo.display.fits);
-        if (c.combo.display.result.mode === 'cpu-moe') {
-          expect(c.commandFitAuto).toBe(true);
+        if (!c.combo.display.fits) continue;
+        // 반복 층 모델(10-22 D114 리뷰)은 층 분할이면 가중치가 앞쪽 카드에 몰려 모드와 상관없이 --fit 에 맡긴다
+        if (c.model.arch.loops !== undefined && c.combo.display.result.mode !== 'cpu-only') {
+          expect(c.commandFitAuto, c.model.id).toBe('loops');
+          expect(c.command).not.toMatch(/-ngl/);
+        } else if (c.combo.display.result.mode === 'cpu-moe') {
+          expect(c.commandFitAuto).toBe('cpu-moe');
           expect(c.command).not.toMatch(/-ngl|--n-cpu-moe/);
         } else {
           expect(c.commandFitAuto).toBeUndefined();
         }
       }
-      expect(run.all.some((c) => c.commandFitAuto)).toBe(true);
+      expect(run.all.some((c) => c.commandFitAuto === 'cpu-moe')).toBe(true);
+      expect(run.all.some((c) => c.commandFitAuto === 'loops')).toBe(true);
     }
     expect(alone.all.some((c) => c.command)).toBe(false);
   });

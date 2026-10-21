@@ -190,6 +190,26 @@ describe('looped layers (Nanbeige4.2, 10-22 D114): -ngl counts logical layers', 
   });
 });
 
+describe('looped layers × several GPUs (10-22 D114 review): -ngl is left to --fit', () => {
+  it('full-gpu and partial offload drop -ngl on 2 cards (the weights would pile onto the first card); one card keeps -ngl', () => {
+    const m = model('nanbeige4.2-3b');
+    const g = gpu('rtx-4060');
+    for (const [ctx, mode] of [[8192, 'full-gpu'], [65536, 'partial-offload']] as const) {
+      const pairCfg = hardwareConfigs(g, seed.gpus, { gpuCount: 2 })[0]!;
+      const q = assessCombo(seed, g, pairCfg, m, { ctx }).perQuant.find((x) => x.quant === 'Q4_K_M')!;
+      expect(q.result.mode, String(ctx)).toBe(mode);
+      const plan = commandPlan(g, pairCfg, m, row(m.id, 'Q4_K_M'), q, { ctx });
+      expect(plan.llamaCpp!.ngl, String(ctx)).toBe('auto');
+      expect(plan.llamaCpp!.command).not.toMatch(/-ngl/);
+      expect(plan.loops).toBe(2);
+      // 반복이 없으면 같은 2장 구성도 -ngl 을 그대로 쓴다
+      const plain = { ...m, arch: { ...m.arch, loops: undefined } };
+      expect(commandPlan(g, pairCfg, plain, row(m.id, 'Q4_K_M'), q, { ctx }).llamaCpp!.ngl, String(ctx)).not.toBe('auto');
+    }
+    expect(planFor('rtx-4060', 'nanbeige4.2-3b').llamaCpp!.ngl).toBe('all');
+  });
+});
+
 describe('--n-cpu-moe counts blocks, the engine counts expert layers (10-03 D63)', () => {
   const arch = (layers: number, expertLayers?: number[]) => ({ arch: { layers, kvHeads: 2, headDim: 128, attnType: 'hybrid' as const, kvBytesPerTokenF16: 1, ...(expertLayers ? { expertLayers } : {}) } });
 

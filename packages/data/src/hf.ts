@@ -361,6 +361,11 @@ function nanbeigeShape(
       'mhc_identity_nohresparam', 'enable_depth_attention', 'ngram_insert_all_layers', 'qk_layernorm', 'attention_bias', 'mlp_bias'].filter(on),
     ...['loop_middle_layers', 'mhc_double_stream_position_for_loop', 'emb_neighbor_num'].filter(set),
     ...(nonEmpty('insert_ngram_layer_idx') ? ['insert_ngram_layer_idx'] : []),
+    // 슬라이딩·선형 층 지도(10-22 D114 리뷰): 원본 config 클래스에 없는 키이고, llama.cpp nanbeige 그래프는 이를 읽지 않고 모든 논리 층을 전체
+    // 어텐션으로 돈다(https://github.com/ggml-org/llama.cpp/blob/0a1ef309cdbb9f2024f58a38fb4c42352c5db569/src/models/nanbeige.cpp#L97 · #L105).
+    // 두면 아래 swa·hybrid 분기가 먼저 반환해 loops 가 빠지고 KV 를 물리 층으로만 센다 — 그런 config 는 보류
+    ...['layer_types', 'sliding_window', 'sliding_window_pattern'].filter(set),
+    ...(on('use_sliding_window') ? ['use_sliding_window'] : []),
   ];
   if (blocked.length > 0) return { kind: 'unsupported', reason: `llama.cpp 변환기가 옮기지 않는 nanbeige 옵션(${blocked.join(',')}) — 반복은 num_loops 만 계산` };
   const raw = cfg['num_loops'];

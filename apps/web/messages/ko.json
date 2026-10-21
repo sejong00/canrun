@@ -210,6 +210,7 @@
     "extraGpuHint": "이 계산기에서는 같은 제조사의 데스크톱 그래픽카드끼리만 섞어 계산하고, GTX 10 시리즈 같은 오래된 카드는 뺐습니다. GPU는 모두 합쳐 {max}장까지 넣을 수 있습니다. NVIDIA와 AMD 카드를 함께 쓰려면 Vulkan 같은 다른 방식이 필요한데, 이때 속도는 아직 믿을 만하게 추정하지 못합니다.",
     "singleGpuHint": "{gpu} 한 장에 다 들어갑니다. 그 카드만 쓰면 더 빠릅니다: {speed}.",
     "fitAutoNote": "GPU가 여러 장이라 -ngl과 --n-cpu-moe를 뺐습니다. llama.cpp b7410(2025년 12월) 이후 버전은 카드마다 1GB 남짓 비워 두고 전문가를 알아서 나눠 올립니다.",
+    "fitAutoNoteLoops": "GPU가 여러 장이라 -ngl을 뺐습니다. 이 모델은 같은 층을 되풀이해 쓰기 때문에 -ngl로 나누면 가중치가 앞쪽 카드에 몰립니다. llama.cpp b7410(2025년 12월) 이후 버전은 카드마다 메모리를 재 보고 1GB 남짓 비워 둔 채 층을 알아서 나눠 올립니다.",
     "modeLegend": "무엇부터 고를까요?",
     "modeHardware": "내 GPU로 모델 찾기",
     "modeModel": "모델로 GPU 찾기",

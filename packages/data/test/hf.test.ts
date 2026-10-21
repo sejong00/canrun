@@ -713,6 +713,11 @@ describe('classifyArch — new model types and constant-state hybrids (10-03 D63
     ['nanbeige n-gram layer fusion', { ...NANBEIGE42_CONFIG, insert_ngram_layer_idx: [4] }, 'insert_ngram_layer_idx'],
     ['nanbeige q/k norm (no tensors in the llama.cpp loader)', { ...NANBEIGE42_CONFIG, qk_layernorm: true }, 'qk_layernorm'],
     ['nanbeige attention bias', { ...NANBEIGE42_CONFIG, attention_bias: true }, 'attention_bias'],
+    // 슬라이딩·선형 층 지도(10-22 D114 리뷰) — llama.cpp nanbeige 는 읽지 않고 모든 논리 층이 전체 어텐션이라, swa·hybrid 분기가 loops 를 빼고 물리 층만 세지 않게
+    ['nanbeige layer_types (sliding mix)', { ...NANBEIGE42_CONFIG, layer_types: Array.from({ length: 22 }, (_, i) => (i % 2 ? 'full_attention' : 'sliding_attention')), sliding_window: 4096 }, 'layer_types'],
+    ['nanbeige layer_types (linear mix)', { ...NANBEIGE42_CONFIG, layer_types: Array.from({ length: 22 }, (_, i) => (i % 4 === 3 ? 'full_attention' : 'linear_attention')) }, 'layer_types'],
+    ['nanbeige sliding_window_pattern', { ...NANBEIGE42_CONFIG, sliding_window: 4096, sliding_window_pattern: 4 }, 'sliding_window_pattern'],
+    ['nanbeige use_sliding_window', { ...NANBEIGE42_CONFIG, use_sliding_window: true }, 'use_sliding_window'],
     ['disk-read n-gram embedding (Qwen3.8-Flash-Next)', { model_type: 'qwen4_exp', text_config: { model_type: 'qwen3_5_moe_text', ngram_vocab_size_base: 20000000, ple_layer_ids: [2] } }, 'n-gram'],
     // 층별 임베딩 표·KV 공유 층은 llama.cpp gemma4 규칙을 확인한 gemma4_text 만 계산한다(10-21 D112) — 다른 구조면 그대로 보류
     ['per-layer embeddings outside gemma4_text', { model_type: 'qwen3', hidden_size_per_layer_input: 256, num_hidden_layers: 28, num_attention_heads: 16, num_key_value_heads: 8, head_dim: 128, max_position_embeddings: 32768 }, 'PLE'],

@@ -210,6 +210,7 @@
     "extraGpuHint": "The calculator mixes desktop cards from the same maker only and leaves out older cards such as the GTX 10 series. You can add up to {max} GPUs in total. Using NVIDIA and AMD together needs another backend such as Vulkan, and we can't estimate its speed reliably yet.",
     "singleGpuHint": "Fits on the {gpu} alone, and using only that card is faster: {speed}.",
     "fitAutoNote": "With several GPUs the command leaves out -ngl and --n-cpu-moe: llama.cpp b7410 (December 2025) and later place the experts on each card themselves and keep a little over 1 GB free per card.",
+    "fitAutoNoteLoops": "With several GPUs the command leaves out -ngl. This model reuses its layers, so an -ngl split would pile its weights onto the first cards; llama.cpp b7410 (December 2025) and later measure each card and place the layers themselves, keeping a little over 1 GB free per card.",
     "modeLegend": "Start from",
     "modeHardware": "Find models for my GPU",
     "modeModel": "Find GPUs for a model",

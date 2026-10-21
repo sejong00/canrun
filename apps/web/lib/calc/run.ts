@@ -12,6 +12,7 @@ import {
   verdictRank,
   type CatalogLite,
   type ComboAssessment,
+  type CommandPlan,
   type GpuCore,
   type HwConfig,
   type ModelCore,
@@ -45,8 +46,11 @@ export type ResultCard = {
    * 1장 기준이다 — 10-03 D67)에만
    */
   command?: string;
-  /** 명령이 `-ngl`·`--n-cpu-moe` 없이 llama.cpp `--fit` 에 배치를 맡긴다 (GPU 여러 장의 cpu-moe — D67) */
-  commandFitAuto?: boolean;
+  /**
+   * 명령이 `-ngl`·`--n-cpu-moe` 없이 llama.cpp `--fit` 에 배치를 맡긴다 — 'cpu-moe' = GPU 여러 장의 cpu-moe(D67),
+   * 'loops' = GPU 여러 장의 반복 층 모델(10-22 D114 리뷰 — 층 분할이면 가중치가 앞쪽 카드에 몰린다). 각주 문장이 다르다
+   */
+  commandFitAuto?: 'cpu-moe' | 'loops';
   /**
    * 서로 다른 카드 구성(D67)에서 표시 quant 가 카드 한 장에 다 들어가고 그 카드만 쓰면 더 빠를 때 — 가장 빠른 카드와 그 카드 한 장 구성의
    * 평가(계산기에 그 카드만 넣었을 때와 같은 값·라벨 — 8k·f16 실측 조인, 보정 추정 규칙). 판정·표시 속도는 llama.cpp 기본(모든 카드에 나눠
@@ -73,6 +77,14 @@ export type RunResult = {
   cards: ResultCard[];
   counts: VerdictCounts;
 };
+
+/** 명령 계획 → 카드의 명령·`--fit` 각주 종류 (계획이 없거나 llama.cpp 명령이 없으면 비운다) */
+function commandFields(plan: CommandPlan | undefined): Pick<ResultCard, 'command' | 'commandFitAuto'> {
+  const llama = plan?.llamaCpp;
+  if (!llama) return {};
+  if (llama.ngl !== 'auto') return { command: llama.command };
+  return { command: llama.command, commandFitAuto: plan.loops !== undefined ? 'loops' : 'cpu-moe' };
+}
 
 function countVerdicts(cards: readonly ResultCard[]): VerdictCounts {
   const counts: VerdictCounts = { S: 0, A: 0, B: 0, F: 0, otherQuant: 0 };
@@ -159,9 +171,9 @@ export function assembleResults(catalog: CatalogLite, rawState: CalcState, extra
       const picked = hubConfigs[combos.indexOf(pickConfigCombo(combos))]!;
       hubConfig = { ramGB: picked.ramGB, os: picked.hw.os };
     }
-    // GPU 여러 장: 콤보 페이지 명령은 1장 기준이라 이 구성의 명령을 카드에 직접 단다(D67 — cpu-moe 는 --fit 자동 배치)
+    // GPU 여러 장: 콤보 페이지 명령은 1장 기준이라 이 구성의 명령을 카드에 직접 단다(D67 — cpu-moe 와 반복 층 모델은 --fit 자동 배치, 10-22 D114 리뷰)
     const row = multi ? catalog.modelQuants.find((r) => r.modelId === model.id && r.quant === combo.display.quant) : undefined;
-    const llama = row && combo.display.fits ? commandPlan(gpu, config, model, row, combo.display, { ctx, kvQuant: state.kv }).llamaCpp : undefined;
+    const plan = row && combo.display.fits ? commandPlan(gpu, config, model, row, combo.display, { ctx, kvQuant: state.kv }) : undefined;
     const singleGpu = fastestSingleGpu(catalog, hardware, model, combo, ctx, state.kv, false);
     return {
       model,
@@ -171,7 +183,7 @@ export function assembleResults(catalog: CatalogLite, rawState: CalcState, extra
       measuredCount,
       bucket: sizeBucket(model.paramsB),
       ...(hubConfig ? { hubConfig } : {}),
-      ...(llama ? { command: llama.command, ...(llama.ngl === 'auto' ? { commandFitAuto: true } : {}) } : {}),
+      ...commandFields(plan),
       ...(singleGpu ? { singleGpu } : {}),
     };
   });
@@ -200,7 +212,7 @@ export function assembleResults(catalog: CatalogLite, rawState: CalcState, extra
     });
     // 명령은 실제 파일(저장소·파일 이름)이 있는 불러온 모델만 — 직접 입력 모델은 받을 파일이 없다
     const row = extra.origin === 'hf' ? extra.rows.find((r) => r.quant === combo.display.quant) : undefined;
-    const llama = row && combo.display.fits ? commandPlan(gpu, config, extra.model, row, combo.display, { ctx, kvQuant: state.kv }).llamaCpp : undefined;
+    const plan = row && combo.display.fits ? commandPlan(gpu, config, extra.model, row, combo.display, { ctx, kvQuant: state.kv }) : undefined;
     const singleGpu = fastestSingleGpu(withExtra, hardware, extra.model, combo, ctx, state.kv, true);
     pinned = {
       model: extra.model,
@@ -209,7 +221,7 @@ export function assembleResults(catalog: CatalogLite, rawState: CalcState, extra
       clamped: ctx < state.ctx,
       measuredCount: 0,
       bucket: sizeBucket(extra.model.paramsB),
-      ...(llama ? { command: llama.command, ...(llama.ngl === 'auto' ? { commandFitAuto: true } : {}) } : {}),
+      ...commandFields(plan),
       ...(singleGpu ? { singleGpu } : {}),
     };
   }
