@@ -164,6 +164,10 @@ const LOADERS: Readonly<Record<ModelAboutId, Readonly<Record<ContentLocale, () =
     en: () => import('@/content/en/model-about/muse-glimmer-30b.mdx') as Promise<AboutModule>,
     ko: () => import('@/content/ko/model-about/muse-glimmer-30b.mdx') as Promise<AboutModule>,
   },
+  'nanbeige4.2-3b': {
+    en: () => import('@/content/en/model-about/nanbeige4.2-3b.mdx') as Promise<AboutModule>,
+    ko: () => import('@/content/ko/model-about/nanbeige4.2-3b.mdx') as Promise<AboutModule>,
+  },
   'nemotron-3.5-lightning-30b-a3b': {
     en: () => import('@/content/en/model-about/nemotron-3.5-lightning-30b-a3b.mdx') as Promise<AboutModule>,
     ko: () => import('@/content/ko/model-about/nemotron-3.5-lightning-30b-a3b.mdx') as Promise<AboutModule>,

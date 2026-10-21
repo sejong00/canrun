@@ -49,6 +49,7 @@ export const MODEL_ABOUT = {
   'minicpm5-2b': '2026-10-19',
   'mistral-small-3.2-24b': '2026-10-19',
   'muse-glimmer-30b': '2026-10-20',
+  'nanbeige4.2-3b': '2026-10-21',
   'nemotron-3.5-lightning-30b-a3b': '2026-10-19',
   'phi-4': '2026-10-19',
   'qwen3-14b': '2026-10-19',
