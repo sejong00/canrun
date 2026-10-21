@@ -293,10 +293,10 @@ export function unifiedCpuBandwidth(gpu: Pick<Gpu, 'effClass' | 'memBandwidthGBs
 
 /**
  * 엔진 입력으로 넘기는 quant 행 필드 — MoE 행은 GGUF 헤더 실측 분할(expertGB·nonExpertGB), dense 행은 헤더 실측
- * offGpuGB(그래픽카드에 안 올리는 몫, 10-03 D62)가 붙을 수 있다
+ * offGpuGB(그래픽카드에 안 올리는 몫, 10-03 D62)·pleGB(층별 임베딩 표, 10-21 D112)가 붙을 수 있다
  */
 export type QuantRowInput = Pick<ModelQuantCore, 'quant' | 'fileGB'> &
-  Partial<Pick<ModelQuantCore, 'expertGB' | 'nonExpertGB' | 'offGpuGB'>>;
+  Partial<Pick<ModelQuantCore, 'expertGB' | 'nonExpertGB' | 'offGpuGB' | 'pleGB'>>;
 
 /**
  * 카탈로그 모델 (+ 등록 quant 행) → 엔진 ModelQuant. 행이 없으면 bpw 폴백 경로.
@@ -323,6 +323,7 @@ export function toModelQuant(model: ModelCore, row?: QuantRowInput): ModelQuant 
     quant: row?.quant ?? 'Q4_K_M',
     fileGB: row?.fileGB,
     ...(row?.offGpuGB !== undefined ? { offGpuGB: row.offGpuGB } : {}),
+    ...(row?.pleGB !== undefined ? { pleGB: row.pleGB } : {}),
   };
 }
 
@@ -376,6 +377,9 @@ export function isTheoretical(gpu: GpuCore, model: ModelCore, mode: Mode): boole
   if (model.moe && mode === 'partial-offload') return true;
   // llama.cpp 구동 미검증 커스텀 아키텍처 · 속도 모델 미검증 상수 상태 층 하이브리드(10-03 D63)
   if (HUB_POLICY.unverifiedArchModelIds.includes(model.id)) return true;
+  // 층별 임베딩 표(PLE — Gemma 4 E 계열, 10-21 D112): 엔진이 토큰당 고정 시간(백엔드별 상수)을 더해 공개 실측 10점 중 9점이 −10.9~+11.0%
+  // 지만, 상수 근거가 카드 몇 장·백엔드 둘뿐이고 A770 은 +78%(intel-arc 계수)라 보정 추정(±20%)의 근거가 안 된다(docs/02 §4 ⑦·§7, PROGRESS §4 D112)
+  if (model.arch.ple === true) return true;
   // FP16 크리플 구형 GPU — 계수 도출 표본(RTX 30~50·RDNA3/4) 밖
   if (isFp16Crippled(gpu)) return true;
   // 통합 메모리 칩의 CPU 추론 — cpu 계수 검증점은 데스크톱 DDR5 뿐 (unifiedCpuBandwidth 는 상한 보정)
@@ -451,6 +455,8 @@ export type QuantAssessment = {
   nonExpertGB?: number;
   /** dense 행의 헤더 실측 GPU 밖 몫 (10-03 D62) — 위와 같은 이유로 실어 나른다 */
   offGpuGB?: number;
+  /** dense 행의 층별 임베딩 표 (10-21 D112) — 위와 같은 이유로 실어 나른다 */
+  pleGB?: number;
   /** MTP 블록 GB (헤더 실측) — 분해 바의 "MTP 를 켜면" 안내 */
   mtpGB?: number;
   ggufRepo: string;
@@ -509,14 +515,17 @@ function memoryNeed(
   };
   if (!fits) return { ...base, gpuGB: 0, ramGB: 0 };
   switch (result.mode) {
-    case 'full-gpu':
-      // 입력 임베딩도 시스템 RAM 에 있지만 수백 MB 라 RAM 몫은 0 으로 두고, 분해 바 각주가 따로 알린다
+    case 'full-gpu': {
+      // 입력 임베딩도 시스템 RAM 에 있지만 수백 MB 라 RAM 몫은 0 으로 두고, 분해 바 각주가 따로 알린다.
+      // 층별 임베딩 표가 있는 행(10-21 D112)은 GB 단위라 RAM 몫으로 보인다 — 엔진 fit 이 시스템 RAM 에 들어가는지 본 그 양
+      const offGpuGB = hw.kind === 'dgpu' ? Math.max(0, weights - result.vram.weights) : 0;
       return {
         ...base,
         gpuGB: result.vram.total,
-        ramGB: 0,
-        offGpuGB: hw.kind === 'dgpu' ? Math.max(0, weights - result.vram.weights) : 0,
+        ramGB: mq.pleGB !== undefined ? offGpuGB : 0,
+        offGpuGB,
       };
+    }
     case 'cpu-moe':
     case 'partial-offload':
       return { ...base, gpuGB: result.vram.total, ramGB: weights - result.vram.weights };
@@ -595,6 +604,7 @@ export function assessQuant(input: AssessQuantInput): QuantAssessment {
     ...(row.expertGB !== undefined ? { expertGB: row.expertGB } : {}),
     ...(row.nonExpertGB !== undefined ? { nonExpertGB: row.nonExpertGB } : {}),
     ...(row.offGpuGB !== undefined ? { offGpuGB: row.offGpuGB } : {}),
+    ...(row.pleGB !== undefined ? { pleGB: row.pleGB } : {}),
     ...(row.mtpGB !== undefined ? { mtpGB: row.mtpGB } : {}),
     ggufRepo: row.ggufRepo,
     tier,

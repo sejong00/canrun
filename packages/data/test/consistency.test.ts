@@ -1,6 +1,6 @@
 /** 파일 간 정합성 + 시드 규모 — docs/06 P0-3 (GPU 42 코어·모델 20·실측 ~30점). */
 import { describe, expect, it } from 'vitest';
-import { deriveNonExpertGB, MOE_ARCH, MTP_LOADABLE_MODELS, validateAll } from '../src/index';
+import { deriveNonExpertGB, ModelQuantSchema, MOE_ARCH, MTP_LOADABLE_MODELS, validateAll } from '../src/index';
 import { loadSeed } from './seed';
 
 const seed = loadSeed();
@@ -94,6 +94,38 @@ describe('dense offGpuGB · mtpGB (GGUF header, 10-03 D62)', () => {
     expect(validateAll(withRow(unmeasured)).some((p) => p.includes('mtpGB needs'))).toBe(true);
     expect(validateAll(withRow({ ...dense, mtpGB: 1 })).some((p) => p.includes('off-GPU share'))).toBe(true);
     expect(validateAll(withRow({ ...moeRow, mtpGB: 0.9 })).some((p) => p.includes('off-GPU share'))).toBe(true);
+  });
+});
+
+describe('per-layer embedding table pleGB (Gemma 4 E 계열, 10-21 D112)', () => {
+  const dense = seed.modelQuants.find((mq) => mq.modelId === 'qwen3.5-9b' && mq.quant === 'Q4_K_M')!;
+  // 표가 있는 모델로 꾸민 시드 — 행 값은 E4B 꼴(파일의 40% 가 표, 나머지 GPU 밖 몫은 작다)
+  const withPle = (row: Record<string, unknown>, archPle = true) => ({
+    ...seed,
+    models: seed.models.map((m) => (m.id === dense.modelId && archPle ? { ...m, arch: { ...m.arch, ple: true as const } } : m)),
+    modelQuants: seed.modelQuants.map((mq) => (mq.modelId === dense.modelId && mq.quant === dense.quant ? { ...mq, ...row } : mq)),
+  });
+  const others = (problems: string[]) => problems.filter((p) => p.includes('qwen3.5-9b/Q4_K_M'));
+
+  it('accepts a table far above 25% of the file — the cap applies to offGpuGB − pleGB', () => {
+    expect(others(validateAll(withPle({ offGpuGB: 2.5, pleGB: 2.4, mtpGB: undefined })))).toEqual([]);
+    expect(others(validateAll(withPle({ offGpuGB: 4.0, pleGB: 2.4, mtpGB: undefined })))).toEqual([
+      expect.stringContaining('a different file?'),
+    ]);
+  });
+
+  it('pleGB only on arch.ple models; their measured rows need it; arch.ple only on dense models', () => {
+    expect(validateAll(withPle({ offGpuGB: 2.5, pleGB: 2.4, mtpGB: undefined }, false)).some((p) => p.includes('only for models with arch.ple'))).toBe(true);
+    expect(validateAll(withPle({})).some((p) => p.includes('needs pleGB'))).toBe(true);
+    const moe = { ...seed, models: seed.models.map((m) => (m.id === 'gpt-oss-20b' ? { ...m, arch: { ...m.arch, ple: true as const } } : m)) };
+    expect(validateAll(moe).some((p) => p.includes('dense models only'))).toBe(true);
+  });
+
+  it('the row schema needs offGpuGB with pleGB and pleGB ≤ offGpuGB', () => {
+    const { offGpuGB: _o, mtpGB: _m, ...bare } = dense;
+    expect(ModelQuantSchema.safeParse({ ...bare, pleGB: 1 }).success).toBe(false);
+    expect(ModelQuantSchema.safeParse({ ...bare, offGpuGB: 1, pleGB: 1.2 }).success).toBe(false);
+    expect(ModelQuantSchema.safeParse({ ...bare, offGpuGB: 1.95, pleGB: 1.94 }).success).toBe(true);
   });
 });
 

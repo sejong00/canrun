@@ -281,10 +281,29 @@ const KV_REFS: Readonly<Record<StateBranch, readonly string[]>> = {
   mla: [`${LLAMA_CPP_SRC}/conversion/bailingmoe3.py`, `${LLAMA_CPP_SRC}/src/llama-kv-cache.cpp`, `${LLAMA_CPP_SRC}/src/llama-model.cpp`],
 };
 
+/**
+ * 층별 임베딩 표(PLE)·KV 공유 층을 계산하는 model_type (10-21 D112) — llama.cpp gemma4 의 배치·KV 규칙을 확인한 것만:
+ * per_layer_token_embd 는 입력층(LLM_TENSOR_LAYER_INPUT, 늘 CPU), KV 는 앞 n_layer_kv_from_start = 층 수 − num_kv_shared_layers 층에만
+ */
+const PLE_MODEL_TYPES: ReadonlySet<string> = new Set(['gemma4_text']);
+
+/** KV 공유 층 산식 근거 — attnOverrides.sources 에 config 와 함께 남긴다 (llama.cpp master 9a3b91c, 2026-10-20) */
+const LLAMA_CPP_9A3B = 'https://github.com/ggml-org/llama.cpp/blob/9a3b91c6801e68f412fcf1b6f8e153aa562b8536';
+const KV_SHARED_REFS: readonly string[] = [
+  // n_layer_kv_from_start = n_layer_all − n_kv_shared_layers
+  `${LLAMA_CPP_9A3B}/src/models/gemma4.cpp#L8-L11`,
+  // has_kv(il) = il < n_layer_kv_from_start
+  `${LLAMA_CPP_9A3B}/src/llama-hparams.cpp#L321-L332`,
+  // KV 캐시는 has_kv 인 층에만 할당
+  `${LLAMA_CPP_9A3B}/src/llama-kv-cache.cpp#L165-L169`,
+];
+
 export type ArchResult =
   | {
       kind: 'ok';
       modelType: string;
+      /** 층별 임베딩 표(PLE, hidden_size_per_layer_input > 0 — 10-21 D112) — 모델 `arch.ple`, 헤더 실측 행은 pleGB */
+      ple?: true;
       attnType: 'full' | 'swa' | 'hybrid';
       arch: { layers: number; kvHeads: number; headDim: number; kvBytesPerTokenF16: number };
       /** swa·hybrid — 전체 어텐션 층만 KV (선례와 같은 산식). refs = 산식 근거(llama.cpp 소스) — attnOverrides.sources 에 덧붙인다 */
@@ -332,7 +351,8 @@ export function bailingMlaLayers(layers: number, groupSize: number, nextn: numbe
 /**
  * config.json → 엔진이 모델링하는 구조인지 분류 — **선례가 있는 구조만**(PROGRESS §4 D53, D63 개정): 전체 어텐션 ·
  * 슬라이딩 윈도(layer_types) · 하이브리드 선형(layer_types) · 상수 상태 층 하이브리드(Mamba2·short-conv·KDA+MLA — 전용 분기, D63).
- * 처음 보는 model_type, 반복 층·디스크 임베딩(n-gram·PLE)·KV 공유 층·압축 어텐션, 층 지도가 없는 MLA·Mamba·conv 는 unsupported.
+ * 처음 보는 model_type, 반복 층·디스크 n-gram 임베딩·압축 어텐션, 층 지도가 없는 MLA·Mamba·conv 는 unsupported.
+ * 층별 임베딩 표(PLE)·KV 공유 층은 gemma4_text 의 슬라이딩 층 지도가 있을 때만 계산한다(10-21 D112 — 결과에 `ple`).
  */
 export function classifyArch(config: unknown): ArchResult {
   if (typeof config !== 'object' || config === null) return { kind: 'unsupported', reason: 'config 없음' };
@@ -344,15 +364,16 @@ export function classifyArch(config: unknown): ArchResult {
   const loops = Math.max(posInt(cfg['num_loops']) ?? 1, posInt(cfg['total_ut_steps']) ?? 1);
   if (loops > 1) return { kind: 'unsupported', reason: `반복 층 — 토큰마다 같은 층을 ${loops}번 지남(가중치 읽기·KV 가 ${loops}배)` };
   if (has('ngram_vocab_size_base') || has('ple_layer_ids')) return { kind: 'unsupported', reason: '디스크에서 읽는 n-gram 임베딩 표 — 파일 크기로 메모리를 셀 수 없음' };
-  // Gemma 4 E 계열(10-16 D98): 층별 임베딩 표(PLE, hidden_size_per_layer_input > 0)는 입력층이라 그래픽카드에 올라가지 않는데
-  // Q4_K_M 파일의 43~56% 라 헤더 실측 offGpuGB 가 검증 상한(MAX_OFF_GPU_FRACTION 25%)에 걸려 파일 전체가 그래픽카드 몫이 된다
-  // (4GiB 를 넘는 표는 디스크에서 행만 읽는다 — TENSOR_READ_LAZY). 뒤쪽 num_kv_shared_layers 층은 앞 층의 KV 를 다시 써
-  // (n_layer_kv_from_start = 층 수 − 공유 층) 전체 어텐션 층으로 센 KV 가 1.75~2.3배. 큰 Gemma 4 는 두 값이 0 이라 그대로 통과한다
-  // 출처: https://github.com/ggml-org/llama.cpp/blob/b6334e37e6ef286fc5091a41b6561b2113d915fb/src/models/gemma4.cpp#L9-L11 · #L59
-  if (posInt(cfg['hidden_size_per_layer_input']) !== undefined) return { kind: 'unsupported', reason: '층별 임베딩 표(PLE) — 그래픽카드 밖 몫이 파일의 25% 를 넘어 지금 산식으로는 메모리를 셀 수 없음' };
-  const sharedKv = posInt(cfg['num_kv_shared_layers']);
-  if (sharedKv !== undefined) return { kind: 'unsupported', reason: `KV 공유 층 ${sharedKv}개(num_kv_shared_layers) — 층마다 KV 를 두는 산식으로는 과대` };
   const modelType = String(cfg['model_type'] ?? top['model_type'] ?? '');
+  // Gemma 4 E 계열(10-16 D98 보류 → 10-21 D112 계산): 층별 임베딩 표(PLE, hidden_size_per_layer_input > 0)는 입력층이라 llama.cpp 가
+  // 늘 시스템 RAM 에 두고 토큰마다 한 줄만 읽는다 — 헤더 실측 행의 pleGB 로 그래픽카드 몫·읽기 바이트에서 뺀다(모델에 arch.ple 표시).
+  // 뒤쪽 num_kv_shared_layers 층은 앞 층의 KV 를 다시 써(n_layer_kv_from_start = 층 수 − 공유 층) 아래 슬라이딩 분기가 앞 층만 센다.
+  // 두 구조 모두 llama.cpp gemma4 만 그렇게 다룬다 — 다른 model_type 이면 그대로 보류
+  const pleDim = posInt(cfg['hidden_size_per_layer_input']);
+  const sharedKv = posInt(cfg['num_kv_shared_layers']);
+  const pleBranch = PLE_MODEL_TYPES.has(modelType);
+  if (pleDim !== undefined && !pleBranch) return { kind: 'unsupported', reason: `층별 임베딩 표(PLE) — llama.cpp 배치(입력층·시스템 RAM)를 확인한 구조(${[...PLE_MODEL_TYPES].join(',')})가 아님` };
+  if (sharedKv !== undefined && !pleBranch) return { kind: 'unsupported', reason: `KV 공유 층 ${sharedKv}개(num_kv_shared_layers) — llama.cpp 의 KV 공유 산식을 확인한 구조가 아님` };
   if (!KNOWN_MODEL_TYPES.has(modelType)) return { kind: 'unsupported', reason: `처음 보는 구조 model_type=${modelType || '(없음)'} — 선례 없음, 수동 검토` };
   for (const key of ALWAYS_UNSUPPORTED_KEYS) {
     if (has(key)) return { kind: 'unsupported', reason: `엔진이 모델링하지 않는 구조 (${key})` };
@@ -450,17 +471,36 @@ export function classifyArch(config: unknown): ArchResult {
   const hasLinear = layerTypes?.some((t) => STATE_LAYER_TYPES.has(t)) ?? false;
 
   if (hasSliding && hasLinear) return { kind: 'unsupported', reason: '슬라이딩 + 선형 혼합 — 선례 없음' };
-  if (hasSliding && nFull !== undefined) {
+  if (hasSliding && nFull !== undefined && layerTypes) {
     const gKv = posInt(cfg['num_global_key_value_heads']) ?? kvHeads;
     const gDim = posInt(cfg['global_head_dim']) ?? headDim;
-    const kv = nFull * gKv * gDim * 4;
+    // KV 공유(10-21 D112): KV 를 두는 층은 앞 `층 수 − 공유 층` 개뿐 — 그 안의 전체 어텐션 층만 센다(뒤 층은 같은 종류의 앞 층 KV 를 읽는다)
+    let kvTypes = layerTypes;
+    if (sharedKv !== undefined) {
+      if (layerTypes.length !== layers || sharedKv >= layers) return { kind: 'unsupported', reason: `KV 공유 층 ${sharedKv}개인데 층 지도(layer_types ${layerTypes.length}개)가 층 수 ${layers} 와 맞지 않음` };
+      kvTypes = layerTypes.slice(0, layers - sharedKv);
+    }
+    const nFullKv = kvTypes.filter((t) => t === 'full_attention').length;
+    if (nFullKv === 0) return { kind: 'unsupported', reason: 'KV 를 두는 층에 전체 어텐션 층 없음 — 선례 없음' };
+    const kv = nFullKv * gKv * gDim * 4;
     const global = gKv !== kvHeads || gDim !== headDim ? ` × global kv ${gKv} × head_dim ${gDim}` : '';
+    const shared =
+      sharedKv !== undefined
+        ? ` — KV 는 앞 ${layers - sharedKv}층에만(뒤 ${sharedKv}층 num_kv_shared_layers 는 앞 층 KV 를 다시 쓴다, 전체 어텐션 ${nFull}층 중 ${nFullKv}층)`
+        : '';
     return {
       kind: 'ok', modelType, attnType: 'swa', vision, maxContext, ...(moe ? { moe } : {}),
+      ...(pleDim !== undefined ? { ple: true as const } : {}),
       arch: { layers, kvHeads, headDim, kvBytesPerTokenF16: kv },
-      override: { kvBytesPerTokenF16: kv, reason: `swa — full attn ${nFull}/${layers} layers${global}, sliding win${String(cfg['sliding_window'] ?? '?')} 는 평탄 근사로 제외 (add-model)` },
+      override: {
+        kvBytesPerTokenF16: kv,
+        reason: `swa — full attn ${nFullKv}/${layers} layers${shared}${global}, sliding win${String(cfg['sliding_window'] ?? '?')} 는 평탄 근사로 제외 (add-model)`,
+        ...(sharedKv !== undefined ? { refs: KV_SHARED_REFS } : {}),
+      },
     };
   }
+  // 층별 임베딩 표·KV 공유 층은 위 슬라이딩 분기(Gemma 4 E 계열 — 층 지도 있음)에서만 계산한다
+  if (pleDim !== undefined || sharedKv !== undefined) return { kind: 'unsupported', reason: '층별 임베딩 표·KV 공유 층인데 슬라이딩 층 지도(layer_types)가 없음 — 선례 없음' };
   if (hasLinear && nFull !== undefined) {
     if (nFull === 0) return { kind: 'unsupported', reason: '전체 어텐션 층 없음 — 선례 없음' };
     const kv = nFull * kvHeads * headDim * 4;
@@ -669,6 +709,9 @@ const SPLIT_TOLERANCE_GB = 0.02;
 export function buildHfModel(input: HfModelInput): HfModelResult {
   const arch = classifyArch(input.config);
   if (arch.kind === 'unsupported') return { kind: 'unsupported', reason: arch.reason };
+  // 층별 임베딩 표(10-21 D112)는 양자화 행마다 헤더 실측(pleGB)이 있어야 그래픽카드 몫·읽기 바이트를 셀 수 있다 — 이 경로는 dense 헤더를
+  // 읽지 않아 표를 그래픽카드 몫으로 세고 속도를 1.6배쯤 낮게 본다. 카탈로그에 넣을 때(add-model)만 계산한다
+  if (arch.ple) return { kind: 'unsupported', reason: '층별 임베딩 표(PLE) — 양자화 행마다 GGUF 헤더 실측이 필요해 카탈로그 모델로만 계산' };
 
   const modelId = `${HF_MODEL_ID_PREFIX}${slugFromHfId(input.hfId)}`;
   const records = quantRowsFrom(input.tree, input.ggufRepo, modelId);

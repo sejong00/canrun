@@ -115,6 +115,7 @@ export const MOE_ARCH: Readonly<Record<string, MoeArch>> = Object.freeze({
 /**
  * 헤더 실측의 "그래픽카드에 안 올리는 몫" 상한 — 파일의 25%. 이보다 크면 다른 파일을 잰 것으로 본다(검증 허용치, 엔진 상수 아님).
  * 카탈로그 최대는 MiniCPM5-1B Q8_0 의 18%(입력 임베딩이 큰 1B 모델), 대부분 1~7%.
+ * 층별 임베딩 표(PLE)가 있는 행은 그 표를 뺀 나머지에 건다(Gemma 4 E 계열 표는 파일의 37~55% — 10-21 D112).
  */
 export const MAX_OFF_GPU_FRACTION = 0.25;
 
@@ -139,6 +140,13 @@ export function validateAll(files: SeedFiles): string[] {
     files.models.filter((model) => model.activeParamsB !== undefined).map((model) => model.id),
   );
   const gpuIds = new Set(files.gpus.map((gpu) => gpu.id));
+  // 층별 임베딩 표 모델(10-21 D112) — dense 만
+  const pleModelIds = new Set(files.models.filter((model) => model.arch.ple === true).map((model) => model.id));
+  for (const model of files.models) {
+    if (model.arch.ple === true && model.activeParamsB !== undefined) {
+      problems.push(`models/${model.id}: arch.ple is for dense models only`);
+    }
+  }
 
   // model-quants.modelId 는 카탈로그 FK · fileName 은 전 행 필수 (sync-models 가 기록, P1-2)
   for (const mq of files.modelQuants) {
@@ -167,14 +175,26 @@ export function validateAll(files: SeedFiles): string[] {
         );
       }
     }
-    // dense 헤더 실측 offGpuGB(10-03 D62): dense 모델 행만(MoE 는 분할에서 유도) · 0 ≤ 값 ≤ 0.25×파일
+    // dense 헤더 실측 offGpuGB(10-03 D62): dense 모델 행만(MoE 는 분할에서 유도) · 0 ≤ 값 ≤ 0.25×파일.
+    // 층별 임베딩 표(PLE, 10-21 D112)는 파일의 37~55% 라 그 몫을 뺀 나머지(입력 임베딩·헤더 등)에 상한을 건다 — PLE 행만의 예외
     if (mq.offGpuGB !== undefined) {
       if (moeModelIds.has(mq.modelId)) {
         problems.push(`${id}: offGpuGB only for dense models — MoE rows derive it from expertGB + nonExpertGB`);
       }
-      if (mq.offGpuGB > mq.fileGB * MAX_OFF_GPU_FRACTION) {
-        problems.push(`${id}: offGpuGB ${mq.offGpuGB} > ${MAX_OFF_GPU_FRACTION} × fileGB ${mq.fileGB} — a different file?`);
+      const otherOffGpu = mq.offGpuGB - (mq.pleGB ?? 0);
+      if (otherOffGpu > mq.fileGB * MAX_OFF_GPU_FRACTION) {
+        problems.push(
+          `${id}: offGpuGB ${mq.offGpuGB}${mq.pleGB !== undefined ? ` − pleGB ${mq.pleGB}` : ''} > ${MAX_OFF_GPU_FRACTION} × fileGB ${mq.fileGB} — a different file?`,
+        );
       }
+    }
+    // 층별 임베딩 표(10-21 D112): arch.ple 인 dense 모델 행만 · 헤더 실측(offGpuGB)이 있는 그 모델 행은 모두 pleGB 를 갖는다
+    // (없으면 표 전체를 그래픽카드 몫·읽기 바이트로 세 메모리·속도가 1.6~2배로 틀린다)
+    if (mq.pleGB !== undefined && !pleModelIds.has(mq.modelId)) {
+      problems.push(`${id}: pleGB only for models with arch.ple (per-layer embedding table)`);
+    }
+    if (pleModelIds.has(mq.modelId) && mq.offGpuGB !== undefined && mq.pleGB === undefined) {
+      problems.push(`${id}: header-measured row of a per-layer-embedding model needs pleGB`);
     }
     // MTP 블록(10-03): 같은 헤더 측정이 있는 행만 · GPU 밖 몫(offGpuGB 또는 파일 − 분할) 안
     if (mq.mtpGB !== undefined) {

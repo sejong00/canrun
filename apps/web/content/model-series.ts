@@ -36,7 +36,8 @@ export const SERIES_ALIASES: Readonly<Record<string, string>> = {
  * 계열 표 아래 한 줄(`messages` `ModelHub.<message>`) — 같은 계열인데 아직 카탈로그에 없는 크기를 알린다.
  * `untilHfIds` 중 하나라도 카탈로그에 들어오면 사라진다(문장이 거짓이 되기 전에). 그 모델이 자동 추가 id 로 들어와도 이 계열 표에
  * 함께 오르는지는 테스트가 `slugFromHfId` 로 확인한다 — 안내만 사라지고 크기가 빠진 표가 남지 않게.
- * Gemma 4 E2B·E4B: 층별 임베딩 표·KV 공유 층 구조라 add-model 보류(10-16 D98, `scripts/new-model-skips.json`)
+ * Gemma 4 E2B·E4B: 층별 임베딩 표·KV 공유 층 구조라 10-16 D98 에 add-model 을 보류했다가 10-21 D112 에 카탈로그에 넣었다(`gemma-4-e2b`·
+ * `gemma-4-e4b`) — 그래서 이 안내는 지금 나오지 않는다(model-series.test 가 두 크기가 계열 표에 함께 오르는지 본다)
  */
 export const SERIES_NOTES: Readonly<Record<string, { readonly message: string; readonly untilHfIds: readonly string[] }>> = {
   'gemma-4': { message: 'seriesNoteGemma4', untilHfIds: ['google/gemma-4-E2B-it', 'google/gemma-4-E4B-it'] },

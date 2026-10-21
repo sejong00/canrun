@@ -98,6 +98,27 @@ describe('buildManualModel — catalog twins', () => {
     expect(worst.dense).toBeLessThan(0.1);
     expect(worst.moe).toBeLessThan(0.13);
   });
+
+  it('per-layer embedding models (arch.ple, 10-21 D112): the part outside the table tracks the bpw estimate of the parameters outside it', () => {
+    // 층별 임베딩 표 파라미터 = vocab_size_per_layer_input × num_hidden_layers × hidden_size_per_layer_input (google/gemma-4-E4B-it·E2B-it config.json).
+    // 직접 입력(D66)은 표를 모델링하지 않는다 — 파일 전체 비교(위 ±10%)를 통과하는 건 safetensors paramsB 에 비전·오디오 인코더(약 0.47B,
+    // GGUF 텍스트 파일 밖)가 들어 있어 표의 높은 정밀도(Q5_K·Q8_0)를 우연히 상쇄하기 때문이다. 그래서 표 밖 몫을 따로 본다:
+    // 표 밖 파일(fileGB − pleGB) ≤ (paramsB − 표 파라미터) × bpw / 8 — 인코더만큼 어림이 크다(E4B +4~+6%, E2B +13~+16%)
+    const plePB: Readonly<Record<string, number>> = { 'gemma-4-e4b': (262144 * 42 * 256) / 1e9, 'gemma-4-e2b': (262144 * 35 * 256) / 1e9 };
+    const pleModels = seed.models.filter((m) => m.arch.ple === true);
+    expect(pleModels.map((m) => m.id).sort()).toEqual(Object.keys(plePB).sort());
+    for (const m of pleModels) {
+      const built = ok(buildManualModel({ paramsB: m.paramsB - plePB[m.id]!, layers: 32, kvHeads: 8, headDim: 128 }));
+      for (const row of built.rows) {
+        const real = seed.modelQuants.find((r) => r.modelId === m.id && r.quant === row.quant);
+        if (!real) continue;
+        expect(real.pleGB, `${m.id}/${real.quant}`).toBeDefined();
+        const err = row.fileGB / (real.fileGB - real.pleGB!) - 1;
+        expect(err, `${m.id}/${real.quant}`).toBeGreaterThan(0);
+        expect(err, `${m.id}/${real.quant}`).toBeLessThan(0.17);
+      }
+    }
+  });
 });
 
 describe('buildManualModel — incomplete and invalid input', () => {

@@ -179,6 +179,7 @@ describe('classifySplit', () => {
       expert: 1152 + 272 + 128,
       nonExpert: 320 + 32 + 136 + 128 + 64,
       cpu: 160,
+      ple: 0,
       mtp: 68 + 128,
       total: 160 + 320 + 32 + 136 + 128 + 64 + 1152 + 272 + 128 + 68 + 128,
     });
@@ -218,6 +219,29 @@ describe('classifySplit', () => {
     expect(m.bytes.cpu).toBe(160 + 160 + 64 + 64);
     expect(m.bytes.nonExpert).toBe(32 + 320 + 136);
     expect(m.bytes.expert).toBe(0);
+    // 층별 임베딩 표(PLE)는 입력층 cpu 몫 안에 있고 따로도 보고한다 (10-21 D112)
+    expect(m.bytes.ple).toBe(160);
+    expect(m.pleGB).toBe(0);
+  });
+
+  it('Gemma 4 E4B shape: the per-layer embedding table is reported as pleGB inside the CPU share; the tied token_embd also counts as the GPU output layer (10-21 D112)', () => {
+    // 실제 E4B 텐서 모양(262144 어휘 × 42층 × 256 = PLE, 2560 × 262144 = token_embd) — unsloth Q4_K_M 의 형식(PLE Q5_K · token_embd Q4_K)
+    const Q5_K = 13;
+    const meta: Kv[] = [{ key: 'general.architecture', str: 'gemma4' }, { key: 'gemma4.block_count', u32: 1 }];
+    const m = classifySplit([
+      parseGgufHeader(
+        gguf(meta, [
+          { name: 'token_embd.weight', dims: [2560, 262144], type: Q4_K }, // 377,487,360
+          { name: 'per_layer_token_embd.weight', dims: [256 * 42, 262144], type: Q5_K }, // 1,937,768,448
+          { name: 'blk.0.attn_q.weight', dims: [2560, 2048], type: Q4_K }, // 2,949,120
+        ]),
+      ),
+    ]);
+    expect(m.bytes.ple).toBe(1_937_768_448);
+    expect(m.bytes.cpu).toBe(377_487_360 + 1_937_768_448);
+    expect(m.bytes.nonExpert).toBe(377_487_360 + 2_949_120); // 출력층 사본 + 블록
+    expect(m.pleGB).toBe(1.94);
+    expect(m.tiedEmbeddings).toBe(true);
   });
 
   it('a model without MTP keeps every block in the trunk; missing arch keys fail', () => {

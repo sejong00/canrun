@@ -891,6 +891,27 @@ describe('planSplitChanges + applyChanges — dense offGpuGB (10-03 D62)', () =>
     expect(tooMuch.map((c) => [c.kind, c.note?.includes('25% 초과')])).toEqual([['manual', true]]);
   });
 
+  it('per-layer embedding table (10-21 D112): the 25% cap applies to offGpuGB − pleGB; pleGB is written after offGpuGB and dropped when a new header has none', async () => {
+    const input = makeInput({ models: [dense], quants: [drow()] });
+    // 파일 4.92 중 GPU 밖 2.0, 그중 층별 임베딩 표 1.9 — 나머지 0.1 은 25% 안
+    const changes = await planSplitChanges(input, [], measureWith(header(2.0, { pleGB: 1.9 })).fn);
+    expect(changes).toEqual([
+      expect.objectContaining({ field: 'offgpu', kind: 'auto', next: 'off-GPU 2 / per-layer embedding 1.9', split: { offGpuGB: 2.0, pleGB: 1.9 } }),
+    ]);
+    applyChanges(changes, input);
+    expect(Object.keys(input.rawQuants[0]!).slice(0, 6)).toEqual(['modelId', 'quant', 'fileGB', 'offGpuGB', 'pleGB', 'ggufRepo']);
+    // 표를 뺀 나머지가 25% 를 넘으면 보류
+    const odd = await planSplitChanges(makeInput({ models: [dense], quants: [drow()] }), [], measureWith(header(3.5, { pleGB: 1.9 })).fn);
+    expect(odd.map((c) => [c.kind, c.note?.includes('층별 임베딩 표 1.9GB 제외')])).toEqual([['manual', true]]);
+    // 파일이 바뀌어 다시 쟀는데 표가 없으면 옛 pleGB 를 지운다(mtpGB 와 같은 규칙)
+    const measured = makeInput({ models: [dense], quants: [drow({ offGpuGB: 2.0, pleGB: 1.9 })] });
+    const sizeChange: Change = { file: 'model-quants.json', id: 'test-8b/Q4_K_M', field: 'fileGB', old: 4.92, next: 4.95, kind: 'auto' };
+    const remeasured = await planSplitChanges(measured, [sizeChange], measureWith(header(0.3, { fileGB: 4.95 })).fn);
+    applyChanges([sizeChange, ...remeasured], measured);
+    expect(measured.rawQuants[0]).toMatchObject({ fileGB: 4.95, offGpuGB: 0.3 });
+    expect(measured.rawQuants[0]).not.toHaveProperty('pleGB');
+  });
+
   it('measures new auto quant rows of dense models after the row is inserted', async () => {
     const tree = new Map([[repo, [file('test-8b-Q4_K_M.gguf', 4_920_000_000), file('test-8b-Q8_0.gguf', 8_540_000_000)]]]);
     const input = makeInput({ models: [dense], quants: [drow({ offGpuGB: 0.3 })], treeByRepo: tree });

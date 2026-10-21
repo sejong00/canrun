@@ -90,7 +90,7 @@ export function ctxMatrix(
   config: HwConfig,
   model: ModelCore,
   q: Pick<QuantAssessment, 'quant' | 'fileGB'> &
-    Partial<Pick<QuantAssessment, 'result' | 'expertGB' | 'nonExpertGB' | 'offGpuGB'>>,
+    Partial<Pick<QuantAssessment, 'result' | 'expertGB' | 'nonExpertGB' | 'offGpuGB' | 'pleGB'>>,
   opts: {
     ctxs?: readonly number[];
     kvQuants?: readonly KvQuant[];
@@ -178,8 +178,9 @@ export type VramBreakdown = {
    * MTP 블록 크기. MTP 는 GPU 몫에서 뺀 dGPU 모드에서만 — full-gpu 는 필요량에서 빠져 있고, cpu-moe 는 GPU 몫에서는 빠졌지만
    * 시스템 RAM 몫(파일 − GPU 가중치)에는 들어 있다(엔진 RAM 검사와 같은 보수 규칙). mtpLoadable = llama.cpp 가 이 모델의
    * MTP 블록을 `--spec-type draft-mtp` 로 불러올 수 있는지(`MTP_LOADABLE_MODELS`) — 켜면 그만큼과 그 KV 가 더 든다.
+   * pleGB = GPU 밖 몫 대부분인 층별 임베딩 표(Gemma 4 E 계열, 10-21 D112) — dGPU 전량 탑재일 때만, 각주가 입력 임베딩 대신 이 표를 말한다.
    */
-  note: { fileGB: number; offGpuGB: number; mtpGB?: number; mtpLoadable?: boolean };
+  note: { fileGB: number; offGpuGB: number; mtpGB?: number; mtpLoadable?: boolean; pleGB?: number };
 };
 
 /**
@@ -211,6 +212,7 @@ export function vramBreakdown(q: QuantAssessment, modelId: string): VramBreakdow
       ...(q.mtpGB !== undefined && dgpuExcludesMtp
         ? { mtpGB: q.mtpGB, mtpLoadable: MTP_LOADABLE_MODELS.includes(modelId) }
         : {}),
+      ...(q.pleGB !== undefined && q.fits && q.result.mode === 'full-gpu' && q.memory.offGpuGB > 0 ? { pleGB: q.pleGB } : {}),
     },
     gpu: {
       weights: v.weights,

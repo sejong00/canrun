@@ -500,6 +500,20 @@ describe('fetchRange — injectable fetch and headers (browser: none, scripts: a
 // ---------------------------------------------------------------------------
 
 const repeat = (n: number, ...pattern: string[]): string[] => Array.from({ length: n }, () => pattern).flat();
+/** Gemma 4 layer_types — 전체 어텐션 층 = (i + 1) % every == 0 (E4B 6 · E2B 5, 마지막 층은 늘 전체 어텐션) */
+const gemma4LayerTypes = (layers: number, every: number): string[] =>
+  Array.from({ length: layers }, (_, i) => ((i + 1) % every === 0 ? 'full_attention' : 'sliding_attention'));
+/** google/gemma-4-E4B-it config.json text_config 의 구조 값 (10-21 확인 — 층별 임베딩 256 차원 · 뒤 18층 KV 공유) */
+const GEMMA4_E4B_TEXT = {
+  model_type: 'gemma4_text', num_hidden_layers: 42, num_attention_heads: 8, num_key_value_heads: 2, num_global_key_value_heads: null,
+  head_dim: 256, global_head_dim: 512, hidden_size: 2560, hidden_size_per_layer_input: 256, vocab_size_per_layer_input: 262144,
+  num_kv_shared_layers: 18, sliding_window: 512, max_position_embeddings: 131072, num_experts: null, top_k_experts: null,
+  tie_word_embeddings: true, layer_types: gemma4LayerTypes(42, 6),
+};
+/** google/gemma-4-E2B-it config.json text_config 의 구조 값 (10-21 확인 — 뒤 20층 KV 공유) */
+const GEMMA4_E2B_TEXT = {
+  ...GEMMA4_E4B_TEXT, num_hidden_layers: 35, num_key_value_heads: 1, hidden_size: 1536, num_kv_shared_layers: 20, layer_types: gemma4LayerTypes(35, 5),
+};
 /** nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16 layers_block_type (52 블록 = mamba 23 · moe 23 · attention 6) */
 const NEMOTRON_BLOCKS = [
   'mamba', 'moe', 'mamba', 'moe', 'mamba', 'attention', 'moe', 'mamba', 'moe', 'mamba', 'moe', 'mamba', 'attention',
@@ -668,9 +682,11 @@ describe('classifyArch — new model types and constant-state hybrids (10-03 D63
     ['looped layers even on a known type', { model_type: 'llama', num_loops: 2, num_hidden_layers: 22, num_attention_heads: 8, head_dim: 128, max_position_embeddings: 4096 }, '반복 층'],
     ['looped layers (Ouro total_ut_steps)', { model_type: 'ouro', total_ut_steps: 4, num_hidden_layers: 24 }, '반복 층'],
     ['disk-read n-gram embedding (Qwen3.8-Flash-Next)', { model_type: 'qwen4_exp', text_config: { model_type: 'qwen3_5_moe_text', ngram_vocab_size_base: 20000000, ple_layer_ids: [2] } }, 'n-gram'],
-    // Gemma 4 E4B config(10-16 D98) — 층별 임베딩 256 차원 · 뒤 18층이 KV 공유. 큰 Gemma 4 는 두 값이 0(아래 Gemma 4 31B 통과 케이스)
-    ['per-layer embeddings (Gemma 4 E4B)', { model_type: 'gemma4', text_config: { model_type: 'gemma4_text', hidden_size_per_layer_input: 256, num_kv_shared_layers: 18, num_hidden_layers: 42 } }, 'PLE'],
-    ['KV-shared layers on a known type', { model_type: 'gemma4_text', hidden_size_per_layer_input: 0, num_kv_shared_layers: 20, num_hidden_layers: 35 }, 'KV 공유 층 20개'],
+    // 층별 임베딩 표·KV 공유 층은 llama.cpp gemma4 규칙을 확인한 gemma4_text 만 계산한다(10-21 D112) — 다른 구조면 그대로 보류
+    ['per-layer embeddings outside gemma4_text', { model_type: 'qwen3', hidden_size_per_layer_input: 256, num_hidden_layers: 28, num_attention_heads: 16, num_key_value_heads: 8, head_dim: 128, max_position_embeddings: 32768 }, 'PLE'],
+    ['KV-shared layers outside gemma4_text', { model_type: 'llama', num_kv_shared_layers: 20, num_hidden_layers: 35, num_attention_heads: 8, num_key_value_heads: 1, head_dim: 256, max_position_embeddings: 32768 }, 'KV 공유 층 20개'],
+    ['Gemma 4 E shape without a layer map', { model_type: 'gemma4', text_config: { ...GEMMA4_E4B_TEXT, layer_types: undefined } }, '층 지도'],
+    ['Gemma 4 E shape whose layer map is shorter than the layer count', { model_type: 'gemma4', text_config: { ...GEMMA4_E4B_TEXT, layer_types: gemma4LayerTypes(41, 6) } }, '층 지도'],
     ['compressed attention on a known type', { model_type: 'llama', compress_ratios: [0, 4, 128], num_hidden_layers: 3 }, 'compress_ratios'],
     ['DSA layer type (GLM-5.3) on a known type', { model_type: 'qwen3_5_text', num_hidden_layers: 2, num_attention_heads: 4, num_key_value_heads: 1, head_dim: 64, max_position_embeddings: 4096, layer_types: ['deepseek_sparse_attention', 'linear_attention'] }, 'deepseek_sparse_attention'],
     ['Ling/Ring-2.5 (BailingMoeV2_5 — not converted by llama.cpp)', { ...LING_TINY, architectures: ['BailingMoeV2_5ForCausalLM'], no_kda_lora: undefined, kda_safe_gate: undefined }, 'bailing_hybrid'],
@@ -740,6 +756,56 @@ describe('classifyArch — Gemma 3 style sliding_window_pattern without layer_ty
   it('still refuses every-layer sliding windows without a pattern', () => {
     const cfg = { model_type: 'mistral', num_hidden_layers: 32, num_attention_heads: 32, num_key_value_heads: 8, hidden_size: 4096, max_position_embeddings: 32768, sliding_window: 4096 };
     expect(classifyArch(cfg).kind).toBe('unsupported');
+  });
+});
+
+describe('classifyArch — Gemma 4 E4B·E2B: per-layer embedding table and KV-shared layers (10-21 D112)', () => {
+  // google/gemma-4-E4B-it · E2B-it config.json 의 text_config 구조 값 그대로(2026-10-21 확인). 전체 어텐션 층 = (i + 1) % 6 == 0(E4B)·% 5(E2B),
+  // num_global_key_value_heads 는 null 이라 KV 헤드는 num_key_value_heads, 전체 어텐션 층 head_dim 은 global_head_dim 512
+  const config = (text: Record<string, unknown>) => ({ model_type: 'gemma4', architectures: ['Gemma4ForConditionalGeneration'], text_config: text, vision_config: {}, audio_config: {} });
+
+  it('E4B: KV only on the 4 full-attention layers inside the first 42 − 18 = 24 layers → 4 × 2 × 512 × 4 = 16,384 B/token (counting all 7 would be 28,672)', () => {
+    const r = classifyArch(config(GEMMA4_E4B_TEXT));
+    expect(r.kind).toBe('ok');
+    if (r.kind !== 'ok') return;
+    expect(r).toMatchObject({ modelType: 'gemma4_text', attnType: 'swa', ple: true, vision: true, maxContext: 131072 });
+    expect(r.moe).toBeUndefined();
+    expect(r.arch).toEqual({ layers: 42, kvHeads: 2, headDim: 256, kvBytesPerTokenF16: 16_384 });
+    expect(r.override?.kvBytesPerTokenF16).toBe(16_384);
+    expect(r.override?.reason).toContain('full attn 4/42');
+    expect(r.override?.reason).toContain('num_kv_shared_layers');
+    // 산식 근거 — llama.cpp 가 KV 를 두는 층(고정 커밋)
+    expect(r.override?.refs).toEqual([
+      expect.stringMatching(/^https:\/\/github\.com\/ggml-org\/llama\.cpp\/blob\/[0-9a-f]{40}\/src\/models\/gemma4\.cpp#L8-L11$/),
+      expect.stringMatching(/llama-hparams\.cpp#L321-L332$/),
+      expect.stringMatching(/llama-kv-cache\.cpp#L165-L169$/),
+    ]);
+  });
+
+  it('E2B: 3 full-attention layers inside the first 35 − 20 = 15 layers → 3 × 1 × 512 × 4 = 6,144 B/token (counting all 7 would be 14,336)', () => {
+    const r = classifyArch(config(GEMMA4_E2B_TEXT));
+    expect(r.kind).toBe('ok');
+    if (r.kind !== 'ok') return;
+    expect(r).toMatchObject({ attnType: 'swa', ple: true, arch: { layers: 35, kvHeads: 1, headDim: 256, kvBytesPerTokenF16: 6_144 } });
+    expect(r.override?.reason).toContain('full attn 3/35');
+  });
+
+  it('the KV-shared count changes the stored KV only through the layer prefix (no sharing → all 7 full layers)', () => {
+    const r = classifyArch(config({ ...GEMMA4_E4B_TEXT, num_kv_shared_layers: 0 }));
+    expect(r.kind === 'ok' && r.arch.kvBytesPerTokenF16).toBe(7 * 2 * 512 * 4);
+    const noPle = classifyArch(config({ ...GEMMA4_E4B_TEXT, hidden_size_per_layer_input: 0 }));
+    expect(noPle.kind === 'ok' && noPle.ple).toBeUndefined();
+  });
+
+  it('buildHfModel (calculator out-of-catalog path) still refuses per-layer embedding models — rows there carry no header measurement', () => {
+    const r = buildHfModel({
+      hfId: 'google/gemma-4-E4B-it',
+      ggufRepo: 'unsloth/gemma-4-E4B-it-GGUF',
+      config: config(GEMMA4_E4B_TEXT),
+      tree: [file('gemma-4-E4B-it-Q4_K_M.gguf', 4.98)],
+      info: { paramsB: 8 },
+    });
+    expect(r).toMatchObject({ kind: 'unsupported', reason: expect.stringContaining('PLE') });
   });
 });
 

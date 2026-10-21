@@ -29,6 +29,8 @@ describe('serializeRecords', () => {
   it('keeps .0 on integral float fields (fileGB 등) but not on int fields', () => {
     const out = serializeRecords([{ fileGB: 9, layers: 32, tgTokS: 42, ppTokS: 100 }]);
     expect(out).toBe('[\n  { "fileGB": 9.0, "layers": 32, "tgTokS": 42.0, "ppTokS": 100 }\n]\n');
+    // 층별 임베딩 표(10-21 D112)도 GB 물리량 표식
+    expect(serializeRecords([{ offGpuGB: 2, pleGB: 2 }])).toBe('[\n  { "offGpuGB": 2.0, "pleGB": 2.0 }\n]\n');
   });
 
   it('preserves input key order (raw JSON.parse 레코드 전제)', () => {

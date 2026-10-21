@@ -78,6 +78,8 @@ export type RowMeasure = {
   expertGB: number;
   nonExpertGB: number;
   offGpuGB: number;
+  /** 층별 임베딩 표(PLE) — 없거나 0 이면 표 없음 (10-21 D112) */
+  pleGB?: number;
   mtpGB: number;
   fileGB?: number;
   trunkLayers: number;
@@ -86,10 +88,12 @@ export type RowMeasure = {
 };
 export type MeasureRowFn = (repo: string, fileName: string) => Promise<RowMeasure>;
 
-/** 행에 헤더 실측을 넣는다 — 키 순서는 시드와 같게 fileGB 바로 뒤(MoE 분할 | dense offGpuGB, 그다음 mtpGB) */
+/** 행에 헤더 실측을 넣는다 — 키 순서는 시드와 같게 fileGB 바로 뒤(MoE 분할 | dense offGpuGB·pleGB, 그다음 mtpGB) */
 function withMeasure(row: ModelQuantRecord, m: RowMeasure, moe: boolean): ModelQuantRecord {
   const { modelId, quant, fileGB, ggufRepo, fileName, sources } = row;
-  const split = moe ? { expertGB: m.expertGB, nonExpertGB: m.nonExpertGB } : { offGpuGB: m.offGpuGB };
+  const split = moe
+    ? { expertGB: m.expertGB, nonExpertGB: m.nonExpertGB }
+    : { offGpuGB: m.offGpuGB, ...((m.pleGB ?? 0) > 0 ? { pleGB: m.pleGB } : {}) };
   return {
     modelId,
     quant,
@@ -106,7 +110,12 @@ function withMeasure(row: ModelQuantRecord, m: RowMeasure, moe: boolean): ModelQ
 function implausibleMeasure(m: RowMeasure, fileGB: number, moe: boolean): string | undefined {
   if (m.fileGB !== undefined && Math.abs(m.fileGB - fileGB) > 0.02) return `측정한 파일 크기 ${m.fileGB}GB ≠ fileGB ${fileGB}`;
   if (!moe) {
-    return m.offGpuGB > fileGB * MAX_OFF_GPU_FRACTION ? `그래픽카드 밖 몫 ${m.offGpuGB}GB > fileGB ${fileGB} 의 25%` : undefined;
+    // 층별 임베딩 표(PLE)는 상한 밖 — 나머지(입력 임베딩·MTP·헤더)에만 건다 (validateAll 과 같은 규칙, 10-21 D112)
+    const ple = m.pleGB ?? 0;
+    const other = m.offGpuGB - ple;
+    return other > fileGB * MAX_OFF_GPU_FRACTION
+      ? `그래픽카드 밖 몫 ${m.offGpuGB}GB${ple > 0 ? `(층별 임베딩 표 ${ple}GB 제외 ${round2(other)}GB)` : ''} > fileGB ${fileGB} 의 25%`
+      : undefined;
   }
   const gpu = m.expertGB + m.nonExpertGB;
   if (gpu > fileGB + 0.02) return `측정 합 ${gpu.toFixed(2)}GB > fileGB ${fileGB}`;
@@ -437,6 +446,8 @@ export async function planAddition(
       layers: arch.arch.layers, kvHeads: arch.arch.kvHeads, headDim: arch.arch.headDim, attnType: arch.attnType, kvBytesPerTokenF16: arch.arch.kvBytesPerTokenF16,
       ...(arch.moe ? { experts: arch.moe.experts, topK: arch.moe.topK } : {}),
       ...(arch.expertLayers ? { expertLayers: arch.expertLayers } : {}),
+      // 층별 임베딩 표(PLE — 10-21 D112): 헤더 실측 행이 pleGB 를 갖고, 추정은 이론 추정
+      ...(arch.ple ? { ple: true } : {}),
     },
     // 산식 근거(llama.cpp 가 KV 를 두는 층 — D63)가 있으면 config 출처 뒤에 덧붙인다
     ...(arch.override
@@ -469,7 +480,12 @@ export async function planAddition(
   if (arch.override) lines.push(`  ${arch.override.reason}`);
   if (arch.expertLayers) lines.push(`  expert layers ${arch.expertLayers.length}/${arch.arch.layers}: ${arch.expertLayers.join(',')}`);
   for (const r of rows) {
-    const split = r.expertGB !== undefined ? `  (expert ${r.expertGB} · non-expert ${String(r.nonExpertGB)} GB)` : '';
+    const split =
+      r.expertGB !== undefined
+        ? `  (expert ${r.expertGB} · non-expert ${String(r.nonExpertGB)} GB)`
+        : r.offGpuGB !== undefined
+          ? `  (off-GPU ${r.offGpuGB}${r.pleGB !== undefined ? ` · per-layer embedding ${r.pleGB}` : ''} GB)`
+          : '';
     lines.push(`  ${r.quant.padEnd(10)} ${String(r.fileGB).padStart(7)} GB  ${r.ggufRepo}/${r.fileName ?? ''}${split}`);
   }
   const warnings: string[] = [...splitWarnings];

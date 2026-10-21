@@ -954,6 +954,7 @@
     "barSummaryUnified": "已用 {used} / {limit} GB：权重 {weights} GB、KV 缓存 {kv} GB、计算缓冲区 {buffer} GB；GPU 可用的空闲部分 {free} GB，GPU 不可用部分 {unusable} GB。",
     "barSummaryRam": "在 {usable} GB 可用系统内存中，权重占 {weights} GB。",
     "barNoteOffGpu": "{file} GB 文件中有 {off} GB 不会放到显卡上：llama.cpp 把输入嵌入表保留在系统内存中。",
+    "barNoteOffGpuPle": "{file} GB 文件中有 {off} GB 不会放到显卡上：llama.cpp 把 {ple} GB 的逐层嵌入表（PLE）保留在系统内存中，每个 token 只读取其中一行。",
     "barNoteOffGpuMtp": "{file} GB 文件中有 {off} GB 不会放到显卡上：llama.cpp 把输入嵌入表保留在系统内存中，并且默认不加载 {mtp} GB 的 MTP（多 token 预测）模块。开启 MTP 推测解码（llama.cpp --spec-type draft-mtp）需要额外的内存来存放这个模块及其 KV 缓存。",
     "barNoteOffGpuMtpUnused": "{file} GB 文件中有 {off} GB 不会放到显卡上：llama.cpp 把输入嵌入表保留在系统内存中，而且目前还不使用该模型 {mtp} GB 的 MTP（多 token 预测）模块，因此从不加载它。",
     "barNoteMtp": "上面的系统内存部分还计入了 {mtp} GB 的 MTP（多 token 预测）模块，而 llama.cpp 默认不加载它，所以这个数字偏保守。开启 MTP 推测解码（llama.cpp --spec-type draft-mtp）会加载该模块，并且还需要它的 KV 缓存。",

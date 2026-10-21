@@ -107,10 +107,10 @@ export function downloadsFields(downloads: unknown, asOf: string): { hfDownloads
 
 /**
  * 정수여도 소수점 1자리(.0)로 쓰는 float 필드 — 시드 표기 관행
- * (CLAUDE.md 스타일: 속도 tok/s 소수 1자리; fileGB·expertGB·nonExpertGB·offGpuGB·mtpGB/fp16Tflops 는 물리량 표식).
+ * (CLAUDE.md 스타일: 속도 tok/s 소수 1자리; fileGB·expertGB·nonExpertGB·offGpuGB·mtpGB·pleGB/fp16Tflops 는 물리량 표식).
  * 라운드트립 테스트가 시드 전 파일과의 바이트 일치를 강제한다.
  */
-const FLOAT_1DP_FIELDS = new Set(['fileGB', 'expertGB', 'nonExpertGB', 'offGpuGB', 'mtpGB', 'fp16Tflops', 'tgTokS']);
+const FLOAT_1DP_FIELDS = new Set(['fileGB', 'expertGB', 'nonExpertGB', 'offGpuGB', 'mtpGB', 'pleGB', 'fp16Tflops', 'tgTokS']);
 
 function stringifyInline(value: unknown, key?: string): string {
   if (typeof value === 'number') {

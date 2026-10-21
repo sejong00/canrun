@@ -225,6 +225,19 @@ describe('dense — per-row offGpuGB from the GGUF header (10-03 D62)', () => {
     expect(res.rows.map((r) => r.offGpuGB)).toEqual([undefined, undefined]);
     expect(res.warnings).toEqual([expect.stringContaining('측정한 파일 크기 6.5GB'), expect.stringContaining('25%')]);
   });
+
+  it('per-layer embedding table (Gemma 4 E4B, 10-21 D112): pleGB right after offGpuGB, the 25% cap applies to the rest only', async () => {
+    // unsloth gemma-4-E4B-it-Q4_K_M 헤더 실측: 파일 4.98 · GPU 밖 1.95(층별 임베딩 표 1.94 + 헤더) — 표는 파일의 39%
+    const e4b = { expertGB: 0, nonExpertGB: 3.02, offGpuGB: 1.95, pleGB: 1.94, mtpGB: 0, fileGB: 4.98, trunkLayers: 42 };
+    const res = await measureRows([{ ...row('Q4_K_M', 4.98), modelId: 'gemma-4-e4b' }], undefined, 42, () => Promise.resolve(e4b));
+    expect(res.warnings).toEqual([]);
+    expect(Object.keys(res.rows[0]!)).toEqual(['modelId', 'quant', 'fileGB', 'offGpuGB', 'pleGB', 'ggufRepo', 'fileName', 'sources']);
+    expect(res.rows[0]).toMatchObject({ offGpuGB: 1.95, pleGB: 1.94 });
+    // 표를 뺀 나머지가 25% 를 넘으면 여전히 다른 파일을 잰 것으로 본다
+    const odd = await measureRows([row('Q4_K_M', 4.98)], undefined, 42, () => Promise.resolve({ ...e4b, offGpuGB: 3.3 }));
+    expect(odd.rows[0]).not.toHaveProperty('pleGB');
+    expect(odd.warnings).toEqual([expect.stringContaining('층별 임베딩 표 1.94GB 제외')]);
+  });
 });
 
 describe('organization names for model-makers.ts (10-19 D101)', () => {

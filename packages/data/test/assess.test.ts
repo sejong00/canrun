@@ -24,6 +24,7 @@ import {
   unifiedCpuBandwidth,
   memBandwidthAt,
   verdictRank,
+  vramBreakdown,
   type ComboAssessment,
 } from '../src/index';
 import { scenarioSeed } from './scenario-models';
@@ -716,6 +717,40 @@ describe('그래픽카드에 올라가는 가중치로 full-gpu 판정 (10-03 D6
     expect(c.baseline.result.vram.weights).toBeCloseTo(4.92, 6);
     expect(c.baseline.memory.offGpuGB).toBe(0);
     expect(c.baseline.memory.totalNeedGB).toBeCloseTo(4.92 + c.baseline.result.vram.kv + c.baseline.result.vram.buffer, 9);
+  });
+});
+
+describe('Gemma 4 E4B·E2B — 층별 임베딩 표 (10-21 D112)', () => {
+  it('rtx-4060 × gemma-4-e4b: 상주 3.03GB 로 전량 탑재, 표 1.95GB 는 시스템 RAM 몫으로 보이고 이론 추정(±30%)', () => {
+    const c = combo('rtx-4060', 'gemma-4-e4b');
+    expect(c.baseline.quant).toBe('Q4_K_M');
+    expect(c.baseline.result).toMatchObject({ mode: 'full-gpu', verdict: 'S', confidence: 'theoretical' });
+    expect(c.baseline.result.vram.weights).toBeCloseTo(4.98 - 1.95, 6);
+    expect(c.baseline.pleGB).toBe(1.94);
+    expect(c.baseline.memory.offGpuGB).toBeCloseTo(1.95, 6);
+    expect(c.baseline.memory.ramGB).toBeCloseTo(1.95, 6);
+    expect(c.baseline.memory.needGB).toBeCloseTo(3.03 + 0.134 + 0.575, 2);
+    // 읽기 바이트 = 파일 − 표: (3.04 + 8k KV 0.134) ÷ (0.70 × 272) + 층별 임베딩 표 고정 시간(CUDA 1.35ms)
+    expect(c.baseline.result.tgTokS.est).toBeCloseTo(1 / ((4.98 - 1.94 + (16_384 * 8192) / 1e9) / (0.7 * 272) + 1.35e-3), 6);
+    // 표가 없는 dense 모델은 그대로 RAM 몫 0 (D62 각주만)
+    expect(combo('rtx-4060', 'llama-3.1-8b').baseline.memory.ramGB).toBe(0);
+    // 분해 바 각주는 입력 임베딩이 아니라 층별 임베딩 표를 말한다(D112 리뷰) — dGPU 전량 탑재만, 맥(통합 메모리)은 각주 없음
+    expect(vramBreakdown(c.baseline, 'gemma-4-e4b').note).toEqual({ fileGB: 4.98, offGpuGB: expect.closeTo(1.95, 6) as number, pleGB: 1.94 });
+    const mac = combo('apple-m4', 'gemma-4-e4b', 1);
+    expect(mac.baseline.result.mode).toBe('full-gpu');
+    expect(vramBreakdown(mac.baseline, 'gemma-4-e4b').note).toEqual({ fileGB: 4.98, offGpuGB: 0 });
+  });
+
+  it('rtx-5090 × E4B·E2B Q4_K_M: 공개 실측(Vulkan, 같은 unsloth 파일)이 조인된다', () => {
+    expect(combo('rtx-5090', 'gemma-4-e4b').baseline.result).toMatchObject({ confidence: 'measured', tgTokS: { est: 234 } });
+    expect(combo('rtx-5090', 'gemma-4-e2b').baseline.result).toMatchObject({ confidence: 'measured', tgTokS: { est: 341.8 } });
+  });
+
+  it('isTheoretical: arch.ple 모델은 GPU·모드와 무관하게 이론 추정, 다른 dense 모델은 그대로', () => {
+    for (const gpuId of ['rtx-4060', 'rtx-3060-12gb', 'apple-m4', 'cpu-ddr5-5600-2ch']) {
+      expect(combo(gpuId, 'gemma-4-e2b').baseline.result.confidence, gpuId).toBe('theoretical');
+    }
+    expect(combo('rtx-4060', 'gemma-4-12b').baseline.estimate.confidence).toBe('calibrated');
   });
 });
 

@@ -83,11 +83,11 @@ export type Change = {
   split?: SplitValues;
 };
 
-/** 행에 기록하는 헤더 실측 — MoE: expertGB·nonExpertGB, dense: offGpuGB. mtpGB 는 0 보다 클 때만 */
-export type SplitValues = { expertGB?: number; nonExpertGB?: number; offGpuGB?: number; mtpGB?: number };
+/** 행에 기록하는 헤더 실측 — MoE: expertGB·nonExpertGB, dense: offGpuGB(층별 임베딩 표가 있으면 pleGB 도 — 10-21 D112). mtpGB·pleGB 는 0 보다 클 때만 */
+export type SplitValues = { expertGB?: number; nonExpertGB?: number; offGpuGB?: number; pleGB?: number; mtpGB?: number };
 
 /** 행 하나의 헤더 측정 결과 (gguf-header.measureSplit 의 부분집합). fileGB = Content-Range 기준 파일 크기(알면) */
-export type MeasuredSplit = { expertGB: number; nonExpertGB: number; offGpuGB: number; mtpGB: number; fileGB?: number };
+export type MeasuredSplit = { expertGB: number; nonExpertGB: number; offGpuGB: number; pleGB?: number; mtpGB: number; fileGB?: number };
 
 /** 행 하나의 분할 측정 — 실행부는 gguf-header.measureSplit, 테스트는 모킹 */
 export type MeasureSplitFn = (repo: string, fileName: string) => Promise<MeasuredSplit>;
@@ -393,11 +393,14 @@ const fmtSplit = (v: SplitValues | undefined): string | undefined => {
   if (v === undefined) return undefined;
   const parts =
     v.offGpuGB !== undefined ? [`off-GPU ${v.offGpuGB}`] : [`expert ${String(v.expertGB)}`, `non-expert ${String(v.nonExpertGB)}`];
+  if (v.pleGB !== undefined) parts.push(`per-layer embedding ${v.pleGB}`);
   if (v.mtpGB !== undefined) parts.push(`MTP ${v.mtpGB}`);
   return parts.join(' / ');
 };
 
-const SPLIT_KEYS = ['expertGB', 'nonExpertGB', 'offGpuGB', 'mtpGB'] as const;
+const SPLIT_KEYS = ['expertGB', 'nonExpertGB', 'offGpuGB', 'pleGB', 'mtpGB'] as const;
+/** 새 측정에 없으면 옛 값을 지우는 키 — 0 일 때 기록하지 않는 값(MTP 블록·층별 임베딩 표) */
+const DROPPABLE_SPLIT_KEYS: ReadonlySet<string> = new Set(['pleGB', 'mtpGB']);
 
 const sameSplit = (a: SplitValues, b: SplitValues): boolean => SPLIT_KEYS.every((k) => a[k] === b[k]);
 
@@ -409,13 +412,15 @@ function recordedSplit(mq: ModelQuantRecord, moe: boolean): SplitValues | undefi
       ? { expertGB: mq.expertGB, nonExpertGB: mq.nonExpertGB, ...mtp }
       : undefined;
   }
-  return mq.offGpuGB !== undefined ? { offGpuGB: mq.offGpuGB, ...mtp } : undefined;
+  const ple = mq.pleGB !== undefined ? { pleGB: mq.pleGB } : {};
+  return mq.offGpuGB !== undefined ? { offGpuGB: mq.offGpuGB, ...ple, ...mtp } : undefined;
 }
 
 /** 측정 결과 → 행에 쓸 값 (MoE/dense 별 필드, MTP 는 있을 때만) */
 function toSplitValues(m: MeasuredSplit, moe: boolean): SplitValues {
   const mtp = m.mtpGB > 0 ? { mtpGB: m.mtpGB } : {};
-  return moe ? { expertGB: m.expertGB, nonExpertGB: m.nonExpertGB, ...mtp } : { offGpuGB: m.offGpuGB, ...mtp };
+  const ple = (m.pleGB ?? 0) > 0 ? { pleGB: m.pleGB } : {};
+  return moe ? { expertGB: m.expertGB, nonExpertGB: m.nonExpertGB, ...mtp } : { offGpuGB: m.offGpuGB, ...ple, ...mtp };
 }
 
 /** 기록하면 validateAll 이 거부할 측정 — 다른 파일을 잰 것으로 보고 보류한다. 문제 없으면 undefined */
@@ -424,7 +429,11 @@ function implausible(v: SplitValues, m: MeasuredSplit, fileGB: number): string |
     return `측정한 파일 크기 ${m.fileGB}GB ≠ fileGB ${fileGB}`;
   }
   if (v.offGpuGB !== undefined) {
-    return v.offGpuGB > fileGB * MAX_OFF_GPU_FRACTION ? `그래픽카드 밖 몫 ${v.offGpuGB}GB 가 fileGB ${fileGB} 의 25% 초과` : undefined;
+    // 층별 임베딩 표(PLE)는 상한 밖 — 나머지에만 건다 (validateAll 과 같은 규칙, 10-21 D112)
+    const other = v.offGpuGB - (v.pleGB ?? 0);
+    return other > fileGB * MAX_OFF_GPU_FRACTION
+      ? `그래픽카드 밖 몫 ${v.offGpuGB}GB${v.pleGB !== undefined ? `(층별 임베딩 표 ${v.pleGB}GB 제외)` : ''} 가 fileGB ${fileGB} 의 25% 초과`
+      : undefined;
   }
   const gpu = (v.expertGB ?? 0) + (v.nonExpertGB ?? 0);
   if (gpu > fileGB + 0.02) return `측정 합이 fileGB ${fileGB} 초과`;
@@ -577,7 +586,7 @@ export function applyChanges(changes: readonly Change[], input: SyncInput): void
     input.rawQuants.splice(at + 1, 0, { modelId, quant, fileGB, ggufRepo, fileName, sources: [hfUrl(ggufRepo)] });
   }
   // 헤더 실측 — 새 행까지 삽입된 뒤라 (modelId, quant) 로 찾는다. 키는 fileGB 바로 뒤
-  // (expertGB, nonExpertGB | offGpuGB, mtpGB). 새 측정에 MTP 가 없으면 옛 mtpGB 는 지운다
+  // (expertGB, nonExpertGB | offGpuGB, pleGB, mtpGB). 새 측정에 MTP·층별 임베딩 표가 없으면 옛 mtpGB·pleGB 는 지운다
   for (const change of changes) {
     if (!isSplitField(change.field) || change.split === undefined || change.kind !== 'auto') continue;
     const idx = input.rawQuants.findIndex(
@@ -589,7 +598,7 @@ export function applyChanges(changes: readonly Change[], input: SyncInput): void
     for (const key of SPLIT_KEYS) {
       const value = change.split[key];
       if (value === undefined) {
-        if (key === 'mtpGB' && key in raw) raw = Object.fromEntries(Object.entries(raw).filter(([k]) => k !== key));
+        if (DROPPABLE_SPLIT_KEYS.has(key) && key in raw) raw = Object.fromEntries(Object.entries(raw).filter(([k]) => k !== key));
         continue;
       }
       raw = withKeyAfter(raw, key, value, after);

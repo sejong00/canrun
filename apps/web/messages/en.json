@@ -954,6 +954,7 @@
     "barSummaryUnified": "{used} of {limit} GB used: {weights} GB weights, {kv} GB KV cache, {buffer} GB compute buffer; {free} GB free for the GPU, {unusable} GB not usable by the GPU.",
     "barSummaryRam": "{weights} GB of weights in system RAM out of {usable} GB usable.",
     "barNoteOffGpu": "{off} GB of the {file} GB file stays off the graphics card: llama.cpp keeps the input embedding table in system RAM.",
+    "barNoteOffGpuPle": "{off} GB of the {file} GB file stays off the graphics card: llama.cpp keeps the {ple} GB per-layer embedding table (PLE) in system RAM and reads just one row of it for each token.",
     "barNoteOffGpuMtp": "{off} GB of the {file} GB file stays off the graphics card: llama.cpp keeps the input embedding table in system RAM and does not load the {mtp} GB MTP (multi-token prediction) block by default. Turning on MTP speculative decoding (llama.cpp --spec-type draft-mtp) needs memory for that block plus KV cache for it.",
     "barNoteOffGpuMtpUnused": "{off} GB of the {file} GB file stays off the graphics card: llama.cpp keeps the input embedding table in system RAM, and it does not use this model’s {mtp} GB MTP (multi-token prediction) block yet, so it never loads it.",
     "barNoteMtp": "The system RAM share above also counts the {mtp} GB MTP (multi-token prediction) block, which llama.cpp does not load by default, so it errs on the safe side. Turning on MTP speculative decoding (llama.cpp --spec-type draft-mtp) loads that block and needs KV cache for it too.",

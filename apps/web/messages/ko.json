@@ -954,6 +954,7 @@
     "barSummaryUnified": "{limit}GB 중 {used}GB 사용: 가중치 {weights}GB, KV 캐시 {kv}GB, 연산 버퍼 {buffer}GB, GPU 여유 {free}GB, GPU가 못 쓰는 영역 {unusable}GB.",
     "barSummaryRam": "시스템 RAM 사용 가능 {usable}GB 중 가중치 {weights}GB.",
     "barNoteOffGpu": "{file}GB 파일 가운데 {off}GB는 그래픽카드에 올라가지 않습니다. llama.cpp가 입력 임베딩 표를 시스템 RAM에 두기 때문입니다.",
+    "barNoteOffGpuPle": "{file}GB 파일 가운데 {off}GB는 그래픽카드에 올라가지 않습니다. llama.cpp가 {ple}GB 크기의 층별 임베딩 표(PLE)를 시스템 RAM에 두고, 토큰마다 그 표에서 한 줄만 읽기 때문입니다.",
     "barNoteOffGpuMtp": "{file}GB 파일 가운데 {off}GB는 그래픽카드에 올라가지 않습니다. llama.cpp는 입력 임베딩 표를 시스템 RAM에 두고, MTP(다중 토큰 예측) 블록 {mtp}GB는 기본 설정에서 불러오지 않습니다. MTP 추측 디코딩(llama.cpp --spec-type draft-mtp)을 켜면 이 블록과 MTP용 KV 캐시만큼 메모리가 더 듭니다.",
     "barNoteOffGpuMtpUnused": "{file}GB 파일 가운데 {off}GB는 그래픽카드에 올라가지 않습니다. llama.cpp는 입력 임베딩 표를 시스템 RAM에 두고, 이 모델의 MTP(다중 토큰 예측) 블록 {mtp}GB는 아직 쓰지 않아 불러오지 않습니다.",
     "barNoteMtp": "위 시스템 RAM 몫에는 기본 설정에서 불러오지 않는 MTP(다중 토큰 예측) 블록 {mtp}GB도 넣어 넉넉하게 잡았습니다. MTP 추측 디코딩(llama.cpp --spec-type draft-mtp)을 켜면 이 블록을 불러오고 MTP용 KV 캐시도 더 듭니다.",

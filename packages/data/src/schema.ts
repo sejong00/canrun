@@ -221,6 +221,11 @@ export const ModelSchema = z
        * 엔진의 전문가 층 수(moeLayers)가 이 길이가 되고, `--n-cpu-moe` 값은 N 번째 전문가 층까지 덮는 블록 수로 바꾼다(snippet.ts).
        */
       expertLayers: z.array(z.number().int().nonnegative()).min(1).optional(),
+      /**
+       * 층별 임베딩 표(PLE — config `hidden_size_per_layer_input` > 0, Gemma 4 E2B·E4B — 10-21 D112)가 있는 dense 모델.
+       * 헤더 실측 행은 `pleGB` 를 갖는다(validateAll). 속도 모델이 검증되지 않은 구조라 추정은 이론 추정(assess `isTheoretical`)
+       */
+      ple: z.literal(true).optional(),
     }),
     /**
      * 비-full attention(swa/mla/hybrid) KV 수동 고정 — docs/03 §5.1 "수동 필드 우선".
@@ -355,9 +360,17 @@ export const ModelQuantSchema = z
      * dense 전용 — 파일 중 llama.cpp 가 그래픽카드에 올리지 않는 GB (GGUF 헤더 실측, scripts/gguf-header.ts, 10-03 D62).
      * 입력 임베딩(token_embd — 입력층은 항상 CPU, 임베딩 공유 모델은 출력층 사본이 GPU 에 가서 ≈0)·기본 미적재 MTP/NextN
      * 블록·헤더 메타데이터. dGPU full-gpu 필요량은 fileGB − 이 값(docs/02 §2.4-1). MoE 행은 fileGB − expertGB − nonExpertGB 로
-     * 같은 값을 유도하므로 두지 않는다. 없으면 파일 전체(보수). dense 만·0 ≤ 값 ≤ 0.25×fileGB 는 validateAll.
+     * 같은 값을 유도하므로 두지 않는다. 없으면 파일 전체(보수). dense 만·0 ≤ 값 ≤ 0.25×fileGB 는 validateAll
+     * (층별 임베딩 표가 있는 행은 값 − pleGB 에 상한 — 10-21 D112).
      */
     offGpuGB: z.number().nonnegative().optional(),
+    /**
+     * dense 전용 — 층별 임베딩 표 `per_layer_token_embd`(PLE, Gemma 4 E2B·E4B — 10-21 D112) GB (GGUF 헤더 실측). 입력층이라
+     * llama.cpp 가 늘 시스템 RAM 에 두므로 offGpuGB 안에 들어 있고(아래 refine: offGpuGB 와 함께 · ≤ offGpuGB), 토큰마다 한 줄만
+     * 읽어(get_rows) 엔진 속도식이 읽기 바이트에서 뺀다(docs/02 §3.1). GPU 밖 몫 25% 상한은 offGpuGB − 이 값에 건다(validateAll).
+     * 모델 `arch.ple` 인 모델의 행만.
+     */
+    pleGB: z.number().positive().optional(),
     /**
      * MTP/NextN 블록 GB (헤더 실측, 0 보다 클 때만) — llama.cpp 는 `--spec-type draft-mtp` 로 켤 때만 불러온다. 필요량에서는
      * 이미 빠져 있고(offGpuGB·MoE 분할), 화면은 "켜면 이만큼 + 그 KV 가 더 든다"고 안내한다. 측정 행(offGpuGB 또는 분할)에만.
@@ -380,6 +393,12 @@ export const ModelQuantSchema = z
       ctx.addIssue({
         code: 'custom',
         message: `${mq.modelId}/${mq.quant}: expertGB and nonExpertGB must be set together`,
+      });
+    }
+    if (mq.pleGB !== undefined && (mq.offGpuGB === undefined || mq.pleGB > mq.offGpuGB)) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `${mq.modelId}/${mq.quant}: pleGB needs offGpuGB from the same header measurement and must not exceed it`,
       });
     }
   });
