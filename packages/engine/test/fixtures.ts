@@ -958,7 +958,7 @@ export const NANBEIGE42_Q4: ModelQuant = nanbeige42(2.68, 1.97, 0.29, 'Q4_K_M');
 // https://huggingface.co/owao/Nanbeige4.2-3B-GGUF/resolve/main/Nanbeige4.2-3B-Q4_K_M.gguf — 블록 1,865,048,064 B, 텐서 합 2,570,840,064 B = llama-bench "2.39 GiB"
 // (Steam Deck 점의 파일 — 출처 표의 파일 이름·크기로 특정: 2.39 GiB 는 bartowski 판 2.50 GiB 가 아니라 이 계열)
 export const NANBEIGE42_Q4_OWAO: ModelQuant = nanbeige42(2.57, 1.87, 0.29, 'Q4_K_M');
-/** 같은 기기·같은 빌드 폴더의 Llama 2 7B Q4_0(출처 표는 합본 — 이 행은 b10360 48d22e295 단독 실행과 ± 까지 같다) — llama-bench 표기 3.56 GiB, MHA 32층 × kv 32 × 128 × 4 = 524,288 B/tok. Q4_0 은 QuantId 밖이라 표기만 Q4_K_M(속도식은 fileGB 만 읽는다) */
+/** 같은 기기의 Llama 2 7B Q4_0(출처 표는 합본 — 이 행은 b10360 48d22e295 단독 실행과 ± 까지 같다) — llama-bench 표기 3.56 GiB, MHA 32층 × kv 32 × 128 × 4 = 524,288 B/tok. Q4_0 은 QuantId 밖이라 표기만 Q4_K_M(속도식은 fileGB 만 읽는다) */
 const LLAMA2_7B_Q40_DECK: ModelQuant = {
   paramsB: 6.74, fileGB: 3.56 * 1.073741824, quant: 'Q4_K_M', kvBytesPerToken: 524_288, attnType: 'full', maxContext: 4096,
 };
@@ -967,7 +967,7 @@ export type LoopRatioCase = {
   label: string;
   /** llama-bench -fa */
   fa: 0 | 1;
-  /** 같은 표(같은 기기·같은 빌드 폴더)의 tg128 tok/s — 반복 모델 ÷ 기준 모델이 실측 비 */
+  /** 같은 표(같은 기기)의 tg128 tok/s — 반복 모델 ÷ 기준 모델이 실측 비 */
   measured: { loop: number; reference: number };
   /** pp512 tok/s (참고 — rough ±40% 라벨 대조) */
   measuredPp: { loop: number; reference: number };
@@ -976,7 +976,7 @@ export type LoopRatioCase = {
 };
 
 /**
- * 같은 기기 비율 — Steam Deck(Van Gogh APU, RADV Vulkan) llama-bench b10360(48d22e295, -ngl 100 -fa 0,1)에서 Llama 2 7B Q4_0 와 Nanbeige4.2-3B Q4_K_M 을
+ * 같은 기기 비율 — Steam Deck(Van Gogh APU, RADV Vulkan) llama-bench(-ngl 100 -fa 0,1 — 빌드 b10360(48d22e295)은 Llama 2 단독 실행에만 적혀 있어 Nanbeige 행은 같은 빌드로 추정)에서 Llama 2 7B Q4_0 와 Nanbeige4.2-3B Q4_K_M 을
  * 함께 잰 결과를 모은 표(https://github.com/ggml-org/llama.cpp/discussions/10879#discussioncomment-18099068, 2026-08-20 — 합본). 대역폭·클래스 계수가 비에서 지워져
  * 카탈로그 밖 기기라도 읽기 바이트 식만 대조된다(benchmarks.json 에는 넣지 않는다 — gpuId 가 없는 캘리브레이션 점이라 사이트에 조인되지 않고,
  * 비율 대조는 레코드 하나로 표현되지 않는다). tg128 은 깊이 0 에서 128 토큰 — KV 읽기는 평균 64 토큰
@@ -985,6 +985,6 @@ export const LOOP_RATIO_REFERENCE = LLAMA2_7B_Q40_DECK;
 export const LOOP_RATIO_CTX = 64;
 export const LOOP_RATIO_SOURCE = 'https://github.com/ggml-org/llama.cpp/discussions/10879#discussioncomment-18099068';
 export const LOOP_RATIO_CASES: readonly LoopRatioCase[] = [
-  { label: 'Steam Deck Vulkan b10360 fa 1', fa: 1, measured: { loop: 16.36, reference: 18.40 }, measuredPp: { loop: 126.28, reference: 164.34 }, recordedErr: { formula: -0.026, noLoops: 0.68, wholeFile: -0.158 } },
-  { label: 'Steam Deck Vulkan b10360 fa 0', fa: 0, measured: { loop: 15.27, reference: 17.52 }, measuredPp: { loop: 123.81, reference: 144.31 }, recordedErr: { formula: -0.006, noLoops: 0.714, wholeFile: -0.141 } },
+  { label: 'Steam Deck Vulkan (b10360 추정) fa 1', fa: 1, measured: { loop: 16.36, reference: 18.40 }, measuredPp: { loop: 126.28, reference: 164.34 }, recordedErr: { formula: -0.026, noLoops: 0.68, wholeFile: -0.158 } },
+  { label: 'Steam Deck Vulkan (b10360 추정) fa 0', fa: 0, measured: { loop: 15.27, reference: 17.52 }, measuredPp: { loop: 123.81, reference: 144.31 }, recordedErr: { formula: -0.006, noLoops: 0.714, wholeFile: -0.141 } },
 ];
