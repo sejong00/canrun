@@ -568,9 +568,11 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
   },
   'deepseek-local': {
     ...PUBLISHED_1019,
+    // 10-21 D115: 'V4 는 계산하지 않음' → DeepSeek V4 Flash 0731 계산(큰 메모리 맥·여러 장·MoE 전문가 RAM 배치 <Expect>, KV 표·확실성 문단)
+    dateModified: '2026-10-21',
     grids: {
       // 8~32GB dGPU 6종 × R1 소형 4종 — 0528-qwen3-8b 는 Ollama deepseek-r1 기본 태그, distill-14b 는 :14b (10-19 추가).
-      // 원본 R1·V3·V4 는 카탈로그 밖이라 모델 카드 출처의 산문으로만
+      // 원본 R1·V3·V4-Pro 는 카탈로그 밖이라 모델 카드 출처의 산문으로만. V4 Flash 0731(10-21 D115)은 6장 모두 32GB RAM 에서 안 들어가 그리드에 넣지 않고 산문 <Expect> 로
       deepseek: {
         gpus: ['rtx-4060', 'rtx-3060-12gb', 'rtx-5060-ti-16gb', 'rtx-3090', 'rtx-4090', 'rtx-5090'],
         models: ['deepseek-r1-0528-qwen3-8b', 'deepseek-r1-distill-8b', 'deepseek-r1-distill-14b', 'deepseek-r1-distill-32b'],
@@ -581,12 +583,12 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
       en: {
         title: 'Running DeepSeek locally: hardware requirements for the R1 distills and the full model',
         description:
-          'Which DeepSeek R1 models run on a home PC: VRAM for the 8B, 14B and 32B distills, why long reasoning needs context memory, and why the full R1 is out of reach.',
+          'Which DeepSeek models run on a home PC: VRAM for the 8B, 14B and 32B distills, context memory for long reasoning, and the memory DeepSeek V4 Flash needs.',
       },
       ko: {
         title: '딥시크(DeepSeek) 로컬 사양 — R1 증류 모델 8B·14B·32B와 원본 R1을 돌리려면',
         description:
-          '딥시크 R1을 내 PC에서 돌릴 때 필요한 사양을 정리했습니다. 증류 모델 8B·14B·32B의 VRAM, 긴 추론에 드는 컨텍스트 메모리, 원본 R1이 가정용 PC로 어려운 이유를 다룹니다.',
+          '딥시크 모델을 내 PC에서 돌릴 때 필요한 사양을 정리했습니다. 증류 모델 8B·14B·32B의 VRAM, 긴 추론에 드는 컨텍스트 메모리, DeepSeek V4 Flash에 필요한 메모리를 다룹니다.',
       },
     },
   },

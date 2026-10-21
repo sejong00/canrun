@@ -15,6 +15,7 @@ export const MODEL_ABOUT = {
   'deepseek-r1-distill-14b': '2026-10-19',
   'deepseek-r1-distill-32b': '2026-10-19',
   'deepseek-r1-distill-8b': '2026-10-19',
+  'deepseek-v4-flash-0731': '2026-10-21',
   'exaone-4.0-1.2b': '2026-10-19',
   'exaone-4.0-32b': '2026-10-19',
   'exaone-4.5-33b': '2026-10-19',

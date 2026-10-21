@@ -2,6 +2,14 @@ CanRun은 자주 바뀝니다. 새 모델이 들어오고, 계산기에 기능�
 
 ## 바뀐 기능과 고친 계산
 
+<Update id="compressed-attention">
+
+### 압축 어텐션 모델도 계산합니다
+
+<SiteLink to="/model/deepseek-v4-flash-0731">DeepSeek V4 Flash 0731</SiteLink>은 층마다 KV 캐시를 여러 토큰씩 묶어 압축해 저장하는 모델인데, 이제 이 구조도 계산하고 모델 페이지에 압축 어텐션이라고 표시합니다. KV 캐시는 llama.cpp가 실제로 잡는 방식대로 세서 긴 컨텍스트에서도 가중치 말고는 메모리가 많이 늘지 않고, 그날 8k 컨텍스트에서 M3 Ultra 256GB는 MXFP4 파일이 GPU에 전부 올라간다고 계산됐습니다. Q4_K_M 파일이 없는 GGUF 저장소는 이제 MXFP4를 기준 양자화로 쓰고, 계산기에서 Hugging Face 모델을 불러올 때도 같습니다. 이 모델이 층마다 더 하는 연산은 속도식에 들어 있지 않고, 지금 llama.cpp 빌드로 잰 공개 실측 한 건도 추정보다 느렸습니다. 그래서 이 모델은 모든 조합을 이론 추정으로 표시합니다.
+
+</Update>
+
 <Update id="looped-layers">
 
 ### 같은 층을 되풀이해 쓰는 모델도 계산합니다

@@ -1,8 +1,8 @@
-딥시크 모델 가운데 집에 있는 PC로 돌릴 수 있는 것은 작은 R1 증류(distill) 모델입니다. R1이 만든 답변으로 Qwen·Llama 모델을 학습시킨 dense 모델이며, 이 글은 8B~32B를 다룹니다. `ollama run deepseek-r1`로 받는 DeepSeek R1 0528 Qwen3 8B는 8k 컨텍스트에서 8GB인 RTX 4060에 다 들어갑니다<Expect model="deepseek-r1-0528-qwen3-8b" gpu="rtx-4060" fits="true" mode="full-gpu" />. 14B 증류 모델은 RTX 3060 12GB에<Expect model="deepseek-r1-distill-14b" gpu="rtx-3060-12gb" fits="true" mode="full-gpu" />, 32B 증류 모델은 24GB인 RTX 3090에 전부 들어갑니다<Expect model="deepseek-r1-distill-32b" gpu="rtx-3090" fits="true" mode="full-gpu" />. 원본 DeepSeek-R1과 V3·V4는 파라미터가 수천억 개를 넘는 MoE 모델이라, CanRun은 계산하지 않습니다.
+딥시크 모델 가운데 집에 있는 PC로 돌릴 수 있는 것은 작은 R1 증류(distill) 모델입니다. R1이 만든 답변으로 Qwen·Llama 모델을 학습시킨 dense 모델이며, 이 글은 8B~32B를 다룹니다. `ollama run deepseek-r1`로 받는 DeepSeek R1 0528 Qwen3 8B는 8k 컨텍스트에서 8GB인 RTX 4060에 다 들어갑니다<Expect model="deepseek-r1-0528-qwen3-8b" gpu="rtx-4060" fits="true" mode="full-gpu" />. 14B 증류 모델은 RTX 3060 12GB에<Expect model="deepseek-r1-distill-14b" gpu="rtx-3060-12gb" fits="true" mode="full-gpu" />, 32B 증류 모델은 24GB인 RTX 3090에 전부 들어갑니다<Expect model="deepseek-r1-distill-32b" gpu="rtx-3090" fits="true" mode="full-gpu" />. 원본 DeepSeek-R1과 V3는 파라미터가 수천억 개인 MoE 모델이라 CanRun이 계산하지 않습니다. DeepSeek V4 Flash 0731은 계산합니다. M3 Ultra 256GB인 Mac Studio에는 MXFP4 파일이 GPU에 전부 들어가지만<Expect model="deepseek-v4-flash-0731" gpu="apple-m3-ultra" ram="256" fits="true" mode="full-gpu" />, 8GB인 RTX 4060과 RAM 32GB로는 어느 파일도 들어가지 않습니다<Expect model="deepseek-v4-flash-0731" gpu="rtx-4060" fits="false" /><Expect model="deepseek-v4-flash-0731" gpu="rtx-4060" quant="Q2_K" fits="false" />.
 
 ## 내 PC에서 돌릴 수 있는 딥시크 모델
 
-흔히 딥시크라고 하면 2025년 1월에 나온 원본 DeepSeek-R1을 떠올립니다. 모델 카드에 따르면 원본 R1은 DeepSeek-V3-Base를 바탕으로 학습한 MoE(전문가 혼합) 모델입니다. 전체 파라미터 671B 가운데 토큰마다 37B를 쓰고, 컨텍스트는 128k입니다. 2024년 12월에 나온 DeepSeek-V3도 전체 671B, 활성 37B로 크기가 같습니다. V4 시리즈는 모델 카드에 미리 보기(preview) 버전으로 소개돼 있습니다. V4-Pro는 전체 1.6T(활성 49B), V4-Flash는 전체 284B(활성 13B)이고, 컨텍스트는 둘 다 1M입니다. CanRun은 이 모델들을 계산하지 않습니다.
+흔히 딥시크라고 하면 2025년 1월에 나온 원본 DeepSeek-R1을 떠올립니다. 모델 카드에 따르면 원본 R1은 DeepSeek-V3-Base를 바탕으로 학습한 MoE(전문가 혼합) 모델입니다. 전체 파라미터 671B 가운데 토큰마다 37B를 쓰고, 컨텍스트는 128k입니다. 2024년 12월에 나온 DeepSeek-V3도 전체 671B, 활성 37B로 크기가 같습니다. V4 시리즈는 처음에 미리 보기(preview) 버전으로 나왔습니다. 그 모델 카드에 따르면 V4-Pro는 전체 1.6T(활성 49B), V4-Flash는 전체 284B(활성 13B)이고, 컨텍스트는 둘 다 1M입니다. DeepSeek는 2026년 7월에 같은 구조의 정식판 DeepSeek-V4-Flash-0731을 내놓았습니다. CanRun은 이 모델을 <HubLink model="deepseek-v4-flash-0731" />로 계산하고, 아래에서 따로 다룹니다. 원본 R1·V3와 V4-Pro는 계산하지 않습니다.
 
 증류 모델은 원본 R1을 줄인 모델이 아닙니다. DeepSeek는 R1이 생성한 샘플로 다른 오픈 모델을 파인튜닝했습니다. 바탕 모델은 Qwen2.5-14B·Qwen2.5-32B와 Llama-3.1-8B 등입니다. 2025년 1월에는 1.5B·7B·8B·14B·32B·70B 증류 모델 여섯 개를 공개했습니다. 5월에는 R1-0528의 생각 과정으로 Qwen3 8B Base를 추가 학습한 모델이 나왔습니다. 카드에 따르면 구조는 Qwen3-8B와 똑같습니다. CanRun은 이 가운데 네 모델을 계산합니다. 8B급은 <HubLink model="deepseek-r1-0528-qwen3-8b" />와 <HubLink model="deepseek-r1-distill-8b" />입니다. 그보다 큰 모델은 <HubLink model="deepseek-r1-distill-14b" />와 <HubLink model="deepseek-r1-distill-32b" />입니다.
 
@@ -111,17 +111,37 @@ CanRun 계산으로는 이 설정이면 DeepSeek R1 0528 Qwen3 8B가 RTX 4060에
 
 macOS·Linux에서 한 번만 띄울 때는 `OLLAMA_CONTEXT_LENGTH=16384 OLLAMA_FLASH_ATTENTION=1 OLLAMA_KV_CACHE_TYPE=q8_0 ollama serve`라고 씁니다. Windows에서 계속 쓰려면 ‘계정의 환경 변수 편집’에 세 변수를 넣고 Ollama를 다시 시작하세요. 관리자 권한은 필요 없습니다. 모델을 띄운 뒤에는 `ollama ps`를 실행하세요. PROCESSOR 열에 `100% GPU`가 나오면 GPU에 전부 올라간 것입니다. CONTEXT 열에는 실제로 쓰는 컨텍스트 길이가 나옵니다. KV 캐시 양자화는 ‘<GuideLink slug="kv-cache-context" />’ 가이드에서 더 자세히 다룹니다. GPU에 다 올라갔는지 보는 방법은 ‘<GuideLink slug="gpu-offload-check" />’ 가이드에 있습니다.
 
+## DeepSeek V4 Flash — 큰 메모리 맥, 그래픽카드 여러 장, 시스템 RAM에 전문가 두기
+
+CanRun이 계산하는 원본 크기 딥시크 모델은 <HubLink model="deepseek-v4-flash-0731" /> 하나입니다. 전문가가 처음부터 4비트 FP4로 나오는 MoE 모델이라, Q4_K_M 파일을 올린 GGUF 저장소가 없습니다. 그래서 CanRun은 llama.cpp 팀(ggml-org)이 올린 MXFP4 파일(<Num kind="fileGB" model="deepseek-v4-flash-0731" />)을 기준으로 씁니다. 같은 저장소에는 손실 큼 등급인 Q2_K 파일(<Num kind="fileGB" model="deepseek-v4-flash-0731" quant="Q2_K" />)도 있습니다. 두 파일 모두 두 조각으로 나뉘어 있습니다. `llama-server -hf ggml-org/DeepSeek-V4-Flash-0731-GGUF:MXFP4`는 두 조각을 함께 받고, 따로 있는 DSpark 초안 파일은 받지 않습니다. Ollama는 Hugging Face에서 나뉜 파일을 받지 못하므로, 이 모델의 CanRun 페이지에는 llama.cpp 명령만 나옵니다.
+
+이 모델의 어텐션은 압축 방식입니다. 대부분의 층이 토큰 4개 또는 128개의 키를 한 칸에 묶어 저장하고, llama.cpp는 값(V)을 따로 두지 않습니다. 그래서 KV 캐시가 작습니다. f16 KV 캐시로 128k를 잡아도 <Num kind="kvGB" model="deepseek-v4-flash-0731" ctx="131072" />이면 됩니다. 같은 조건에서 32B 증류 모델은 <Num kind="kvGB" model="deepseek-r1-distill-32b" ctx="131072" />가 듭니다.
+
+<KvPerTokenTable models="deepseek-v4-flash-0731,deepseek-r1-distill-32b" ctxs="8192,131072,1048576" />
+
+CanRun은 압축 캐시와 그 옆의 작은 색인(인덱서) 캐시를 llama.cpp가 잡는 방식 그대로 셉니다. 모든 층은 최근 토큰 128개를 압축하지 않고 따로 들고 있습니다. 이 부분은 컨텍스트가 길어져도 커지지 않아서 연산 버퍼 추정에 맡깁니다.
+
+M3 Ultra 256GB인 Mac Studio에서는 MXFP4 파일이 GPU가 쓸 수 있는 메모리에 전부 들어가 쾌적하게 돌아갑니다<Expect model="deepseek-v4-flash-0731" gpu="apple-m3-ultra" ram="256" verdict="S" mode="full-gpu" confidence="theoretical" />. 이 속도는 이론 추정입니다. 512GB 구성도<Expect model="deepseek-v4-flash-0731" gpu="apple-m3-ultra" ram="512" verdict="S" mode="full-gpu" />, M5 Ultra 256GB도 마찬가지로 쾌적하게 돌아가고, 역시 이론 추정입니다<Expect model="deepseek-v4-flash-0731" gpu="apple-m5-ultra" ram="256" verdict="S" mode="full-gpu" />. M2 Ultra 192GB는 경계에 있습니다. CanRun은 통합 메모리의 70%를 GPU 몫으로 잡습니다. 이만한 맥에서 macOS가 기본으로 내주는 약 4분의 3도 MXFP4 파일에는 모자랍니다. 그래서 CanRun은 이 파일을 CPU로 돌린다고 보고, 겨우 돌아간다고 계산합니다(이론 추정)<Expect model="deepseek-v4-flash-0731" gpu="apple-m2-ultra" ram="192" verdict="B" mode="cpu-only" />. 같은 맥에서 Q2_K 파일은 GPU에 전부 들어가 쾌적하게 돌아가며, 이 속도도 이론 추정입니다<Expect model="deepseek-v4-flash-0731" gpu="apple-m2-ultra" ram="192" quant="Q2_K" verdict="S" mode="full-gpu" />. `sudo sysctl iogpu.wired_limit_mb=`로 한도를 올리면 llama.cpp가 MXFP4도 GPU에 올릴 수 있지만, CanRun 판정은 그 경우를 가정하지 않습니다. 명령과 macOS 메모리를 너무 적게 남길 때의 위험은 ‘<GuideLink slug="mac-local-llm" />’ 가이드에 있습니다.
+
+통합 메모리 128GB로는 MXFP4를 올리기에 모자랍니다. NVIDIA DGX Spark와 Ryzen AI Max+ 395 128GB에는 MXFP4 파일이 아예 들어가지 않습니다<Expect model="deepseek-v4-flash-0731" gpu="nvidia-dgx-spark" fits="false" /><Expect model="deepseek-v4-flash-0731" gpu="amd-strix-halo" ram="128" fits="false" />. Q2_K 파일은 CPU로만 돌릴 수 있고, 겨우 돌아간다고 계산합니다(이론 추정)<Expect model="deepseek-v4-flash-0731" gpu="nvidia-dgx-spark" quant="Q2_K" verdict="B" mode="cpu-only" /><Expect model="deepseek-v4-flash-0731" gpu="amd-strix-halo" ram="128" quant="Q2_K" verdict="B" mode="cpu-only" />.
+
+그래픽카드로 돌리면 전문가 대부분을 시스템 RAM에 둡니다. 카드에는 어텐션과 공유 전문가, 그리고 들어가는 만큼의 전문가 층이 올라갑니다. 시스템 RAM이 128GB면 RTX 5090이 있어도 MXFP4 파일은 들어가지 않습니다<Expect model="deepseek-v4-flash-0731" gpu="rtx-5090" ram="128" fits="false" />. RAM에 남는 전문가가 쓸 수 있는 RAM보다 크기 때문입니다. Q2_K 파일은 RTX 5090이나 RTX 4090에 RAM 128GB면 들어갑니다. 전문가 대부분을 RAM에 두고 겨우 돌아가며, 이 속도는 이론 추정입니다<Expect model="deepseek-v4-flash-0731" gpu="rtx-5090" ram="128" quant="Q2_K" verdict="B" mode="cpu-moe" confidence="theoretical" /><Expect model="deepseek-v4-flash-0731" gpu="rtx-4090" ram="128" quant="Q2_K" verdict="B" mode="cpu-moe" />. CanRun 계산기에서 시스템 RAM을 192GB로 두면 두 카드 모두 MXFP4도 들어가 겨우 돌아가고, 역시 이론 추정입니다.
+
+그래픽카드를 여러 장 쓰면 카드에 올리는 전문가가 늘어납니다. CanRun 계산기에서 RTX 5090 네 장에 시스템 RAM 64GB를 두면, 8k에서 Q2_K 파일 전체가 카드에 들어가 쾌적하게 돌아갑니다. MXFP4는 전문가 일부를 RAM에 둔 채 원활하게 돌아갑니다. RTX 3090 네 장에 RAM 128GB라면 Q2_K는 원활하게, MXFP4는 겨우 돌아갑니다. 여러 장 결과는 모두 이론 추정이고, 카드마다 나누는 몫은 llama.cpp의 `--fit`이 정합니다. 카드끼리 일을 나누는 방식은 ‘<GuideLink slug="multi-gpu" />’ 가이드에서 다룹니다.
+
 ## 이 숫자는 얼마나 확실한가
 
 메모리 수치는 실제 GGUF 파일 크기와 헤더, 모델 설정 파일로 계산한 값이라 오차 범위를 붙이지 않습니다.
 
-속도는 보정된 추정입니다. NVIDIA 카드에 전부 올리면 ±12%, 일부를 시스템 RAM에 두면 ±20%입니다. RTX 3090에서 원활하게 돌아가는 32B 증류 모델은 GPU에 전부 올라가므로 ±12%입니다<Expect model="deepseek-r1-distill-32b" gpu="rtx-3090" verdict="A" mode="full-gpu" confidence="calibrated" />. RTX 4060에서 겨우 돌아가는 14B 증류 모델은 일부를 RAM에 두므로 ±20%입니다<Expect model="deepseek-r1-distill-14b" gpu="rtx-4060" verdict="B" mode="partial-offload" confidence="calibrated" />. CanRun 데이터에는 이 DeepSeek 모델들의 공개 벤치마크 결과가 없어서, ‘실측’ 라벨이 붙은 칸이 없습니다.
+증류 모델 네 개의 속도는 보정된 추정입니다. NVIDIA 카드에 전부 올리면 ±12%, 일부를 시스템 RAM에 두면 ±20%입니다. RTX 3090에서 원활하게 돌아가는 32B 증류 모델은 GPU에 전부 올라가므로 ±12%입니다<Expect model="deepseek-r1-distill-32b" gpu="rtx-3090" verdict="A" mode="full-gpu" confidence="calibrated" />. RTX 4060에서 겨우 돌아가는 14B 증류 모델은 일부를 RAM에 두므로 ±20%입니다<Expect model="deepseek-r1-distill-14b" gpu="rtx-4060" verdict="B" mode="partial-offload" confidence="calibrated" />. CanRun 데이터에는 이 DeepSeek 모델들에 붙인 공개 벤치마크 결과가 없어서, ‘실측’ 라벨이 붙은 칸이 없습니다.
+
+DeepSeek V4 Flash는 모든 칸이 이론 추정(±30%)입니다<Expect model="deepseek-v4-flash-0731" gpu="apple-m3-ultra" ram="256" fits="true" confidence="theoretical" />. 압축 어텐션과, 층마다 입력을 섞는 하이퍼 커넥션이 하는 연산을 CanRun 속도식이 세지 않기 때문입니다. 지금 llama.cpp 빌드로 잰 공개 결과는 M2 Ultra에서 잰 한 건뿐입니다. 그 결과와 비교하면 CanRun 추정이 실제로 잰 속도보다 4분의 1쯤 높았습니다. 같은 맥에서 8월 빌드로 잰 결과는 빈 컨텍스트에서 30k까지 가는 동안 5분의 1쯤 느려졌지만, CanRun 추정은 거의 그대로입니다. 그래서 긴 컨텍스트 칸은 실제보다 낙관적입니다. 2026년 8월 이전 빌드는 맥에서 훨씬 느렸습니다.
 
 가장 불확실한 부분은 CanRun이 정책으로 정한 생각 모드 1.5배 기준입니다. 엄격해진 기준선에 바짝 붙은 결과도 여럿 있습니다. RTX 3090과 RTX 4090에서 돌린 32B 증류 모델이 그렇습니다. RTX 5060 Ti 16GB에서 Q4_K_M과 IQ4_XS로 받은 14B 증류 모델도 마찬가지입니다. RTX 4060의 DeepSeek R1 0528 Qwen3 8B도 기준선 가까이에 있습니다. RTX 3090에서 32k·q8_0으로 돌린 32B 증류 모델도 그렇습니다. 이런 결과는 실제 속도가 몇 퍼센트만 달라도 한 단계씩 바뀔 수 있습니다.
 
-표의 값은 다음 조건을 가정합니다. Windows에서 그 카드가 화면 출력도 맡고, 시스템 RAM은 32GB(DDR5-5600 듀얼 채널)입니다. 8k 컨텍스트와 f16 KV 캐시로 모델 하나를 띄우고, 요청은 한 번에 하나만 처리합니다. Ollama 라이브러리 파일은 CanRun이 계산에 쓰는 커뮤니티 GGUF와 크기가 조금 다릅니다. 내 PC에서 실제로 어떻게 올라갔는지는 `ollama ps`로 확인하세요. 원본 R1과 V3·V4는 CanRun 계산에 들어 있지 않습니다.
+표의 값은 다음 조건을 가정합니다. Windows에서 그 카드가 화면 출력도 맡고, 시스템 RAM은 32GB(DDR5-5600 듀얼 채널)입니다. 8k 컨텍스트와 f16 KV 캐시로 모델 하나를 띄우고, 요청은 한 번에 하나만 처리합니다. Ollama 라이브러리 파일은 CanRun이 계산에 쓰는 커뮤니티 GGUF와 크기가 조금 다릅니다. 내 PC에서 실제로 어떻게 올라갔는지는 `ollama ps`로 확인하세요. 원본 R1과 V3, V4-Pro는 CanRun 계산에 들어 있지 않습니다.
 
-생각 모드가 있는 모델에는 속도 기준을 1.5배 엄격하게 적용합니다. 아래 기준표에는 이 내용이 빠져 있으니, 표의 속도에 각각 1.5를 곱해서 보세요.
+생각 모드가 있는 모델에는 속도 기준을 1.5배 엄격하게 적용합니다. 증류 모델 네 개와 DeepSeek V4 Flash가 여기에 해당합니다. 아래 기준표에는 이 내용이 빠져 있으니, 표의 속도에 각각 1.5를 곱해서 보세요.
 
 <Threshold />
 
@@ -132,13 +152,14 @@ macOS·Linux에서 한 번만 띄울 때는 `OLLAMA_CONTEXT_LENGTH=16384 OLLAMA_
 - ‘<GuideLink slug="ollama-context-length" />’: Ollama의 기본 컨텍스트와 바꾸는 방법
 - ‘<GuideLink slug="gguf-quantization" />’: Q2_K·IQ4_XS와 품질 등급
 - ‘<GuideLink slug="gpu-offload-check" />’: `100% GPU`인지 확인하는 방법
-- <HubLink model="deepseek-r1-distill-32b" />·<HubLink model="deepseek-r1-0528-qwen3-8b" /> 모델 페이지에서 모든 카드의 결과를 볼 수 있습니다.
+- ‘<GuideLink slug="moe-cpu-offload" />’: 시스템 RAM에 전문가를 두는 방식 — 그래픽카드로 DeepSeek V4 Flash를 돌리는 방법
+- <HubLink model="deepseek-r1-distill-32b" />·<HubLink model="deepseek-r1-0528-qwen3-8b" />·<HubLink model="deepseek-v4-flash-0731" /> 모델 페이지에서 모든 카드의 결과를 볼 수 있습니다.
 
 ## 자주 묻는 질문
 
 ### 원본 딥시크 R1도 내 PC에서 돌릴 수 있나요?
 
-이 글에 나온 8GB~32GB 그래픽카드로는 어렵습니다. CanRun도 원본 R1은 계산하지 않습니다. 모델 카드에 따르면 원본 R1은 전체 파라미터 671B, 활성 파라미터 37B인 MoE 모델입니다. 전체 파라미터가 32B 증류 모델의 스무 배쯤 됩니다. 집에 있는 PC로 돌릴 수 있는 것은 작은 증류 모델입니다.
+이 글에 나온 8GB~32GB 그래픽카드로는 어렵습니다. CanRun도 원본 R1은 계산하지 않습니다. 모델 카드에 따르면 원본 R1은 전체 파라미터 671B, 활성 파라미터 37B인 MoE 모델입니다. 전체 파라미터가 32B 증류 모델의 스무 배쯤 됩니다. CanRun이 계산하는 원본 크기 딥시크 모델은 V4 Flash 0731이고, 메모리가 큰 맥이나 시스템 RAM이 많은 PC가 필요합니다. M3 Ultra 256GB인 Mac Studio에는 MXFP4 파일이 GPU에 전부 들어갑니다<Expect model="deepseek-v4-flash-0731" gpu="apple-m3-ultra" ram="256" fits="true" mode="full-gpu" />. RTX 5090에 RAM 128GB라면 전문가 대부분을 RAM에 두는 방식으로 Q2_K 파일이 들어갑니다<Expect model="deepseek-v4-flash-0731" gpu="rtx-5090" ram="128" quant="Q2_K" fits="true" mode="cpu-moe" />. 흔한 가정용 PC로 돌릴 수 있는 것은 작은 증류 모델입니다.
 
 ### 증류 모델은 원본 R1과 같은 모델인가요?
 
@@ -165,7 +186,11 @@ Ollama에서는 `--think=false`나 `/set nothink`로 끌 수 있습니다. 다�
 - [DeepSeek-R1-Distill-Qwen-14B 모델 카드](https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-14B): Qwen2.5-14B를 바탕으로 한 증류 모델
 - [DeepSeek-R1-Distill-Qwen-32B 모델 카드](https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-32B)와 [설정 파일](https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-32B/blob/main/config.json): 여러 벤치마크에서 OpenAI-o1-mini보다 낫다는 제작사 설명, 64층·KV 헤드 8개·슬라이딩 윈도 없음, 모델 종류 qwen2
 - [DeepSeek-V3 모델 카드](https://huggingface.co/deepseek-ai/DeepSeek-V3): 전체 671B·활성 37B 파라미터, 128k 컨텍스트
-- [DeepSeek-V4-Flash 모델 카드](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash): V4 시리즈 미리 보기 버전, V4-Pro(전체 1.6T·활성 49B)와 V4-Flash(전체 284B·활성 13B), 1M 컨텍스트
+- [DeepSeek-V4-Flash 모델 카드](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash): V4 시리즈 미리 보기 버전, V4-Pro(전체 1.6T·활성 49B)와 V4-Flash(전체 284B·활성 13B), 1M 컨텍스트, 압축 어텐션(CSA·HCA)
+- [DeepSeek-V4-Flash-0731 모델 카드](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-0731)와 [설정 파일](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-0731/blob/main/config.json): 미리 보기판을 대신하는 V4 Flash 정식판, 함께 들어 있는 투기적 디코딩 모듈, 생각 강도 low·high·max, 층별 압축 비율이 붙은 43층, 라우팅 전문가 256개 중 토큰마다 6개, MIT 라이선스
+- [ggml-org DeepSeek-V4-Flash-0731 GGUF](https://huggingface.co/ggml-org/DeepSeek-V4-Flash-0731-GGUF): CanRun이 계산하는 두 조각짜리 MXFP4·Q2_K 파일과 따로 있는 DSpark 초안 파일
+- [llama.cpp DeepSeek V4 KV 캐시 코드](https://github.com/ggml-org/llama.cpp/blob/0a1ef309cdbb9f2024f58a38fb4c42352c5db569/src/llama-kv-cache-dsv4.cpp)와 [이슈 #27680의 메모리 로그](https://github.com/ggml-org/llama.cpp/issues/27680): 압축 캐시·라이트닝 인덱서 캐시·압축하지 않는 최근 토큰 창과 64k 컨텍스트에서의 크기
+- [llama.cpp 풀 리퀘스트 #28948](https://github.com/ggml-org/llama.cpp/pull/28948)과 [#25893의 벤치마크](https://github.com/ggml-org/llama.cpp/pull/25893#issuecomment-5162332599): 지금 빌드와 8월 빌드로 잰 M2 Ultra의 DeepSeek V4 Flash 결과(8월 빌드는 30k 컨텍스트까지)
 - [DeepSeek-R1 출시 글](https://api-docs.deepseek.com/news/news250120/): 2025년 1월 20일 공개, 작은 모델 6개 공개, MIT 라이선스
 - [DeepSeek-R1-0528 출시 글](https://api-docs.deepseek.com/news/news250528): 2025년 5월 28일 업데이트
 - [Ollama deepseek-r1 라이브러리](https://ollama.com/library/deepseek-r1)와 [태그 목록](https://ollama.com/library/deepseek-r1/tags): 태그별 모델과 같은 파일을 가리키는 태그, 0528 업그레이드가 들어간 8B·671B 태그, `:14b`·`:32b` 태그의 qwen2 구조

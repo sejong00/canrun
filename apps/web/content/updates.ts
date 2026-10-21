@@ -10,6 +10,7 @@
 export type SiteUpdate = { readonly id: string; readonly date: string };
 
 export const SITE_UPDATES = [
+  { id: 'compressed-attention', date: '2026-10-21' },
   { id: 'looped-layers', date: '2026-10-21' },
   { id: 'k2-horizon-mova', date: '2026-10-21' },
   { id: 'gemma4-e-series', date: '2026-10-21' },

@@ -28,6 +28,10 @@ const LOADERS: Readonly<Record<ModelAboutId, Readonly<Record<ContentLocale, () =
     en: () => import('@/content/en/model-about/deepseek-r1-distill-8b.mdx') as Promise<AboutModule>,
     ko: () => import('@/content/ko/model-about/deepseek-r1-distill-8b.mdx') as Promise<AboutModule>,
   },
+  'deepseek-v4-flash-0731': {
+    en: () => import('@/content/en/model-about/deepseek-v4-flash-0731.mdx') as Promise<AboutModule>,
+    ko: () => import('@/content/ko/model-about/deepseek-v4-flash-0731.mdx') as Promise<AboutModule>,
+  },
   'exaone-4.0-1.2b': {
     en: () => import('@/content/en/model-about/exaone-4.0-1.2b.mdx') as Promise<AboutModule>,
     ko: () => import('@/content/ko/model-about/exaone-4.0-1.2b.mdx') as Promise<AboutModule>,
