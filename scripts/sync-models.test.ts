@@ -92,6 +92,22 @@ describe('matchQuantFiles', () => {
     ]);
   });
 
+  it('excludes DSpark drafts (dspark-*, 10-22 D115) — ggml-org MXFP4 stays one consistent split, unsloth Q8_0 is not the 10.9GB drafter', () => {
+    // ggml-org/DeepSeek-V4-Flash-0731-GGUF · unsloth/DeepSeek-V4-Flash-0731-GGUF 실제 배치 (10-22)
+    const entries = [
+      file('DeepSeek-V4-Flash-0731-MXFP4-00001-of-00002.gguf', 5_250_752),
+      file('DeepSeek-V4-Flash-0731-MXFP4-00002-of-00002.gguf', 154_986_288_576),
+      file('dspark-DeepSeek-V4-Flash-0731-MXFP4.gguf', 10_826_882_016),
+      file('dspark-DeepSeek-V4-Flash-0731-Q8_0.gguf', 10_896_057_440),
+      file('dspark/dspark-DeepSeek-V4-Flash-0731-BF16.gguf', 11_314_832_480),
+    ];
+    const mx = matchQuantFiles(entries, 'MXFP4');
+    expect(mx.map((e) => e.path)).toEqual(['DeepSeek-V4-Flash-0731-MXFP4-00001-of-00002.gguf', 'DeepSeek-V4-Flash-0731-MXFP4-00002-of-00002.gguf']);
+    expect(primaryFile(mx)).toEqual({ path: 'DeepSeek-V4-Flash-0731-MXFP4-00001-of-00002.gguf', shards: 2 });
+    expect(sumFileGB(mx)).toBe(154.99);
+    expect(matchQuantFiles(entries, 'Q8_0')).toHaveLength(0);
+  });
+
   it('excludes mmproj weights and non-gguf files', () => {
     expect(matchQuantFiles(flat, 'F16')).toHaveLength(0); // mmproj-…-F16.gguf 제외
     expect(matchQuantFiles([file('notes-Q4_K_M.txt', 1)], 'Q4_K_M')).toHaveLength(0);

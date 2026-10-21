@@ -156,6 +156,10 @@ export function validateAll(files: SeedFiles): string[] {
     if (model.arch.loops !== undefined && model.activeParamsB !== undefined) {
       problems.push(`models/${model.id}: arch.loops is for dense models only`);
     }
+    // 압축 어텐션(10-22 D115): KV 산식(CSA·HCA·인덱서 캐시)의 근거를 attnOverrides 에 남긴다 — 없으면 sync-models 가 매주 full-attn 참조값을 manual 로 낸다
+    if (model.arch.attnType === 'compressed' && model.attnOverrides === undefined) {
+      problems.push(`models/${model.id}: compressed attention needs attnOverrides (the KV formula and its llama.cpp sources)`);
+    }
   }
 
   // model-quants.modelId 는 카탈로그 FK · fileName 은 전 행 필수 (sync-models 가 기록, P1-2)

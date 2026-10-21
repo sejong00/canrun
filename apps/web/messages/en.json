@@ -535,7 +535,8 @@
     "full": "Full attention",
     "swa": "Sliding-window attention",
     "mla": "Multi-head latent attention",
-    "hybrid": "Hybrid attention (only some layers use full attention)"
+    "hybrid": "Hybrid attention (only some layers use full attention)",
+    "compressed": "Compressed attention (KV stored in blocks of several tokens)"
   },
   "Category": {
     "chat": "Chat",

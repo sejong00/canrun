@@ -3,7 +3,7 @@
  * 계산기 아일랜드가 사용자가 "불러오기"를 눌렀을 때만 dynamic import 한다 — 첫 화면 번들에 들어가지 않는다.
  *
  * 순서: 입력 해석 → 모델 정보(GGUF 저장소면 base_model 로 원본을 찾는다) → 원본 config.json → GGUF 저장소 트리(파일 크기)
- *   → MoE 면 기준 양자화(Q4_K_M) 파일의 GGUF 헤더를 Range 로 읽어 전문가·비전문가 크기 → `buildHfModel` 로 엔진 입력 레코드.
+ *   → MoE 면 기준 양자화(Q4_K_M, 없으면 MXFP4 — 10-22 D115) 파일의 GGUF 헤더를 Range 로 읽어 전문가·비전문가 크기 → `buildHfModel` 로 엔진 입력 레코드.
  * 구조 분류·파일 매칭·헤더 해석은 데이터 동기화 스크립트와 같은 코드(`@canrun/data/hf`)다.
  */
 import type { ModelCore, ModelQuantCore } from '@canrun/data/client';
@@ -28,7 +28,7 @@ export type HfErrorCode =
   /** GGUF 저장소인데 원본(base_model)을 적지 않았다 */
   | 'no-base'
   | 'no-gguf'
-  /** GGUF 저장소를 넣었는데 기준 양자화(Q4_K_M) 파일이 없다 */
+  /** GGUF 저장소를 넣었는데 기준 양자화(Q4_K_M, 없으면 MXFP4) 파일이 없다 */
   | 'no-base-quant'
   | 'no-params'
   | 'network';
@@ -116,7 +116,7 @@ async function getConfig(f: Fetch, baseId: string): Promise<{ config: unknown } 
 }
 
 /**
- * 원본 모델 → 같은 모델의 GGUF 저장소(공식 → ggml-org → bartowski → unsloth → lmstudio-community 중 Q4_K_M 이 있는 첫 곳).
+ * 원본 모델 → 같은 모델의 GGUF 저장소(공식 → ggml-org → bartowski → unsloth → lmstudio-community 중 기준 양자화(Q4_K_M, 없으면 MXFP4)가 있는 첫 곳).
  * 검색은 다운로드순 — 인기 모델은 같은 이름의 파생(파인튠·abliterated) GGUF 가 수백 개라 기본 정렬이면 원 변환본이 밀린다.
  * 관례 이름(`<owner>/<name>-GGUF`·`bartowski/<owner>_<name>-GGUF` 등)도 후보에 넣는다 (10-01 실측 — Llama 3.1 8B Instruct)
  */

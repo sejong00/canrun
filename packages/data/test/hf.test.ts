@@ -19,6 +19,7 @@ import {
   buildHfModel,
   classifyArch,
   classifySplit,
+  DEEPSEEK_V4_REFS,
   fetchRange,
   measureSplit,
   mapLicense,
@@ -1037,5 +1038,122 @@ describe('classifySplit — MoVA value experts stay on the GPU (10-21 D113)', ()
     // 파라미터 수도 FFN 전문가만 전문가로 센다(값 전문가는 total 에만)
     expect(m.expertParams).toBe(256 * 2 * 4);
     expect(m.totalParams).toBe(256 * 4 + 256 * 4 + 256 * 2 + 256 * 4 + 256 * 2 * 4 + 256 * 2 * 4 + 8 * 4);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// DeepSeek V4 Flash — 압축 어텐션(CSA·HCA)·하이퍼 커넥션 (10-22 D115)
+// ---------------------------------------------------------------------------
+
+/** deepseek-ai/DeepSeek-V4-Flash-0731 config.json (10-22 — 값 그대로, quantization_config·rope_scaling 일부 생략) */
+const DSV4_RATIOS_46 = [0, 0, ...Array.from({ length: 41 }, (_, i) => (i % 2 === 0 ? 4 : 128)), 0, 0, 0];
+const DSV4_CONFIG = {
+  architectures: ['DeepseekV4ForCausalLM'], attention_bias: false, attention_dropout: 0.0, bos_token_id: 0, eos_token_id: 1, expert_dtype: 'fp4',
+  hc_eps: 1e-6, hc_mult: 4, hc_sinkhorn_iters: 20, head_dim: 512, hidden_act: 'silu', hidden_size: 4096, index_head_dim: 128, index_n_heads: 64,
+  index_topk: 512, initializer_range: 0.02, max_position_embeddings: 1048576, model_type: 'deepseek_v4', moe_intermediate_size: 2048,
+  n_routed_experts: 256, n_shared_experts: 1, norm_topk_prob: true, num_attention_heads: 64, num_experts_per_tok: 6, num_hidden_layers: 43,
+  num_hash_layers: 3, num_key_value_heads: 1, num_nextn_predict_layers: 1, o_groups: 8, o_lora_rank: 1024, q_lora_rank: 1024, qk_rope_head_dim: 64,
+  quantization_config: { activation_scheme: 'dynamic', fmt: 'e4m3', quant_method: 'fp8' }, rms_norm_eps: 1e-6,
+  rope_scaling: { beta_fast: 32, beta_slow: 1, factor: 16, original_max_position_embeddings: 65536, type: 'yarn' }, rope_theta: 10000,
+  routed_scaling_factor: 1.5, scoring_func: 'sqrtsoftplus', sliding_window: 128, swiglu_limit: 10.0, tie_word_embeddings: false, topk_method: 'noaux_tc',
+  torch_dtype: 'bfloat16', transformers_version: '4.57.1', use_cache: true, vocab_size: 129280, compress_rope_theta: 160000, compress_ratios: DSV4_RATIOS_46,
+  dspark_block_size: 5, dspark_noise_token_id: 128799, dspark_target_layer_ids: [40, 41, 42], dspark_markov_rank: 256,
+};
+
+describe('classifyArch — DeepSeek V4 compressed attention and hyper-connections (deepseek_v4, 10-22 D115)', () => {
+  it('the config of record matches the real compress_ratios (first 43 layers: 0,0 then 4/128 alternating — 21 CSA · 20 HCA)', () => {
+    const first = DSV4_RATIOS_46.slice(0, 43);
+    expect(DSV4_RATIOS_46).toHaveLength(46);
+    expect(first.filter((r) => r === 4)).toHaveLength(21);
+    expect(first.filter((r) => r === 128)).toHaveLength(20);
+    expect(first.slice(0, 5)).toEqual([0, 0, 4, 128, 4]);
+  });
+
+  it('DeepSeek-V4-Flash-0731: compressed, KV = 21 × (512 + 128) × 2 / 4 + 20 × 512 × 2 / 128 = 6,880 B/tok, MoE 256 top-6, mHC, llama.cpp refs', () => {
+    const r = classifyArch(DSV4_CONFIG);
+    expect(r).toMatchObject({
+      kind: 'ok',
+      modelType: 'deepseek_v4',
+      attnType: 'compressed',
+      mhc: true,
+      vision: false,
+      maxContext: 1048576,
+      moe: { experts: 256, topK: 6 },
+      arch: { layers: 43, kvHeads: 1, headDim: 512, kvBytesPerTokenF16: 6880 },
+    });
+    if (r.kind !== 'ok') return;
+    expect(r.override?.kvBytesPerTokenF16).toBe(6880);
+    expect(r.override?.reason).toContain('CSA(비율 4) 21층');
+    expect(r.override?.reason).toContain('HCA(비율 128) 20층');
+    expect(r.expertLayers).toBeUndefined(); // 43층 모두 MoE
+    expect(r.refs).toEqual(DEEPSEEK_V4_REFS);
+    for (const ref of [...(r.refs ?? []), ...(r.override?.refs ?? [])]) {
+      expect(ref).toMatch(/^https:\/\/github\.com\/ggml-org\/llama\.cpp\/blob\/0a1ef309cdbb9f2024f58a38fb4c42352c5db569\//);
+    }
+  });
+
+  it('options left off (null, false, 0, empty) are not "new options"; first_k_dense_replace 0 is fine', () => {
+    const r = classifyArch({ ...DSV4_CONFIG, some_future_flag: false, another: null, empty_list: [], first_k_dense_replace: 0, pad_token_id: 1 });
+    expect(r).toMatchObject({ kind: 'ok', arch: { kvBytesPerTokenF16: 6880 } });
+  });
+
+  it('hc_mult 1 means no hyper-connections — no mhc flag, same KV', () => {
+    const r = classifyArch({ ...DSV4_CONFIG, hc_mult: 1 });
+    expect(r).toMatchObject({ kind: 'ok', attnType: 'compressed', arch: { kvBytesPerTokenF16: 6880 } });
+    if (r.kind === 'ok') expect(r.mhc).toBeUndefined();
+  });
+
+  it.each([
+    ['an option the llama.cpp converter does not read', { ...DSV4_CONFIG, enable_new_router: true }, '처음 보는 deepseek_v4 옵션(enable_new_router)'],
+    ['the vision variant (vision keys)', { ...DSV4_CONFIG, vision_n_layers: 24 }, 'vision_n_layers'],
+    ['the vision variant (vision_config)', { ...DSV4_CONFIG, vision_config: { hidden_size: 1024 } }, '비전 변형'],
+    ['MLA keys (V3 style)', { ...DSV4_CONFIG, kv_lora_rank: 512 }, 'kv_lora_rank'],
+    ['the DSpark drafter class', { ...DSV4_CONFIG, architectures: ['DeepseekV4DSparkModel'] }, 'deepseek_v4 변형'],
+    ['a compression ratio the loader rejects', { ...DSV4_CONFIG, compress_ratios: [0, 0, 64, ...DSV4_RATIOS_46.slice(3)] }, '0·4·128 밖'],
+    ['compress_ratios shorter than the layer count', { ...DSV4_CONFIG, compress_ratios: DSV4_RATIOS_46.slice(0, 40) }, '짧음'],
+    ['no compressed layer at all', { ...DSV4_CONFIG, compress_ratios: Array<number>(46).fill(0) }, '압축 층'],
+    ['more than one KV head', { ...DSV4_CONFIG, num_key_value_heads: 8 }, 'KV 헤드 8'],
+    ['softmax MoE scoring (the loader takes sqrtsoftplus only)', { ...DSV4_CONFIG, scoring_func: 'softmax' }, 'scoring_func softmax'],
+    ['a different top-k method', { ...DSV4_CONFIG, topk_method: 'greedy' }, 'topk_method greedy'],
+    ['leading dense layers (llama.cpp reads every block as MoE)', { ...DSV4_CONFIG, first_k_dense_replace: 3 }, 'first_k_dense_replace'],
+    ['tied embeddings (the loader needs output.weight)', { ...DSV4_CONFIG, tie_word_embeddings: true }, 'tie_word_embeddings'],
+    ['a missing indexer width', { ...DSV4_CONFIG, index_head_dim: undefined }, 'index_head_dim'],
+    ['hash layers beyond the layer count', { ...DSV4_CONFIG, num_hash_layers: 50 }, 'num_hash_layers'],
+    ['hyper-connections on another known type', { model_type: 'qwen3', hc_mult: 4, num_hidden_layers: 28, num_attention_heads: 16, num_key_value_heads: 8, head_dim: 128, max_position_embeddings: 32768 }, '하이퍼 커넥션'],
+  ] as const)('refuses %s', (_name, config, reason) => {
+    const r = classifyArch(config);
+    expect(r.kind).toBe('unsupported');
+    if (r.kind === 'unsupported') expect(r.reason).toContain(reason);
+  });
+
+  it('buildHfModel (calculator import) takes the MXFP4 row as the baseline when there is no Q4_K_M, and carries compressed attention and mHC', () => {
+    const f = (path: string, size: number): TreeEntry => ({ type: 'file', path, size });
+    const tree = [
+      f('DeepSeek-V4-Flash-0731-MXFP4-00001-of-00002.gguf', 5_250_752),
+      f('DeepSeek-V4-Flash-0731-MXFP4-00002-of-00002.gguf', 154_986_288_576),
+      f('DeepSeek-V4-Flash-0731-Q2_K-00001-of-00002.gguf', 5_250_752),
+      f('DeepSeek-V4-Flash-0731-Q2_K-00002-of-00002.gguf', 117_344_187_840),
+      f('DeepSeek-V4-Flash-0731-Q2_K_S-00001-of-00002.gguf', 5_250_752),
+      f('DeepSeek-V4-Flash-0731-Q2_K_S-00002-of-00002.gguf', 98_587_260_352),
+      f('dspark-DeepSeek-V4-Flash-0731-MXFP4.gguf', 10_826_882_016),
+    ];
+    const r = buildHfModel({
+      hfId: 'someone/DeepSeek-V4-Flash-Finetune',
+      ggufRepo: 'someone/DeepSeek-V4-Flash-Finetune-GGUF',
+      config: DSV4_CONFIG,
+      tree,
+      info: { license: 'mit', paramsB: 284.33 },
+      baseSplit: { expertGB: 147.17, nonExpertGB: 7.25, totalParamsB: 284.334567511, expertParamsB: 277.025390592 },
+    });
+    expect(r.kind).toBe('ok');
+    if (r.kind !== 'ok') return;
+    expect(r.model.arch).toMatchObject({ attnType: 'compressed', kvBytesPerTokenF16: 6880, experts: 256, topK: 6, mhc: true });
+    expect(r.model.activeParamsB).toBe(13.8);
+    expect(r.rows.map((row) => [row.quant, row.fileGB, row.fileName])).toEqual([
+      ['MXFP4', 154.99, 'DeepSeek-V4-Flash-0731-MXFP4-00001-of-00002.gguf'],
+      ['Q2_K', 117.35, 'DeepSeek-V4-Flash-0731-Q2_K-00001-of-00002.gguf'],
+    ]);
+    expect(r.rows[0]).toMatchObject({ expertGB: 147.17, nonExpertGB: 7.25 });
+    expect(r.notes).toContain('kv-full-layers-only');
   });
 });

@@ -204,8 +204,12 @@ export const ModelSchema = z
       layers: z.number().int().positive(),
       kvHeads: z.number().int().positive(),
       headDim: z.number().int().positive(),
-      attnType: z.enum(['full', 'swa', 'mla', 'hybrid']),
-      /** 사전 계산 (KiB/tok 아님 — 바이트/tok, f16). SWA/MLA/하이브리드 보정 반영값. */
+      /**
+       * compressed(10-22 D115) = 압축 어텐션(DeepSeek V4 — 층마다 KV 를 4·128 토큰씩 묶어 저장하고 최근 토큰은 슬라이딩 창).
+       * 비-full 이라 KV 근거는 attnOverrides 에 남긴다(그 모델은 attnOverrides 필수 — validateAll)
+       */
+      attnType: z.enum(['full', 'swa', 'mla', 'hybrid', 'compressed']),
+      /** 사전 계산 (KiB/tok 아님 — 바이트/tok, f16). SWA/MLA/하이브리드/압축 보정 반영값. */
       kvBytesPerTokenF16: z.number().positive(),
       /**
        * MoE 전용: 레이어당 라우팅 전문가 수 · 토큰당 활성 전문가 수 (공유 전문가 제외).
@@ -242,6 +246,12 @@ export const ModelSchema = z
        * 근거 실측이 1점(카탈로그 밖 기기)이라 추정은 이론 추정(assess `isTheoretical`). 헤더 실측 행은 모두 loopGB(validateAll)
        */
       loops: z.number().int().min(2).optional(),
+      /**
+       * 하이퍼 커넥션(mHC — config `hc_mult` > 1, DeepSeek V4 — 10-22 D115): 층 사이 잔차 흐름을 hc_mult 갈래로 나눠 층마다 섞는다(sinkhorn 반복).
+       * 가중치 크기는 헤더 실측에 이미 들어 있지만 층마다 더하는 연산(mHC 혼합·압축기·인덱서)을 속도식이 따로 세지 않는다 — 지금 빌드 공개 실측 1점이
+       * 추정보다 25% 느려(docs/02 §7·§9) 추정은 이론 추정(assess `isTheoretical`). 출처 = config.json `hc_mult`, GGUF `<arch>.hyper_connection.count`
+       */
+      mhc: z.literal(true).optional(),
     }),
     /**
      * 비-full attention(swa/mla/hybrid) KV 수동 고정 — docs/03 §5.1 "수동 필드 우선".

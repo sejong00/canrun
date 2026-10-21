@@ -1,7 +1,7 @@
 /**
  * 새 모델 추가 — 카탈로그 확장 자동화 (09-30). HF 모델 ID 하나로 models.json·model-quants.json 레코드를 만든다.
  *
- * 실행: pnpm run add-model -- <hfId> [--id <slug>] [--name "<표시명>"] [--gguf <repo>] [--active <B>]
+ * 실행: pnpm run add-model -- <hfId> [--id <slug>] [--name "<표시명>"] [--gguf <repo>] [--active <B>] [--params <B>]
  *                                    [--category chat,coding] [--thinking always|default-on|default-off|auto]
  *                                    [--popularity 1-5] [--max-context N] [--korean] [--dry]
  *
@@ -10,7 +10,8 @@
  *  2) 구조를 분류한다 — **선례가 있는 구조만 자동**(PROGRESS §4 D53·D63): 전체 어텐션 · 슬라이딩 윈도(layer_types) · 하이브리드 선형(layer_types)
  *     · 상수 상태 층 하이브리드(nemotron_h Mamba2 · lfm2 short-conv · bailing_hybrid KDA+MLA — 층 지도가 있을 때만).
  *     처음 보는 model_type, 반복 층·디스크 n-gram 임베딩·압축 어텐션 등은 "보류"로 멈춘다 — 엔진이 그 메모리를 모델링하지 않아 판정이 틀린다.
- *  3) GGUF 저장소를 고른다(공식 → ggml-org → bartowski → unsloth → lmstudio-community, Q4_K_M 이 있는 첫 곳) — 파일명·크기는 트리에서.
+ *  3) GGUF 저장소를 고른다(공식 → ggml-org → bartowski → unsloth → lmstudio-community, 기준 양자화 Q4_K_M — 없으면 MXFP4(10-22 D115) — 가 있는 첫 곳)
+ *     — 파일명·크기는 트리에서.
  *  4) 레코드를 쓰고(원본 저장소 최근 30일 다운로드 수·기준일 포함 — D68), MoE 면 MOE_ARCH 에 한 줄 넣어 nonExpertGB 를 유도, data/meta.json 기준일을 오늘로.
  *     처음 보는 Hugging Face 조직이면 apps/web/content/model-makers.ts 에 그 조직의 이름(조직 정보 API 의 fullname)을 한 줄 넣는다(10-19 D101 — 모델 목록 열).
  *     양자화 행마다 GGUF 헤더를 Range 로 읽는다(scripts/gguf-header.ts): MoE 는 expertGB·nonExpertGB(10-01),
@@ -18,6 +19,8 @@
  *     반복 블록 loopGB 도 재고, 헤더 `<arch>.num_loops` 가 config 와 다르거나 잴 수 없는 행이 있으면 멈춘다.
  *     MoE 는 arch.experts/topK(config)를 기록하고, 헤더의 expert_count·expert_used_count 가 config 와 다르면 멈춘다.
  * 사람이 확인할 것(출력에 표시): 생각 모드(--thinking, 판정 기준 1.5배 — 모델 카드·채팅 템플릿, D59)·카테고리·표시명·인기도·처음 보는 라이선스 문자열·새 조직 이름.
+ * 파라미터 수는 safetensors 총계가 기본이다. 그 값에 GGUF 본 파일에 없는 몫(MTP·투기적 디코딩 모듈)이 섞여 있고 모델 카드가 총 파라미터를 밝히지 않으면
+ * `--params <B>` 로 GGUF 헤더 원소 수(llama.cpp 가 실제로 불러오는 파라미터)를 준다(10-22 D115 — DeepSeek V4 Flash 0731).
  * 실행 후: pnpm run validate-data → pnpm test → pnpm build → pnpm run test:export.
  * 매일 도는 신모델 자동 추가(scripts/auto-add-models.ts, 10-06 D71)가 planAddition·applyAddition 을 그대로 불러 쓴다.
  */
@@ -294,6 +297,8 @@ export type AddOptions = {
   name?: string;
   gguf?: string;
   active?: number;
+  /** 총 파라미터 B — 주면 safetensors 총계 대신 이 값(10-22 D115). 근거는 레코드 note 에 남는다 */
+  params?: number;
   category?: string[];
   thinking?: Thinking;
   popularity?: number;
@@ -320,6 +325,7 @@ export function parseArgs(argv: readonly string[]): Args {
     else if (arg === '--name') a.name = val();
     else if (arg === '--gguf') a.gguf = val();
     else if (arg === '--active') a.active = Number(val());
+    else if (arg === '--params') a.params = Number(val());
     else if (arg === '--category') a.category = val().split(',');
     else if (arg === '--thinking') {
       const v = val();
@@ -386,7 +392,7 @@ export type PlanResult = { kind: 'ok'; plan: AdditionPlan } | { kind: 'held'; re
 
 /**
  * HF 에서 읽어 레코드를 계획한다 — 파일은 쓰지 않는다(--dry 와 같은 범위: 모델 정보·config·GGUF 트리·헤더 Range 읽기).
- * throw: 모델 없음 · 이미 카탈로그에 있음 · config 못 받음 · Q4_K_M GGUF 없음 · 파라미터 수 없음 · 헤더 MoE 구조 ≠ config · MoE 활성 파라미터 모름 · 스키마 위반.
+ * throw: 모델 없음 · 이미 카탈로그에 있음 · config 못 받음 · 기준 GGUF(Q4_K_M, 없으면 MXFP4) 없음 · 파라미터 수 없음 · 헤더 MoE 구조 ≠ config · MoE 활성 파라미터 모름 · 스키마 위반.
  */
 export async function planAddition(
   hfId: string,
@@ -424,10 +430,12 @@ export async function planAddition(
     rows = quantRowsFrom(await fetchTree(repo, { token }), repo, id);
     if (rows.length > 0) break;
   }
-  if (rows.length === 0) throw new Error(`Q4_K_M GGUF 를 찾지 못함 (후보: ${repos.join(', ') || '없음'}) — --gguf 로 지정`);
+  if (rows.length === 0) throw new Error(`기준 GGUF(Q4_K_M, 없으면 MXFP4)를 찾지 못함 (후보: ${repos.join(', ') || '없음'}) — --gguf 로 지정`);
 
   const name = opts.name ?? displayName(hfId);
-  const paramsB = info.safetensors?.total ? round2(info.safetensors.total / 1e9) : undefined;
+  const safetensorsB = info.safetensors?.total ? round2(info.safetensors.total / 1e9) : undefined;
+  if (opts.params !== undefined && !(opts.params > 0)) throw new Error(`--params ${String(opts.params)} — 양수가 아님`);
+  const paramsB = opts.params !== undefined ? round2(opts.params) : safetensorsB;
   if (!paramsB) throw new Error('파라미터 수(safetensors.total)를 받지 못함');
   const license = mapLicense(info.cardData?.license, info.cardData?.license_name);
   const vision = arch.vision || info.pipeline_tag === 'image-text-to-text';
@@ -451,8 +459,9 @@ export async function planAddition(
   if (arch.moe) {
     const active = opts.active ?? activeFromName(hfId);
     if (active === undefined) throw new Error('MoE 활성 파라미터를 이름에서 못 읽음 — --active <B> 로 지정(모델 카드 기준)');
-    const q4 = rows.find((r) => r.quant === 'Q4_K_M')!;
-    const nonExpertGB = round2(deriveNonExpertGB({ totalParamsB: paramsB, activeParamsB: active, experts: arch.moe.experts, topK: arch.moe.topK }, q4.fileGB));
+    // 모델 수준 nonExpertGB 는 기준 행(Q4_K_M, 없으면 MXFP4 — quantRowsFrom 의 첫 행) 크기로 유도한다(validateAll·sync-models 와 같은 기준)
+    const base = rows[0]!;
+    const nonExpertGB = round2(deriveNonExpertGB({ totalParamsB: paramsB, activeParamsB: active, experts: arch.moe.experts, topK: arch.moe.topK }, base.fileGB));
     moeFields = { activeParamsB: active, moe: true, nonExpertGB };
   }
 
@@ -488,6 +497,8 @@ export async function planAddition(
       ...(arch.mova ? { valueExperts: arch.mova.experts, valueTopK: arch.mova.topK } : {}),
       // 반복 층(10-22 D114): KV 는 이미 논리 층(층 × loops) 값, 헤더 실측 행은 반복 블록 loopGB, 추정은 이론 추정
       ...(arch.loops !== undefined ? { loops: arch.loops } : {}),
+      // 하이퍼 커넥션(mHC — 10-22 D115): 층마다 더하는 연산을 속도식이 세지 않아 추정은 이론 추정
+      ...(arch.mhc ? { mhc: true } : {}),
     },
     // 산식 근거(llama.cpp 가 KV 를 두는 층 — D63)가 있으면 config 출처 뒤에 덧붙인다
     ...(arch.override
@@ -501,7 +512,7 @@ export async function planAddition(
     ...downloadsFields(info.downloads, today),
     // 출시일과 카탈로그 추가일(D72 — 업데이트 소식 페이지가 날짜별로 묶는다)
     ...catalogDates(info.createdAt, today),
-    note: `add-model 생성(${today}). releasedAt = HF createdAt${mirror ? `. gated — arch 는 ${mirror} 미러 config` : ''}`,
+    note: `add-model 생성(${today}). releasedAt = HF createdAt${mirror ? `. gated — arch 는 ${mirror} 미러 config` : ''}${opts.params !== undefined ? `. paramsB = --params ${paramsB}(safetensors 총계 ${String(safetensorsB ?? '없음')} 대신)` : ''}`,
     // MoE 는 experts/topK, 반복 층 모델은 num_loops 의 출처로 config.json 을 명시 (게이트면 미러 config). 분류기가 구조 근거(llama.cpp 소스)를 주면
     // 덧붙인다(K2-Horizon MoE — D113, Nanbeige 반복 층 — D114)
     sources: [hfUrl(hfId), ...(mirror ? [configUrl(mirror)] : arch.moe || arch.loops !== undefined ? [configUrl(hfId)] : []), ...(arch.refs ?? [])],
@@ -522,6 +533,9 @@ export async function planAddition(
   if (arch.expertLayers) lines.push(`  expert layers ${arch.expertLayers.length}/${arch.arch.layers}: ${arch.expertLayers.join(',')}`);
   if (arch.loops !== undefined) {
     lines.push(`  looped layers ×${arch.loops} — KV 는 논리 층 ${arch.arch.layers * arch.loops}개, 행 loopGB(트렁크 블록)를 토큰마다 ${arch.loops}번 읽는다·이론 추정`);
+  }
+  if (arch.attnType === 'compressed') {
+    lines.push(`  compressed attention — KV 는 압축 캐시(CSA·HCA·인덱서)만, raw SWA 창·압축기 상태는 상수라 연산 버퍼 근사${arch.mhc ? ' · 하이퍼 커넥션(mHC)' : ''}·이론 추정`);
   }
   if (arch.mova) {
     lines.push(`  MoVA value experts ${arch.mova.experts} top-${arch.mova.topK} — attn_v_exps 는 비전문가(그래픽카드 상주, llama.cpp --n-cpu-moe·--fit 이 옮기지 않음), 행 valueExpertGB 로 고른 몫만 읽기 바이트에 넣는다·이론 추정`);

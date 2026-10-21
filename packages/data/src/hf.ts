@@ -86,10 +86,14 @@ export function parseHfInput(text: string): string | undefined {
  * 둘 다 배포하는 repo 의 합산 오염은 막고, UD 만 배포하는 repo(MTP 계열)는 실파일을 취한다.
  * 드래프트·보조 파일은 모델 가중치가 아니므로 제외 (basename 접두, 대소문자 무시):
  * mmproj-*(비전 프로젝터) · mtp-*(MTP 드래프트 헤드) · eagle3-*(EAGLE 드래프트) · dflash-*(DFlash 투기적 디코딩 드래프트 —
- * 10-20, ggml-org/Qwen3.6-27B-GGUF 의 dflash-Qwen3.6-27B-Q8_0.gguf 가 본 파일과 겹쳐 Q8_0 행을 못 골랐다 — D98·PROGRESS §5) — P1-2 에서
+ * 10-20, ggml-org/Qwen3.6-27B-GGUF 의 dflash-Qwen3.6-27B-Q8_0.gguf 가 본 파일과 겹쳐 Q8_0 행을 못 골랐다 — D98·PROGRESS §5) ·
+ * dspark-*(DSpark 투기적 디코딩 드래프트 — 10-22 D115, ggml-org/DeepSeek-V4-Flash-0731-GGUF 의 dspark-…-MXFP4.gguf 가 본 파일 2조각과 함께 잡혀
+ * MXFP4 행이 ambiguous match 가 되고, unsloth 저장소의 dspark-…-Q8_0.gguf 는 Q8_0 행으로 잡힌다) — P1-2 에서
  * 드래프트 합산 버그(gemma-4 Q8_0 에 mtp 0.46GB 합산)를 고쳤다. repo 이름의 'MTP' 는 무관.
+ * llama.cpp `-hf` 도 같은 접두를 본 모델이 아닌 보조 파일(sidecar)로 보고 본 파일 후보에서 뺀다
+ * (https://github.com/ggml-org/llama.cpp/blob/0a1ef309cdbb9f2024f58a38fb4c42352c5db569/common/download.cpp#L617-L623 · #L667-L689).
  */
-const DRAFT_FILE_PREFIX = /^(?:mmproj|mtp-|eagle3-|dflash-)/i;
+const DRAFT_FILE_PREFIX = /^(?:mmproj|mtp-|eagle3-|dflash-|dspark-)/i;
 
 export function matchQuantFiles(entries: readonly TreeEntry[], quant: QuantId): TreeEntry[] {
   const esc = quant.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -230,6 +234,8 @@ export function extractMoe(config: unknown): { experts: number; topK: number } |
  * 아래 전용 가드(`k2HorizonShape`)가 llama.cpp 가 읽는 모양인지와 MoE 층·값 전문가를 본다.
  * 10-22 D114: nanbeige(Nanbeige4.2 — 반복 층 num_loops, https://github.com/ggml-org/llama.cpp/pull/25994) — 전체 어텐션·표준 GQA, 아래 전용 가드
  * (`nanbeigeShape`)가 llama.cpp 변환기가 옮기는 옵션(num_loops·skip_loop_final_norm)만 켜진 config 인지 본다. KV·읽기는 논리 층(층 × loops) 기준.
+ * 10-22 D115: deepseek_v4(DeepSeek V4 Flash — 압축 어텐션 CSA·HCA + 하이퍼 커넥션 mHC + MoE, llama.cpp deepseek4 — https://github.com/ggml-org/llama.cpp/pull/24162) —
+ * 아래 전용 분기(`deepseekV4Arch`)가 llama.cpp 변환기·로더가 읽는 키만 켜진 config 인지 보고 KV 를 압축 캐시 산식으로 센다.
  */
 export const KNOWN_MODEL_TYPES: ReadonlySet<string> = new Set([
   'llama',
@@ -259,6 +265,7 @@ export const KNOWN_MODEL_TYPES: ReadonlySet<string> = new Set([
   'kolibri1',
   'k2_horizon',
   'nanbeige',
+  'deepseek_v4',
 ]);
 
 /**
@@ -274,8 +281,15 @@ const BRANCH_KEYS: Readonly<Record<string, StateBranch>> = {
   conv_L_cache: 'conv',
   kv_lora_rank: 'mla',
 };
-/** 늘 거부 — 압축 어텐션(DeepSeek V4 의 층별 압축 비율) */
+/** 전용 분기 밖에서는 늘 거부 — 압축 어텐션(DeepSeek V4 의 층별 압축 비율). deepseek_v4(10-22 D115)만 `deepseekV4Arch` 가 계산한다 */
 const ALWAYS_UNSUPPORTED_KEYS = ['compress_ratios'];
+/** 압축 어텐션을 계산하는 model_type (10-22 D115) — llama.cpp deepseek4 의 KV 캐시 구성을 확인한 것만 */
+const COMPRESSED_MODEL_TYPES: ReadonlySet<string> = new Set(['deepseek_v4']);
+/**
+ * 하이퍼 커넥션(mHC — config `hc_mult` > 1)을 받는 model_type (10-22 D115). 층마다 잔차 흐름을 hc_mult 갈래로 섞는 연산을 속도식이 세지 않아 결과에 `mhc`
+ * (모델 `arch.mhc` — 이론 추정)를 단다. 다른 model_type 에 hc_mult 가 있으면 llama.cpp 가 그 구조를 어떻게 도는지 확인하지 않았으므로 보류
+ */
+const MHC_MODEL_TYPES: ReadonlySet<string> = new Set(['deepseek_v4']);
 const KNOWN_LAYER_TYPES: ReadonlySet<string> = new Set(['full_attention', 'sliding_attention', 'linear_attention']);
 /** 상수 상태 층(선형 어텐션·short-conv) — KV 가 없고 상태 크기가 컨텍스트와 무관하다 */
 const STATE_LAYER_TYPES: ReadonlySet<string> = new Set(['linear_attention', 'conv']);
@@ -374,13 +388,166 @@ function nanbeigeShape(
   return { kind: 'ok', ...(loops > 1 ? { loops } : {}) };
 }
 
+/**
+ * DeepSeek V4(deepseek_v4 — llama.cpp deepseek4, 본선 지원 PR #24162 06-29 머지) 구조 근거 — master 0a1ef30 (2026-10-21). 모델 레코드 sources 에 config 와 함께 남긴다 (10-22 D115)
+ */
+export const DEEPSEEK_V4_REFS: readonly string[] = [
+  // 변환기(DeepseekV4ForCausalLM): compress_ratios·인덱서·mHC(hc_mult)·hash 층·o_lora 를 GGUF 에 옮기고, MTP 텐서는 기본 변환에서 뺀다(mtp_only 일 때만)
+  `${LLAMA_CPP_0A1E}/conversion/deepseek.py#L525-L626`,
+  `${LLAMA_CPP_0A1E}/conversion/deepseek.py#L659-L690`,
+  // 로더: compress_ratios 길이 ≥ block_count, MoE 점수는 sqrtsoftplus 만, 모든 층이 슬라이딩(SWA) 층
+  `${LLAMA_CPP_0A1E}/src/models/deepseek4.cpp#L55-L74`,
+  // 층마다 비율 4 → 압축기 + 라이트닝 인덱서, 128 → 압축기만, 그 밖의 비율은 throw · 모든 층에 라우팅 전문가(_exps)와 공유 전문가(앞 hash 층은 tid2eid 라우팅)
+  `${LLAMA_CPP_0A1E}/src/models/deepseek4.cpp#L132-L172`,
+  // nextn 텐서가 없으면 MTP 층을 0 으로(본 GGUF 파일은 MTP 없이 변환된다)
+  `${LLAMA_CPP_0A1E}/src/models/deepseek4.cpp#L19-L26`,
+];
+
+/**
+ * 압축 어텐션 KV 산식 근거 (llama.cpp master 0a1ef30) — attnOverrides.sources 에 config 와 함께 남긴다 (10-22 D115).
+ * llama_kv_cache_dsv4 = raw SWA 캐시(K 만) + CSA(비율 4 층, 셀 ceil(ctx/4)) + HCA(비율 128 층, ceil(ctx/128)) + 라이트닝 인덱서(비율 4 층, 헤드 1 × index_head_dim)
+ * + 압축기 상태 3개
+ */
+const DEEPSEEK_V4_KV_REFS: readonly string[] = [
+  `${LLAMA_CPP_0A1E}/src/llama-model.cpp#L3016-L3058`,
+  // 비율 상수 4·128, 셀 수 = ceil(kv_size / ratio)
+  `${LLAMA_CPP_0A1E}/src/llama-kv-cache-dsv4.cpp#L18-L30`,
+  // 모든 캐시가 K 만(MLA 식 — V 없음)
+  `${LLAMA_CPP_0A1E}/src/llama-kv-cache-dsv4.cpp#L887-L891`,
+  // raw SWA(전 층, 컨텍스트와 무관) · 인덱서 헤드 폭 · CSA·HCA·인덱서 캐시(256 셀 단위 패딩) · 압축기 상태
+  `${LLAMA_CPP_0A1E}/src/llama-kv-cache-dsv4.cpp#L1248-L1336`,
+  // raw SWA 셀 수 = PAD(min(ctx, n_swa + n_ubatch), 256) — 컨텍스트와 무관한 상수 몫
+  `${LLAMA_CPP_0A1E}/src/llama-kv-cache-iswa.cpp#L73`,
+];
+
+/**
+ * deepseek_v4 config 에서 llama.cpp deepseek4 변환기·로더가 읽는(또는 계산에 무관한) 키 — 이 밖의 키가 켜져 있으면(값이 null·false·0·빈 값이 아니면)
+ * 처음 보는 옵션으로 보고 보류한다(10-22 D115). 원본 추론 코드(ModelArgs)의 다른 점수 함수·비율이나 비전 변형(DeepSeek-V4-Flash-Vision-Exp — vision_*),
+ * MLA(kv_lora_rank — V3 계열)가 여기 걸린다. 앞쪽 dense 층(first_k_dense_replace > 0)은 아래 값 검사가 막는다(llama.cpp deepseek4 는 모든 층을 MoE 로 읽는다)
+ */
+const DEEPSEEK_V4_KEYS: ReadonlySet<string> = new Set([
+  // 공통 HF 메타
+  'architectures', 'model_type', 'torch_dtype', 'dtype', 'transformers_version', 'use_cache', 'bos_token_id', 'eos_token_id', 'pad_token_id',
+  'initializer_range', 'attention_dropout', 'quantization_config', 'expert_dtype', 'rms_norm_eps', 'rope_theta', 'rope_scaling', 'rope_parameters',
+  'max_position_embeddings', 'vocab_size', 'hidden_act', 'attention_bias', 'tie_word_embeddings', 'first_k_dense_replace',
+  // 어텐션(MQA + q/o LoRA)
+  'num_hidden_layers', 'hidden_size', 'num_attention_heads', 'num_key_value_heads', 'head_dim', 'qk_rope_head_dim', 'q_lora_rank', 'o_lora_rank', 'o_groups',
+  'sliding_window',
+  // 압축 어텐션·라이트닝 인덱서
+  'compress_ratios', 'compress_rope_theta', 'index_n_heads', 'index_head_dim', 'index_topk',
+  // MoE(해시 라우팅 앞 층 포함)
+  'moe_intermediate_size', 'n_routed_experts', 'n_shared_experts', 'num_experts_per_tok', 'norm_topk_prob', 'routed_scaling_factor', 'scoring_func',
+  'topk_method', 'swiglu_limit', 'num_hash_layers',
+  // 하이퍼 커넥션(mHC)
+  'hc_mult', 'hc_sinkhorn_iters', 'hc_eps',
+  // MTP·DSpark — 본 GGUF 파일에 없다(MTP 는 기본 변환에서 빠지고, DSpark 는 별도 dspark-*.gguf)
+  'num_nextn_predict_layers', 'dspark_block_size', 'dspark_noise_token_id', 'dspark_target_layer_ids', 'dspark_markov_rank',
+]);
+
+/** llama.cpp deepseek4 가 받는 층별 압축 비율 — 0(raw SWA 만)·4(CSA + 인덱서)·128(HCA) */
+const DSV4_RATIOS: ReadonlySet<number> = new Set([0, 4, 128]);
+
+/** 0 이상 정수 — 0 을 "없음"과 구별해야 하는 필드(앞 dense 층 수·hash 층 수) */
+const nonNegInt = (v: unknown): number | undefined => (typeof v === 'number' && Number.isInteger(v) && v >= 0 ? v : undefined);
+
+/** 옵션이 켜져 있나 — 값이 없거나 null·false·0·빈 문자열·빈 배열·빈 객체면 꺼짐 */
+const optionOn = (v: unknown): boolean =>
+  !(
+    v === undefined ||
+    v === null ||
+    v === false ||
+    v === 0 ||
+    v === '' ||
+    (Array.isArray(v) && v.length === 0) ||
+    (typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length === 0)
+  );
+
+/**
+ * DeepSeek V4(deepseek_v4 — llama.cpp deepseek4) 분류 (10-22 D115). 근거 `DEEPSEEK_V4_REFS`(구조)·`DEEPSEEK_V4_KV_REFS`(KV).
+ * - 가드: DeepseekV4ForCausalLM 만 · 아는 키 밖의 옵션이 켜지면 보류 · KV 헤드 1(MQA — 압축 캐시가 헤드 하나 폭) · compress_ratios 앞 `층 수`개가 {0,4,128}
+ *   (그 밖은 llama.cpp 로더가 throw) · MoE 점수 sqrtsoftplus(로더가 그것만 받는다) · topk_method noaux_tc(앞 hash 층 밖은 exp_probs_b 편향 텐서가 필요) ·
+ *   attention_bias·tie_word_embeddings 꺼짐(로더에 bias 텐서가 없고 출력층 텐서가 필수) · 앞쪽 dense 층 없음
+ * - KV(f16, B/tok): Σ층 비율 4 → (head_dim × kv + index_head_dim) × 2B / 4 · 비율 128 → head_dim × kv × 2B / 128 · 비율 0 → 0
+ *   (DeepSeek-V4-Flash: 21 × 320 + 20 × 8 = 6,880 — #27680 로그의 CSA·HCA·인덱서 캐시 크기와 일치, docs/02 §2.2).
+ *   raw SWA 캐시(전 층 × PAD(n_swa + n_ubatch, 256) 셀, K 만)와 압축기 상태는 컨텍스트와 무관한 상수라 슬라이딩 층 평탄 근사처럼 빼고 연산 버퍼 근사에 맡긴다
+ *   (기본 ubatch 512 면 768셀 × 43층 × 1KB ≈ 34MB + 상태 ≈ 12MB — docs/02 §9)
+ * - 결과: attnType compressed · override(KV 근거) · moe · mhc(hc_mult > 1) · refs
+ */
+function deepseekV4Arch(cfg: Record<string, unknown>, top: Record<string, unknown>, archs: readonly string[]): ArchResult {
+  const no = (reason: string): ArchResult => ({ kind: 'unsupported', reason });
+  if (!archs.includes('DeepseekV4ForCausalLM')) return no(`llama.cpp 가 변환하지 않는 deepseek_v4 변형(${archs.join(',') || 'architectures 없음'})`);
+  if ('vision_config' in top) return no('deepseek_v4 비전 변형(vision_config) — 텍스트 모델만 계산');
+  const unknown = Object.keys(cfg).filter((k) => !DEEPSEEK_V4_KEYS.has(k) && optionOn(cfg[k]));
+  if (unknown.length > 0) return no(`처음 보는 deepseek_v4 옵션(${unknown.join(',')}) — llama.cpp deepseek4 변환기·로더가 읽는 키만 계산`);
+  const blocked = [
+    ...(cfg['attention_bias'] === true ? ['attention_bias'] : []),
+    ...(cfg['tie_word_embeddings'] === true ? ['tie_word_embeddings'] : []),
+    ...(cfg['hidden_act'] !== undefined && cfg['hidden_act'] !== 'silu' ? [`hidden_act ${String(cfg['hidden_act'])}`] : []),
+    ...(cfg['scoring_func'] !== 'sqrtsoftplus' ? [`scoring_func ${String(cfg['scoring_func'] ?? '없음')}`] : []),
+    ...(cfg['topk_method'] !== undefined && cfg['topk_method'] !== 'noaux_tc' ? [`topk_method ${String(cfg['topk_method'])}`] : []),
+    ...(optionOn(cfg['first_k_dense_replace']) ? ['first_k_dense_replace'] : []),
+  ];
+  if (blocked.length > 0) return no(`llama.cpp deepseek4 로더가 받지 않는 설정(${blocked.join(', ')})`);
+
+  const layers = posInt(cfg['num_hidden_layers']);
+  const kvHeads = posInt(cfg['num_key_value_heads']);
+  const headDim = posInt(cfg['head_dim']);
+  const indexHeadDim = posInt(cfg['index_head_dim']);
+  const maxContext = posInt(cfg['max_position_embeddings'] ?? top['max_position_embeddings']);
+  const required = [
+    'num_hidden_layers', 'num_key_value_heads', 'head_dim', 'index_head_dim', 'max_position_embeddings', 'hidden_size', 'num_attention_heads',
+    'qk_rope_head_dim', 'q_lora_rank', 'o_lora_rank', 'o_groups', 'sliding_window', 'index_n_heads', 'index_topk', 'hc_mult', 'hc_sinkhorn_iters',
+    'moe_intermediate_size',
+  ];
+  const missing = required.filter((k) => posInt(cfg[k] ?? (k === 'max_position_embeddings' ? top[k] : undefined)) === undefined);
+  if (!layers || !kvHeads || !headDim || !indexHeadDim || !maxContext || missing.length > 0) {
+    return no(`deepseek_v4 config 필드 누락(${missing.join(',')})`);
+  }
+  if (kvHeads !== 1) return no(`KV 헤드 ${kvHeads} — llama.cpp deepseek4 압축 캐시는 KV 헤드 1(MQA)만 확인함`);
+  const hash = nonNegInt(cfg['num_hash_layers'] ?? 0);
+  if (hash === undefined || hash > layers) return no(`num_hash_layers ${String(cfg['num_hash_layers'])} — 층 수 ${layers} 안의 0 이상 정수가 아님`);
+  const moe = extractMoe(cfg);
+  if (!moe || moe.topK >= moe.experts) return no('deepseek_v4 MoE 구조(n_routed_experts·num_experts_per_tok) 누락·모순');
+  if (nonNegInt(cfg['n_shared_experts'] ?? 0) === undefined) return no(`n_shared_experts ${String(cfg['n_shared_experts'])} — 0 이상 정수가 아님`);
+  const ratiosRaw = cfg['compress_ratios'];
+  if (!Array.isArray(ratiosRaw) || ratiosRaw.length < layers) return no(`compress_ratios 가 없거나 층 수 ${layers} 보다 짧음 — llama.cpp 로더가 거부`);
+  const ratios: unknown[] = ratiosRaw.slice(0, layers);
+  if (ratios.some((r) => typeof r !== 'number' || !DSV4_RATIOS.has(r))) return no('compress_ratios 에 0·4·128 밖의 값 — llama.cpp deepseek4 로더가 거부');
+  const nCsa = ratios.filter((r) => r === 4).length;
+  const nHca = ratios.filter((r) => r === 128).length;
+  if (nCsa + nHca === 0) return no('압축 층(비율 4·128)이 없음 — 선례 없음');
+  // f16 2B: 비율 4 층은 압축 K(head_dim × kv) + 인덱서 K(index_head_dim)를 4 토큰에 한 칸, 비율 128 층은 압축 K 만 128 토큰에 한 칸
+  const csaPerToken = ((headDim * kvHeads + indexHeadDim) * 2) / 4;
+  const hcaPerToken = (headDim * kvHeads * 2) / 128;
+  const kv = nCsa * csaPerToken + nHca * hcaPerToken;
+  const hcMult = posInt(cfg['hc_mult']) ?? 1;
+  const reason =
+    `compressed — CSA(비율 4) ${nCsa}층 × (head_dim ${headDim} + indexer ${indexHeadDim}) × 2B / 4 + HCA(비율 128) ${nHca}층 × ${headDim} × 2B / 128` +
+    ` (K 만, V 캐시 없음), raw SWA 창 ${String(cfg['sliding_window'])} 캐시(전 ${layers}층)·압축기 상태는 컨텍스트와 무관한 상수라 연산 버퍼 근사로 제외 (add-model)`;
+  return {
+    kind: 'ok',
+    modelType: 'deepseek_v4',
+    attnType: 'compressed',
+    vision: false,
+    maxContext,
+    moe,
+    ...(hcMult > 1 ? { mhc: true as const } : {}),
+    refs: DEEPSEEK_V4_REFS,
+    arch: { layers, kvHeads, headDim, kvBytesPerTokenF16: kv },
+    override: { kvBytesPerTokenF16: kv, reason, refs: DEEPSEEK_V4_KV_REFS },
+  };
+}
+
 export type ArchResult =
   | {
       kind: 'ok';
       modelType: string;
       /** 층별 임베딩 표(PLE, hidden_size_per_layer_input > 0 — 10-21 D112) — 모델 `arch.ple`, 헤더 실측 행은 pleGB */
       ple?: true;
-      attnType: 'full' | 'swa' | 'hybrid';
+      /** compressed — 압축 어텐션(deepseek_v4, 10-22 D115) */
+      attnType: 'full' | 'swa' | 'hybrid' | 'compressed';
+      /** 하이퍼 커넥션(mHC — hc_mult > 1, deepseek_v4 — 10-22 D115) — 모델 `arch.mhc`, 추정은 이론 추정 */
+      mhc?: true;
       arch: { layers: number; kvHeads: number; headDim: number; kvBytesPerTokenF16: number };
       /** swa·hybrid — 전체 어텐션 층만 KV (선례와 같은 산식). refs = 산식 근거(llama.cpp 소스) — attnOverrides.sources 에 덧붙인다 */
       override?: { kvBytesPerTokenF16: number; reason: string; refs?: readonly string[] };
@@ -406,9 +573,6 @@ export type ArchResult =
       vision: boolean;
     }
   | { kind: 'unsupported'; reason: string };
-
-/** 0 이상 정수 — 0 을 "없음"과 구별해야 하는 필드(앞 dense 층 수) */
-const nonNegInt = (v: unknown): number | undefined => (typeof v === 'number' && Number.isInteger(v) && v >= 0 ? v : undefined);
 
 /**
  * K2-Horizon(k2_horizon — llama.cpp k2-horizon, PR #29535 · 10-21 D113) 가드와 층 지도. 전체 어텐션·표준 GQA KV 라 KV 산식은 기본 분기 그대로고,
@@ -490,9 +654,10 @@ export function bailingMlaLayers(layers: number, groupSize: number, nextn: numbe
 /**
  * config.json → 엔진이 모델링하는 구조인지 분류 — **선례가 있는 구조만**(PROGRESS §4 D53, D63 개정): 전체 어텐션 ·
  * 슬라이딩 윈도(layer_types) · 하이브리드 선형(layer_types) · 상수 상태 층 하이브리드(Mamba2·short-conv·KDA+MLA — 전용 분기, D63).
- * 처음 보는 model_type, nanbeige 밖의 반복 층·디스크 n-gram 임베딩·압축 어텐션, 층 지도가 없는 MLA·Mamba·conv 는 unsupported.
+ * 처음 보는 model_type, nanbeige 밖의 반복 층·디스크 n-gram 임베딩, deepseek_v4 밖의 압축 어텐션·하이퍼 커넥션, 층 지도가 없는 MLA·Mamba·conv 는 unsupported.
  * 층별 임베딩 표(PLE)·KV 공유 층은 gemma4_text 의 슬라이딩 층 지도가 있을 때만 계산한다(10-21 D112 — 결과에 `ple`).
  * 반복 층은 nanbeige(num_loops — 10-22 D114)만 계산한다(결과에 `loops`, KV 는 논리 층 수로).
+ * 압축 어텐션(CSA·HCA)·하이퍼 커넥션은 deepseek_v4(10-22 D115)만 계산한다(attnType compressed, 결과에 `mhc`).
  */
 export function classifyArch(config: unknown): ArchResult {
   if (typeof config !== 'object' || config === null) return { kind: 'unsupported', reason: 'config 없음' };
@@ -518,10 +683,19 @@ export function classifyArch(config: unknown): ArchResult {
   if (pleDim !== undefined && !pleBranch) return { kind: 'unsupported', reason: `층별 임베딩 표(PLE) — llama.cpp 배치(입력층·시스템 RAM)를 확인한 구조(${[...PLE_MODEL_TYPES].join(',')})가 아님` };
   if (sharedKv !== undefined && !pleBranch) return { kind: 'unsupported', reason: `KV 공유 층 ${sharedKv}개(num_kv_shared_layers) — llama.cpp 의 KV 공유 산식을 확인한 구조가 아님` };
   if (!KNOWN_MODEL_TYPES.has(modelType)) return { kind: 'unsupported', reason: `처음 보는 구조 model_type=${modelType || '(없음)'} — 선례 없음, 수동 검토` };
+  // 하이퍼 커넥션(mHC — hc_mult > 1, 10-22 D115): llama.cpp 가 그 구조를 도는 방식을 확인한 model_type(deepseek_v4)만 — 다른 구조면 보류
+  const hcMult = posInt(cfg['hc_mult']);
+  if (hcMult !== undefined && hcMult > 1 && !MHC_MODEL_TYPES.has(modelType)) {
+    return { kind: 'unsupported', reason: `하이퍼 커넥션(hc_mult ${hcMult}) — llama.cpp 구조를 확인한 구조(${[...MHC_MODEL_TYPES].join(',')})가 아님` };
+  }
   for (const key of ALWAYS_UNSUPPORTED_KEYS) {
+    // 압축 어텐션(compress_ratios)은 deepseek_v4 전용 분기만 계산한다(10-22 D115)
+    if (key === 'compress_ratios' && COMPRESSED_MODEL_TYPES.has(modelType)) continue;
     if (has(key)) return { kind: 'unsupported', reason: `엔진이 모델링하지 않는 구조 (${key})` };
   }
   const archs = [cfg['architectures'], top['architectures']].flatMap((a) => (Array.isArray(a) ? a.map(String) : []));
+  // DeepSeek V4(10-22 D115): 압축 어텐션 KV·MoE·mHC 를 전용 분기가 모두 정한다
+  if (modelType === 'deepseek_v4') return deepseekV4Arch(cfg, top, archs);
   let branch: StateBranch | undefined;
   // K2-Horizon(10-21 D113): 전체 어텐션 기본 분기에 MoE 층 지도·값 전문가만 더한다
   let k2: { expertLayers?: number[]; mova?: { experts: number; topK: number } } | undefined;
@@ -785,7 +959,11 @@ export function rankGgufRepos(candidates: readonly string[], hfId: string): stri
   return candidates.filter(same).filter((r) => rank(r) < 99).sort((a, c) => rank(a) - rank(c));
 }
 
-/** repo 트리 → 표준 양자화 행 (Q4_K_M 필수 — 없으면 빈 배열, 있으면 첫 행). Q2_K 가 없고 UD-Q2_K_XL 만 있으면 그걸 쓴다 */
+/**
+ * repo 트리 → 표준 양자화 행. 기준 행(첫 행)은 Q4_K_M, 없으면 MXFP4(10-22 D115 — 전문가가 원래 FP4 인 DeepSeek V4 Flash 처럼 4비트급이 MXFP4 전문가
+ * 파일뿐인 저장소. assess `baselineRow` 의 순서 Q4_K_M → MXFP4 와 같다), 둘 다 없으면 빈 배열. MXFP4 는 Q4_K_M 이 있으면 넣지 않는다(기준이 바뀌지 않게).
+ * 그 뒤 IQ4_XS·Q8_0, Q2_K 가 없고 UD-Q2_K_XL 만 있으면 그걸 쓴다. 구조 자체를 받을지는 분류기(classifyArch)가 정한다 — gpt_oss 는 여전히 막힌다
+ */
 export function quantRowsFrom(tree: readonly TreeEntry[], repo: string, modelId: string): ModelQuantRecord[] {
   const rows: ModelQuantRecord[] = [];
   const add = (quant: QuantId): boolean => {
@@ -797,7 +975,7 @@ export function quantRowsFrom(tree: readonly TreeEntry[], repo: string, modelId:
     rows.push({ modelId, quant, fileGB: gb, ggufRepo: repo, fileName: primary.path, sources: [hfUrl(repo)] });
     return true;
   };
-  if (!add('Q4_K_M')) return [];
+  if (!add('Q4_K_M') && !add('MXFP4')) return [];
   add('IQ4_XS');
   add('Q8_0');
   if (!add('Q2_K')) add('UD-Q2_K_XL');
@@ -829,7 +1007,7 @@ export type HfModelInput = {
     paramsB?: number;
   };
   /**
-   * 기준(Q4_K_M) 파일 헤더 실측 (`measureSplit` 결과에서). 크기는 MoE 에서만 쓴다.
+   * 기준(Q4_K_M, 없으면 MXFP4) 파일 헤더 실측 (`measureSplit` 결과에서). 크기는 MoE 에서만 쓴다.
    * totalParamsB·expertParamsB = `totalParams / 1e9`·`expertParams / 1e9` — paramsB·activeParamsB 대용.
    */
   baseSplit?: { expertGB: number; nonExpertGB: number; totalParamsB?: number; expertParamsB?: number };
@@ -863,7 +1041,7 @@ const SPLIT_TOLERANCE_GB = 0.02;
  * HF 데이터 → 엔진 입력 레코드 (ModelCore + ModelQuantCore[]). 순수 — 네트워크는 호출자가 끝낸 뒤 부른다.
  * 결과 모델은 `{ ...catalog, modelQuants: [...catalog.modelQuants, ...rows] }` 와 함께 assessCombo 에 그대로 넣는다.
  *
- * - classifyArch 가 unsupported 면 그 사유 그대로. Q4_K_M GGUF 가 없으면 no-gguf.
+ * - classifyArch 가 unsupported 면 그 사유 그대로. 기준 GGUF(Q4_K_M, 없으면 MXFP4 — 10-22 D115)가 없으면 no-gguf.
  * - paramsB = info.paramsB → baseSplit.totalParamsB, 둘 다 없으면 no-params.
  * - MoE: activeParamsB = 이름 표기(A3B) → 헤더(total − expert + expert × topK/experts), 없으면 no-params.
  *   모델 nonExpertGB = 헤더 실측 → derive 유도. 기준 행(Q4_K_M)에 실측 expertGB·nonExpertGB.
@@ -887,8 +1065,8 @@ export function buildHfModel(input: HfModelInput): HfModelResult {
 
   const modelId = `${HF_MODEL_ID_PREFIX}${slugFromHfId(input.hfId)}`;
   const records = quantRowsFrom(input.tree, input.ggufRepo, modelId);
-  const baseRecord = records[0]; // quantRowsFrom: Q4_K_M 이 첫 행
-  if (!baseRecord) return { kind: 'no-gguf', reason: `no Q4_K_M GGUF in ${input.ggufRepo}` };
+  const baseRecord = records[0]; // quantRowsFrom: 기준 행(Q4_K_M, 없으면 MXFP4 — 10-22 D115)이 첫 행
+  if (!baseRecord) return { kind: 'no-gguf', reason: `no Q4_K_M or MXFP4 GGUF in ${input.ggufRepo}` };
 
   const notes: HfModelNote[] = [];
   const split = input.baseSplit;
@@ -908,6 +1086,8 @@ export function buildHfModel(input: HfModelInput): HfModelResult {
     kvBytesPerTokenF16: arch.override?.kvBytesPerTokenF16 ?? arch.arch.kvBytesPerTokenF16,
     ...(arch.moe ? { experts: arch.moe.experts, topK: arch.moe.topK } : {}),
     ...(arch.expertLayers ? { expertLayers: arch.expertLayers } : {}),
+    // 하이퍼 커넥션(10-22 D115) — 카탈로그 모델과 같은 표시(이 경로는 어차피 이론 추정으로 고정된다)
+    ...(arch.mhc ? { mhc: true as const } : {}),
   };
   // 기준 행만 헤더 실측 분할을 갖는다. 엔진은 분할이 있으면 그래픽카드 상주량(전문가 + 비전문가)으로 full-gpu 를 판정하는데
   // (10-03 D62), 다른 행은 파일 전체라 큰 양자화만 전량 탑재되는 사다리 역전이 생길 수 있다 — offGpuGB 0(파일 전체를 셈)으로 막는다

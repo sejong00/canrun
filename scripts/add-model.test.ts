@@ -130,6 +130,28 @@ describe('GGUF repo choice and quant rows', () => {
     expect(quantRowsFrom([f('m-Q8_0.gguf', 1)], 'org/m-GGUF', 'm')).toEqual([]);
   });
 
+  it('takes MXFP4 as the baseline row when there is no Q4_K_M (10-22 D115 — ggml-org/DeepSeek-V4-Flash-0731-GGUF), DSpark drafts and Q2_K_S left out', () => {
+    const f = (path: string, size: number): TreeEntry => ({ type: 'file', path, size });
+    // 10-22 의 실제 트리
+    const tree = [
+      f('DeepSeek-V4-Flash-0731-MXFP4-00001-of-00002.gguf', 5_250_752),
+      f('DeepSeek-V4-Flash-0731-MXFP4-00002-of-00002.gguf', 154_986_288_576),
+      f('DeepSeek-V4-Flash-0731-Q2_K-00001-of-00002.gguf', 5_250_752),
+      f('DeepSeek-V4-Flash-0731-Q2_K-00002-of-00002.gguf', 117_344_187_840),
+      f('DeepSeek-V4-Flash-0731-Q2_K_S-00001-of-00002.gguf', 5_250_752),
+      f('DeepSeek-V4-Flash-0731-Q2_K_S-00002-of-00002.gguf', 98_587_260_352),
+      f('dspark-DeepSeek-V4-Flash-0731-BF16.gguf', 10_896_059_360),
+      f('dspark-DeepSeek-V4-Flash-0731-MXFP4.gguf', 10_826_882_016),
+    ];
+    expect(quantRowsFrom(tree, 'ggml-org/DeepSeek-V4-Flash-0731-GGUF', 'v4').map((r) => [r.quant, r.fileGB, r.fileName])).toEqual([
+      ['MXFP4', 154.99, 'DeepSeek-V4-Flash-0731-MXFP4-00001-of-00002.gguf'],
+      ['Q2_K', 117.35, 'DeepSeek-V4-Flash-0731-Q2_K-00001-of-00002.gguf'],
+    ]);
+    // Q4_K_M 이 있으면 MXFP4 는 넣지 않는다 — 기준 행이 그대로
+    const both = [f('m-Q4_K_M.gguf', 18_000_000_000), f('m-MXFP4.gguf', 17_000_000_000)];
+    expect(quantRowsFrom(both, 'org/m-GGUF', 'm').map((r) => r.quant)).toEqual(['Q4_K_M']);
+  });
+
   it('records the 30-day download count and its date with the model (D68), or neither', () => {
     expect(downloadsFields(6104298, '2026-10-06')).toEqual({ hfDownloads30d: 6104298, hfDownloadsAsOf: '2026-10-06' });
     expect(downloadsFields(undefined, '2026-10-06')).toEqual({});
@@ -146,6 +168,8 @@ describe('GGUF repo choice and quant rows', () => {
       hfId: 'Qwen/Qwen3-4B', dry: true, category: ['chat', 'reasoning'], popularity: 4,
     });
     expect(() => parseArgs(['--id'])).toThrow();
+    // --params(10-22 D115): safetensors 총계 대신 쓸 총 파라미터 — GGUF 헤더 원소 수
+    expect(parseArgs(['deepseek-ai/DeepSeek-V4-Flash-0731', '--params', '284.33', '--active', '13.8'])).toMatchObject({ params: 284.33, active: 13.8 });
   });
 });
 

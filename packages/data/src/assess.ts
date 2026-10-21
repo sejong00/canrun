@@ -399,6 +399,10 @@ export function isTheoretical(gpu: GpuCore, model: ModelCore, mode: Mode): boole
   // −2.6%)뿐이고, 부분 오프로드(KV 읽기 GPU 몫을 명령 배치대로 — docs/02 §3.4)와 여러 장 층 분할(가중치가 앞쪽 카드에 몰린다 — llama.cpp 코드로 확인,
   // docs/02 §9)도 실측이 없어 보정 추정의 근거가 안 된다(docs/02 §4 ⑨, PROGRESS §4 D114)
   if (model.arch.loops !== undefined) return true;
+  // 하이퍼 커넥션(mHC)·압축 어텐션(DeepSeek V4 Flash — 10-22 D115): 엔진은 MoE 읽기 바이트·고정 시간 식 그대로 계산하고, 층마다 더하는 mHC 혼합(sinkhorn)·
+  // 압축기·인덱서 연산은 따로 세지 않는다. 지금 빌드 공개 실측 1점(M2 Ultra Metal, 파일은 작성자·시기로 본 가정)이 추정보다 25% 느리고 긴 문맥 감쇠도 엔진보다
+  // 커서 보정 추정의 근거가 안 된다(docs/02 §4 ⑩·§7·§9, PROGRESS §4 D115)
+  if (model.arch.mhc === true || model.arch.attnType === 'compressed') return true;
   // FP16 크리플 구형 GPU — 계수 도출 표본(RTX 30~50·RDNA3/4) 밖
   if (isFp16Crippled(gpu)) return true;
   // 통합 메모리 칩의 CPU 추론 — cpu 계수 검증점은 데스크톱 DDR5 뿐 (unifiedCpuBandwidth 는 상한 보정)
