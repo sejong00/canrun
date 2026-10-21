@@ -16,6 +16,7 @@ import {
   hardwareConfigs,
   HUB_POLICY,
   isFp16Crippled,
+  isTheoretical,
   isMixableGpu,
   memoryMatrix,
   modelGpuRows,
@@ -754,6 +755,55 @@ describe('Gemma 4 E4B·E2B — 층별 임베딩 표 (10-21 D112)', () => {
       expect(combo(gpuId, 'gemma-4-e2b').baseline.result.confidence, gpuId).toBe('theoretical');
     }
     expect(combo('rtx-4060', 'gemma-4-12b').baseline.estimate.confidence).toBe('calibrated');
+  });
+});
+
+describe('Nanbeige4.2 3B — 반복 층 (10-22 D114)', () => {
+  it('toModelQuant passes loops and the row loop block; models without loops get neither key (engine input unchanged)', () => {
+    const m = model('nanbeige4.2-3b');
+    const row = seed.modelQuants.find((q) => q.modelId === m.id && q.quant === 'Q4_K_M')!;
+    expect(toModelQuant(m, row)).toMatchObject({ loops: 2, loopGB: 1.97, kvBytesPerToken: 180_224, offGpuGB: 0.29 });
+    // 블록 실측이 없는 행·bpw 폴백은 loops 만(엔진이 읽기 바이트 전체를 반복 블록으로 — 보수)
+    expect(toModelQuant(m)).toMatchObject({ loops: 2 });
+    expect(toModelQuant(m)).not.toHaveProperty('loopGB');
+    for (const other of seed.models.filter((x) => x.arch.loops === undefined)) {
+      const mq = toModelQuant(other, seed.modelQuants.find((q) => q.modelId === other.id));
+      expect(mq, other.id).not.toHaveProperty('loops');
+      expect(mq, other.id).not.toHaveProperty('loopGB');
+    }
+  });
+
+  it('RTX 4060 8k: full-gpu with one copy of the weights (2.68 − 0.29), reads the loop block twice — theoretical', () => {
+    const c = combo('rtx-4060', 'nanbeige4.2-3b');
+    expect(c.baseline.quant).toBe('Q4_K_M');
+    expect(c.baseline.result).toMatchObject({ mode: 'full-gpu', confidence: 'theoretical', verdict: 'S' });
+    expect(c.baseline.result.vram.weights).toBeCloseTo(2.39, 9);
+    expect(c.baseline.result.vram.kv).toBeCloseTo((180_224 * 8192) / 1e9, 9);
+    expect(c.baseline.loopGB).toBe(1.97);
+  });
+
+  it('RTX 4060 32k: the 5.9GB KV pushes it to partial offload; -ngl counts logical layers (22 × (2 − 1) + 1 + GPU layers)', () => {
+    const g = gpu('rtx-4060');
+    const config = hardwareConfigs(g, seed.gpus)[0]!;
+    const m = model('nanbeige4.2-3b');
+    const c = assessCombo(seed, g, config, m, { ctx: 32768 });
+    const q = c.perQuant.find((x) => x.quant === 'Q4_K_M')!;
+    expect(q.result.mode).toBe('partial-offload');
+    const row = seed.modelQuants.find((r) => r.modelId === m.id && r.quant === 'Q4_K_M')!;
+    const plan = commandPlan(g, config, m, row, q, { ctx: 32768 });
+    const onGpu = Math.floor(q.gpuFrac! * 22);
+    expect(onGpu).toBeGreaterThan(0);
+    expect(plan.llamaCpp!.ngl).toBe(22 + 1 + onGpu);
+    expect(plan.loops).toBe(2);
+    expect(plan.layers).toBe(22);
+  });
+
+  it('isTheoretical: every GPU and mode for a looped model, other dense models unchanged', () => {
+    const m = model('nanbeige4.2-3b');
+    for (const id of ['rtx-5090', 'rtx-4060', 'apple-m4-pro', 'cpu-ddr5-5600-2ch']) {
+      for (const mode of ['full-gpu', 'partial-offload', 'cpu-only'] as const) expect(isTheoretical(gpu(id), m, mode), `${id} ${mode}`).toBe(true);
+    }
+    expect(isTheoretical(gpu('rtx-4060'), model('llama-3.1-8b'), 'full-gpu')).toBe(false);
   });
 });
 

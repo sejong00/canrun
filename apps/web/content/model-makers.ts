@@ -32,6 +32,7 @@ export const MODEL_MAKERS: Readonly<Record<string, string>> = {
   JetBrains: 'JetBrains', // add-model 2026-10-20 — https://huggingface.co/api/organizations/JetBrains/overview
   'Aleph-Alpha': 'Aleph Alpha', // add-model 2026-10-20 — https://huggingface.co/api/organizations/Aleph-Alpha/overview
   IFM: 'Institute of Foundation Models', // add-model 2026-10-21 — https://huggingface.co/api/organizations/IFM/overview
+  Nanbeige: 'Nanbeige LLM Lab', // add-model 2026-10-21 — https://huggingface.co/api/organizations/Nanbeige/overview
 };
 
 /** `hfId` → Hugging Face 조직 id ("Qwen/Qwen3-8B" → "Qwen") */

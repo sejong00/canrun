@@ -160,6 +160,36 @@ describe('commandPlan — llama.cpp', () => {
   });
 });
 
+describe('looped layers (Nanbeige4.2, 10-22 D114): -ngl counts logical layers', () => {
+  it('partial offload puts the weights of floor(gpuFrac × layers) physical layers on the GPU: -ngl = layers × (loops − 1) + 1 + that', () => {
+    const m = model('nanbeige4.2-3b');
+    // 8GB 카드 32k(KV 5.9GB) · 12GB 카드 48k(KV 8.9GB) — 둘 다 KV 때문에 가중치 일부만 GPU 에
+    for (const [gpuId, ctx] of [['rtx-4060', 32768], ['rtx-3060-12gb', 49152]] as const) {
+      const g = gpu(gpuId);
+      const config = hardwareConfigs(g, seed.gpus)[0]!;
+      const q = assessCombo(seed, g, config, m, { ctx }).perQuant.find((x) => x.quant === 'Q4_K_M')!;
+      expect(q.result.mode, gpuId).toBe('partial-offload');
+      const plan = commandPlan(g, config, m, row(m.id, 'Q4_K_M'), q, { ctx });
+      const k = Math.floor(q.gpuFrac! * 22);
+      expect(k, gpuId).toBeGreaterThan(0);
+      expect(plan.llamaCpp!.ngl, gpuId).toBe(23 + k);
+      expect(plan.llamaCpp!.command).toContain(`-ngl ${String(plan.llamaCpp!.ngl)} `);
+    }
+  });
+
+  it('the same gpuFrac without loops keeps the old count; full-gpu and cpu-only are unchanged (all · 0)', () => {
+    const g = gpu('rtx-4060');
+    const config = hardwareConfigs(g, seed.gpus)[0]!;
+    const m = model('nanbeige4.2-3b');
+    const plain = { ...m, arch: { ...m.arch, loops: undefined } };
+    const q = assessCombo(seed, g, config, m, { ctx: 32768 }).perQuant.find((x) => x.quant === 'Q4_K_M')!;
+    expect(commandPlan(g, config, plain, row(m.id, 'Q4_K_M'), q, { ctx: 32768 }).llamaCpp!.ngl).toBe(Math.floor(q.gpuFrac! * 22));
+    expect(commandPlan(g, config, plain, row(m.id, 'Q4_K_M'), q, { ctx: 32768 })).not.toHaveProperty('loops');
+    expect(planFor('rtx-4060', 'nanbeige4.2-3b').llamaCpp!.ngl).toBe('all');
+    expect(planFor('cpu-ddr5-5600-2ch', 'nanbeige4.2-3b').llamaCpp!.ngl).toBe(0);
+  });
+});
+
 describe('--n-cpu-moe counts blocks, the engine counts expert layers (10-03 D63)', () => {
   const arch = (layers: number, expertLayers?: number[]) => ({ arch: { layers, kvHeads: 2, headDim: 128, attnType: 'hybrid' as const, kvBytesPerTokenF16: 1, ...(expertLayers ? { expertLayers } : {}) } });
 

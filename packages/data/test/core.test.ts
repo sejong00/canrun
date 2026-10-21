@@ -63,11 +63,12 @@ describe('toCatalogLite', () => {
 
   // 예산 8 → 9 KiB (10-06 D68): 모델 43종 7,977B 에 다운로드 수·기준일 +305B — 계산기 HTML(Flight 인라인)에만 실리고 스크립트 예산 밖
   // 9 → 10 KiB (10-20): 모델 47종 9,003B 에 4종(Qwen3.5 4B·Muse Glimmer 30B·Mellum2.1·Kolibri 1, 양자화 14행) +542B = 9,545B
-  it('stays small: gzip ≤ 10 KiB and deterministic', () => {
+  // 10 → 11 KiB (10-22 D114): 모델 56종 10,276B — 10-21 이후 Gemma 4 E2B·E4B·K2-Horizon 2종·Nanbeige4.2 3B(양자화 4행·loopGB) 추가. 같은 이유(스크립트 예산 밖)
+  it('stays small: gzip ≤ 11 KiB and deterministic', () => {
     const a = JSON.stringify(lite);
     const b = JSON.stringify(toCatalogLite(seed));
     expect(a).toBe(b);
-    expect(gzipSync(a).length).toBeLessThanOrEqual(10 * 1024);
+    expect(gzipSync(a).length).toBeLessThanOrEqual(11 * 1024);
   });
 
   it('is enough for assessCombo — same verdicts as the full catalog for every hub configuration', () => {

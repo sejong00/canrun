@@ -129,6 +129,53 @@ describe('per-layer embedding table pleGB (Gemma 4 E 계열, 10-21 D112)', () =>
   });
 });
 
+describe('looped layers arch.loops · loopGB (Nanbeige4.2, 10-22 D114)', () => {
+  const nb = seed.modelQuants.find((mq) => mq.modelId === 'nanbeige4.2-3b' && mq.quant === 'Q4_K_M')!;
+  const dense = seed.modelQuants.find((mq) => mq.modelId === 'qwen3.5-9b' && mq.quant === 'Q4_K_M')!;
+  const withRow = (row: Record<string, unknown>) => ({
+    ...seed,
+    modelQuants: seed.modelQuants.map((mq) => (mq.modelId === row['modelId'] && mq.quant === row['quant'] ? { ...mq, ...row } : mq)),
+  });
+  const withModel = (id: string, arch: Record<string, unknown>) => ({
+    ...seed,
+    models: seed.models.map((m) => (m.id === id ? { ...m, arch: { ...m.arch, ...arch } } : m)),
+  });
+
+  it('seed: every Nanbeige row is header-measured with the loop block (trunk blk.N.*) inside the GPU-resident share', () => {
+    const rows = seed.modelQuants.filter((mq) => mq.modelId === 'nanbeige4.2-3b');
+    expect(rows.map((r) => r.quant)).toEqual(['Q4_K_M', 'IQ4_XS', 'Q8_0', 'Q2_K']);
+    for (const r of rows) {
+      expect(r.loopGB, r.quant).toBeDefined();
+      expect(r.loopGB!, r.quant).toBeLessThanOrEqual(r.fileGB - r.offGpuGB!);
+    }
+    expect(nb).toMatchObject({ fileGB: 2.68, offGpuGB: 0.29, loopGB: 1.97 });
+    expect(seed.models.find((m) => m.id === 'nanbeige4.2-3b')!.arch).toMatchObject({ layers: 22, loops: 2, kvBytesPerTokenF16: 180_224 });
+  });
+
+  it('the full-attention KV formula counts logical layers (layers × loops) — the plain count is rejected', () => {
+    expect(validateAll(withModel('nanbeige4.2-3b', { kvBytesPerTokenF16: 90_112 })).some((p) => p.includes('kvBytesPerTokenF16 90112 != formula 180224'))).toBe(true);
+    expect(validateAll(withModel('nanbeige4.2-3b', { loops: undefined })).some((p) => p.includes('kvBytesPerTokenF16 180224 != formula 90112'))).toBe(true);
+  });
+
+  it('loopGB only on arch.loops models; their measured rows need it; arch.loops only on dense models', () => {
+    expect(validateAll(withRow({ ...dense, loopGB: 4 })).some((p) => p.includes('only for models with arch.loops'))).toBe(true);
+    const { loopGB: _dropped, ...unlooped } = nb;
+    const missing = { ...seed, modelQuants: seed.modelQuants.map((mq) => (mq === nb ? unlooped : mq)) };
+    expect(validateAll(missing).some((p) => p.includes('needs loopGB'))).toBe(true);
+    // 측정 없는 행(offGpuGB 없음)은 받는다 — 엔진이 읽기 바이트 전체를 반복 블록으로 본다(보수)
+    const { loopGB: _l, offGpuGB: _o, ...bare } = nb;
+    expect(validateAll({ ...seed, modelQuants: seed.modelQuants.map((mq) => (mq === nb ? bare : mq)) })).toEqual([]);
+    expect(validateAll(withModel('gpt-oss-20b', { loops: 2 })).some((p) => p.includes('arch.loops is for dense models only'))).toBe(true);
+  });
+
+  it('the row schema needs offGpuGB with loopGB and loopGB ≤ fileGB − offGpuGB', () => {
+    const { offGpuGB: _o, loopGB: _l, ...bare } = nb;
+    expect(ModelQuantSchema.safeParse({ ...bare, loopGB: 1.97 }).success).toBe(false);
+    expect(ModelQuantSchema.safeParse({ ...bare, offGpuGB: 0.29, loopGB: 2.5 }).success).toBe(false);
+    expect(ModelQuantSchema.safeParse({ ...bare, offGpuGB: 0.29, loopGB: 1.97 }).success).toBe(true);
+  });
+});
+
 describe('MoE arch.experts/topK (10-01)', () => {
   const withModel = (id: string, arch: Record<string, unknown>) => ({
     ...seed,

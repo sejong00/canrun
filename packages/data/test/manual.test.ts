@@ -81,7 +81,10 @@ describe('buildManualModel — catalog twins', () => {
   });
 
   it('the bpw estimate stays close to the real catalog files: dense within ±10%, MoE within ±13% (documented in D66)', () => {
-    const worst = { dense: 0, moe: 0 };
+    const worst = { dense: 0, moe: 0, largeOutput: 0 };
+    // 출력층(output.weight)을 모든 양자화에서 Q6_K 로 둔 큰 어휘 모델 — Nanbeige4.2 3B 는 166,144 × 3072 = 0.51B(파라미터의 12%)라
+    // Q2_K 파일이 어림보다 11% 크다(10-22 D114 — 헤더 실측: 출력층 0.42GB 가 Q4_K_M·IQ4_XS·Q2_K 모두 같다). 따로 ±12% 로 고정한다
+    const largeOutput = new Set(['nanbeige4.2-3b']);
     for (const m of seed.models) {
       // 전문가 FFN 폭이 256 배수가 아니라 K-quant 가 더 큰 형식으로 대체된 모델 — 실제 파일이 어림보다 최대 34% 크다 (D63 §5, D66 §5)
       if (m.id === 'nemotron-3.5-lightning-30b-a3b') continue;
@@ -90,13 +93,16 @@ describe('buildManualModel — catalog twins', () => {
         const real = seed.modelQuants.find((r) => r.modelId === m.id && r.quant === row.quant);
         if (!real) continue;
         const err = Math.abs(row.fileGB - real.fileGB) / real.fileGB;
-        if (m.moe) worst.moe = Math.max(worst.moe, err);
+        if (largeOutput.has(m.id)) worst.largeOutput = Math.max(worst.largeOutput, err);
+        else if (m.moe) worst.moe = Math.max(worst.moe, err);
         else worst.dense = Math.max(worst.dense, err);
       }
     }
     expect(worst.dense).toBeGreaterThan(0);
     expect(worst.dense).toBeLessThan(0.1);
     expect(worst.moe).toBeLessThan(0.13);
+    expect(worst.largeOutput).toBeGreaterThan(0);
+    expect(worst.largeOutput).toBeLessThan(0.12);
   });
 
   it('per-layer embedding models (arch.ple, 10-21 D112): the part outside the table tracks the bpw estimate of the parameters outside it', () => {
