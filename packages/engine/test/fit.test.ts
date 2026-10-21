@@ -17,6 +17,7 @@ import {
   LLAMA33_70B_Q4,
   M4_MAX_128,
   MULTI_GPU_CASES,
+  NANBEIGE42_Q4,
   QWEN3_14B_Q4,
   QWEN35_35B_A3B_Q4,
   QWEN36_35B_A3B_Q4_SPLIT,
@@ -264,6 +265,24 @@ describe('§2.4 per-layer embedding table (Gemma 4 E4B·E2B, 10-21 D112)', () =>
     const roomy = fit({ ...card(4, 4) }, GEMMA4_E4B_Q4);
     expect(roomy.fits).toBe(false);
     expect(roomy.bestQuant).toBe('Q2_K'); // 8.0 × 3.16bpw/8 = 3.16 + 0.134 + 0.575 = 3.87 ≤ 4 (IQ3_XS 3.50 은 4.21 로 넘친다)
+  });
+});
+
+describe('§2.4 looped dense (Nanbeige4.2 — 10-22 D114): placement is one copy of the weights', () => {
+  it('fit ignores loops — the same mode, VRAM and gpuFrac as without loops (KV is already per logical layer in kvBytesPerToken)', () => {
+    for (const ctx of [8192, 32768, 131072]) {
+      const looped = fit(RTX_4060_8GB, NANBEIGE42_Q4, { ctx });
+      const plain = fit(RTX_4060_8GB, { ...NANBEIGE42_Q4, loops: undefined, loopGB: undefined }, { ctx });
+      expect(looped, String(ctx)).toEqual(plain);
+    }
+    expect(fit(RTX_4060_8GB, NANBEIGE42_Q4, { ctx: 32768 }).mode).toBe('partial-offload');
+  });
+
+  it('bestQuant ladder keeps the loop block structure (scaled loopGB) — fit itself never reads it', () => {
+    const tiny: Hardware = { ...RTX_4060_8GB, vramGB: 2, ramGB: 6 };
+    const r = fit(tiny, { ...NANBEIGE42_Q4, quant: 'Q8_0', fileGB: 4.43, loopGB: 3.35, offGpuGB: 0.55 }, { ctx: 8192 });
+    expect(r.fits).toBe(false);
+    expect(r.bestQuant).toBe(fit(tiny, { ...NANBEIGE42_Q4, quant: 'Q8_0', fileGB: 4.43, loops: undefined, loopGB: undefined, offGpuGB: 0.55 }, { ctx: 8192 }).bestQuant);
   });
 });
 

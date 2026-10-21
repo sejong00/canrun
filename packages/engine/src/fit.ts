@@ -181,6 +181,8 @@ export function fit(hw: Hardware, mq: ModelQuant, opts?: FitOptions): FitResult 
       pleGB: mq.pleGB === undefined ? undefined : mq.pleGB * (w / weightsGB(mq)),
       // 값 전문가(MoVA, 10-21 D113)도 구조라 같은 비율로 줄여 남긴다 — 비전문가(배치) 안의 몫이라 fit 은 쓰지 않고 읽기 바이트(§3.1)만 쓴다
       valueExpertGB: mq.valueExpertGB === undefined ? undefined : mq.valueExpertGB * (w / weightsGB(mq)),
+      // 반복 블록(10-22 D114)도 구조라 같은 비율로 줄여 남긴다 — 가중치 상주량은 한 벌이라 fit 은 쓰지 않고 읽기 바이트(§3.1)만 쓴다
+      loopGB: mq.loopGB === undefined ? undefined : mq.loopGB * (w / weightsGB(mq)),
     };
     if (fitOnce(hw, scaled, w, opts).fits) {
       return { ...result, bestQuant: quant };

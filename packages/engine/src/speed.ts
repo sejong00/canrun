@@ -22,6 +22,7 @@ import {
   gpuSharesOf,
   isUniformGpus,
   kvGB,
+  loopExtraGB,
   nonExpertGBFor,
   unreadValueExpertGB,
   weightsGB,
@@ -96,13 +97,22 @@ function moeActiveSplitGB(mq: ModelQuant): { nonExpert: number; routed: number }
 }
 
 /**
- * 토큰당 읽기 바이트 GB(GPU 경로): 가중치(dense 는 파일 − 층별 임베딩 표, MoE 는 비전문가 + 라우팅 전문가 몫) + kvRead(ctx) (§3.1).
- * 층별 임베딩 표(PLE, 10-21 D112)는 토큰마다 한 줄만 읽어(get_rows) 대역폭에서 뺀다 — `pleGB` 가 없는 모델은 파일 전체 그대로.
- * MoE 의 값 전문가(MoVA, 10-21 D113)는 고른 몫만 센다(`moeActiveSplitGB`) — `valueExpertGB` 가 없는 모델은 비전문가 전체 그대로
+ * dense 토큰당 가중치 읽기 GB = 파일 − 층별 임베딩 표 + 반복 층의 추가 읽기 (§3.1). GPU 경로와 cpu-only 가 같은 바이트를 쓴다.
+ * 층별 임베딩 표(PLE, 10-21 D112)는 토큰마다 한 줄만 읽어(get_rows) 뺀다 — `pleGB` 가 없는 모델은 파일 전체 그대로.
+ * 반복 층(10-22 D114)은 반복 블록을 loops 번 읽어 (loops − 1) × loopGB 를 더한다(`loopExtraGB`) — `loops` 가 없는 모델은 0 을 더한다
+ */
+function denseReadGB(mq: ModelQuant): number {
+  const weights = weightsGB(mq);
+  return withoutPleGB(mq, weights) + loopExtraGB(mq, weights);
+}
+
+/**
+ * 토큰당 읽기 바이트 GB(GPU 경로): 가중치(dense 는 `denseReadGB` — 파일 − 층별 임베딩 표 + 반복 층 몫, MoE 는 비전문가 + 라우팅 전문가 몫)
+ * + kvRead(ctx) (§3.1). MoE 의 값 전문가(MoVA, 10-21 D113)는 고른 몫만 센다(`moeActiveSplitGB`) — `valueExpertGB` 가 없는 모델은 비전문가 전체 그대로
  */
 export function bytesPerTokenGB(mq: ModelQuant, ctx: number, kvQuant?: KvQuant): number {
   const kv = kvGB(mq.kvBytesPerToken, ctx, kvQuant);
-  if (!isMoe(mq)) return withoutPleGB(mq, weightsGB(mq)) + kv;
+  if (!isMoe(mq)) return denseReadGB(mq) + kv;
   const { nonExpert, routed } = moeActiveSplitGB(mq);
   return nonExpert + routed + kv;
 }
@@ -151,8 +161,8 @@ function tgFullGpu(hw: Hardware, mq: ModelQuant, bytes: number): number {
  */
 function tgCpuOnly(hw: Hardware, mq: ModelQuant, ctx: number, kvQuant: KvQuant | undefined, gpuBytes: number): number {
   const kv = kvGB(mq.kvBytesPerToken, ctx, kvQuant);
-  // dense 는 GPU 경로와 같이 층별 임베딩 표를 뺀다(10-21 D112 — 토큰마다 한 줄만 읽는다)
-  const bytes = (isMoe(mq) ? activeSliceGB(mq) : withoutPleGB(mq, weightsGB(mq))) + kv;
+  // dense 는 GPU 경로와 같은 바이트 — 층별 임베딩 표를 빼고(10-21 D112 — 토큰마다 한 줄만 읽는다) 반복 층 몫을 더한다(10-22 D114)
+  const bytes = (isMoe(mq) ? activeSliceGB(mq) : denseReadGB(mq)) + kv;
   const cpu = (resolveEff({ effClass: 'cpu' }, isMoe(mq)) * hw.ramBandwidthGBs) / bytes;
   return hw.kind === 'unified' ? Math.min(cpu, tgFullGpu(hw, mq, gpuBytes)) : cpu;
 }
@@ -219,8 +229,11 @@ export type PpOptions = {
   ubatch?: number;
 };
 
-/** pp 추정에 쓰는 모델 정보 — 회귀 점은 카탈로그 밖 양자화(Q4_0·Q4_K_S 등)도 넣으므로 quant 는 문자열 */
-export type PpModel = Pick<ModelQuant, 'paramsB' | 'activeParamsB' | 'activeExpertFrac'> & { quant: string };
+/**
+ * pp 추정에 쓰는 모델 정보 — 회귀 점은 카탈로그 밖 양자화(Q4_0·Q4_K_S 등)도 넣으므로 quant 는 문자열.
+ * 반복 층 모델(10-22 D114)은 loops·loopGB·fileGB 로 실효 파라미터를 늘린다(`ppEffectiveParamsB`)
+ */
+export type PpModel = Pick<ModelQuant, 'paramsB' | 'activeParamsB' | 'activeExpertFrac' | 'loops' | 'loopGB' | 'fileGB'> & { quant: string };
 
 /** K-quant·i-quant(Unsloth UD 포함) — 역양자화가 무거운 형식 (PP_KQUANT_FACTOR) */
 function isKOrIQuant(quant: string): boolean {
@@ -228,11 +241,22 @@ function isKOrIQuant(quant: string): boolean {
 }
 
 /**
- * pp 실효 파라미터 B (§3.5, 10-16 D91) — dense 는 전체 파라미터, MoE 는 활성 × PP_MOE 배수(전문가당 토큰이 적을수록 크다).
- * 전문가 비율(topK/experts)이 없는 MoE 는 기준 비율(전문가당 64토큰 — gpt-oss-20b)로 둔다.
+ * 반복 층 모델의 pp 실효 파라미터 배수 = 1 + (loops − 1) × 반복 블록 / 파일 (§3.5, 10-22 D114) — 반복 블록은 토큰마다 loops 번 계산한다.
+ * 블록 실측이나 파일 크기가 없으면 loops 배(보수 — 느리게 본다). loops 가 없으면 1(기존 모델은 바뀌지 않는다)
+ */
+function loopParamFactor(mq: Pick<PpModel, 'loops' | 'loopGB' | 'fileGB'>): number {
+  if (mq.loops === undefined || mq.loops <= 1) return 1;
+  const share =
+    mq.loopGB !== undefined && mq.fileGB !== undefined && mq.fileGB > 0 ? Math.min(1, Math.max(0, mq.loopGB / mq.fileGB)) : 1;
+  return 1 + (mq.loops - 1) * share;
+}
+
+/**
+ * pp 실효 파라미터 B (§3.5, 10-16 D91) — dense 는 전체 파라미터(반복 층 모델은 반복 블록 몫만큼 늘린다 — 10-22 D114), MoE 는 활성 × PP_MOE 배수
+ * (전문가당 토큰이 적을수록 크다). 전문가 비율(topK/experts)이 없는 MoE 는 기준 비율(전문가당 64토큰 — gpt-oss-20b)로 둔다.
  */
 export function ppEffectiveParamsB(mq: PpModel, opts?: PpOptions): number {
-  if (mq.activeParamsB === undefined) return mq.paramsB;
+  if (mq.activeParamsB === undefined) return mq.paramsB * loopParamFactor(mq);
   const ubatch = opts?.ubatch ?? PP_UBATCH;
   const tokensPerExpert = mq.activeExpertFrac !== undefined ? ubatch * mq.activeExpertFrac : PP_MOE.refTokensPerExpert;
   return mq.activeParamsB * PP_MOE.activeFactor * (PP_MOE.refTokensPerExpert / tokensPerExpert) ** PP_MOE.tokenExp;

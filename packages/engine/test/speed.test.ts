@@ -15,7 +15,7 @@ import {
   PP_MOE,
   PP_REF_PARAMS_B,
 } from '../src/constants';
-import { GEMMA4_E4B_Q4, GPT_OSS_20B, K2_MOVA_Q4, LLAMA2_7B_Q4_0, LLAMA33_70B_Q4, QWEN3_8B_Q4, QWEN35_35B_A3B_Q4, QWEN36_35B_A3B_Q4_SPLIT, RTX_3060_12GB, RTX_4090 } from './fixtures';
+import { GEMMA4_E4B_Q4, GPT_OSS_20B, K2_MOVA_Q4, LLAMA2_7B_Q4_0, LLAMA33_70B_Q4, NANBEIGE42_Q4, QWEN3_8B_Q4, QWEN35_35B_A3B_Q4, QWEN36_35B_A3B_Q4_SPLIT, RTX_3060_12GB, RTX_4090 } from './fixtures';
 
 describe('resolveEff (§3.2)', () => {
   it('uses class defaults — GPU classes have one (dense) value since 10-16 D88, MoE reads with it too', () => {
@@ -55,6 +55,21 @@ describe('bytesPerTokenGB (§3.1)', () => {
     expect(tgEstimate(cpu, GEMMA4_E4B_Q4, { mode: 'cpu-only' }, { ctx: 8192 })).toBeCloseTo((0.5 * 89.6) / (4.98 - 1.94 + kvRead), 6);
     // 표가 없으면 파일 전체 그대로
     expect(bytesPerTokenGB({ ...GEMMA4_E4B_Q4, pleGB: undefined }, 8192)).toBeCloseTo(4.98 + kvRead, 6);
+  });
+
+  it('looped dense (Nanbeige4.2, 10-22 D114): file + (loops − 1) × loop block + kvRead — the same bytes on the CPU path', () => {
+    const kvRead = (180_224 * 8192) / 1e9;
+    expect(bytesPerTokenGB(NANBEIGE42_Q4, 8192)).toBeCloseTo(2.68 + 1.97 + kvRead, 9);
+    const cpu: Hardware = { kind: 'cpu', os: 'linux', memBandwidthGBs: 89.6, ramGB: 32, ramBandwidthGBs: 89.6, effClass: 'cpu' };
+    expect(tgEstimate(cpu, NANBEIGE42_Q4, { mode: 'cpu-only' }, { ctx: 8192 })).toBeCloseTo((0.5 * 89.6) / (2.68 + 1.97 + kvRead), 9);
+    // 반복 블록 실측이 없으면 읽기 바이트 전체를 loops 번(보수 — 낮게 본다), 횟수가 3 이면 블록을 두 번 더
+    expect(bytesPerTokenGB({ ...NANBEIGE42_Q4, loopGB: undefined }, 8192)).toBeCloseTo(2.68 * 2 + kvRead, 9);
+    expect(bytesPerTokenGB({ ...NANBEIGE42_Q4, loops: 3 }, 8192)).toBeCloseTo(2.68 + 2 * 1.97 + kvRead, 9);
+    // 나쁜 데이터(블록 > 파일)는 파일로 묶는다 · loops 가 없거나 1 이면 기존 dense 식과 바이트까지 같다
+    expect(bytesPerTokenGB({ ...NANBEIGE42_Q4, loopGB: 99 }, 8192)).toBeCloseTo(2.68 * 2 + kvRead, 9);
+    expect(bytesPerTokenGB({ ...NANBEIGE42_Q4, loops: undefined }, 8192)).toBe(2.68 + kvRead);
+    expect(bytesPerTokenGB({ ...NANBEIGE42_Q4, loops: 1 }, 8192)).toBe(2.68 + kvRead);
+    expect(bytesPerTokenGB({ ...QWEN3_8B_Q4, loopGB: 3 }, 8192)).toBe(bytesPerTokenGB(QWEN3_8B_Q4, 8192));
   });
 
   it('MoE without a split falls back to the active slice (file × active / total)', () => {
@@ -235,6 +250,16 @@ describe('value experts (MoVA — K2-Horizon, 10-21 D113): placement keeps them 
 });
 
 describe('ppEstimate (§3.5, 10-16 D91 — 모델 크기 반영)', () => {
+  it('looped dense (10-22 D114): effective parameters × (1 + (loops − 1) × loop block / file) — without the block, × loops', () => {
+    expect(ppEffectiveParamsB(NANBEIGE42_Q4)).toBeCloseTo(4.17 * (1 + 1.97 / 2.68), 9);
+    expect(ppEffectiveParamsB({ ...NANBEIGE42_Q4, loopGB: undefined })).toBeCloseTo(4.17 * 2, 9);
+    expect(ppEffectiveParamsB({ ...NANBEIGE42_Q4, fileGB: undefined })).toBeCloseTo(4.17 * 2, 9);
+    expect(ppEffectiveParamsB({ ...NANBEIGE42_Q4, loops: undefined })).toBe(4.17);
+    // 반복 블록을 더 계산하는 만큼 느리다
+    const card = { effClass: 'nvidia' as const, fp16Tflops: 82.6 };
+    expect(ppEstimate(card, NANBEIGE42_Q4)!).toBeLessThan(ppEstimate(card, { ...NANBEIGE42_Q4, loops: undefined })!);
+  });
+
   const nv = { effClass: 'nvidia', fp16Tflops: 82.6 } as const;
   const scale = (paramsB: number) => 1 / (PP_FIXED_SHARE + (1 - PP_FIXED_SHARE) * (paramsB / PP_REF_PARAMS_B));
 

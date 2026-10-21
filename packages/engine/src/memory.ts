@@ -187,6 +187,20 @@ export function withoutPleGB(mq: Pick<ModelQuant, 'pleGB'>, weights: number): nu
 }
 
 /**
+ * 반복 층(looped — `loops` ≥ 2, Nanbeige4.2 — 10-22 D114) dense 모델이 토큰마다 더 읽는 GB = (loops − 1) × 반복 블록 — dense 읽기 바이트(§3.1)에
+ * 더한다. llama.cpp 는 물리 층 텐서를 논리 층 loops 배가 함께 가리키게 하고(`layers[i + j*n_phys] = layers[i]`) 그래프가 논리 층을 차례로 돈다 —
+ * 반복 블록은 토큰마다 loops 번(사이에 다른 층이 있어 캐시로 다시 쓰지 못한다), 입력 임베딩(get_rows 한 줄)·출력층은 한 번.
+ * 반복 블록 = 행의 헤더 실측 `loopGB`(트렁크 blk.N.* 합), 없으면 dense 읽기 바이트 전체(보수 — 실측 1점 기준 −16%, 낮게 본다).
+ * loops 가 없거나 1 이하면 0(기존 모델은 바뀌지 않는다). 블록은 [0, 파일 − 층별 임베딩 표] 로 묶는다(나쁜 데이터가 읽기를 키우거나 음수로 만들지 않게)
+ */
+export function loopExtraGB(mq: Pick<ModelQuant, 'loops' | 'loopGB' | 'pleGB'>, weights: number): number {
+  if (mq.loops === undefined || mq.loops <= 1) return 0;
+  const read = withoutPleGB(mq, weights);
+  const block = Math.min(read, Math.max(0, mq.loopGB ?? read));
+  return (mq.loops - 1) * block;
+}
+
+/**
  * 값 전문가(MoVA, `valueExpertGB` — 10-21 D113) 중 토큰마다 읽지 않는 GB = valueExpertGB × (1 − valueExpertFrac).
  * 값 전문가는 비전문가 안에 있어(그래픽카드 상주) 배치·VRAM 은 그대로 두고 MoE 읽기 바이트(§3.1)에서만 뺀다 — llama.cpp 는 토큰마다
  * 값 전문가 valueTopK 개를 골라(ggml_argsort_top_k) 그것만 곱한다(build_lora_mm_id → ggml_mul_mat_id — 라우팅 FFN 전문가와 같은 연산).

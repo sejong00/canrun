@@ -19,6 +19,9 @@
  * 12) Gemma 4 E4B·E2B(층별 임베딩 표·KV 공유 층, 10-21 D112): 저장 KV 정확값 · 그래픽카드 상주/시스템 RAM 몫 · 공개 실측 10점 오차표 고정
  *     · 층별 임베딩 표 고정 시간(PLE_TOKEN_OVERHEAD_MS — D112 리뷰 반영)은 백엔드별 minimax: CUDA 6점 ±11.1% · Vulkan 2점 ±2.5% 안,
  *     참고점 B580 SYCL ±5% · A770 Vulkan +78%(intel-arc 계수 문제) — 라벨은 이론 추정(docs/02 §4 ⑦·§7·§9)
+ * 13) 반복 층(Nanbeige4.2-3B — 10-22 D114, 엔진 0.12.0): KV 180,224 B/tok(논리 44층) · 같은 기기 비율(Steam Deck Vulkan b10360 fa 1·0 — 카탈로그 밖
+ *     기기라 비율로 대역폭·계수를 지운다) 추정 비/실측 비 ±5%(−2.6%·−0.6%), 반복을 빼면 +60% 넘게·파일 전체 × 2 면 −10% 넘게 벗어남을 함께 고정,
+ *     pp 는 rough ±40% 안(반복을 빼면 밖) — 라벨은 이론 추정(근거 1점·카탈로그 밖 기기, docs/02 §4 ⑨·§7·§9)
  */
 import { describe, expect, it } from 'vitest';
 import { fit } from '../src/fit';
@@ -26,6 +29,7 @@ import { evaluate } from '../src/index';
 import { gpuResidentGBFor, kvBytesPerToken, kvGB, weightsGBFromBpw } from '../src/memory';
 import { PLE_CUDA_CLASSES, PLE_TOKEN_OVERHEAD_MS } from '../src/constants';
 import { bytesPerTokenGB, gpuThroughputGBs, pleOverheadSeconds, ppEstimate, tgEstimate } from '../src/speed';
+import type { Hardware, ModelQuant } from '../src/types';
 import {
   APPLE_PP_CASES,
   LLAMA2_7B_Q4_0,
@@ -34,6 +38,12 @@ import {
   GEMMA4_E2B_Q4,
   GEMMA4_E4B_Q4,
   GEMMA4_E4B_Q8,
+  LOOP_RATIO_CASES,
+  LOOP_RATIO_CTX,
+  LOOP_RATIO_REFERENCE,
+  LOOP_RATIO_SOURCE,
+  NANBEIGE42_Q4,
+  NANBEIGE42_Q4_OWAO,
   PLE_SPEED_CASES,
   MOE_OLD_BUILD_CASES,
   MOE_OVERHEAD_CASES,
@@ -463,5 +473,52 @@ describe('12) Gemma 4 E4B·E2B — 층별 임베딩 표·KV 공유 층 (10-21 D1
     const cpu = { ...RTX_4060_8GB, kind: 'cpu' as const, effClass: 'cpu' as const };
     const kv = kvGB(GEMMA4_E4B_Q4.kvBytesPerToken, 8192);
     expect(tgEstimate(cpu, GEMMA4_E4B_Q4, { mode: 'cpu-only' })).toBeCloseTo((0.5 * cpu.ramBandwidthGBs) / (4.98 - 1.94 + kv), 9);
+  });
+});
+
+describe('13) 반복 층 — Nanbeige4.2-3B (10-22 D114, docs/02 §2.2·§3.1·§3.5·§7)', () => {
+  // 대역폭·클래스 계수는 비에서 지워진다 — 아무 GPU(전량 탑재)로 두 모델의 추정을 나눈다
+  const DECK: Hardware = { kind: 'unified', os: 'linux', memBandwidthGBs: 88, ramGB: 16, ramBandwidthGBs: 88, effClass: 'amd' };
+  const tg = (mq: ModelQuant) => tgEstimate(DECK, mq, { mode: 'full-gpu' }, { ctx: LOOP_RATIO_CTX });
+  const ratioErr = (mq: ModelQuant, c: (typeof LOOP_RATIO_CASES)[number]) =>
+    tg(mq) / tg(LOOP_RATIO_REFERENCE) / (c.measured.loop / c.measured.reference) - 1;
+  const noLoops: ModelQuant = { ...NANBEIGE42_Q4_OWAO, loops: undefined, loopGB: undefined };
+  const wholeFile: ModelQuant = { ...NANBEIGE42_Q4_OWAO, loopGB: undefined };
+
+  it('KV: 논리 층(물리 22 × loops 2) 마다 — 180,224 B/tok, 8k 1.48 · 32k 5.91GB (반복 없이 세면 90,112)', () => {
+    expect(NANBEIGE42_Q4.kvBytesPerToken).toBe(kvBytesPerToken({ layers: 22 * 2, kvHeads: 8, headDim: 128 }));
+    expect(kvGB(NANBEIGE42_Q4.kvBytesPerToken, 8192)).toBeCloseTo(1.476, 3);
+    expect(kvGB(NANBEIGE42_Q4.kvBytesPerToken, 32768)).toBeCloseTo(5.906, 3);
+  });
+
+  it('읽기 바이트 = 파일 + (loops − 1) × 반복 블록 — 상주량(fit)은 가중치 한 벌 그대로', () => {
+    expect(bytesPerTokenGB(NANBEIGE42_Q4, 8192)).toBeCloseTo(2.68 + 1.97 + kvGB(180_224, 8192), 9);
+    expect(gpuResidentGBFor(NANBEIGE42_Q4)).toBeCloseTo(2.68 - 0.29, 9);
+    const r = evaluate(RTX_4060_8GB, NANBEIGE42_Q4);
+    expect(r.mode).toBe('full-gpu');
+    expect(r.vram.weights).toBeCloseTo(2.39, 9);
+  });
+
+  it.each(LOOP_RATIO_CASES.map((c) => [c.label, c] as const))('%s: 추정 비/실측 비가 ±5% 안 — 기록한 오차표와 같다(±0.5%p)', (_label, c) => {
+    expect(LOOP_RATIO_SOURCE).toMatch(/^https:\/\//);
+    const err = ratioErr(NANBEIGE42_Q4_OWAO, c);
+    expect(Math.abs(err)).toBeLessThanOrEqual(0.05);
+    expect(err).toBeCloseTo(c.recordedErr.formula, 2);
+    // 반복을 빼면(파일 한 번) +60% 넘게, 파일 전체를 loops 번 읽으면 −10% 넘게 벗어난다 — 반복 블록만 loops 번인 이유
+    expect(ratioErr(noLoops, c)).toBeGreaterThan(0.6);
+    expect(ratioErr(noLoops, c)).toBeCloseTo(c.recordedErr.noLoops, 2);
+    expect(ratioErr(wholeFile, c)).toBeLessThan(-0.1);
+    expect(ratioErr(wholeFile, c)).toBeCloseTo(c.recordedErr.wholeFile, 2);
+  });
+
+  it('pp: 실효 파라미터 × (1 + 반복 블록/파일) 이면 같은 실행의 비가 rough ±40% 안 — 반복을 빼면 밖', () => {
+    const hw = { effClass: 'amd' as const, fp16Tflops: 3.2 };
+    const pp = (mq: ModelQuant) => ppEstimate(hw, mq)!;
+    for (const c of LOOP_RATIO_CASES) {
+      const measured = c.measuredPp.loop / c.measuredPp.reference;
+      const err = pp(NANBEIGE42_Q4_OWAO) / pp(LOOP_RATIO_REFERENCE) / measured - 1;
+      expect(Math.abs(err), c.label).toBeLessThanOrEqual(0.4);
+      expect(pp(noLoops) / pp(LOOP_RATIO_REFERENCE) / measured - 1, c.label).toBeGreaterThan(0.4);
+    }
   });
 });

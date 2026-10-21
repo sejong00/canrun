@@ -139,6 +139,20 @@ export type ModelQuant = {
   valueExpertGB?: number;
   /** MoE: 토큰당 쓰는 값 전문가 비율 valueTopK/valueExperts — 값 전문가 읽기량 = valueExpertGB × 이 값 (§3.1, 10-21 D113) */
   valueExpertFrac?: number;
+  /**
+   * dense: 반복 층(looped transformer — Nanbeige4.2 `num_loops`) 반복 횟수, 2 이상 (10-22 D114). llama.cpp 는 물리 층을 loops 번 이어 붙인
+   * 논리 층을 차례로 돌며 같은 가중치를 다시 쓴다 — 토큰마다 반복 블록을 loops 번 읽고, 입력 임베딩·출력층은 한 번(§3.1). 배치(fit)·VRAM 은
+   * 그대로(가중치는 한 벌), KV 는 논리 층마다라 `kvBytesPerToken` 에 이미 loops 배로 들어 있다(데이터 계층 — §2.2).
+   * 출처: https://github.com/ggml-org/llama.cpp/blob/0a1ef309cdbb9f2024f58a38fb4c42352c5db569/src/models/nanbeige.cpp#L19-L32 ·
+   * https://github.com/ggml-org/llama.cpp/blob/0a1ef309cdbb9f2024f58a38fb4c42352c5db569/src/models/nanbeige.cpp#L66-L73 ·
+   * https://github.com/ggml-org/llama.cpp/blob/0a1ef309cdbb9f2024f58a38fb4c42352c5db569/src/models/nanbeige.cpp#L105
+   */
+  loops?: number;
+  /**
+   * dense 반복 모델: 반복 블록 GB — 트렁크 `blk.N.*` 텐서 합(GGUF 헤더 실측, 10-22 D114). 토큰당 읽기에 (loops − 1) × 이 값을 더한다(§3.1).
+   * 없으면(사다리·실측 없는 행) 읽기 바이트 전체를 반복 블록으로 본다 — 보수(낮게 본다)
+   */
+  loopGB?: number;
   maxContext: number;
 };
 
