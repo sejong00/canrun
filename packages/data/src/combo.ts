@@ -320,12 +320,23 @@ export type AlternativesInput = {
 
 const A_RANK = verdictRank('A');
 
+/**
+ * 모델 대안(더 큰·더 작은·더 빠른 모델) 후보인가 — 값 전문가(MoVA, `arch.valueExperts`) 모델은 뺀다.
+ * 이 구조는 늘 이론 추정(assess `isTheoretical` ⑧)인데 크기(37.44B)가 Qwen3.5 35B-A3B 바로 위라, 후보로 두면 이미 배포된
+ * 기존 콤보 1,455곳(색인 배치 1 포함)의 모델 대안이 보정·실측 추정 모델에서 이 모델로 바뀐다. 대안 규칙(그대로 둘지 ·
+ * 크기가 비슷하면 판정·라벨이 나은 쪽을 먼저 · 늘 이론 추정인 모델을 뺄지)은 사용자 결정 대기라, 그때까지 기존 페이지를
+ * 그대로 두는 임시 기본값이다(6b060f2 대비 대안 변화 0 — PROGRESS §2 큐 3·§4 D113). 이 모델 자신의 콤보·허브는 그대로 만든다
+ */
+const isModelAltCandidate = (model: Model): boolean => model.arch.valueExperts === undefined;
+
 /** (a) 더 큰/작은 모델 · (b) 다른 quant · (c) 실행 방식/RAM/칩/GPU — 각 0~1개. */
 export function alternatives(input: AlternativesInput): Alternative[] {
   const { gpu, gpuHub, configIndex, modelHub, model, combo } = input;
   const out: Alternative[] = [];
   const rank = verdictRank(combo.baseline.result.verdict);
-  const rows = gpuHub.rows.map((row) => ({ model: row.model, combo: row.combos[configIndex]! }));
+  const rows = gpuHub.rows
+    .filter((row) => isModelAltCandidate(row.model))
+    .map((row) => ({ model: row.model, combo: row.combos[configIndex]! }));
 
   // (a) 모델
   const sameOrBetterA = rows.filter((r) => verdictRank(r.combo.baseline.result.verdict) >= A_RANK);
