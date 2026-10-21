@@ -258,6 +258,7 @@
 
 ## 7. 이력 (최신이 위)
 
+- **10-21** 신모델 자동 추가 ② — ① 런 성공·추가 0종(PR 없음). 스킵 목록: XHToken/Spark-X2.6-4B-Base(skip, Base)·XHToken/Spark-X2.6-4B(wait, add-model 후 manual.test MoE 파일 크기 오차 13% 초과). 기준 미달 2건(reflection/Beam-1.0-501B-A23B·orcarouter/OrcaCyber-Nano-1.0)은 적지 않음
 - **10-21** D112 — Gemma 4 E4B·E2B 를 계산한다(층별 임베딩 표는 시스템 RAM·읽기 바이트에서 제외, KV 공유 층은 앞 층만 KV, 독립 검토 반영으로 E 계열 토큰당 고정 시간 `PLE_TOKEN_OVERHEAD_MS` CUDA 1.35·Vulkan 1.75ms — 엔진 0.10.0, 라벨 이론 추정). 카탈로그 53종, 실측 3건 추가. 기존 51종 판정·속도는 모든 GPU·RAM 구성에서 그대로(12,291 조합 비교). 콘텐츠도 같은 날 마쳤다: 가이드 `gemma-4-models`·`ollama-lm-studio-requirements` en·ko 의 "계산하지 않음" 문장을 필요량·8GB 카드 fit·판정(`<Expect>`)으로, 업데이트 소식 `gemma4-e-series`, 모델 소개 2종. 예: E4B·E2B × RTX 4060 쾌적(이론 추정), M4 16GB 의 E4B 원활. 게이트: validate-data · typecheck · lint · test:coverage 1,498 · verify-engine 269 · build(9,341쪽) · test:export 96 · E2E 244(로컬 Edge) · check-expect 3,296 0 실패 · 시크릿은 추가 줄 정규식 스캔 0(로컬 gitleaks 없음 — 푸시 후 CI gitleaks 로 확인)
 
 - **10-20** 사용자가 GSC URL 검사 색인 요청을 마쳤다(10-19~20 이틀, 20주소 — 새 가이드 4편 en·ko·VRAM 가이드·비교 목차 en·ko·비교 5쌍·새 모델 허브 Qwen3.5 4B·Muse Glimmer 30B·Apple M6). 다음: 매주 GSC "페이지" 수치 기록, 10-28쯤 배치 2 판단
