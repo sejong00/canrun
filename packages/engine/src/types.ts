@@ -120,6 +120,14 @@ export type ModelQuant = {
    * dGPU full-gpu 필요량 = fileGB − 이 값. 없으면 MoE 실측 분할(expertGB + nonExpertGB)로 유도, 그것도 없으면 파일 전체.
    */
   offGpuGB?: number;
+  /**
+   * dense: 층별 임베딩 표 `per_layer_token_embd` GB (PLE — Gemma 4 E2B·E4B, GGUF 헤더 실측, 10-21 D112). 입력층이라 offGpuGB 안에
+   * 들어 있고(시스템 RAM), llama.cpp 는 토큰마다 이 표에서 한 줄만 읽는다(get_rows) — 속도식의 읽기 바이트에서 뺀다(§3.1).
+   * 부분 오프로드 gpuFrac 의 분모도 파일 − 이 값(처음부터 CPU 라 나눠 올리는 대상이 아니다 — §2.4-3)
+   * 출처: https://github.com/ggml-org/llama.cpp/blob/9a3b91c6801e68f412fcf1b6f8e153aa562b8536/src/llama-arch.cpp#L1031 ·
+   * https://github.com/ggml-org/llama.cpp/blob/9a3b91c6801e68f412fcf1b6f8e153aa562b8536/src/llama-model.cpp#L1684-L1686
+   */
+  pleGB?: number;
   maxContext: number;
 };
 

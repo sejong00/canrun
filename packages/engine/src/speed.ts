@@ -5,6 +5,8 @@ import {
   EFF,
   MOE_EXPERT_OVERHEAD_US,
   MULTI_GPU_TG_FACTOR,
+  PLE_CUDA_CLASSES,
+  PLE_TOKEN_OVERHEAD_MS,
   PP_COEF,
   PP_COEF_NEURAL_ACCEL,
   PP_FIXED_SHARE,
@@ -14,7 +16,7 @@ import {
   PP_UBATCH,
 } from './constants';
 import type { FitResult } from './fit';
-import { expertGBFor, gpuCountOf, gpuSharesOf, isUniformGpus, kvGB, nonExpertGBFor, weightsGB } from './memory';
+import { expertGBFor, gpuCountOf, gpuSharesOf, isUniformGpus, kvGB, nonExpertGBFor, weightsGB, withoutPleGB } from './memory';
 import type { Hardware, KvQuant, ModelQuant } from './types';
 
 export type SpeedOptions = { ctx?: number; kvQuant?: KvQuant };
@@ -78,10 +80,13 @@ function moeActiveSplitGB(mq: ModelQuant): { nonExpert: number; routed: number }
   return { nonExpert, routed: activeGB - nonExpert };
 }
 
-/** 토큰당 읽기 바이트 GB(GPU 경로): 가중치(MoE 는 비전문가 + 라우팅 전문가 몫) + kvRead(ctx) (§3.1). */
+/**
+ * 토큰당 읽기 바이트 GB(GPU 경로): 가중치(dense 는 파일 − 층별 임베딩 표, MoE 는 비전문가 + 라우팅 전문가 몫) + kvRead(ctx) (§3.1).
+ * 층별 임베딩 표(PLE, 10-21 D112)는 토큰마다 한 줄만 읽어(get_rows) 대역폭에서 뺀다 — `pleGB` 가 없는 모델은 파일 전체 그대로
+ */
 export function bytesPerTokenGB(mq: ModelQuant, ctx: number, kvQuant?: KvQuant): number {
   const kv = kvGB(mq.kvBytesPerToken, ctx, kvQuant);
-  if (!isMoe(mq)) return weightsGB(mq) + kv;
+  if (!isMoe(mq)) return withoutPleGB(mq, weightsGB(mq)) + kv;
   const { nonExpert, routed } = moeActiveSplitGB(mq);
   return nonExpert + routed + kv;
 }
@@ -100,10 +105,26 @@ export function moeOverheadSeconds(hw: Pick<Hardware, 'effClass'>, mq: Pick<Mode
   return mq.moeLayers * mq.topK * us * 1e-6;
 }
 
-/** full-gpu(§3.1) — 읽기 시간(클래스 dense 계수) + MoE 는 토큰당 고정 시간. */
+/**
+ * 층별 임베딩 표(PLE, `pleGB` — 10-21 D112) 모델의 GPU 경로 토큰당 고정 시간 초 (§3.1). 표의 행을 층마다 CPU 에서 GPU 로 올리고
+ * 기다리는 시간 — 백엔드는 클래스로 고른다(`PLE_CUDA_CLASSES` 는 CUDA 값, 그 밖은 Vulkan 값). `backend` 는 회귀 검증용(같은 카드를
+ * Vulkan 으로 잰 실측 대조 — test/fixtures.ts PLE_SPEED_CASES). 표가 없는 모델은 0(기존 dense 모델은 바뀌지 않는다).
+ * 여러 카드(§6)는 1번 카드의 클래스.
+ */
+export function pleOverheadSeconds(
+  hw: Pick<Hardware, 'effClass'>,
+  mq: Pick<ModelQuant, 'pleGB'>,
+  backend?: keyof typeof PLE_TOKEN_OVERHEAD_MS,
+): number {
+  if (mq.pleGB === undefined || mq.pleGB <= 0) return 0;
+  const b = backend ?? (PLE_CUDA_CLASSES.includes(hw.effClass) ? 'cuda' : 'vulkan');
+  return PLE_TOKEN_OVERHEAD_MS[b] * 1e-3;
+}
+
+/** full-gpu(§3.1) — 읽기 시간(클래스 dense 계수) + 토큰당 고정 시간(MoE 는 MoE 층 × topK, 층별 임베딩 표 dense 는 PLE 값, 그 밖은 0). */
 function tgFullGpu(hw: Hardware, mq: ModelQuant, bytes: number): number {
   const read = bytes / gpuThroughputGBs(hw);
-  return 1 / (isMoe(mq) ? read + moeOverheadSeconds(hw, mq) : read);
+  return 1 / (read + (isMoe(mq) ? moeOverheadSeconds(hw, mq) : pleOverheadSeconds(hw, mq)));
 }
 
 /**
@@ -113,7 +134,8 @@ function tgFullGpu(hw: Hardware, mq: ModelQuant, bytes: number): number {
  */
 function tgCpuOnly(hw: Hardware, mq: ModelQuant, ctx: number, kvQuant: KvQuant | undefined, gpuBytes: number): number {
   const kv = kvGB(mq.kvBytesPerToken, ctx, kvQuant);
-  const bytes = (isMoe(mq) ? activeSliceGB(mq) : weightsGB(mq)) + kv;
+  // dense 는 GPU 경로와 같이 층별 임베딩 표를 뺀다(10-21 D112 — 토큰마다 한 줄만 읽는다)
+  const bytes = (isMoe(mq) ? activeSliceGB(mq) : withoutPleGB(mq, weightsGB(mq))) + kv;
   const cpu = (resolveEff({ effClass: 'cpu' }, isMoe(mq)) * hw.ramBandwidthGBs) / bytes;
   return hw.kind === 'unified' ? Math.min(cpu, tgFullGpu(hw, mq, gpuBytes)) : cpu;
 }
@@ -146,7 +168,7 @@ function tgCpuMoe(
   return Math.min(1 / seconds, tgFullGpu(hw, mq, bytes));
 }
 
-/** partial-offload(§3.4): 조화 평균 — dense 절벽. */
+/** partial-offload(§3.4): 조화 평균 — dense 절벽. gpuFrac 은 GPU 에 올린 몫 ÷ (파일 − 층별 임베딩 표) — 읽기 바이트와 같은 기준(fit.ts) */
 function tgPartial(hw: Hardware, mq: ModelQuant, bytes: number, cpu: number, gpuFrac: number): number {
   const gpu = tgFullGpu(hw, mq, bytes);
   return 1 / (gpuFrac / gpu + (1 - gpuFrac) / cpu);

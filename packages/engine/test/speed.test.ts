@@ -15,7 +15,7 @@ import {
   PP_MOE,
   PP_REF_PARAMS_B,
 } from '../src/constants';
-import { GPT_OSS_20B, LLAMA2_7B_Q4_0, LLAMA33_70B_Q4, QWEN3_8B_Q4, QWEN35_35B_A3B_Q4, QWEN36_35B_A3B_Q4_SPLIT, RTX_3060_12GB, RTX_4090 } from './fixtures';
+import { GEMMA4_E4B_Q4, GPT_OSS_20B, LLAMA2_7B_Q4_0, LLAMA33_70B_Q4, QWEN3_8B_Q4, QWEN35_35B_A3B_Q4, QWEN36_35B_A3B_Q4_SPLIT, RTX_3060_12GB, RTX_4090 } from './fixtures';
 
 describe('resolveEff (§3.2)', () => {
   it('uses class defaults — GPU classes have one (dense) value since 10-16 D88, MoE reads with it too', () => {
@@ -45,6 +45,16 @@ describe('bytesPerTokenGB (§3.1)', () => {
   it('MoE with a header split: non-expert + routed experts × topK/experts (10-16 D88)', () => {
     const kvRead = (24 * 1024 * 2048) / 1e9;
     expect(bytesPerTokenGB(GPT_OSS_20B, 2048)).toBeCloseTo(1.3 + 10.18 * (4 / 32) + kvRead, 6);
+  });
+
+  it('dense with a per-layer embedding table: file − pleGB + kvRead — one row of the table per token (10-21 D112)', () => {
+    const kvRead = (16_384 * 8192) / 1e9;
+    expect(bytesPerTokenGB(GEMMA4_E4B_Q4, 8192)).toBeCloseTo(4.98 - 1.94 + kvRead, 6);
+    // CPU 전용 경로도 같은 바이트(cpu 계수 0.5 × RAM 대역폭)
+    const cpu: Hardware = { kind: 'cpu', os: 'linux', memBandwidthGBs: 89.6, ramGB: 32, ramBandwidthGBs: 89.6, effClass: 'cpu' };
+    expect(tgEstimate(cpu, GEMMA4_E4B_Q4, { mode: 'cpu-only' }, { ctx: 8192 })).toBeCloseTo((0.5 * 89.6) / (4.98 - 1.94 + kvRead), 6);
+    // 표가 없으면 파일 전체 그대로
+    expect(bytesPerTokenGB({ ...GEMMA4_E4B_Q4, pleGB: undefined }, 8192)).toBeCloseTo(4.98 + kvRead, 6);
   });
 
   it('MoE without a split falls back to the active slice (file × active / total)', () => {

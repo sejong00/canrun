@@ -178,6 +178,15 @@ export function gpuResidentGBFor(
 }
 
 /**
+ * 파일 중 층별 임베딩 표(PLE, `pleGB` — 10-21 D112)를 뺀 GB — dense 의 토큰당 가중치 읽기(§3.1)와 부분 오프로드 gpuFrac 의 분모(§2.4-3).
+ * llama.cpp 는 이 표를 입력층으로 늘 시스템 RAM 에 두고 토큰마다 한 줄만 읽는다. `pleGB` 가 없으면 weights 그대로(기존 모델은 바뀌지 않는다).
+ * [0, weights] 로 묶는다(나쁜 데이터가 음수를 만들지 않게).
+ */
+export function withoutPleGB(mq: Pick<ModelQuant, 'pleGB'>, weights: number): number {
+  return Math.min(weights, Math.max(0, weights - (mq.pleGB ?? 0)));
+}
+
+/**
  * 라우팅 전문가 텐서 GB — 실측 행은 `expertGB`, 아니면 파일 − 비전문가(유도 경로: token_embd·MTP 가 전문가 쪽에 섞여
  * 층당 전문가 크기를 약간 크게 본다 = `--n-cpu-moe` 가 보수적).
  */

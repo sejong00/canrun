@@ -240,6 +240,31 @@ export const MOE_EXPERT_OVERHEAD_US: Readonly<Partial<Record<EffClass, number>>>
   'dgx-spark': 9.6,
 });
 
+/**
+ * 층별 임베딩 표(PLE — Gemma 4 E2B·E4B, `ModelQuant.pleGB`) 모델의 토큰당 고정 시간 ms (§3.1, 10-21 D112 리뷰 반영).
+ * 토큰 시간 = 읽는 바이트(파일 − 표) ÷ (dense 계수 × 대역폭) + 이 값. 같은 카드의 다른 dense 모델은 실측 − 대역폭 시간이
+ * 0.14~0.72ms 인데(5090 Vulkan — llama 8B Q4_K_M 0.14 · llama 3B Q5_K 0.56 · llama 1B Q2_K 0.62 · phi3 0.72) E 계열만 1.7~1.8ms 라
+ * dense 공통 항(PROGRESS §2 엔진 후속 ⑭)으로는 메워지지 않는다 — 층마다 표의 행을 CPU 에서 꺼내 GPU 로 올리고 기다리는 시간
+ * (#28618: 토큰마다 입력 2개를 CPU→GPU 로 보내며 매번 동기화)과 작은 층별 연산이다. 엔진은 백엔드를 입력받지 않아 클래스로 고른다 —
+ * CUDA 로 도는 `PLE_CUDA_CLASSES` 는 `cuda`, 그 밖의 GPU 클래스(amd·intel-arc·strix 의 흔한 백엔드 Vulkan, 실측이 없는 Metal)는
+ * 큰 쪽 `vulkan`(보수). CPU 경로에는 더하지 않는다(옮기는 일이 없다). 값은 백엔드별 점의 최대 오차를 가장 작게 하는 값(minimax, 0.05ms).
+ * ubatch 1 pp256 점은 마지막 토큰만 출력층을 계산하므로(llama-bench pp 는 출력 지정 없는 배치 — 그때는 마지막 토큰만 출력:
+ * https://github.com/ggml-org/llama.cpp/blob/e13469a323147aed0c93f5b4efde10fcc379e977/tools/llama-bench/llama-bench.cpp#L2154 ·
+ * src/llama-batch.cpp#L120-L130) 읽기에서 출력층(임베딩 공유라 token_embd 사본)을 255/256 만큼 뺀 바이트로 맞췄다 — tg 는 출력층까지
+ * 읽으므로 같은 카드의 실제 tg 는 그 점보다 느리다. 검증점은 test/fixtures.ts PLE_SPEED_CASES.
+ */
+// source(cuda, 1.35 — 6점 최대 11.0%): #29152 master 열 ubatch 1 pp256 Gemma 4 E2B Q4_0 — RTX 3090 298.02 · 4090 356.15 · 5090 470.11(https://github.com/ggml-org/llama.cpp/pull/29152) · DGX Spark 162.3(https://github.com/ggml-org/llama.cpp/pull/29152#pullrequestreview-5260306593) — 파일은 출처에 없어 llama-quantize Q4_0 인 ggml-org 파일로 본다(표 Q4_0 1.32GB · token_embd Q8_0 0.43GB, https://huggingface.co/ggml-org/gemma-4-E2B-it-GGUF) · RTX 3080 Ti E4B Q8_0 4k 프롬프트 뒤 생성 b10988 112.9(https://atomic.chat/blog/guides/best-local-llm-12gb) · RTX 4070 Ti E4B Q8_0 tg128 b8641 69.66(https://alfonsofortunato.com/blog/gemma-4-e4b-vs-26b-local-benchmarks/). 실측 − 대역폭 시간 −0.41(4070 Ti — 작은 대역폭 카드라 클래스 계수 0.70 이 낮다)~+1.68ms(3090), minimax 1.36 → 1.35(3090 +11.0% · 4070 Ti −10.9%)
+// source(vulkan, 1.75 — 2점 최대 2.3%): RTX 5090 Vulkan tg128 수정 후 표 E4B Q4_K_M 233.96 · E2B Q4_K_M 341.76(https://github.com/ggml-org/llama.cpp/pull/28618, unsloth 파일) — 실측 − 대역폭 시간 1.84·1.73ms, minimax 1.78 → 0.05ms 격자에서 1.75(E4B +2.3% · E2B −0.7%, 1.8 이면 E2B −2.4%). 회귀 밖 참고: Arc B580 SYCL E4B Q4_0 82.3 은 −3.3%(https://github.com/ggml-org/llama.cpp/discussions/23313#discussioncomment-17291611), Arc A770 Vulkan +78%(https://github.com/ggml-org/llama.cpp/discussions/26823 — intel-arc 계수 문제)
+// source: https://github.com/ggml-org/llama.cpp/pull/29152 · https://github.com/ggml-org/llama.cpp/pull/28618 외 — 백엔드별 근거 점은 위 source(백엔드) 줄 (docs/02 §3.1·§7)
+export const PLE_TOKEN_OVERHEAD_MS = Object.freeze({
+  cuda: 1.35,
+  vulkan: 1.75,
+});
+
+/** `PLE_TOKEN_OVERHEAD_MS.cuda` 를 쓰는 클래스 — llama.cpp 를 CUDA 로 돌리는 NVIDIA 카드·DGX Spark (그 밖의 GPU 클래스는 vulkan 값) */
+// source: docs/02 §3.1 (policy)
+export const PLE_CUDA_CLASSES: readonly EffClass[] = Object.freeze(['nvidia', 'dgx-spark']);
+
 /** 판정 임계 (ctx 8k, Q4_K_M 기준, §5 — 20 ≈ 읽는 속도 상회, 8 ≈ 인내 가능, 2 미만 실사용 불가). */
 // source: docs/02 §5 (policy)
 export const VERDICT_THRESHOLDS = Object.freeze({

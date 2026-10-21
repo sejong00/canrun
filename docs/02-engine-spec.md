@@ -31,6 +31,7 @@ type ModelQuant = {
   activeExpertFrac?: number; moeLayers?: number;    // MoE: topK/experts, 전문가 층 수 (§3.3·§2.4-2)
   topK?: number;                                    // MoE: 토큰당 활성 전문가 수 — 토큰당 고정 시간(§3.1, 10-16 D88)
   offGpuGB?: number;                                // dense: 파일 중 그래픽카드에 안 올리는 GB (헤더 실측, §2.4-1 — 10-03 D62)
+  pleGB?: number;                                   // dense: 층별 임베딩 표 per_layer_token_embd GB (헤더 실측, offGpuGB 안 — §2.4·§3.1, 10-21 D112)
   maxContext: number;
 };
 type Result = {
@@ -75,7 +76,8 @@ type Result = {
   - 하이브리드 리니어(Qwen3.5/3.6, Kimi K3): full-attn 레이어(전체의 ~1/4)만 KV + 상수 recurrent state.
   - **상수 상태 층 하이브리드(10-03 D63, D53 대체)**: Mamba2(Nemotron-H)·short-conv(LFM2)·KDA(Ling-3.0) 층도 하이브리드 리니어와 같이 컨텍스트와 무관한 고정 상태 — **KV 는 어텐션 층만** 계상하고 상태(모델당 ≤ ~75MB)는 미계상(연산 버퍼 근사 0.5GB+ 여유 안). llama.cpp 가 KV 를 두는 층: 기본 하이브리드 필터 `!is_recr(il)`(https://github.com/ggml-org/llama.cpp/blob/master/src/llama-memory-hybrid.cpp), Nemotron-H 는 전용 필터 `!is_recr(il) && n_ff(il) == 0` 으로 Mamba·MoE 전용 블록 제외(https://github.com/ggml-org/llama.cpp/blob/master/src/llama-model.cpp).
   - **KDA+MLA 혼합(Ling-3.0)**: MLA 층에만 `(kv_lora_rank + qk_rope_head_dim) × 2B` — **V 캐시 없음**(`has_v = !is_mla`, https://github.com/ggml-org/llama.cpp/blob/master/src/llama-kv-cache.cpp). MLA 층 = 변환기 `is_full_attention`(https://github.com/ggml-org/llama.cpp/blob/master/conversion/bailingmoe3.py) — nextn(MTP) 층 포함(BAILINGMOE3 는 nextn 층 필터가 없어 KV 를 둔다 — 보수 쪽). 예: Ling-3.0-flash 8 × 1152 = 9,216 B/tok.
-  - 엔진 입력은 그대로 `kvBytesPerTokenF16` 하나 — 위 산식은 데이터 계층(`packages/data/src/hf.ts` classifyArch → `attnOverrides`)이 계산한다. **계속 보류**: 반복 층(Nanbeige num_loops·Ouro — 가중치 읽기·KV ×N), 디스크에서 읽는 n-gram·PLE 임베딩(Qwen3.8-Flash-Next — TENSOR_READ_LAZY), 층별 임베딩 표(PLE `hidden_size_per_layer_input` > 0)·KV 공유 층(`num_kv_shared_layers` > 0 — llama.cpp 는 앞 `층 수 − 공유 층` 개 층에만 KV, https://github.com/ggml-org/llama.cpp/blob/b6334e37e6ef286fc5091a41b6561b2113d915fb/src/models/gemma4.cpp#L9-L11)인 Gemma 4 E2B·E4B(10-16 D98 — 표가 파일의 43~56% 로 그래픽카드 밖 몫 검증 상한 25% 를 넘고, KV 를 1.75~2.3배로 센다), 압축 어텐션(DeepSeek V4 compress_ratios), 3진 가중치.
+  - **KV 공유 층(Gemma 4 E2B·E4B — 10-21 D112, 10-16 D98 보류 해제)**: 뒤쪽 `num_kv_shared_layers` 층은 KV 를 두지 않고 같은 종류의 앞 층 KV 를 다시 읽는다. llama.cpp 는 `n_layer_kv_from_start = 층 수 − 공유 층`(https://github.com/ggml-org/llama.cpp/blob/9a3b91c6801e68f412fcf1b6f8e153aa562b8536/src/models/gemma4.cpp#L8-L11), `has_kv(il) = il < n_layer_kv_from_start`(같은 커밋 src/llama-hparams.cpp#L321-L332), KV 캐시는 `has_kv` 인 층에만 할당한다(src/llama-kv-cache.cpp#L165-L169). 그래서 저장 KV = `layer_types[0 : 층 수 − 공유 층]` 안의 전체 어텐션 층 × kv 헤드 × global_head_dim × 4B — E4B 앞 24층 안 4층 × 2 × 512 × 4 = **16,384 B/tok**, E2B 앞 15층 안 3층 × 1 × 512 × 4 = **6,144 B/tok**(7층으로 세면 28,672·14,336). 슬라이딩 층은 다른 Gemma 와 같이 평탄 근사로 뺀다. gemma4_text 의 슬라이딩 층 지도가 있을 때만 계산하고, 다른 model_type 의 `num_kv_shared_layers`·`hidden_size_per_layer_input` 은 그대로 보류한다(llama.cpp 규칙을 확인한 구조만). 계산기 "HF 에서 불러오기"(카탈로그 밖)는 층별 임베딩 표 모델을 계속 받지 않는다 — 양자화 행마다 헤더 실측(pleGB)이 있어야 한다.
+  - 엔진 입력은 그대로 `kvBytesPerTokenF16` 하나 — 위 산식은 데이터 계층(`packages/data/src/hf.ts` classifyArch → `attnOverrides`)이 계산한다. **계속 보류**: 반복 층(Nanbeige num_loops·Ouro — 가중치 읽기·KV ×N), 디스크에서 읽는 n-gram·PLE 임베딩(Qwen3.8-Flash-Next — 4GiB 를 넘어 TENSOR_READ_LAZY 로 행만 읽는 표), 압축 어텐션(DeepSeek V4 compress_ratios), 3진 가중치.
 - 검증값: Llama-3.1-8B 128 KiB/tok(@16k f16 = 2.15GB), Qwen3-14B 160, Qwen3-32B 256, 70B 320, Qwen3-30B-A3B 96. **7종 전수 일치** (§7).
 
 ### 2.3 오버헤드·사용 가능 메모리
@@ -98,6 +100,14 @@ usable(cpu)    = usableRam = ram − 4GB (OS)     // usableRam = 모든 kind의 
                   | expertGB + nonExpertGB                       (MoE 헤더 실측 분할)
                   | weights                                      (실측 없음 — 보수)   … [0, weights] 로 묶음
    resident(unified·cpu) = weights (파일 전체)
+   (10-21 D112, 엔진 0.10.0) 층별 임베딩 표가 있는 행(`pleGB`)은 dgpu 의 그래픽카드 밖 몫도 시스템 RAM 에 들어가야 한다:
+   offGpu = weights − resident ≤ usableRam. 표가 없는 행은 검사하지 않는다(그 GPU 밖 몫 중 MTP 블록은 RAM 에도 올라가지 않는다 — D112 리뷰).
+   층별 임베딩 표(PLE, `pleGB` — Gemma 4 E 계열)는 입력층이라 llama.cpp 가 늘 CPU 에 둔다(LLM_TENSOR_LAYER_INPUT,
+   https://github.com/ggml-org/llama.cpp/blob/9a3b91c6801e68f412fcf1b6f8e153aa562b8536/src/llama-arch.cpp#L1031 · src/llama-model.cpp#L1684-L1686).
+   표는 TENSOR_READ_LAZY 로 만들지만(src/models/gemma4.cpp#L59) 기본(auto) lazy 모드는 4GiB 넘는 텐서만 디스크에서 행을 읽어
+   (src/llama-model-loader.cpp#L1094-L1098) Q4~Q8 표(1.3~3.0GB)는 시스템 RAM(mmap)에 있다 — 그래서 offGpuGB 에 들어 있고 파일의 37~55% 라
+   RAM 이 작으면 못 올린다. 다른 행의 GPU 밖 몫(입력 임베딩·MTP·헤더)은 파일의 0~18%(최대 ling-3.0-flash Q8_0 3.69GB 중 MTP 3.27)라
+   검사를 넣어도 계산기 최소 RAM 8GB(사용 가능 4GB)에서 걸리지 않지만, MTP 가 4GB 를 넘는 모델이 들어오면 잘못 떨어지므로 PLE 행에만 건다
    (10-03 D62, 엔진 0.6.0) llama.cpp 는 입력층(token_embd 등)을 항상 CPU 에 두고
    (https://github.com/ggml-org/llama.cpp/blob/cb7934c/src/llama-model.cpp#L1605-L1607), MTP/NextN 층은 load_mtp=false(기본)면
    TENSOR_SKIP 으로 할당하지 않는다(src/models/qwen35.cpp#L36-L38 · qwen35moe.cpp#L41,
@@ -114,9 +124,11 @@ usable(cpu)    = usableRam = ram − 4GB (OS)     // usableRam = 모든 kind의 
    llama.cpp b7410(2025-12-15, PR #16653) 이후 기본 `--fit on` 과 Ollama 0.30+(llama-server 위임)가 같은 방향으로
    자동 배치한다(비전문가 우선 → 남는 VRAM 만큼 전문가 층 → 나머지 층 전문가만 CPU). 12~16GB 카드로 30B~120B MoE 구동하는 표준 경로
 3. partial-offload (dgpu + MoE 아님 — dense와 nonExpertGB 없는 MoE): kv+buffer는 GPU 상주, 가중치만 분할
-   gpuW = min(weights, usable(dgpu) − kv − buffer)   // > 0 이어야 함 (1 이 실패했으니 gpuW < resident ≤ weights — 상한은 그대로)
+   gpuW = min(resident, usable(dgpu) − kv − buffer)  // > 0 이어야 함. VRAM 이 모자라 1 이 실패했으면 gpuW < resident 라 상한은 그대로,
+                                                     // RAM 이 모자라 1 이 실패한 경우(10-21 D112)만 상주 가중치에서 막힌다(그때 cpuW ≥ offGpu > usableRam 이라 여기서도 실패)
    cpuW = weights − gpuW ≤ usableRam
-   gpuFrac = gpuW / weights   … 속도 절벽 경고 (§3.4). 분모는 파일 전체(입력 임베딩·MTP 포함 — 보수, §9)
+   gpuFrac = min(1, gpuW / (weights − pleGB))   … 속도 절벽 경고 (§3.4). 분모는 파일 − 층별 임베딩 표(처음부터 CPU·토큰마다 한 줄 — §3.1 의 읽기 바이트와
+                                                  같은 기준, 10-21 D112). 표가 없는 모델은 파일 전체(입력 임베딩·MTP 포함 — 보수, §9)
    (c66f9ff 외부 리뷰 정정: 구식 need 비례식 gpuFrac = usable/need, cpuW = weights×(1−gpuFrac)는
     kv·buffer 일부가 CPU로 간다고 가정해 CPU측을 과소평가 → 거짓 양성. 반례 Qwen3-14B Q4·8GB GPU·RAM 7GB
     (usableRam 3GB — 구식 cpuW ≈2.9 탑재 / 정정 ≈3.5 불가)를 fit.test.ts 회귀로 고정)
@@ -124,7 +136,8 @@ usable(cpu)    = usableRam = ram − 4GB (OS)     // usableRam = 모든 kind의 
 5. 전부 실패 → F. 더 낮은 quant 루프로 bestQuant 탐색 (IQ2_M까지):
    사다리 IQ2_M…Q8_0 중 요청 quant보다 bpw 낮은 것을 높은 품질부터, weights = paramsB×bpw/8
    (bpw 폴백 — 실파일 크기는 데이터 레이어 몫), MoE nonExpertGB도 같은 비율로 축소 → 0~4 첫 성공 quant.
-   헤더 실측(offGpuGB·expertGB)은 요청 파일 전용이라 비운다 — 다른 quant 는 resident = weights.
+   헤더 실측(offGpuGB·expertGB)은 요청 파일 전용이라 비운다 — 다른 quant 는 resident = weights(층별 임베딩 표도 GPU 몫으로 센다 — 보수).
+   층별 임베딩 표는 구조라 pleGB 만 같은 비율(w / weights)로 줄여 남긴다(gpuFrac 분모용 — 10-21 D112)
    네이티브(MXFP4·UD-*)·F16은 사다리 제외
 ```
 
@@ -133,7 +146,8 @@ usable(cpu)    = usableRam = ram − 4GB (OS)     // usableRam = 모든 kind의 
 ### 3.1 토큰 생성(tg) — 대역폭 지배
 ```
 bytesPerToken = weightsReadGB + kvReadGB(ctx)
-  dense: weightsReadGB = fileGB
+  dense: weightsReadGB = fileGB − pleGB          // 층별 임베딩 표(PLE)는 토큰마다 한 줄만 읽는다(get_rows, 입력층 — 10-21 D112). 표가 없으면 fileGB.
+                                                 // cpu-only 경로(§2.4-4)도 같은 바이트
   MoE:   weightsReadGB = nonExpertGB + expertGB × activeExpertFrac(= topK/experts)   // GGUF 헤더 분할(행 실측, 없으면 기준 양자화 유도 — §3.3)
          분할이나 비율이 없으면 fileGB × (activeParamsB / paramsB)                   // 10-16 D88 전의 식(공유 텐서 과소)
   kvReadGB(ctx) = kvBytesPerToken × ctx / 1e9                 // FA에서 전체 KV 읽음
@@ -141,6 +155,9 @@ dense: tg = eff × memBandwidthGBs / bytesPerToken
 MoE(10-16 D88): t = bytesPerToken / (eff × memBandwidthGBs) + moeLayers × topK × MOE_EXPERT_OVERHEAD_US[effClass],  tg = 1 / t
   eff = 클래스 dense 계수(MoE 전용 계수 없음). 클래스 값이 없는 intel-arc 는 가장 큰 클래스 값(이론 추정 — §4)
   moeLayers·topK 가 없는 입력은 고정 시간 0(데이터 레이어는 늘 채우고, topK 가 없는 카탈로그 MoE 는 이론 추정으로 표시)
+층별 임베딩 표 dense(10-21 D112 리뷰, 엔진 0.10.0): t = bytesPerToken / (eff × memBandwidthGBs) + PLE_TOKEN_OVERHEAD_MS[backend],  tg = 1 / t
+  backend = cuda(nvidia·dgx-spark — PLE_CUDA_CLASSES) 1.35ms | vulkan(그 밖의 GPU 클래스 — Metal 은 실측이 없어 큰 쪽) 1.75ms
+  GPU 경로(full-gpu, 부분 오프로드의 GPU 쪽, 통합 메모리 cpu-only 의 GPU 상한)만 — CPU 경로에는 더하지 않는다. pleGB 가 없는 모델은 0
 여러 장(§6): eff × memBandwidthGBs 자리에 GPU 처리량 T 를 쓴다 (`gpuThroughputGBs`)
   같은 카드 N 장: T = eff × BW × MULTI_GPU_TG_FACTOR(1)
   서로 다른 카드(10-03 D67): T = MULTI_GPU_TG_FACTOR / Σ_i ( s_i / (eff_i × BW_i) ),  s_i = (vram_i − osReserve_i) / Σ_j (vram_j − osReserve_j)
@@ -160,6 +177,7 @@ MoE(10-16 D88): t = bytesPerToken / (eff × memBandwidthGBs) + moeLayers × topK
 
 - **파일 가정**: 출처에 파일이 없는 행은 크기가 맞는 HF 파일(Qwen3.6 UD-Q4_K_M·UD-Q4_K_XL, Gemma 4 bartowski Q4_K_M)이나 기본 레시피 파일(Qwen3.5 Q4_K_M — bartowski 판 비전문가 1.59GB, lmstudio 판 1.37·unsloth 판 2.00 사이)의 헤더 분할로 계산했다. 같은 값에서 비전문가를 1.37 로 두면 DGX Spark 의 Qwen3.5 Q4_K_M 이 +27.9% 로 ±20% 를 넘고(45점 평균 9.5%), 2.00 이면 평균 8.7%·모두 ±20% 안이다. Strix Halo Qwen3.5-122B-A10B Q4_K_M(#25207, 73.23GiB — 크기가 같은 공개 파일 없음)은 카탈로그 unsloth MTP 판 분할(비전문가 5.70GB)로 계산했다 — 비전문가가 작은 bartowski 4.28·lmstudio 3.56 판이면 그 점이 +23~+35% 로 오른다(D90).
 - **머지 기준**: 비교 표는 머지된 PR 이면 PR 열(= 지금 master), 아니면 master 열. CUDA PDL(#22522)은 Hopper 이후 GPU 에서 기본으로 켜져 DGX Spark·RTX PRO 6000 은 PDL 열을 쓴다.
+**층별 임베딩 표 고정 시간(10-21 D112 리뷰, `PLE_TOKEN_OVERHEAD_MS`)** — 같은 5090 Vulkan 표(#28618 수정 후)에서 다른 dense 모델은 실측 − 대역폭 시간이 0.14~0.72ms(llama 8B Q4_K_M 0.14 · llama 3B Q5_K 0.56 · llama 1B Q2_K 0.62 · phi3 0.72)인데 E2B 1.73·E4B 1.84ms 다 — dense 공통 고정 시간(PROGRESS §2 엔진 후속 ⑭)으로는 E 계열이 계속 +50~+70% 높게 나와 E 계열에만 따로 둔다. 원인은 층별 입력을 토큰마다 CPU 에서 GPU 로 올리고 기다리는 시간(#28618: 토큰마다 입력 2개를 보내며 매번 CPU–GPU 동기화 — Vulkan 은 그 PR 로 줄었다)과 층마다 도는 작은 연산이다. 엔진은 백엔드를 입력받지 않아 클래스로 고른다. 값은 백엔드별 점의 minimax(0.05ms 격자): CUDA 6점(#29152 3090·4090·5090·DGX Spark ubatch 1 pp256, 3080 Ti·4070 Ti Q8_0 생성) **1.35ms** — 최대 11.0%(3090 +11.0% · 4070 Ti −10.9%), Vulkan 2점(5090 E4B·E2B) **1.75ms** — 최대 2.3%. ubatch 1 pp 점은 마지막 토큰만 출력층을 계산하므로(llama-bench pp 는 출력 지정 없는 배치 — https://github.com/ggml-org/llama.cpp/blob/e13469a323147aed0c93f5b4efde10fcc379e977/tools/llama-bench/llama-bench.cpp#L2154 · src/llama-batch.cpp#L120-L130) 출력층(임베딩 공유라 token_embd 사본 — 가정한 ggml-org Q4_0 파일은 Q8_0 0.43GB, 읽기의 28%)을 255/256 만큼 뺀 바이트로 맞췄다. 그러면 DGX Spark(통합 메모리)도 1.0ms 가 남아 dGPU 점들과 같은 무리가 된다(빼지 않으면 고정 시간 없이도 −13.8%). 통합 메모리라고 빼지 않는 근거가 이 점이다.
 - **옛 빌드**: gpt-oss 가이드(#15396)의 Apple 2025-08 빌드 8점은 지금 식이 10~39% 높게 본다(실측이 추정보다 10~28% 낮다 — 같은 M2 Ultra gpt-oss-20b 116.08 → 2026-09 126.59). 10-15 D81 의 apple MoE 0.44 근거였던 점들이라 회귀 밖 참고(`MOE_OLD_BUILD_CASES`)로 옮겼다.
 
 ### 3.2 효율 계수 (실측 70여 점에서 도출, 출처: llama.cpp 공식 스레드·LocalScore·hardware-corner)
@@ -195,7 +213,7 @@ tg = min(1 / t, full-gpu 값)
 
 ### 3.4 partial-offload (dense) — 절벽 경고
 `tg ≈ 1 / (gpuFrac/tg_gpu + (1−gpuFrac)/tg_cpu)` (조화 평균). gpuFrac < 0.9면 B등급 상한.
-주의(10-03 D62): full-gpu 경계는 상주량(파일 − 입력 임베딩·MTP)으로 판정하지만 gpuFrac 분모는 파일 전체라, 경계 바로 바깥 셀의 gpuFrac 상한은 `resident / file` 이다(Qwen3.5-9B Q4 0.872·Q8_0 0.862, MiniCPM5-1B 0.826, MiniCPM5-2B Q8_0 0.89 — 0.9 미만). 이런 모델은 S(full-gpu)에서 A 를 건너뛰고 B(cap-partial)로 바로 떨어진다. 실제로는 층 대부분이 GPU 에 있는 상태라 보수 쪽이며, 스니펫 `-ngl floor(gpuFrac × layers)` 도 그만큼 덜 올린다. 분모를 상주량으로 바꾸는 안(판정 41건 변화)은 부분 오프로드 실측 검증이 없어 보류. UI에 "dense 모델 부분 오프로드는 급감" 고정 경고 + 실측 예시(gpt-oss-120b: 5090 naive 3.4 vs cpu-moe 9.6 tok/s).
+주의(10-03 D62): full-gpu 경계는 상주량(파일 − 입력 임베딩·MTP)으로 판정하지만 gpuFrac 분모는 파일 전체(층별 임베딩 표가 있는 모델만 파일 − 표 — 10-21 D112)라, 경계 바로 바깥 셀의 gpuFrac 상한은 `resident / file` 이다(Qwen3.5-9B Q4 0.872·Q8_0 0.862, MiniCPM5-1B 0.826, MiniCPM5-2B Q8_0 0.89 — 0.9 미만). 이런 모델은 S(full-gpu)에서 A 를 건너뛰고 B(cap-partial)로 바로 떨어진다. 실제로는 층 대부분이 GPU 에 있는 상태라 보수 쪽이며, 스니펫 `-ngl floor(gpuFrac × layers)` 도 그만큼 덜 올린다. 분모를 상주량으로 바꾸는 안(판정 41건 변화)은 부분 오프로드 실측 검증이 없어 보류. UI에 "dense 모델 부분 오프로드는 급감" 고정 경고 + 실측 예시(gpt-oss-120b: 5090 naive 3.4 vs cpu-moe 9.6 tok/s).
 
 ### 3.5 프롬프트 처리(pp) — 연산 지배 (10-16 D91 개정, 엔진 0.9.0 — 모델 크기 반영)
 ```
@@ -223,7 +241,7 @@ kvRead 항이 자연 반영 (예: 4090 Qwen3-8B: 8k에서 118 → 16k에서 95 �
 - `calibrated`: 클래스 계수 검증 범위 내 조합 → **클래스별 밴드: NVIDIA·AMD dGPU dense ±12% / 그 외 클래스·모든 MoE·부분 오프로드 ±20%** (§7 검증 최대 오차 — 속도 12점 10.5%(10-16 D88 전 15.4%, 10-15 D83 전 17.1%) · MoE 2026 빌드 49점 19.9% — 를 상회하도록 설정, 밴드가 검증값보다 좁으면 안 됨). 실측 누적 시 기기별로 축소
 - `rough`: **pp(프롬프트 처리) 전용** 4번째 라벨 — **±40%**(§3.5, est×0.6~1.4 — 10-16 D91 다모델 91점 최대 34.9%). tg·판정에는 쓰지 않으며, 엔진 `Result.confidence`(§1)에는 없고 데이터 레이어가 pp 표시에만 붙인다(P1-2 D13, PROGRESS §4 09-29)
 - `theoretical`: 신형 기기/특이 아키텍처 등 검증 밖 → **±30%** 밴드 + "제출로 검증에 참여" CTA
-  - 판정 주체는 데이터 레이어(`EvaluateOptions.theoretical`). P1-1 규칙(`packages/data/src/assess.ts` `isTheoretical`): ① MoE × MoE 고정 시간이 없는 클래스(현재 intel-arc — §3.1, 10-16 D88 전에는 MoE 계수가 없는 클래스), 그리고 topK 가 없는 카탈로그 MoE(엔진이 고정 시간 0 으로 계산) ② mode = cpu-moe(10-01 부분 배치 개정 후에도 유지 — NVIDIA 공개 실측 35점 평균 오차 10.3%·±20% 안 89% 지만 최대 40% 라 보정 추정(±20%, 검증 최대 오차 이상이어야 함)을 못 단다. 가장 넓은 라벨 ±30% 를 쓰고, 그 표시 범위 밖 공개 점 4개는 모두 과소 추정(실제가 더 빠름) — verify-regression 5 가 "표시 범위를 넘는 과대 추정 없음"을 강제) ③ 비전문가 크기(행 실측·모델 유도 둘 다)가 없는 MoE가 부분 오프로드로 떨어진 경우(엔진이 dense 경로로 계산) ④ llama.cpp 구동이 검증되지 않은 커스텀 아키텍처(HyperCLOVA X SEED Think 14B), 또는 구동은 되지만 속도 모델(대역폭 계수)이 검증되지 않은 상수 상태 층 하이브리드(Mamba2·short-conv·KDA+MLA — Nemotron 3.5 Lightning·LFM2.5·Ling-3.0 Tiny·Flash, PROGRESS §4 10-03 D63, 실측이 생기면 뺀다) ⑤ FP16 크리플 GPU(`fp16Tflops` < 1 — GTX 10, 계수 도출 표본 밖. `01` §9 P1-1 개정: GPU 판정 유지 + 주의 배지) ⑥ 통합 메모리 칩의 cpu-only(cpu 계수 검증점은 데스크톱 DDR5뿐 — CPU측 대역폭은 `01` §3 `unifiedCpuBandwidth` 로 dense 계수 비율만큼 깎고, 엔진이 같은 칩의 full-gpu 추정 이하로 제한한다. 10-16 D88 전에는 MoE 계수 비율로 apple-ultra 를 0.67배로 깎았다)
+  - 판정 주체는 데이터 레이어(`EvaluateOptions.theoretical`). P1-1 규칙(`packages/data/src/assess.ts` `isTheoretical`): ① MoE × MoE 고정 시간이 없는 클래스(현재 intel-arc — §3.1, 10-16 D88 전에는 MoE 계수가 없는 클래스), 그리고 topK 가 없는 카탈로그 MoE(엔진이 고정 시간 0 으로 계산) ② mode = cpu-moe(10-01 부분 배치 개정 후에도 유지 — NVIDIA 공개 실측 35점 평균 오차 10.3%·±20% 안 89% 지만 최대 40% 라 보정 추정(±20%, 검증 최대 오차 이상이어야 함)을 못 단다. 가장 넓은 라벨 ±30% 를 쓰고, 그 표시 범위 밖 공개 점 4개는 모두 과소 추정(실제가 더 빠름) — verify-regression 5 가 "표시 범위를 넘는 과대 추정 없음"을 강제) ③ 비전문가 크기(행 실측·모델 유도 둘 다)가 없는 MoE가 부분 오프로드로 떨어진 경우(엔진이 dense 경로로 계산) ④ llama.cpp 구동이 검증되지 않은 커스텀 아키텍처(HyperCLOVA X SEED Think 14B), 또는 구동은 되지만 속도 모델(대역폭 계수)이 검증되지 않은 상수 상태 층 하이브리드(Mamba2·short-conv·KDA+MLA — Nemotron 3.5 Lightning·LFM2.5·Ling-3.0 Tiny·Flash, PROGRESS §4 10-03 D63, 실측이 생기면 뺀다) ⑤ FP16 크리플 GPU(`fp16Tflops` < 1 — GTX 10, 계수 도출 표본 밖. `01` §9 P1-1 개정: GPU 판정 유지 + 주의 배지) ⑥ 통합 메모리 칩의 cpu-only(cpu 계수 검증점은 데스크톱 DDR5뿐 — CPU측 대역폭은 `01` §3 `unifiedCpuBandwidth` 로 dense 계수 비율만큼 깎고, 엔진이 같은 칩의 full-gpu 추정 이하로 제한한다. 10-16 D88 전에는 MoE 계수 비율로 apple-ultra 를 0.67배로 깎았다) ⑦ 층별 임베딩 표 모델(`arch.ple` — Gemma 4 E2B·E4B, 10-21 D112): 토큰당 고정 시간(§3.1)을 더해 공개 실측 10점 중 9점이 −10.9~+11.0% 지만, 상수 근거가 카드 몇 장·백엔드 둘(CUDA·Vulkan)뿐이고 Metal·AMD 는 실측이 없으며 A770 Vulkan 은 +78%(intel-arc 계수 문제 — §7)라 보정 추정의 근거가 안 된다 — 모든 GPU·모드에서 이론 추정
   - **카탈로그 밖 모델은 항상 `theoretical`**(위 규칙과 별개로 호출자가 고정 — `apps/web/lib/calc/run.ts`·`run-model.ts` 의 `theoretical: true`): 계산기 HF 불러오기(D57 — 레코드가 검증 밖, 실측 조인 0)와 **직접 입력(10-03 D66)** — 가중치는 §2.1 2순위(`paramsB × bpw / 8`, 엔진 `weightsGBFromBpw`), KV 는 §2.2 기본식(`kvBytesPerToken`, 전체 어텐션 층 수를 넣으면 그 층만), MoE 비전문가는 `derive.ts` 유도. bpw 어림은 카탈로그 실파일 대비 dense 행 −8.7%~+6.5%(평균 |오차| 2.0%), MoE 행 −8.0%~+12.6%(평균 |오차| 3.2%) — 예외로 전문가 FFN 폭이 256 배수가 아니어서 K-quant 가 큰 형식으로 대체된 Nemotron 3.5 Lightning 은 Q2_K −34%·Q4_K_M −24%(2026-10-03, data/model-quants.json). 엔진 무변경(스펙 버전 유지)
 
 ## 5. 판정 임계값 (ctx 8k, Q4_K_M 기준)
@@ -253,13 +271,29 @@ F: tg < 2 || 모든 quant 미탑재
 
 > **이식 기록 (P0-2, 2026-08-16)**: 원본 `verify_engine.py` 는 `packages/engine/test/verify-regression.test.ts` 로 assertion 이식 후 삭제(git 히스토리에 보존). `pnpm run verify-engine` 으로 단독 실행, CI 에서 상시 회귀. 아래 수치가 테스트 기대값이다.
 - 가중치: 실제 GGUF 11종 대조 **MAE 0.7% / max 1.6%**
-- KV: 아키텍처 7종 공식값 **전수 일치**
+- KV: 아키텍처 7종 공식값 **전수 일치** (10-21 D112: Gemma 4 E4B·E2B 저장 KV 16·6 KiB/tok 를 더해 9종)
 - 속도: 실측 12점 대조 **MAE 6.3% / max 17.1%** (worst: M4 Pro −17%, 5060Ti MoE −15% → 클래스 계수 한계, Phase 2 기기별 보정 대상). **10-15 D83**: Apple 2점(M4 Max 40코어 83.1·M4 Pro 50.7)은 토론 #4167 기준 빌드 b1550(2023-11) 값이라 지금 빌드 값(M5 Max 40코어 b10621 119.92 · M5 Pro 16코어 b11046 67.59, 3.53 GiB 파일)으로 바꿨다 — M4 는 지금 빌드 값이 없다. 계수 0.76 으로 +0.9%·−10.5%, 12점 **MAE 5.6% / max 15.4%**(5060Ti MoE). 10-15 D80 에 Strix Halo 점의 ctx 를 출처(pp512/tg128)대로 2048 → 512 로 고쳐 그 점 오차 −3.2% → −1.2%, MAE 6.2% **10-16 D88**: MoE 3점을 토큰당 고정 시간 식으로 — 4090·5060 Ti gpt-oss-20b −0.4%·−1.6%, Strix Halo gpt-oss-120b −9.6%(이 점에만 있던 기기 계수 effOverride 0.54 를 뗐다 — 옛 MoE 계수 자리) → 12점 **MAE 4.7% / max 10.5%**(M5 Pro). **10-16 D90**: strix dense 0.65 → 0.82·MoE 고정 시간 2.1 → 14.3µs 로 Strix Halo gpt-oss-120b −9.6% → +3.3% → 12점 **MAE 4.2% / max 10.5%**(M5 Pro)
 - cpu-moe(09-30 → 10-01): 전문가 전부 RAM 공개 실측 3점(3060 Ti+DDR5-6800 gpt-oss-120b 24.85 · 5080+DDR5-4800 Qwen3.5-35B-A3B Q4_K_M 51.0·Q8_0 35.7) 각 ±20% 이내 + 전문가 일부 GPU 배치(`--n-cpu-moe N`)를 포함한 공개 실측 전체 MAE < 12%·±20% 안 ≥ 80%·전부 ±40% 안 (verify-regression 5)
 - 클래스 계수 재보정(10-15 D79·D80·D81·D83, verify-regression 8 — 31점): AMD Vulkan no-FA 4점(7900 XTX b10868 182.63 · 9070 XT b7825 131.54 · 9070 b6188 119.71 · 7800 XT b7875 118.27 — 각 제출 댓글의 fa 0 줄) 각 ±12% 안·MAE 3.7%(최대 +5.1% 9070) — amd dense 0.78 → 0.77(D79) → 0.76(D80: 표가 9070 XT 의 FA 켬 줄 137.11 을 no-FA 칸에 넣어 두었다). DGX Spark 개발진 결과 파일(b7941, `-fa 1 -mmp 0`) 5모델 × 깊이 0·8192 10점 각 ±20% 안·MAE 10.0%(최대 −18.2% Qwen3-30B-A3B Q8_0 깊이 0) — dgx-spark 0.40/0.40 → dense 0.78·MoE 0.68. Apple MoE(10-15 D81): gpt-oss 가이드(#15396, `-fa 1 -ub 2048` tg128) gpt-oss-20b 5점(M4 Max 36GB=32코어 b6123 92.36·b6293 95.88 · M4 Pro 64GB 63.34 · M1 Max 64GB 75.15 · M1 Pro 32GB 45.68) 각 ±20% 안·MAE 10.2%(최대 −11.9% M4 Max b6293) — apple MoE 0.30 → 0.44. 같은 가이드의 Ultra 3점(M3 Ultra 20b 115.52 · M2 Ultra 20b 116.08 · 120b 79.68)은 apple-ultra MoE 0.29 로 각 ±7% 안·MAE 4.2%. 반례(회귀 밖): MacBook Pro M3 Max 128GB 64.26 은 0.44 로 +28% — 개발자가 열 스로틀링으로 봤다. **10-16 D88**: GPU 클래스 MoE 계수를 없애며 Apple MoE 8점은 회귀 밖 참고점(`MOE_OLD_BUILD_CASES`)이 됐다 — 지금 식은 이 2025-08 빌드 값을 +10~+39% 높게 본다(빌드가 빨라졌다, §3.1). DGX Spark MoE 6점은 고정 시간 식으로 −4~−18% 로 여전히 ±20% 안. 부수 효과: `unifiedCpuBandwidth`(통합 메모리 칩의 CPU 경로를 GPU 경로 이하로 깎는 계수 비율)가 apple 에서 min(1, 0.6/0.5, 0.30/0.43)=0.70 → 1.0 이 되어 맥의 cpu-only 이론 추정이 1.43배로 올랐다(CPU 경로 dense 0.5·MoE 0.43 이 GPU 경로 0.6·0.44 아래라 역전 없음) Apple dense(10-15 D83): 토론 #4167 Llama 2 7B Q4_0 tg128 의 새 빌드 값 — base/Pro/Max 6점(M5 10코어 b10621 31.88 · M5 Pro 20코어 66.33 · M5 Pro 16코어 b11046 67.59 · M5 Max 40코어 b10621 119.92·b9754 119.08 · M4 Max 32코어 b5440 FA 끔 72.26)이 같은 식에서 0.69~0.85 → minimax 0.768 을 내림한 **0.76**, 각 ±11% 안·MAE 6.1%(최대 +10.7% M4 Max 32코어). Ultra 3점(M2 Ultra c1d0e7a00+FA 125.21 · M1 Ultra b10621 113.79 · M5 Ultra b10621 179.10)이 0.55~0.61 → minimax 0.580 을 내림한 **0.57**, MAE 3.9%(최대 −6.5% M2 Ultra). 요약 표의 M1~M4 행은 기준 빌드 b1550(2023-11, FA 없음) 값이라 쓰지 않았다 — 같은 M2 Ultra 가 b1550 94.27 → c1d0e7a00+FA 125.21(1.33배). b1550 → 지금 빌드 배수는 칩마다 다르다(M5 1.08 · M5 Pro 1.13 · M5 Max 1.17 · Ultra 1.33~1.36 — b1550 에서 비포화가 컸던 칩일수록 크다). M4·M4 Pro·M4 Max 40코어·M3 Ultra 는 지금 빌드 값이 없어, M4 칩 추정은 새 칩 값과 M4 Max 32코어 b5440 한 점에 기댄다. 회귀 밖 참고점 M3 Max 40코어(원글에 단 답글, 기기 설명 없음) c1d0e7a00 81.57 은 −3.4%. `unifiedCpuBandwidth` 비율은 그대로다(apple 1.0, apple-ultra 는 MoE 비율 0.29/0.43 이 정한다). **Strix Halo dense(10-16 D90)**: Vulkan 지금 빌드 6점(위 §3.2 strix 행)이 0.81~0.85 → minimax 0.829 를 내림한 **0.82**, 각 ±3.3% 안·MAE 1.3%(최대 −3.3% Llama 2 13B — MHA 라 ctx 512 KV 몫이 크다). 회귀 밖 참고 `STRIX_SLOWER_DENSE_CASES`: 같은 기기 ROCm(b11349 FA 켬 51.33·끔 47.36, ROCm 7.14 b10376 49.10, Qwen3.8 27B 11.01)·Vulkan FA 끔(51.81) 5점은 +0.4~+13.7% — 추정이 높지만 ±20% 안(테스트가 0 이상·밴드 이하를 고정). 옛 0.65 로는 Vulkan 6점이 −19~−23% 였다
 - pp(§3.5, 10-16 D86 → D87 — verify-regression 9, 13점): 토론 #4167 Llama 2 7B Q4_0 pp512 ÷ 카탈로그 fp16Tflops(D87 부터 위키백과 표 FP32 이론값 — 아래 D86 수치는 시드 값 FP32×2 기준이고, D87 에서 같은 점으로 다시 맞춘 값은 이 항목 끝). M5 계열(Neural Accelerator) 지금 빌드 5점(M5 10코어 b10621 722.79 = 72.3 · M5 Pro 16코어 b11046 1,340.44 = 70.5 · 20코어 1,620.64 = 85.3 — 카탈로그 M5 Pro 는 한 행 19 TFLOPS · M5 Max 40코어 b10621 3,219.99 = 84.7 · b9754 3,347.44 = 88.1) → minimax 78.3 을 내림한 **78**, 각 ±12% 안(최대 −11.5% M5 Max b9754). 옛 Apple 45 로는 추정이 M5 실측의 0.51~0.64배 — 표시 범위(est×0.6~1.4)의 위 끝보다 실측이 12~40% 높았다. 출시 직후 빌드(M5 b6817 FA 켬 650.65 = 65)도 78 로 +20% — 빌드가 아니라 칩 차이다(애플: GPU 코어마다 Neural Accelerator). 그 밖의 Apple 칩 새 빌드 2점(M2 Ultra c1d0e7a00+FA 1,488.81 = 27.6 · M4 Max 32코어 b5440 762.81 = 28.0) → minimax 27.8 을 내림한 **27**(apple·apple-ultra), 각 ±4% 안. 요약 표 b1550 5점(M4 221.29 · M4 Pro 20코어 439.78 · M4 Max 40코어 885.68 · M3 Ultra 1,471.24 · M2 Ultra 1,238.48)은 +4~+18% 로 ±40% 안 — 옛 45 로는 이 7점이 실측의 1.6~2배(실측이 밴드 아래 경계 0.51~0.62배)였다. 카탈로그 밖 M1 Ultra b10621 1,179.89 도 같은 수준. **D87 재적합**(위키백과 표 값 — M4 3.76 · M4 Pro 8.08 · M4 Max 12.92/16.16 · M5 4.15 · M5 Pro 8.29 · M5 Max 13.27/16.59 · M5 Ultra 33.18 · M3 Ultra 28.26 · M2 Ultra 27.2): M5 5점 174.2·161.7·195.5·194.1·201.8 → minimax 179.5 를 내림한 **179**(각 ±12% 안 — 최대 −11.3%, MAE 8.2%). 새 빌드 2점 M2 Ultra 54.7·M4 Max 32코어 59.0 → minimax 56.8 → **57**(내림 56 이면 M4 Max 32코어 −5.2% 로 ±5% 밖 — 각 +4.1%·−3.5%). b1550 5점은 57 로 −3~+25%, 카탈로그 밖 M1 Ultra 21.233 → 55.6(+2.6%). 13번째 점: M5 Ultra 80코어 b10621 4,944.66 ÷ 33.18 = 149.0 은 179 로 +20%(±40% 안, 계수 근거 밖 — 두 다이라 TFLOP 당 느리다)
 - **pp 모델 크기(§3.5, 10-16 D91 — verify-regression 11, 91점)**: 2026 llama.cpp 빌드(llama-bench 기본 FA auto)에서 같은 기기·같은 표로 잰 다모델 pp — dense 61점(0.6B~70B, Q4_0·Q8_0·F16·K-quant)·MoE 30점(gpt-oss-20b·120b, Gemma 4 26B-A4B, Qwen3-30B-A3B, Qwen3.5/3.6-35B-A3B, Nemotron 3 Nano·Super, GLM-4.5-Air 계열은 2월 빌드라 제외). 출처: #23615(JG 2026-05, 3090·4090·5090·RX 9060 XT × 1B·2B·8B·26B-A4B) · #25319(b9867) · #19378(4090 1~4장 -sm layer — 장수 무관) · #22522(DGX Spark 8모델) · #19555·#28948(M2 Ultra) · #20962·#28948(M5 Max) · #28439(M5) · #21024·#21751(9070 XT) · #29892·#27554(Strix Halo) · #28843(7900 XTX) · 스코어보드 #15013·#10879 의 지금 빌드 7B Q4_0. 클래스 nvidia 30 · dgx-spark 8 · apple-ultra 13 · M5 계열 19 · apple 2 · amd 15 · strix 4. 결과 **MAE 11.6% · 최대 34.9%**(M5 gpt-oss-20b ub2048 +34.9% · M5 Max Qwen3.5 27B Q4_K_M +30.1%), ±25% 밖 3점 · ±30% 밖 2점, dense MAE 12.2%(최대 30.1%)·MoE 10.3%(최대 34.9%). 옛 식은 같은 점(계수가 있던 83점)에서 MAE 92%·최대 +733%·±40% 밖 33점. 회귀 밖으로 둔 것: CUDA MoE 2026-05 전 빌드(그 뒤 +40%), Strix Halo 2026-08 전 빌드(지금의 0.55~0.65배), 카탈로그 밖 구조(초기 qwen3next·MLA deepseek2 — M2 Ultra 에서 +142%·+50%). 회귀 9 의 Apple 7B 13점은 x = 1 이라 값이 그대로다
 - 멀티 GPU(§6): 같은 카드 2~4장 공개 실측 10점 전부 ±30% 안·과대 5% 이하·MAE < 15%(verify-regression 6) + 서로 다른 카드 3점(5070 Ti + 3060 −6.8% · 3060 + P100 카드별 계수 +2.6%·−1.5%, verify-regression 7 — 10-03 D67)
+- **Gemma 4 E4B·E2B(10-21 D112 — verify-regression 12, 공개 실측 10점, 엔진 0.10.0)**: 추정 = 읽기 바이트(파일 − 표, ubatch 1 pp 점은 마지막 토큰만 읽는 출력층을 255/256 만큼 뺀다) ÷ (클래스 계수 × 대역폭) + 층별 임베딩 표 고정 시간(§3.1 — 클래스 기본 백엔드, 5090 Vulkan 점만 Vulkan 값). 파일은 출처의 크기·경로로 특정해 그 헤더 실측(pleGB·token_embd)을 썼다.
+
+  | 점 | 실측 tok/s | 추정 | 오차 | 고정 시간 없이 | 옛 식(파일 전체·KV 7층) |
+  |---|---|---|---|---|---|
+  | RTX 5090 Vulkan E4B Q4_K_M tg128 (#28618, unsloth) | 233.96 | 239.2 | +2.3% | +75.9% | +7.3% |
+  | RTX 5090 Vulkan E2B Q4_K_M tg128 (#28618, unsloth) | 341.76 | 339.2 | −0.8% | +144.2% | +17.7% |
+  | RTX 3090 CUDA E2B Q4_0 ub1 pp256 (#29152 master, 출력층 뺌) | 298.02 | 330.9 | +11.0% | +100.7% | — |
+  | RTX 4090 CUDA E2B Q4_0 ub1 pp256 (#29152 master, 출력층 뺌) | 356.15 | 344.5 | −3.3% | +80.9% | — |
+  | RTX 5090 CUDA E2B Q4_0 ub1 pp256 (#29152 master, 출력층 뺌) | 470.11 | 449.8 | −4.3% | +143.6% | — |
+  | DGX Spark CUDA E2B Q4_0 ub1 pp256 (#29152 리뷰, 출력층 뺌) | 162.3 | 154.0 | −5.1% | +19.8% | — |
+  | RTX 3080 Ti CUDA E4B Q8_0 4k 프롬프트 뒤 (b10988, ggml-org) | 112.9 | 106.9 | −5.3% | +10.7% | −30.6% |
+  | RTX 4070 Ti CUDA E4B Q8_0 tg128 (b8641, unsloth) | 69.66 | 62.1 | −10.9% | −2.8% | −38.3% |
+  | 참고 — Arc B580 SYCL E4B Q4_0 tg128 (unsloth, Vulkan 값) | 82.3 | 79.6 | −3.3% | +12.4% | −32.7% |
+  | 참고 — Arc A770 Vulkan E4B Q4_K_M tg128 (b10068, bartowski) | 50.31 | 89.6 | +78.1% | +111.3% | +21.1% |
+
+  대역폭이 낮은 카드는 읽기 바이트(파일 − 표)만으로도 맞는다 — 옛 식은 표를 토큰마다 읽는다고 봐 30~38% 낮았다. 빠른 카드는 토큰당 대역폭 시간이 1~2ms 라 E 계열 고유의 고정 시간(같은 카드의 다른 dense 모델 0.14~0.72ms 보다 1ms 쯤 길다 — §3.1)이 커서, 고정 시간 없이는 +76~+144% 로 높게 봤다(옛 식이 빠른 카드에서 가까웠던 건 과대한 바이트가 고정 시간을 우연히 메운 것). ubatch 1 pp 점은 tg 와 같은 토큰 하나씩이지만 출력층을 마지막 토큰에서만 읽는다 — tg 바이트로 맞추면 DGX Spark 가 고정 시간 없이도 −13.8% 라 다른 CUDA 점과 따로 놀았다(10-21 첫 표는 tg 와 같은 일로 보고 오차를 +30~+75% 로 적었다 — 같은 카드의 실제 tg 는 출력층까지 읽어 그 점보다 느리므로, 첫 표의 과대 추정은 실제 tg 대비로는 더 컸다). 같은 이유로 회귀는 ubatch 1 점의 읽기에서 출력층을 빼고, 사이트 추정(tg)은 출력층을 넣어 그 점보다 낮다(예: 5090 E2B Q4_0 tg 390 vs ub1 pp256 실측 470). A770 은 intel-arc 계수(B580 SYCL 로 정함)가 A770 Vulkan 에 맞지 않는 몫이 크다. 회귀는 10점의 오차를 고정하고(±0.5%p), 상수가 백엔드별 minimax 인지(0.05ms 이웃보다 최대 오차가 크지 않음)·CUDA 6점 ±11.1%·Vulkan 2점 ±2.5%·참고 B580 ±5%·A770 밖 모든 점 ±12% 안·고정 시간 없이는 빠른 카드 5점 모두 +30% 넘음·표 없는 모델과 CPU 경로는 0 을 강제한다. 라벨은 이론 추정(§4 ⑦)
 - 판정: RTX 4060 8GB에서 8B Q4_K_M "가능"(실측 38~42 tok/s로 확인) / 14B Q4_K_M "풀 오프로드 불가" — 커뮤니티 통념과 일치
 - CI 이식 시 print 스크립트가 아닌 **assertion 테스트로 변환**할 것 (Windows cp949 콘솔 인코딩 이슈가 외부 리뷰에서 재현됨)
 
@@ -288,7 +322,8 @@ expect(['A','B']).toContain(fit(m4max_128, llama33_70b_q4).verdict)    // meas 9
   - **MTP 를 켜면**(`--spec-type draft-mtp`, unsloth `*-MTP-GGUF` 행이 유도 — qwen35·qwen35moe 아키텍처만, 데이터 레이어 `MTP_LOADABLE_MODELS`) MTP 블록(`mtpGB`, Qwen3.6 Q4 0.90GB)과 MTP 컨텍스트 KV 가 더 든다 — 계산하지 않고 분해 바 각주로 안내한다. EXAONE 4.5(exaone4)는 켤 수 없어 "아직 안 쓴다"고만 쓴다. cpu-moe·부분 오프로드의 RAM 몫(파일 − GPU 가중치)에는 MTP 블록이 그대로 들어 있다(보수 — cpu-moe 각주가 밝힌다).
   - **llama.cpp `--fit`(Ollama 0.30+ 도 -ngl 없이 llama-server 를 띄워 같은 경로)** 은 장치마다 1024MiB 를 비워 둔다(https://github.com/ggml-org/llama.cpp/blob/cb7934c/common/common.h#L485). 16GB 이하 카드에서 새로 full-gpu 가 된 빠듯한 셀(예: 8GB × Qwen3.5-9B 32k 필요 6.99 vs 사용 가능 7.4)은 Ollama 에서 부분 오프로드가 될 수 있다(추정) — 가이드·방법론이 `ollama ps` 확인을 안내한다. `llama-server -ngl all` 은 vramGB 가 표기 용량(실제는 GiB — 8GB 카드 = 8.59 decimal GB)이라 여유가 있어 OOM 위험이 낮다.
   - **통합 메모리(맥)는 파일 전체**(Metal mmap 범위, §2.4-1) — 32GB 맥의 Qwen3.5/3.6-35B-A3B 는 여전히 cpu-only(보수).
-  - **partial-offload gpuFrac 분모는 파일 전체**(§3.4 주의) — 경계 바로 바깥이 B 로 떨어지는 절벽.
+  - **partial-offload gpuFrac 분모는 파일 전체**(§3.4 주의 — 층별 임베딩 표가 있는 모델만 파일 − 표) — 경계 바로 바깥이 B 로 떨어지는 절벽.
   - **속도는 여전히 파일 바이트**(§3.1 `bytesPerToken = fileGB`) — MTP 블록이 있는 dense 모델(Qwen3.5-9B/27B, Qwen3.8-27B, EXAONE 4.5)은 토큰마다 읽지 않는 MTP 바이트만큼 과소 추정(보수). `mtpGB` 를 쓰는 후속 과제.
   - 실측(llama-server 로그의 `CPU_Mapped model buffer` 에 token_embd, MTP `unused tensor … ignoring` 경고)으로는 아직 대조하지 못했다(하드웨어 없음 — PROGRESS §5).
+- **층별 임베딩 표·KV 공유 층(Gemma 4 E2B·E4B, 10-21 D112)**: ① 속도의 E 계열 고유 지연(층별 입력의 CPU→GPU 전송·동기화와 작은 층별 연산 — 같은 카드의 다른 dense 모델보다 토큰당 1ms 쯤 길다)은 백엔드별 고정 시간 하나로 둔다(§3.1 — CUDA 1.35·Vulkan 1.75ms). 근거가 카드 6장·백엔드 둘뿐이다 — Metal(맥)·AMD 는 실측이 없어 Vulkan 값을 쓰고, ROCm·SYCL 은 따로 보지 않는다(B580 SYCL 은 Vulkan 값으로 −3.3%). 대역폭이 작은 카드는 클래스 계수 0.70 이 낮아(4070 Ti 504 GB/s) 고정 시간을 더하면 −11% 쯤 낮게 본다. CUDA 근거 4점이 ubatch 1 pp(출력층을 마지막 토큰만 읽는다)라 tg 그 자체가 아니고, 그 점의 파일(ggml-org Q4_0 — token_embd Q8_0)은 가정이다(token_embd 가 Q6_K 였다면 CUDA 값이 0.1ms 쯤 작다). dense 모델 공통 고정 시간(PROGRESS §2 엔진 후속 ⑭)이 들어오면 이 값에서 그만큼 빼야 한다(겹치지 않게). A770 Vulkan +78% 는 intel-arc 계수 문제로 남는다. ② KV 는 **저장 KV** 로 센다 — 메모리는 정확하지만 읽기는 공유 층이 저장 KV 를 다시 읽어 실제보다 작게 본다(8k f16 에서 E4B 0.13 vs 0.23GB, E2B 0.05 vs 0.11GB — 가중치 읽기 3.0·1.5GB 에 비해 작다). ③ 시스템 RAM 검사는 offGpuGB(표 + 헤더)만 센다 — 임베딩 공유라 GPU 출력층 사본과 따로 CPU 에 남는 token_embd 입력 사본(0.23~0.71GB)은 빠져 있다(OS 예약 4GB 안). mmap 이라 실제 RAM 은 읽은 쪽만큼일 수 있다(보수). ④ 4GiB 를 넘는 표(BF16 파일 등)는 기본 lazy 모드에서 디스크에서 행만 읽어 RAM 에 두지 않는다 — 엔진은 모르고 RAM 몫으로 센다(PROGRESS §2 엔진 후속 ⑥). ⑤ pp 실효 파라미터는 paramsB(표 2.3~2.8B 와 비전·오디오 인코더 약 0.47B 포함)라 pp 를 낮게 볼 수 있다(rough ±40%). ⑥ 통합 메모리(맥)는 다른 모델처럼 파일 전체를 통합 풀로 센다(표는 CPU 버퍼지만 같은 RAM — 보수).
 - cpu-moe 의 `--n-cpu-moe` 는 층 평균 전문가 크기로 정한다 — Q4_K_M 류 혼합 레시피는 층마다 ffn_down 정밀도가 달라 층 크기가 최대 ~1.15× 차이(GPU 에 남는 뒤쪽 층이 무겁다) → 여유 1층(`CPU_MOE_GPU_LAYER_MARGIN`). 앞쪽 dense 층이 있는 기존 MoE(`arch.expertLayers` 미기록)는 전문가 층 수를 전체 층으로 근사한다 — 10-03 이후 추가 모델은 config 가 층 지도를 주면 기록한다(D63).

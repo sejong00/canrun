@@ -16,17 +16,25 @@
  * 10) MoE 토큰당 고정 시간(§3.1, 10-16 D88): 2026 빌드 49점(10-16 D90 에 Strix Halo 4점 추가) 각 ±20% · MAE < 10%(검증값 8.9% → 8.3%) · 클래스별 MAE < 12%
  * 11) pp 모델 크기(§3.5, 10-16 D91): 2026 빌드 다모델 91점(dense 61·MoE 30) 각 ±40%(PP_BAND) · MAE < 13%(검증값 11.6%) · 클래스별 MAE < 15%
  *     · ±30% 밖 2점 이하 — 옛 식(GPU 마다 값 하나)은 같은 점에서 MAE 92%·최대 +733%
+ * 12) Gemma 4 E4B·E2B(층별 임베딩 표·KV 공유 층, 10-21 D112): 저장 KV 정확값 · 그래픽카드 상주/시스템 RAM 몫 · 공개 실측 10점 오차표 고정
+ *     · 층별 임베딩 표 고정 시간(PLE_TOKEN_OVERHEAD_MS — D112 리뷰 반영)은 백엔드별 minimax: CUDA 6점 ±11.1% · Vulkan 2점 ±2.5% 안,
+ *     참고점 B580 SYCL ±5% · A770 Vulkan +78%(intel-arc 계수 문제) — 라벨은 이론 추정(docs/02 §4 ⑦·§7·§9)
  */
 import { describe, expect, it } from 'vitest';
 import { fit } from '../src/fit';
 import { evaluate } from '../src/index';
-import { kvBytesPerToken, kvGB, weightsGBFromBpw } from '../src/memory';
-import { ppEstimate, tgEstimate } from '../src/speed';
+import { gpuResidentGBFor, kvBytesPerToken, kvGB, weightsGBFromBpw } from '../src/memory';
+import { PLE_CUDA_CLASSES, PLE_TOKEN_OVERHEAD_MS } from '../src/constants';
+import { bytesPerTokenGB, gpuThroughputGBs, pleOverheadSeconds, ppEstimate, tgEstimate } from '../src/speed';
 import {
   APPLE_PP_CASES,
   LLAMA2_7B_Q4_0,
   PP_SIZE_CASES,
   CPU_MOE_CASES,
+  GEMMA4_E2B_Q4,
+  GEMMA4_E4B_Q4,
+  GEMMA4_E4B_Q8,
+  PLE_SPEED_CASES,
   MOE_OLD_BUILD_CASES,
   MOE_OVERHEAD_CASES,
   MOE_OVERHEAD_SPARK_B7941,
@@ -67,7 +75,7 @@ describe('1) weights: paramsB × bpw / 8 vs actual GGUF size (11 cases)', () => 
   });
 });
 
-describe('2) KV cache: 2·layers·kvHeads·headDim·2B vs known KiB/tok (7 cases)', () => {
+describe('2) KV cache: 2·layers·kvHeads·headDim·2B vs known KiB/tok (9 cases — 10-21 D112 Gemma 4 E4B·E2B 저장 KV)', () => {
   // 정확값 일치 (외부 리뷰 반영 — 근사 허용 오차 제거, 공식이므로 toBe)
   it.each(KV_CASES.map((c) => [c.name, c] as const))('%s exact match', (_name, c) => {
     expect(kvBytesPerToken({ layers: c.layers, kvHeads: c.kvHeads, headDim: c.headDim })).toBe(
@@ -371,5 +379,89 @@ describe('11) pp 모델 크기 (§3.5, 10-16 D91): 2026 llama.cpp 빌드 다모�
     expect(Math.abs(pair('RTX 4090 llama 8B Q4_0 pp512 (2026-05-25', 'RTX 4090 llama 70B Q4_K_M'))).toBeLessThan(0.25);
     expect(Math.abs(pair('DGX Spark llama 3B Q4_K_M', 'DGX Spark llama 70B Q4_K_M'))).toBeLessThan(0.25);
     expect(Math.abs(pair('RTX 3090 llama 1B Q4_0', 'RTX 3090 llama 8B Q4_0 pp512'))).toBeLessThan(0.25);
+  });
+});
+
+describe('12) Gemma 4 E4B·E2B — 층별 임베딩 표·KV 공유 층 (10-21 D112, docs/02 §2.2·§2.4·§3.1·§7)', () => {
+  it('stored KV: E4B 16 KiB/tok · E2B 6 KiB/tok (all-full-layer counting would be 28 · 14 KiB) — 8k f16 0.134 · 0.050 GB', () => {
+    expect(GEMMA4_E4B_Q4.kvBytesPerToken).toBe(kvBytesPerToken({ layers: 4, kvHeads: 2, headDim: 512 }));
+    expect(GEMMA4_E2B_Q4.kvBytesPerToken).toBe(kvBytesPerToken({ layers: 3, kvHeads: 1, headDim: 512 }));
+    expect(kvGB(GEMMA4_E4B_Q4.kvBytesPerToken, 8192)).toBeCloseTo(0.134, 3);
+    expect(kvGB(GEMMA4_E2B_Q4.kvBytesPerToken, 8192)).toBeCloseTo(0.05, 3);
+  });
+
+  it('weights: the per-layer embedding table stays in system RAM — GPU-resident 3.03 (E4B Q4_K_M) · 1.48 (E2B) GB, read per token = file − table', () => {
+    expect(gpuResidentGBFor(GEMMA4_E4B_Q4)).toBeCloseTo(4.98 - 1.95, 6);
+    expect(gpuResidentGBFor(GEMMA4_E2B_Q4)).toBeCloseTo(3.11 - 1.63, 6);
+    expect(bytesPerTokenGB(GEMMA4_E4B_Q4, 512)).toBeCloseTo(4.98 - 1.94 + kvGB(16_384, 512), 6);
+    // RTX 4060 8GB(Windows 화면 출력, 사용 가능 7.4GB): 3.03 + KV 0.134 + 버퍼 0.575 = 3.74GB → GPU 에 전량, 시스템 RAM 에 1.95GB
+    const r = evaluate(RTX_4060_8GB, GEMMA4_E4B_Q4);
+    expect(r.mode).toBe('full-gpu');
+    expect(r.vram.weights).toBeCloseTo(3.03, 6);
+    expect(r.vram.total - r.vram.osReserve).toBeCloseTo(3.03 + 0.134 + 0.575, 2);
+    // Q8_0 도 4060 에 들어간다(5.18 + 0.134 + 0.575 = 5.89GB)
+    expect(fit(RTX_4060_8GB, GEMMA4_E4B_Q8).mode).toBe('full-gpu');
+  });
+
+  it('system RAM must hold the off-GPU table in full-gpu: 6GB RAM (usable 2) holds 1.95GB, 5GB (usable 1) does not and nothing else fits', () => {
+    expect(fit({ ...RTX_4060_8GB, ramGB: 6 }, GEMMA4_E4B_Q4)).toMatchObject({ fits: true, mode: 'full-gpu' });
+    const small = fit({ ...RTX_4060_8GB, ramGB: 5 }, GEMMA4_E4B_Q4);
+    expect(small.fits).toBe(false);
+  });
+
+  // 읽기 바이트(ubatch 1 pp 점은 마지막 토큰만 읽는 출력층을 뺀다) ÷ GPU 처리량 + 층별 임베딩 표 고정 시간(점의 백엔드)
+  const readSeconds = (c: (typeof PLE_SPEED_CASES)[number]) => (bytesPerTokenGB(c.mq, c.ctx) - (c.skippedOutputGB ?? 0)) / gpuThroughputGBs(c.hw);
+  const estimate = (c: (typeof PLE_SPEED_CASES)[number], overheadMs?: number) =>
+    1 / (readSeconds(c) + (overheadMs === undefined ? pleOverheadSeconds(c.hw, c.mq, c.backend) : overheadMs * 1e-3));
+  const errors = PLE_SPEED_CASES.map((c) => estimate(c) / c.measuredTg - 1);
+  const fitted = (backend: 'cuda' | 'vulkan') =>
+    PLE_SPEED_CASES.filter((c) => !c.reference && (c.backend ?? (PLE_CUDA_CLASSES.includes(c.hw.effClass) ? 'cuda' : 'vulkan')) === backend);
+
+  it.each(PLE_SPEED_CASES.map((c, i) => [c.label, c, i] as const))('%s: error matches the recorded table (±0.5%p)', (_label, c, i) => {
+    expect(errors[i]!).toBeCloseTo(c.recordedErr, 2);
+  });
+
+  it('tg points on the class default backend are exactly what the site shows (engine tgEstimate)', () => {
+    const plain = PLE_SPEED_CASES.filter((c) => c.backend === undefined && c.skippedOutputGB === undefined);
+    expect(plain).toHaveLength(4);
+    for (const c of plain) expect(estimate(c), c.label).toBeCloseTo(tgEstimate(c.hw, c.mq, { mode: 'full-gpu' }, { ctx: c.ctx }), 9);
+  });
+
+  it('constants are the minimax of their points (0.05ms steps): CUDA 6 points within ±11.1%, Vulkan 2 points within ±2.5%', () => {
+    for (const c of PLE_SPEED_CASES) expect(c.source, c.label).toMatch(/^https:\/\//);
+    const cuda = fitted('cuda');
+    const vulkan = fitted('vulkan');
+    expect(cuda).toHaveLength(6);
+    expect(vulkan).toHaveLength(2);
+    const maxErr = (cs: typeof cuda, ms: number) => Math.max(...cs.map((c) => Math.abs(estimate(c, ms) / c.measuredTg - 1)));
+    for (const [cs, ms, bound] of [[cuda, PLE_TOKEN_OVERHEAD_MS.cuda, 0.111], [vulkan, PLE_TOKEN_OVERHEAD_MS.vulkan, 0.025]] as const) {
+      expect(maxErr(cs, ms)).toBeLessThanOrEqual(bound);
+      expect(maxErr(cs, ms)).toBeLessThanOrEqual(maxErr(cs, ms - 0.05));
+      expect(maxErr(cs, ms)).toBeLessThanOrEqual(maxErr(cs, ms + 0.05));
+    }
+  });
+
+  it('without the fixed time every 3090/4090/5090 point is above +30% — why the constant exists (dense models on the same card leave 0.14~0.72ms)', () => {
+    const fast = PLE_SPEED_CASES.filter((c) => /RTX (3090|4090|5090)/.test(c.label));
+    expect(fast).toHaveLength(5);
+    for (const c of fast) expect(estimate(c, 0) / c.measuredTg - 1, c.label).toBeGreaterThan(0.3);
+  });
+
+  it('reference points (not fitted): B580 SYCL on the class default within ±5%; A770 Vulkan stays far above (+78% — intel-arc class coefficient set on B580)', () => {
+    const ref = (label: string) => errors[PLE_SPEED_CASES.findIndex((c) => c.label.startsWith(label))]!;
+    expect(Math.abs(ref('Arc B580'))).toBeLessThanOrEqual(0.05);
+    expect(ref('Arc A770')).toBeGreaterThan(0.3);
+    // A770 을 빼면 모든 점이 ±12% 안
+    for (const [i, c] of PLE_SPEED_CASES.entries()) if (!c.label.startsWith('Arc A770')) expect(Math.abs(errors[i]!), c.label).toBeLessThanOrEqual(0.12);
+  });
+
+  it('the fixed time applies only to rows with a table, on the GPU path — other dense models and the CPU path are unchanged', () => {
+    expect(pleOverheadSeconds(RTX_4060_8GB, { pleGB: undefined })).toBe(0);
+    expect(pleOverheadSeconds(RTX_4060_8GB, GEMMA4_E4B_Q4)).toBeCloseTo(PLE_TOKEN_OVERHEAD_MS.cuda * 1e-3, 12);
+    const arc = PLE_SPEED_CASES.find((c) => c.label.startsWith('Arc A770'))!;
+    expect(pleOverheadSeconds(arc.hw, GEMMA4_E4B_Q4)).toBeCloseTo(PLE_TOKEN_OVERHEAD_MS.vulkan * 1e-3, 12);
+    const cpu = { ...RTX_4060_8GB, kind: 'cpu' as const, effClass: 'cpu' as const };
+    const kv = kvGB(GEMMA4_E4B_Q4.kvBytesPerToken, 8192);
+    expect(tgEstimate(cpu, GEMMA4_E4B_Q4, { mode: 'cpu-only' })).toBeCloseTo((0.5 * cpu.ramBandwidthGBs) / (4.98 - 1.94 + kv), 9);
   });
 });

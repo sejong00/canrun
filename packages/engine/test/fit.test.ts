@@ -1,12 +1,15 @@
 /** fit 판정 유닛 — docs/02 §2.4 + §8 시드. */
 import { describe, expect, it } from 'vitest';
-import { CPU_MOE_GPU_LAYER_MARGIN } from '../src/constants';
+import { CPU_MOE_GPU_LAYER_MARGIN, PLE_TOKEN_OVERHEAD_MS } from '../src/constants';
 import { fit } from '../src/fit';
 import { evaluate } from '../src/index';
 import { computeBufferGB, gpuUnitsOf, kvGB, osReserveGB, usableGB, usableRamGB } from '../src/memory';
 import { tgEstimate } from '../src/speed';
 import type { Hardware, ModelQuant } from '../src/types';
 import {
+  GEMMA4_E2B_Q4,
+  GEMMA4_E4B_Q4,
+  GEMMA4_E4B_Q8,
   GPT_OSS_120B,
   HETERO_GPU_CASES,
   LLAMA31_8B_Q4,
@@ -209,6 +212,58 @@ describe('§2.4-1 dGPU full-gpu counts only GPU-resident weights (10-03 D62)', (
     expect(stale.fits).toBe(false);
     expect(plain.bestQuant).toBe('Q3_K_M');
     expect(stale.bestQuant).toBe(plain.bestQuant);
+  });
+});
+
+describe('§2.4 per-layer embedding table (Gemma 4 E4B·E2B, 10-21 D112)', () => {
+  const card = (vramGB: number, ramGB = 32): Hardware => ({ ...RTX_4060_8GB, vramGB, ramGB, isDisplayGpu: false });
+
+  it('full-gpu needs only the GPU-resident weights; the table (offGpuGB) has to fit in usable system RAM', () => {
+    // 상주 3.03 + KV 0.134 + 버퍼 0.575 = 3.74 — 4GB 카드(화면 출력 없음)에 전량
+    expect(fit(card(4), GEMMA4_E4B_Q4)).toMatchObject({ fits: true, mode: 'full-gpu' });
+    expect(fit(card(4), GEMMA4_E4B_Q4).vram.weights).toBeCloseTo(3.03, 6);
+    // RAM 5GB(사용 가능 1GB) < GPU 밖 1.95GB → 전량 탑재 불가, 부분 오프로드·CPU 도 RAM 이 모자라 실패
+    const noRam = fit(card(8, 5), GEMMA4_E4B_Q4);
+    expect(noRam.fits).toBe(false);
+    expect(fit(card(8, 6), GEMMA4_E4B_Q4).mode).toBe('full-gpu');
+    // 통합 메모리는 파일 전체를 통합 풀로 센다(RAM 검사 없음 — GPU 밖 몫이 없다)
+    expect(fit(M4_MAX_128, GEMMA4_E4B_Q4).vram.weights).toBeCloseTo(4.98, 6);
+  });
+
+  it('partial-offload: the GPU share is capped at the resident weights and gpuFrac counts against file − table', () => {
+    // 3GB 카드 × E4B Q8_0: 상주 5.18 > 사용 가능 → GPU 몫 = 3 − 0.134 − 0.575 = 2.291, 분모 = 8.19 − 2.99 = 5.20
+    const r = fit(card(3), GEMMA4_E4B_Q8);
+    expect(r.mode).toBe('partial-offload');
+    expect(r.vram.weights).toBeCloseTo(3 - kvGB(16_384, 8192) - computeBufferGB(8192), 6);
+    expect(r.gpuFrac!).toBeCloseTo(r.vram.weights / (8.19 - 2.99), 6);
+    // 표가 없는 모델은 분모가 파일 전체 그대로
+    const plain = fit(card(3), { ...GEMMA4_E4B_Q8, pleGB: undefined });
+    expect(plain.gpuFrac!).toBeCloseTo(plain.vram.weights / 8.19, 6);
+  });
+
+  it('E2B Q4_K_M fits a 2.5GB card in full (1.48 + 0.05 + 0.575 = 2.11GB) and its speed reads file − table + the PLE fixed time', () => {
+    const r = evaluate(card(2.5), GEMMA4_E2B_Q4);
+    expect(r.mode).toBe('full-gpu');
+    const read = (3.11 - 1.61 + kvGB(6_144, 8192)) / (0.7 * 272);
+    expect(r.tgTokS.est).toBeCloseTo(1 / (read + PLE_TOKEN_OVERHEAD_MS.cuda * 1e-3), 6);
+  });
+
+  it('the system RAM check is only for rows with a table — other off-GPU shares (MTP left unloaded, input embedding) are not RAM (10-21 D112 review)', () => {
+    // RAM 5GB(사용 가능 1GB) — 표 없는 dense 행의 GPU 밖 3GB(MTP 꼴)는 예전처럼 막지 않는다
+    const mtpLike: ModelQuant = { ...GEMMA4_E4B_Q4, pleGB: undefined, offGpuGB: 3 };
+    expect(fit(card(8, 5), mtpLike)).toMatchObject({ fits: true, mode: 'full-gpu' });
+    expect(fit(card(8, 5), { ...mtpLike, pleGB: 1.94 }).fits).toBe(false);
+  });
+
+  it('bestQuant ladder keeps the table structure (scaled pleGB) but counts the whole bpw file on the GPU — conservative', () => {
+    // VRAM 2GB·RAM 4GB(사용 가능 0): Q4_K_M 은 GPU 밖 몫을 RAM 에 둘 수 없어 실패 → 사다리는 상주 = 파일 전체(bpw)로 본다
+    const tight: Hardware = { ...card(2, 4) };
+    const r = fit(tight, GEMMA4_E4B_Q4);
+    expect(r.fits).toBe(false);
+    expect(r.bestQuant).toBeUndefined(); // 8.0B × 2.93bpw/8 = 2.93GB 도 2GB 에 못 들어간다
+    const roomy = fit({ ...card(4, 4) }, GEMMA4_E4B_Q4);
+    expect(roomy.fits).toBe(false);
+    expect(roomy.bestQuant).toBe('Q2_K'); // 8.0 × 3.16bpw/8 = 3.16 + 0.134 + 0.575 = 3.87 ≤ 4 (IQ3_XS 3.50 은 4.21 로 넘친다)
   });
 });
 

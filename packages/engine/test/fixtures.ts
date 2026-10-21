@@ -50,6 +50,9 @@ export const KV_CASES: readonly KvCase[] = [
   { name: 'Llama-3.3-70B', layers: 80, kvHeads: 8, headDim: 128, expectKiB: 320 },
   { name: 'Phi-4', layers: 40, kvHeads: 10, headDim: 128, expectKiB: 200 },
   { name: 'Qwen3-30B-A3B', layers: 48, kvHeads: 4, headDim: 128, expectKiB: 96 },
+  // 10-21 D112 — KV 공유 층: 저장 KV 는 앞 `층 수 − num_kv_shared_layers` 층 안의 전체 어텐션 층만(layers = 그 층 수, head_dim = global_head_dim)
+  { name: 'Gemma-4-E4B (full attn 4 in the first 42 − 18 layers)', layers: 4, kvHeads: 2, headDim: 512, expectKiB: 16 },
+  { name: 'Gemma-4-E2B (full attn 3 in the first 35 − 20 layers)', layers: 3, kvHeads: 1, headDim: 512, expectKiB: 6 },
 ];
 
 // ---------- 3) 속도 12점: tg = eff × BW / (weights + kvRead) vs llama.cpp 실측 ----------
@@ -827,4 +830,90 @@ export const PP_SIZE_CASES: readonly PpSizeCase[] = [
   { label: "Strix Halo 8060S gpt-oss 120B MXFP4 pp512 (2026-10-04 b11223)", hw: { effClass: 'strix', fp16Tflops: 29.7 }, mq: { paramsB: 116.83, activeParamsB: 5.1, activeExpertFrac: 4/128, quant: 'MXFP4' }, ubatch: 512, measuredPp: 1132.7, source: "https://github.com/ggml-org/llama.cpp/issues/29892#issuecomment-5981486905" },
   { label: "Strix Halo 8060S Qwen3.8-27B UD-Q5_K_XL pp512 ub2048 (2026-08-25 parent)", hw: { effClass: 'strix', fp16Tflops: 29.7 }, mq: { paramsB: 27.32, quant: 'UD-Q5_K_XL' }, ubatch: 2048, measuredPp: 311.0, source: "https://github.com/ggml-org/llama.cpp/pull/27554#issuecomment-5414311828" },
   { label: "RX 7900 XTX Qwen3.8-27B IQ3_XXS pp512 (2026-09-22 b11065)", hw: { effClass: 'amd', fp16Tflops: 122.8, fp16MatrixTflops: 123 }, mq: { paramsB: 27.32, quant: 'IQ3_XXS' }, ubatch: 512, measuredPp: 914.9, source: "https://github.com/ggml-org/llama.cpp/issues/28843#issuecomment-5772682741" },
+];
+
+// ---------- 12) Gemma 4 E4B·E2B — 층별 임베딩 표(PLE)·KV 공유 층 (10-21 D112, docs/02 §2.2·§2.4·§3.1) ----------
+/**
+ * 파일별 GGUF 헤더 실측(Range 읽기, 10-20~21): fileGB · offGpuGB(파일 − GPU 상주 = 층별 임베딩 표 + 헤더) · pleGB(`per_layer_token_embd`).
+ * 임베딩 공유라 token_embd 는 출력층 사본으로 GPU 상주에 들어 있다. paramsB 는 카탈로그 값(HF safetensors — 비전·오디오 인코더 포함).
+ * KV 는 저장 KV — E4B 앞 24층 안의 전체 어텐션 4층 × kv 2 × 512 × 4 = 16,384 B/tok, E2B 앞 15층 안의 3층 × 1 × 512 × 4 = 6,144 B/tok
+ * (llama.cpp n_layer_kv_from_start — https://github.com/ggml-org/llama.cpp/blob/9a3b91c6801e68f412fcf1b6f8e153aa562b8536/src/models/gemma4.cpp#L8-L11)
+ */
+const gemma4E = (paramsB: number, kvBytesPerToken: number, fileGB: number, offGpuGB: number, pleGB: number, quant: QuantId): ModelQuant => ({
+  paramsB, fileGB, quant, kvBytesPerToken, attnType: 'swa', offGpuGB, pleGB, maxContext: 131072,
+});
+// https://huggingface.co/unsloth/gemma-4-E4B-it-GGUF/resolve/main/gemma-4-E4B-it-Q4_K_M.gguf — PLE Q5_K 1,937,768,448 B (카탈로그 행)
+export const GEMMA4_E4B_Q4: ModelQuant = gemma4E(8.0, 16_384, 4.98, 1.95, 1.94, 'Q4_K_M');
+// https://huggingface.co/unsloth/gemma-4-E4B-it-GGUF/resolve/main/gemma-4-E4B-it-Q8_0.gguf — PLE Q8_0 2,994,733,056 B (카탈로그 행)
+export const GEMMA4_E4B_Q8: ModelQuant = gemma4E(8.0, 16_384, 8.19, 3.01, 2.99, 'Q8_0');
+// https://huggingface.co/unsloth/gemma-4-E4B-it-GGUF/resolve/main/gemma-4-E4B-it-Q4_0.gguf — PLE Q5_K (B580 점, 4.49 GiB 텐서).
+// Q4_0 은 QuantId 밖이라 표기만 Q4_K_M — 속도식은 fileGB·pleGB 만 읽는다(아래 E2B Q4_0 도 같다)
+const GEMMA4_E4B_Q40_UNSLOTH = gemma4E(8.0, 16_384, 4.84, 1.95, 1.94, 'Q4_K_M');
+// https://huggingface.co/bartowski/google_gemma-4-E4B-it-GGUF/resolve/main/google_gemma-4-E4B-it-Q4_K_M.gguf — PLE Q6_K 2,312,110,080 B (A770 점, 5.02 GiB 텐서)
+const GEMMA4_E4B_Q4_BARTOWSKI = gemma4E(8.0, 16_384, 5.41, 2.33, 2.31, 'Q4_K_M');
+// https://huggingface.co/ggml-org/gemma-4-E4B-it-GGUF/resolve/main/gemma-4-E4B-it-Q8_0.gguf — PLE Q8_0 (3080 Ti 점, 7.48 GiB)
+const GEMMA4_E4B_Q8_GGML = gemma4E(8.0, 16_384, 8.03, 3.01, 2.99, 'Q8_0');
+// https://huggingface.co/unsloth/gemma-4-E2B-it-GGUF/resolve/main/gemma-4-E2B-it-Q4_K_M.gguf — PLE Q5_K 1,614,807,040 B (카탈로그 행)
+export const GEMMA4_E2B_Q4: ModelQuant = gemma4E(5.12, 6_144, 3.11, 1.63, 1.61, 'Q4_K_M');
+// https://huggingface.co/ggml-org/gemma-4-E2B-it-GGUF/resolve/main/gemma-4-E2B-it-Q4_0.gguf — PLE Q4_0 1,321,205,760 B (#29152 점 — 출처에 파일이 없어 llama-quantize 기본 Q4_0 인 이 파일로 본다)
+const GEMMA4_E2B_Q40_GGML = gemma4E(5.12, 6_144, 2.84, 1.34, 1.32, 'Q4_K_M');
+// 같은 파일의 token_embd Q8_0 1536 × 262,144 = 427,819,008 B — 임베딩 공유라 출력층이 이 텐서의 GPU 사본이다(헤더 실측 10-21)
+const GEMMA4_E2B_Q40_GGML_OUTPUT_GB = 0.427819008;
+
+export type PleSpeedCase = SourcedSpeedCase & {
+  /**
+   * 잰 백엔드가 엔진의 클래스 기본(nvidia·dgx-spark = cuda, 그 밖 = vulkan — `PLE_CUDA_CLASSES`)과 다를 때만 — 5090 Vulkan 점.
+   * 테스트는 `pleOverheadSeconds(hw, mq, backend)` 로 그 백엔드 값을 쓴다
+   */
+  backend?: 'cuda' | 'vulkan';
+  /**
+   * ubatch 1 pp 점: 마지막 토큰에서만 계산하는 출력층 GB — 읽기 바이트에서 × (n − 1)/n 을 뺀다(llama-bench pp 는 출력 지정 없는 배치라
+   * 마지막 토큰만 출력: https://github.com/ggml-org/llama.cpp/blob/e13469a323147aed0c93f5b4efde10fcc379e977/tools/llama-bench/llama-bench.cpp#L2154 ·
+   * src/llama-batch.cpp#L120-L130). tg 는 토큰마다 출력층을 읽으므로 같은 카드의 tg 는 이 점보다 느리다
+   */
+  skippedOutputGB?: number;
+  /** 상수 근거가 아닌 참고점(다른 백엔드·클래스 계수 문제) — 오차만 고정한다 */
+  reference?: true;
+  /** 회귀 대조 시 기록한 오차(추정 ÷ 실측 − 1, 10-21) — 식이 바뀌면 테스트가 알린다 */
+  recordedErr: number;
+};
+const pleCase = (
+  label: string,
+  hw: Hardware,
+  mq: ModelQuant,
+  ctx: number,
+  measuredTg: number,
+  source: string,
+  recordedErr: number,
+  extra: Pick<PleSpeedCase, 'backend' | 'skippedOutputGB' | 'reference'> = {},
+): PleSpeedCase => ({ label, hw, mq, ctx, measuredTg, band: 0.3, source, recordedErr, ...extra });
+const ARC_A770: Hardware = dgpu(16, 560, 'intel-arc');
+const ARC_B580: Hardware = dgpu(12, 456, 'intel-arc');
+const UB1_PP256 = { skippedOutputGB: GEMMA4_E2B_Q40_GGML_OUTPUT_GB * (255 / 256) };
+
+/**
+ * 공개 실측(빌드·파일 확인, 10-21 재확인) — 클래스 계수 + 층별 임베딩 표 고정 시간(`PLE_TOKEN_OVERHEAD_MS`, 10-21 D112 리뷰 반영)의 추정과
+ * 비교한다(사이트가 보이는 값 — 5090 Vulkan 점만 Vulkan 값). ctx: tg128 은 512(관례), ubatch 1 pp256 은 256, 4k 프롬프트 뒤 생성은 4224.
+ * 고정 시간이 없던 식은 빠른 카드에서 작은 모델일수록 높게 봤다(3090~5090 CUDA E2B +30~+75%, 5090 Vulkan E4B +76%·E2B +144%). 같은 5090
+ * Vulkan 표의 다른 dense 모델은 실측 − 대역폭 시간이 0.14~0.72ms 인데 E 계열은 1.73~1.84ms 라 E 계열 고유의 지연이다(#28618: 층별 입력을
+ * 토큰마다 CPU→GPU 로 올리며 동기화). 상수 근거: CUDA 6점(ubatch 1 4점은 출력층을 뺀 읽기 — 그러면 DGX Spark 도 1.0ms 가 남아 다른 CUDA 점과
+ * 같은 무리가 된다) minimax 1.35ms, Vulkan 2점 minimax 1.75ms(0.05ms 격자). 참고점: B580 SYCL(클래스 기본 vulkan 값) −3.3%, A770 Vulkan +78%(intel-arc 계수 —
+ * B580 에서 정함 — 가 A770 에 맞지 않는 몫). 라벨은 그대로 이론 추정(데이터 레이어 isTheoretical, PROGRESS §4 D112)
+ */
+export const PLE_SPEED_CASES: readonly PleSpeedCase[] = [
+  // RTX 5090 Vulkan(FA, -p 0 -n 128) — PR 의 수정 후 표, 파일은 명령의 unsloth 경로(4.62·2.88 GiB). NVIDIA 카드지만 백엔드가 Vulkan
+  pleCase('RTX 5090 Vulkan Gemma 4 E4B Q4_K_M tg128 (#28618 after)', NV(1792), GEMMA4_E4B_Q4, 512, 233.96, PR(28618), 0.023, { backend: 'vulkan' }),
+  pleCase('RTX 5090 Vulkan Gemma 4 E2B Q4_K_M tg128 (#28618 after)', NV(1792), GEMMA4_E2B_Q4, 512, 341.76, PR(28618), -0.008, { backend: 'vulkan' }),
+  // CUDA FA 튜닝 PR 의 master 열 — ubatch 1 pp256 깊이 0(출력층은 마지막 토큰만)
+  pleCase('RTX 3090 CUDA Gemma 4 E2B Q4_0 ub1 pp256 (#29152 master)', NV(936), GEMMA4_E2B_Q40_GGML, 256, 298.02, PR(29152), 0.11, UB1_PP256),
+  pleCase('RTX 4090 CUDA Gemma 4 E2B Q4_0 ub1 pp256 (#29152 master)', NV(1008), GEMMA4_E2B_Q40_GGML, 256, 356.15, PR(29152), -0.033, UB1_PP256),
+  pleCase('RTX 5090 CUDA Gemma 4 E2B Q4_0 ub1 pp256 (#29152 master)', NV(1792), GEMMA4_E2B_Q40_GGML, 256, 470.11, PR(29152), -0.043, UB1_PP256),
+  // 같은 PR 의 리뷰(ynankani) DGX Spark 표 master 열
+  pleCase('DGX Spark CUDA Gemma 4 E2B Q4_0 ub1 pp256 (#29152 review)', SPARK, GEMMA4_E2B_Q40_GGML, 256, 162.3, 'https://github.com/ggml-org/llama.cpp/pull/29152#pullrequestreview-5260306593', -0.051, UB1_PP256),
+  // NVIDIA CUDA Q8_0 — 3080 Ti(b10988, ggml-org 7.48 GiB, 4,096 토큰 프롬프트 뒤 생성) · 4070 Ti(5208e2d5b (8641), unsloth 7.62 GiB, -ngl 999)
+  pleCase('RTX 3080 Ti CUDA Gemma 4 E4B Q8_0 gen after 4k prompt (b10988)', dgpu(12, 912, 'nvidia'), GEMMA4_E4B_Q8_GGML, 4224, 112.9, 'https://atomic.chat/blog/guides/best-local-llm-12gb', -0.053),
+  pleCase('RTX 4070 Ti CUDA Gemma 4 E4B Q8_0 tg128 (b8641)', dgpu(12, 504, 'nvidia'), GEMMA4_E4B_Q8, 512, 69.66, 'https://alfonsofortunato.com/blog/gemma-4-e4b-vs-26b-local-benchmarks/', -0.109),
+  // 참고점 — Intel Arc: B580 SYCL(FA 0, unsloth Q4_0 4.49 GiB, 빌드 표기 없음 2026-06-13) · A770 Vulkan(b10068 571d0d540, bartowski 5.02 GiB)
+  pleCase('Arc B580 SYCL Gemma 4 E4B Q4_0 tg128', ARC_B580, GEMMA4_E4B_Q40_UNSLOTH, 512, 82.3, 'https://github.com/ggml-org/llama.cpp/discussions/23313#discussioncomment-17291611', -0.033, { reference: true }),
+  pleCase('Arc A770 Vulkan Gemma 4 E4B Q4_K_M tg128 (b10068)', ARC_A770, GEMMA4_E4B_Q4_BARTOWSKI, 512, 50.31, 'https://github.com/ggml-org/llama.cpp/discussions/26823', 0.781, { reference: true }),
 ];

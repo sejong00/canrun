@@ -14,6 +14,7 @@ import {
   weightsGBFromBpw,
   nonExpertGBFor,
   vramTotalGB,
+  withoutPleGB,
 } from './memory';
 import type { Hardware, KvQuant, Mode, ModelQuant, QuantId, VramBreakdown } from './types';
 
@@ -76,15 +77,18 @@ function fitOnce(hw: Hardware, mq: ModelQuant, weights: number, opts?: FitOption
 
   const pool = usableGB(hw); // dgpu: Σvram−osReserve, unified: ram×0.70
   const limit = hw.kind === 'dgpu' ? vramTotalGB(hw) : hw.ramGB;
+  const usableRam = usableRamGB(hw);
 
   // 1. full-gpu (unified 포함 — 통합 풀에 전량 탑재). dGPU 는 llama.cpp 가 그래픽카드에 올리는 가중치만 센다(10-03 D62):
-  //    입력 임베딩은 시스템 RAM, MTP 블록은 미적재. 통합 메모리는 파일 전체(Metal 은 mmap 범위째 GPU 버퍼로 감싼다)
+  //    입력 임베딩은 시스템 RAM, MTP 블록은 미적재. 통합 메모리는 파일 전체(Metal 은 mmap 범위째 GPU 버퍼로 감싼다).
+  //    층별 임베딩 표가 있는 행(`pleGB` — 10-21 D112)은 dGPU 의 그래픽카드 밖 몫(표 + 헤더)이 시스템 RAM 에 들어가야 한다 — 표는
+  //    파일의 37~55% 라 RAM 이 작으면 못 올린다. 다른 행의 GPU 밖 몫(입력 임베딩·기본 미적재 MTP 블록 — MTP 는 RAM 에도 올라가지 않는다)은
+  //    전처럼 검사하지 않는다(기존 모델 판정이 구조상 그대로)
   const resident = hw.kind === 'dgpu' ? gpuResidentGBFor(mq, weights) : weights;
-  if (resident + kv + buffer <= pool) {
+  const ramShare = mq.pleGB !== undefined ? weights - resident : 0;
+  if (resident + kv + buffer <= pool && (ramShare === 0 || ramShare <= usableRam)) {
     return { fits: true, mode: 'full-gpu', vram: breakdown(resident, kv, buffer, osReserve, limit) };
   }
-
-  const usableRam = usableRamGB(hw);
 
   // 2. cpu-moe (MoE 전용, dgpu): 비전문가+kv+buffer 를 GPU 에 두고, 남는 VRAM 만큼 전문가 층을 GPU 에 채운 뒤
   //    나머지 층(앞쪽 N 층 — `--n-cpu-moe N`)의 전문가만 RAM 에 둔다 (10-01 D56: llama.cpp --fit 기본 배치와 같은 방향).
@@ -123,15 +127,18 @@ function fitOnce(hw: Hardware, mq: ModelQuant, weights: number, opts?: FitOption
   // 3. partial-offload (dense, dgpu): kv+buffer 는 GPU 상주, 가중치만 분할.
   //    CPU측 가중치 = weights − max(0, usableVram − kv − buffer) — 외부 리뷰 반영(2026-08):
   //    기존 need 비례식은 kv/buffer 까지 오프로드된다고 가정해 CPU측 부담을 과소평가했다.
-  //    여기 오면 GPU 몫 < 상주 가중치 ≤ 파일이라 상한은 그대로다. gpuFrac 분모는 파일 전체(입력 임베딩·MTP 포함 — 보수, §5 주의)
+  //    GPU 몫 상한은 상주 가중치(그래픽카드 밖 몫은 처음부터 CPU) — VRAM 이 모자라 1 이 실패했으면 GPU 몫 < 상주 가중치라 그대로이고,
+  //    시스템 RAM 이 모자라 1 이 실패한 경우(10-21 D112)에만 걸린다(그때 CPU측 ≥ 그래픽카드 밖 몫 > RAM 이라 여기서도 실패).
+  //    gpuFrac 분모 = 파일 − 층별 임베딩 표(처음부터 CPU 이고 토큰마다 한 줄만 읽는다 — 속도식의 읽기 바이트와 같은 기준, 10-21 D112).
+  //    표가 없는 모델은 파일 전체(입력 임베딩·MTP 포함 — 보수, §5 주의)
   if (hw.kind === 'dgpu' && !isMoe(mq) && pool > 0) {
-    const gpuWeights = Math.max(0, Math.min(weights, pool - kv - buffer));
+    const gpuWeights = Math.max(0, Math.min(resident, pool - kv - buffer));
     const cpuWeights = weights - gpuWeights;
     if (gpuWeights > 0 && cpuWeights <= usableRam) {
       return {
         fits: true,
         mode: 'partial-offload',
-        gpuFrac: gpuWeights / weights,
+        gpuFrac: Math.min(1, gpuWeights / withoutPleGB(mq, weights)),
         vram: breakdown(gpuWeights, kv, buffer, osReserve, limit),
       };
     }
@@ -165,11 +172,13 @@ export function fit(hw: Hardware, mq: ModelQuant, opts?: FitOptions): FitResult 
       ...mq,
       quant,
       fileGB: undefined,
-      // 헤더 실측(그래픽카드에 안 올리는 몫·전문가 분할)은 그 파일 전용 — 다른 quant 에 옛 값이 남지 않게 비운다
+      // 헤더 실측(그래픽카드에 안 올리는 몫·전문가 분할)은 그 파일 전용 — 다른 quant 에 옛 값이 남지 않게 비운다(상주 = 파일 전체, 보수)
       offGpuGB: undefined,
       expertGB: undefined,
       nonExpertGB:
         mq.nonExpertGB === undefined ? undefined : mq.nonExpertGB * (w / weightsGB(mq)),
+      // 층별 임베딩 표(10-21 D112)는 구조라 어느 양자화에도 있다 — 크기만 같은 비율로 줄인다(gpuFrac 분모용, 상주량은 위처럼 파일 전체)
+      pleGB: mq.pleGB === undefined ? undefined : mq.pleGB * (w / weightsGB(mq)),
     };
     if (fitOnce(hw, scaled, w, opts).fits) {
       return { ...result, bestQuant: quant };
