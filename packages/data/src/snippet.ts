@@ -16,6 +16,11 @@
  *    합산 용량만 보므로 그 카드가 메모리 부족이 될 수 있다. `--fit` 은 장치마다 여유(기본 1024MiB)를 두고 카드를 차례로 채운다
  *    (https://github.com/ggml-org/llama.cpp/blob/2145525a4081d66ff1a87cf43ef809f95a85ac0c/common/fit.cpp#L660-L750, 사용자가
  *    -ngl·텐서 배치를 주면 fit 이 멈춘다 #L463-L485)
+ *  - 반복 층 모델(10-22 D114 — Nanbeige4.2 `arch.loops`)의 `-ngl` 은 논리 층(물리 층 × loops) + 출력층을 센다 — llama.cpp 는
+ *    `i_gpu_start = n_layer_all + 1 − ngl` 부터 GPU 에 두고(https://github.com/ggml-org/llama.cpp/blob/0a1ef309cdbb9f2024f58a38fb4c42352c5db569/src/llama-model.cpp#L1670-L1695),
+ *    물리 층 가중치는 블록 번호(0 ~ 층 − 1 — 첫 반복)의 장치에 만든다(같은 커밋 src/models/nanbeige.cpp#L48-L73). 그래서 물리 k 층의 가중치를 GPU 에 두려면
+ *    `-ngl = 층 × (loops − 1) + 1 + k` 다(그보다 작으면 KV 일부·출력층만 GPU 에 가고 가중치는 하나도 가지 않는다). 그 논리 층들의 KV 도 GPU 에 가지만
+ *    엔진은 부분 오프로드에서 KV 전체를 GPU 에 둔다고 보므로 필요량은 그보다 작다(보수)
  *  - Ollama KV 캐시 양자화 = 서버 env `OLLAMA_KV_CACHE_TYPE`(f16|q8_0|q4_0, 전역), 플래시 어텐션 필요 —
  *    `OLLAMA_FLASH_ATTENTION=1` 로 강제 (https://docs.ollama.com/faq "How can I set the quantization type for the K/V cache?",
  *    "How can I enable Flash Attention?"). f16(기본)이면 env 를 붙이지 않는다
@@ -142,6 +147,8 @@ export type CommandPlan = {
   ctx: number;
   kvQuant: KvQuant;
   layers: number;
+  /** 반복 층 모델(10-22 D114 — `arch.loops`)의 반복 횟수 — `-ngl` 이 논리 층(layers × loops)을 센다는 각주용. 반복이 없으면 생략 */
+  loops?: number;
   file: CommandFile;
   llamaCpp?: LlamaCppPlan;
   ollama?: OllamaPlan;
@@ -181,6 +188,7 @@ export function commandPlan(
     fileGB: row.fileGB,
   };
   const mode = q.result.mode;
+  const loops = model.arch.loops !== undefined && model.arch.loops > 1 ? model.arch.loops : undefined;
   const base: CommandPlan = {
     os: config.hw.os,
     mode,
@@ -188,6 +196,7 @@ export function commandPlan(
     ctx,
     kvQuant,
     layers,
+    ...(loops !== undefined ? { loops } : {}),
     file,
   };
   if (!q.fits) return { ...base, ollamaOmitted: 'no-fit' };
@@ -210,7 +219,8 @@ export function commandPlan(
     case 'partial-offload': {
       // llama.cpp 는 출력층부터 올리고 입력층은 항상 CPU — floor 가 엔진 예산 안에 든다 (P1-2 검증)
       const onGpu = Math.floor((q.gpuFrac ?? 0) * layers);
-      ngl = onGpu < 1 ? 0 : onGpu;
+      // 반복 층 모델(10-22 D114): -ngl 은 논리 층을 센다 — 물리 onGpu 층의 가중치를 GPU 에 두는 값(헤더 주석)
+      ngl = onGpu < 1 ? 0 : loops !== undefined ? layers * (loops - 1) + 1 + onGpu : onGpu;
       break;
     }
     case 'cpu-only':

@@ -1014,6 +1014,7 @@
     "nglFitAuto": "有多块 GPU 时，命令省略了 -ngl 和 --n-cpu-moe：llama.cpp b7410（2025 年 12 月）及更新版本会自行把层和专家分配到每块显卡上。",
     "nglZero": "-ngl 0 让所有内容都留在 CPU 上。",
     "nglN": "-ngl {n} 把 {layers} 层中的 {n} 层放在 GPU 上；如果显存溢出，就调低 1–2。",
+    "nglNLoops": "-ngl {n} 会把重复执行的每一遍分别计数：llama.cpp 把这个模型的 {layers} 层算作 {logical} 层，因此这个值会把 {layers} 层中 {blocks} 层的权重放在 GPU 上。如果显存溢出，就调低 1–2。",
     "cpuMoe": "--n-cpu-moe {n} 把全部 {n} 层的专家都放在系统内存中，与本估算的假设一致。",
     "cpuMoePartial": "--n-cpu-moe {n} 把前 {n} 层的专家放在系统内存中；其余 {gpu} 个含专家的层把专家留在 GPU 上。本估算也按同样的划分计算。",
     "cpuMoeOom": "如果加载时出现内存不足（out of memory）错误，把该值调高到 {next1}；还不够就调到 {next2}。",

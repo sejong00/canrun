@@ -57,9 +57,9 @@ export const MODEL_CORE_KEYS = [
 
 /**
  * expertGB·nonExpertGB — MoE 헤더 실측 분할(10-01), valueExpertGB — 값 전문가(MoVA, 10-21 D113), offGpuGB — dense 헤더 실측 GPU 밖 몫(10-03 D62),
- * pleGB — 층별 임베딩 표(10-21 D112), mtpGB — MTP 블록 크기(안내문). 계산기 아일랜드의 fit·속도 판정이 읽는다
+ * pleGB — 층별 임베딩 표(10-21 D112), mtpGB — MTP 블록 크기(안내문), loopGB — 반복 층 모델의 반복 블록(10-22 D114). 계산기 아일랜드의 fit·속도 판정이 읽는다
  */
-export const MODEL_QUANT_CORE_KEYS = ['modelId', 'quant', 'fileGB', 'expertGB', 'nonExpertGB', 'valueExpertGB', 'offGpuGB', 'pleGB', 'mtpGB', 'ggufRepo', 'fileName'] as const satisfies readonly (keyof ModelQuantRecord)[];
+export const MODEL_QUANT_CORE_KEYS = ['modelId', 'quant', 'fileGB', 'expertGB', 'nonExpertGB', 'valueExpertGB', 'offGpuGB', 'pleGB', 'mtpGB', 'loopGB', 'ggufRepo', 'fileName'] as const satisfies readonly (keyof ModelQuantRecord)[];
 
 export const QUANT_DEF_CORE_KEYS = ['id', 'bpw', 'tier'] as const satisfies readonly (keyof QuantDef)[];
 

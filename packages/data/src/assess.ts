@@ -293,10 +293,10 @@ export function unifiedCpuBandwidth(gpu: Pick<Gpu, 'effClass' | 'memBandwidthGBs
 
 /**
  * 엔진 입력으로 넘기는 quant 행 필드 — MoE 행은 GGUF 헤더 실측 분할(expertGB·nonExpertGB, 값 전문가 모델은 valueExpertGB — 10-21 D113),
- * dense 행은 헤더 실측 offGpuGB(그래픽카드에 안 올리는 몫, 10-03 D62)·pleGB(층별 임베딩 표, 10-21 D112)가 붙을 수 있다
+ * dense 행은 헤더 실측 offGpuGB(그래픽카드에 안 올리는 몫, 10-03 D62)·pleGB(층별 임베딩 표, 10-21 D112)·loopGB(반복 블록, 10-22 D114)가 붙을 수 있다
  */
 export type QuantRowInput = Pick<ModelQuantCore, 'quant' | 'fileGB'> &
-  Partial<Pick<ModelQuantCore, 'expertGB' | 'nonExpertGB' | 'valueExpertGB' | 'offGpuGB' | 'pleGB'>>;
+  Partial<Pick<ModelQuantCore, 'expertGB' | 'nonExpertGB' | 'valueExpertGB' | 'offGpuGB' | 'pleGB' | 'loopGB'>>;
 
 /**
  * 카탈로그 모델 (+ 등록 quant 행) → 엔진 ModelQuant. 행이 없으면 bpw 폴백 경로.
@@ -306,6 +306,8 @@ export type QuantRowInput = Pick<ModelQuantCore, 'quant' | 'fileGB'> &
  * topK 는 MoE 토큰당 고정 시간(전문가 층 수 × topK × 클래스 값 — 10-16 D88)에 쓴다.
  * 값 전문가(MoVA, 10-21 D113): 헤더 실측 행의 valueExpertGB 와 비율 valueTopK/valueExperts 를 넘긴다 — 엔진은 배치를 비전문가 그대로 두고
  * 읽기 바이트에서만 고르지 않은 몫을 뺀다. 실측 분할이 없는 행이면 넘기지 않는다(validateAll 이 그런 행을 막는다).
+ * 반복 층(10-22 D114 — dense `arch.loops`): 반복 횟수와 행의 헤더 실측 반복 블록 loopGB 를 넘긴다 — 엔진은 읽기 바이트에 (loops − 1) × loopGB 를 더하고
+ * (블록 실측이 없는 행은 읽기 바이트 전체를 반복 블록으로 — 보수) 배치·VRAM 은 그대로 둔다. 반복 층이 없는 모델은 두 키를 넣지 않는다(엔진 입력이 그대로)
  */
 export function toModelQuant(model: ModelCore, row?: QuantRowInput): ModelQuant {
   const measured = row?.expertGB !== undefined && row.nonExpertGB !== undefined;
@@ -331,6 +333,9 @@ export function toModelQuant(model: ModelCore, row?: QuantRowInput): ModelQuant 
     fileGB: row?.fileGB,
     ...(row?.offGpuGB !== undefined ? { offGpuGB: row.offGpuGB } : {}),
     ...(row?.pleGB !== undefined ? { pleGB: row.pleGB } : {}),
+    ...(!moe && model.arch.loops !== undefined
+      ? { loops: model.arch.loops, ...(row?.loopGB !== undefined ? { loopGB: row.loopGB } : {}) }
+      : {}),
   };
 }
 
@@ -390,6 +395,9 @@ export function isTheoretical(gpu: GpuCore, model: ModelCore, mode: Mode): boole
   // 값 전문가(MoVA — K2-Horizon, 10-21 D113): 엔진 0.11.0 이 고른 값 전문가 몫만 읽기 바이트에 넣지만, 값 전문가 라우팅·작은 행렬곱의 고정 시간은
   // 따로 세지 않고(라우팅 FFN 전문가 고정 시간 꼴 — 근거 실측 없음) 공개 실측도 없어 보정 추정의 근거가 안 된다(docs/02 §4·§9, PROGRESS §4 D113)
   if (model.arch.valueExperts !== undefined) return true;
+  // 반복 층(Nanbeige4.2 — 10-22 D114): 엔진 0.12.0 이 반복 블록을 loops 번 읽지만, 근거 실측이 같은 기기 비율 1점(Steam Deck Vulkan — 카탈로그 밖 기기,
+  // −2.6%)뿐이고 여러 장 층 분할에서 가중치가 앞쪽 반복의 카드에만 있는 점(코드로 본 추론)도 실측이 없어 보정 추정의 근거가 안 된다(docs/02 §4 ⑨·§9, PROGRESS §4 D114)
+  if (model.arch.loops !== undefined) return true;
   // FP16 크리플 구형 GPU — 계수 도출 표본(RTX 30~50·RDNA3/4) 밖
   if (isFp16Crippled(gpu)) return true;
   // 통합 메모리 칩의 CPU 추론 — cpu 계수 검증점은 데스크톱 DDR5 뿐 (unifiedCpuBandwidth 는 상한 보정)
@@ -469,6 +477,8 @@ export type QuantAssessment = {
   pleGB?: number;
   /** MoE 행의 값 전문가(MoVA, 10-21 D113) — 위와 같은 이유로 실어 나른다 */
   valueExpertGB?: number;
+  /** dense 반복 층 모델 행의 반복 블록 (10-22 D114) — 위와 같은 이유로 실어 나른다 */
+  loopGB?: number;
   /** MTP 블록 GB (헤더 실측) — 분해 바의 "MTP 를 켜면" 안내 */
   mtpGB?: number;
   ggufRepo: string;
@@ -619,6 +629,7 @@ export function assessQuant(input: AssessQuantInput): QuantAssessment {
     ...(row.offGpuGB !== undefined ? { offGpuGB: row.offGpuGB } : {}),
     ...(row.pleGB !== undefined ? { pleGB: row.pleGB } : {}),
     ...(row.mtpGB !== undefined ? { mtpGB: row.mtpGB } : {}),
+    ...(row.loopGB !== undefined ? { loopGB: row.loopGB } : {}),
     ggufRepo: row.ggufRepo,
     tier,
     result,

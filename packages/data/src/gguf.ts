@@ -23,6 +23,9 @@
  *  - MTP/NextN 블록은 기본 미적재(load_mtp=false → TENSOR_SKIP): `<arch>.nextn_predict_layers` 개의 마지막 블록과
  *    이름에 `nextn`·`mtp.` 접두가 있는 텐서 — 두 합계 모두에서 빼고 mtpGB 로 따로 보고.
  *  - 파라미터 수 = 텐서 원소 수 합 (MTP 제외, token_embd 는 공유여도 1회) — safetensors 메타데이터가 없을 때 paramsB 대용.
+ *  - 트렁크 블록(`blk.N.*`, MTP 블록 제외) 합 = blockGB, 헤더 `<arch>.num_loops` = numLoops (10-22 D114). 반복 층 모델(Nanbeige4.2)은 이 블록을
+ *    토큰마다 loops 번 지난다 — model-quants.json `loopGB` 로 기록해 엔진 읽기 바이트에 (loops − 1) × loopGB 를 더한다. 값은 모든 파일에 나오지만
+ *    기록은 반복 모델 행만이다(https://github.com/ggml-org/llama.cpp/blob/0a1ef309cdbb9f2024f58a38fb4c42352c5db569/src/models/nanbeige.cpp#L66-L73).
  *
  * GGUF v2/v3 (little-endian): magic 'GGUF', u32 version, u64 tensor_count, u64 kv_count,
  * KV(문자열 키 · u32 값 타입 · 값), 텐서 정보(이름 · u32 n_dims · u64 dims[n] · u32 ggml type · u64 offset).
@@ -317,6 +320,13 @@ export type SplitMeasure = {
   pleGB: number;
   /** 기본 미적재 MTP/NextN 블록 */
   mtpGB: number;
+  /**
+   * 트렁크 블록 텐서(`blk.N.*`, MTP 블록 제외) 합 — 반복 층 모델(10-22 D114)의 반복 블록 = model-quants.json `loopGB`.
+   * 입력층(token_embd)·출력층(output·output_norm)은 들어 있지 않다(토큰마다 한 번). 모든 파일에 나오지만 기록은 반복 모델 행만
+   */
+  blockGB: number;
+  /** 헤더 `<arch>.num_loops`(반복 층 — llama.cpp nanbeige 가 읽는 키, 없으면 1회) — 없으면 생략 (10-22 D114) */
+  numLoops?: number;
   /** 전 텐서 합 (분할 파일 합산) */
   totalGB: number;
   /**
@@ -335,7 +345,7 @@ export type SplitMeasure = {
   /** output.weight 없음 → token_embd 를 출력층으로 공유 */
   tiedEmbeddings: boolean;
   /** 원시 바이트 — 반올림 전 정밀값 */
-  bytes: { expert: number; nonExpert: number; valueExpert: number; cpu: number; ple: number; mtp: number; total: number };
+  bytes: { expert: number; nonExpert: number; valueExpert: number; cpu: number; ple: number; mtp: number; block: number; total: number };
 };
 
 const round2 = (x: number): number => Math.round(x * 100) / 100;
@@ -381,7 +391,7 @@ export function classifySplit(shards: readonly GgufHeader[]): SplitMeasure {
 
   const tensors = shards.flatMap((h) => h.tensors);
   const tied = !tensors.some((t) => t.name === 'output.weight');
-  const bytes = { expert: 0, nonExpert: 0, valueExpert: 0, cpu: 0, ple: 0, mtp: 0, total: 0 };
+  const bytes = { expert: 0, nonExpert: 0, valueExpert: 0, cpu: 0, ple: 0, mtp: 0, block: 0, total: 0 };
   let totalParams = 0;
   let expertParams = 0;
   for (const t of tensors) {
@@ -396,6 +406,7 @@ export function classifySplit(shards: readonly GgufHeader[]): SplitMeasure {
     }
     const elements = tensorElements(t);
     totalParams += elements;
+    if (block !== null) bytes.block += size; // 트렁크 블록(반복 층 모델의 반복 블록 — 10-22 D114)
     if (INPUT_RE.test(t.name)) {
       bytes.cpu += size;
       if (t.name === PLE_TENSOR) bytes.ple += size;
@@ -410,6 +421,7 @@ export function classifySplit(shards: readonly GgufHeader[]): SplitMeasure {
   }
   const expertCount = numKv(first.kv, `${arch}.expert_count`);
   const expertUsed = numKv(first.kv, `${arch}.expert_used_count`);
+  const numLoops = numKv(first.kv, `${arch}.num_loops`);
   return {
     expertGB: gb(bytes.expert),
     nonExpertGB: gb(bytes.nonExpert),
@@ -418,6 +430,8 @@ export function classifySplit(shards: readonly GgufHeader[]): SplitMeasure {
     cpuGB: gb(bytes.cpu),
     pleGB: gb(bytes.ple),
     mtpGB: gb(bytes.mtp),
+    blockGB: gb(bytes.block),
+    ...(numLoops !== undefined ? { numLoops } : {}),
     totalGB: gb(bytes.total),
     totalParams,
     expertParams,

@@ -259,6 +259,36 @@ describe('dense — per-row offGpuGB from the GGUF header (10-03 D62)', () => {
   });
 });
 
+describe('looped layers (Nanbeige4.2, 10-22 D114) — loopGB from the trunk blocks, header num_loops must match config', () => {
+  const row = (quant: ModelQuantRecord['quant'], fileGB: number): ModelQuantRecord => ({
+    modelId: 'nanbeige4.2-3b', quant, fileGB, ggufRepo: 'bartowski/Nanbeige_Nanbeige4.2-3B-GGUF', fileName: `n-${quant}.gguf`,
+    sources: ['https://huggingface.co/bartowski/Nanbeige_Nanbeige4.2-3B-GGUF'],
+  });
+  // bartowski Q4_K_M 헤더 실측(10-22): 파일 2.68 · token_embd 0.29(CPU) · 트렁크 블록 1.97 · nanbeige.num_loops 2
+  const nb = { expertGB: 0, nonExpertGB: 2.39, offGpuGB: 0.29, mtpGB: 0, fileGB: 2.68, trunkLayers: 22, blockGB: 1.97, numLoops: 2 };
+
+  it('writes loopGB right after offGpuGB for a looped model — other dense models never get it', async () => {
+    const res = await measureRows([row('Q4_K_M', 2.68)], undefined, 22, () => Promise.resolve(nb), { loops: 2 });
+    expect(res.problems).toEqual([]);
+    expect(res.warnings).toEqual([]);
+    expect(Object.keys(res.rows[0]!)).toEqual(['modelId', 'quant', 'fileGB', 'offGpuGB', 'loopGB', 'ggufRepo', 'fileName', 'sources']);
+    expect(res.rows[0]).toMatchObject({ offGpuGB: 0.29, loopGB: 1.97 });
+    const plain = await measureRows([row('Q4_K_M', 2.68)], undefined, 22, () => Promise.resolve(nb));
+    expect(plain.rows[0]).not.toHaveProperty('loopGB');
+  });
+
+  it('stops on a header without num_loops or with another count, and on a row it cannot measure', async () => {
+    const missing = await measureRows([row('Q4_K_M', 2.68)], undefined, 22, () => Promise.resolve({ ...nb, numLoops: undefined }), { loops: 2 });
+    expect(missing.problems).toEqual([expect.stringContaining('헤더 num_loops 없음 ≠ config num_loops 2')]);
+    const other = await measureRows([row('Q4_K_M', 2.68)], undefined, 22, () => Promise.resolve({ ...nb, numLoops: 3 }), { loops: 2 });
+    expect(other.problems).toEqual([expect.stringContaining('헤더 num_loops 3 ≠ config num_loops 2')]);
+    const failed = await measureRows([row('Q4_K_M', 2.68)], undefined, 22, () => Promise.reject(new Error('HTTP 503')), { loops: 2 });
+    expect(failed.problems).toEqual([expect.stringContaining('반복 층 모델은 행마다 헤더 실측')]);
+    const tooBig = await measureRows([row('Q4_K_M', 2.68)], undefined, 22, () => Promise.resolve({ ...nb, blockGB: 2.6 }), { loops: 2 });
+    expect(tooBig.problems).toEqual([expect.stringContaining('반복 블록 2.6GB')]);
+  });
+});
+
 describe('organization names for model-makers.ts (10-19 D101)', () => {
   const registry = readFileSync(join(fileURLToPath(new URL('..', import.meta.url)), MODEL_MAKERS_PATH), 'utf8');
 

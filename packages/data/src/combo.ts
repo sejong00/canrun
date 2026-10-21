@@ -90,7 +90,7 @@ export function ctxMatrix(
   config: HwConfig,
   model: ModelCore,
   q: Pick<QuantAssessment, 'quant' | 'fileGB'> &
-    Partial<Pick<QuantAssessment, 'result' | 'expertGB' | 'nonExpertGB' | 'valueExpertGB' | 'offGpuGB' | 'pleGB'>>,
+    Partial<Pick<QuantAssessment, 'result' | 'expertGB' | 'nonExpertGB' | 'valueExpertGB' | 'offGpuGB' | 'pleGB' | 'loopGB'>>,
   opts: {
     ctxs?: readonly number[];
     kvQuants?: readonly KvQuant[];

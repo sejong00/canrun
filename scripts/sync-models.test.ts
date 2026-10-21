@@ -887,6 +887,69 @@ describe('planSplitChanges + applyChanges — MoE split', () => {
   });
 });
 
+describe('looped layers (Nanbeige4.2, 10-22 D114) — sync keeps KV per logical layer, measures loopGB, holds a header with another num_loops', () => {
+  const looped = fullModel({
+    id: 'nb-3b',
+    hfId: 'org/nb-3b',
+    paramsB: 4.17,
+    arch: { layers: 22, kvHeads: 8, headDim: 128, attnType: 'full', kvBytesPerTokenF16: 180_224, loops: 2 },
+  });
+  const repo = 'org/nb-3b-GGUF';
+  const nrow = (over: Record<string, unknown> = {}): Record<string, unknown> =>
+    quantRow({ modelId: 'nb-3b', fileGB: 2.68, ggufRepo: repo, fileName: 'nb-Q4_K_M.gguf', sources: [`https://huggingface.co/${repo}`], ...over });
+  const header = (extra: Partial<MeasuredSplit> = {}): MeasuredSplit => ({
+    expertGB: 0, nonExpertGB: 2.39, offGpuGB: 0.29, mtpGB: 0, fileGB: 2.68, blockGB: 1.97, numLoops: 2, ...extra,
+  });
+  const measure = (v: MeasuredSplit | Error): MeasureSplitFn => () => (v instanceof Error ? Promise.reject(v) : Promise.resolve(v));
+  const config = (over: Record<string, unknown> = {}): Map<string, ConfigResult> =>
+    new Map([['org/nb-3b', { config: { num_hidden_layers: 22, num_attention_heads: 48, num_key_value_heads: 8, head_dim: 128, max_position_embeddings: 131072, num_loops: 2, ...over } }]]);
+
+  it('the full-attention KV formula counts layers × loops — no spurious arch.kvBytesPerTokenF16 change', () => {
+    const plan = buildSyncPlan(makeInput({ models: [looped], quants: [], configByHfId: config() }));
+    expect(plan.filter((c) => c.file === 'models.json' && c.field.startsWith('arch.'))).toEqual([]);
+  });
+
+  it('a config whose num_loops changed is a manual row (KV and reads change with it)', () => {
+    const plan = buildSyncPlan(makeInput({ models: [looped], quants: [], configByHfId: config({ num_loops: 3 }) }));
+    expect(plan.filter((c) => c.field === 'arch.loops').map((c) => [c.old, c.next, c.kind])).toEqual([[2, 3, 'manual']]);
+    const dropped = buildSyncPlan(makeInput({ models: [looped], quants: [], configByHfId: config({ num_loops: undefined }) }));
+    expect(dropped.filter((c) => c.field === 'arch.loops').map((c) => [c.old, c.next, c.kind])).toEqual([[2, undefined, 'manual']]);
+  });
+
+  it('measures loopGB with offGpuGB and writes it after offGpuGB; other dense models never get loopGB', async () => {
+    const input = makeInput({ models: [looped], quants: [nrow()] });
+    const changes = await planSplitChanges(input, [], measure(header()));
+    expect(changes).toEqual([
+      expect.objectContaining({ field: 'offgpu', kind: 'auto', next: 'off-GPU 0.29 / loop block 1.97', split: { offGpuGB: 0.29, loopGB: 1.97 } }),
+    ]);
+    applyChanges(changes, input);
+    expect(Object.keys(input.rawQuants[0]!).slice(0, 6)).toEqual(['modelId', 'quant', 'fileGB', 'offGpuGB', 'loopGB', 'ggufRepo']);
+    const plainModel = fullModel();
+    const plain = await planSplitChanges(makeInput({ models: [plainModel], quants: [quantRow({ fileName: 'test-8b-Q4_K_M.gguf' })] }), [], measure(header({ fileGB: 4.92, offGpuGB: 0.3, nonExpertGB: 4.62 })));
+    expect(plain[0]?.split).toEqual({ offGpuGB: 0.3 });
+  });
+
+  it('holds a header without num_loops or with another count (llama.cpp would run another number of passes)', async () => {
+    for (const numLoops of [undefined, 3]) {
+      const changes = await planSplitChanges(makeInput({ models: [looped], quants: [nrow()] }), [], measure(header({ numLoops })));
+      expect(changes.map((c) => [c.kind, c.note?.includes(`헤더 num_loops ${numLoops ?? '없음'} ≠ arch.loops 2`)])).toEqual([['manual', true]]);
+    }
+  });
+
+  it('new quant rows of a looped model go in only with their header measurement (holdUnmeasuredRows)', async () => {
+    const tree = new Map([[repo, [file('nb-Q4_K_M.gguf', 2_680_000_000), file('nb-Q8_0.gguf', 4_430_000_000)]]]);
+    const input = makeInput({ models: [looped], quants: [nrow({ offGpuGB: 0.29, loopGB: 1.97 })], treeByRepo: tree });
+    const plan = buildSyncPlan(input);
+    expect(plan.filter((c) => c.field === 'row').map((c) => [c.id, c.kind])).toEqual([['nb-3b/Q8_0', 'auto']]);
+    const failed = await planSplitChanges(input, plan, measure(new Error('HTTP 503')));
+    expect(holdUnmeasuredRows(plan, failed, input.models).find((c) => c.field === 'row')).toMatchObject({ kind: 'manual' });
+    const wrong = await planSplitChanges(input, plan, measure(header({ fileGB: 4.43, offGpuGB: 0.55, blockGB: 3.35, numLoops: 1 })));
+    expect(holdUnmeasuredRows(plan, wrong, input.models).find((c) => c.field === 'row')).toMatchObject({ kind: 'manual' });
+    const ok = await planSplitChanges(input, plan, measure(header({ fileGB: 4.43, offGpuGB: 0.55, blockGB: 3.35 })));
+    expect(holdUnmeasuredRows(plan, ok, input.models).find((c) => c.field === 'row')).toMatchObject({ kind: 'auto' });
+  });
+});
+
 describe('planSplitChanges + applyChanges — dense offGpuGB (10-03 D62)', () => {
   const dense = fullModel();
   const repo = 'org/test-8b-GGUF';

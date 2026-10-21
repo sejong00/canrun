@@ -22,6 +22,7 @@ import {
   fetchRange,
   measureSplit,
   mapLicense,
+  NANBEIGE_LOOP_REFS,
   parseHfInput,
   type FetchLike,
   type GgufHeader,
@@ -569,6 +570,24 @@ const ling = (over: Record<string, unknown>) => ({
 });
 const LING_TINY = ling({ num_hidden_layers: 24, num_attention_heads: 16, num_key_value_heads: 16, max_position_embeddings: 131072, num_experts: 128, layer_group_size: 4, num_nextn_predict_layers: 0, first_k_dense_replace: 1 });
 /** JetBrains/Mellum2.1-12B-A2.5B-Thinking config 모양 (10-20) — 3 sliding : 1 full × 7, 전 층 sparse MoE 64 × top-8 */
+/** Nanbeige/Nanbeige4.2-3B config.json (10-22 확인 — https://huggingface.co/Nanbeige/Nanbeige4.2-3B/blob/main/config.json, 반복 옵션 기본값) */
+const NANBEIGE42_CONFIG = {
+  architectures: ['NanbeigeForCausalLM'],
+  model_type: 'nanbeige',
+  attention_bias: false,
+  head_dim: 128,
+  hidden_size: 3072,
+  intermediate_size: 10752,
+  loop_loss_weights: [],
+  max_position_embeddings: 262_144,
+  num_attention_heads: 48,
+  num_hidden_layers: 22,
+  num_key_value_heads: 8,
+  num_loops: 2,
+  skip_loop_final_norm: false,
+  tie_word_embeddings: false,
+  vocab_size: 166_144,
+};
 const MELLUM_CONFIG = {
   architectures: ['MellumForCausalLM'], model_type: 'mellum', num_hidden_layers: 28, num_attention_heads: 32, num_key_value_heads: 4, head_dim: 128,
   max_position_embeddings: 131072, sliding_window: 1024, use_sliding_window: true, num_experts: 64, num_experts_per_tok: 8,
@@ -678,9 +697,22 @@ describe('classifyArch — new model types and constant-state hybrids (10-03 D63
   });
 
   it.each([
-    ['looped layers (Nanbeige num_loops)', { model_type: 'nanbeige', num_loops: 2, num_hidden_layers: 22 }, '반복 층'],
+    // 반복 층은 llama.cpp nanbeige 배치를 확인한 NanbeigeForCausalLM 만 계산한다(10-22 D114) — 다른 클래스·구조의 반복은 그대로 보류
+    ['looped nanbeige under another class', { model_type: 'nanbeige', num_loops: 2, num_hidden_layers: 22 }, 'nanbeige 변형'],
     ['looped layers even on a known type', { model_type: 'llama', num_loops: 2, num_hidden_layers: 22, num_attention_heads: 8, head_dim: 128, max_position_embeddings: 4096 }, '반복 층'],
     ['looped layers (Ouro total_ut_steps)', { model_type: 'ouro', total_ut_steps: 4, num_hidden_layers: 24 }, '반복 층'],
+    ['Ouro-style steps on a nanbeige config', { ...NANBEIGE42_CONFIG, total_ut_steps: 4 }, '반복 층'],
+    // 원본 config 클래스의 LoopSplit·mHC·깊이 어텐션·n-gram 옵션 — llama.cpp 변환기는 num_loops·skip_loop_final_norm 만 옮긴다
+    ['nanbeige LoopSplit (enable_double_loop_split)', { ...NANBEIGE42_CONFIG, enable_double_loop_split: true }, 'enable_double_loop_split'],
+    ['nanbeige loop_share_kv', { ...NANBEIGE42_CONFIG, enable_double_loop_split: true, loop_share_kv: true }, 'loop_share_kv'],
+    ['nanbeige loop_middle_layers', { ...NANBEIGE42_CONFIG, loop_middle_layers: 11 }, 'loop_middle_layers'],
+    ['nanbeige loop_loss_weights (the original runs len + 1 loops instead of num_loops)', { ...NANBEIGE42_CONFIG, loop_loss_weights: [0.3] }, 'loop_loss_weights'],
+    ['nanbeige mHC', { ...NANBEIGE42_CONFIG, enable_hyper_connection: true, enable_mhc: true }, 'enable_mhc'],
+    ['nanbeige depth attention', { ...NANBEIGE42_CONFIG, enable_depth_attention: true }, 'enable_depth_attention'],
+    ['nanbeige n-gram embeddings', { ...NANBEIGE42_CONFIG, emb_neighbor_num: 3 }, 'emb_neighbor_num'],
+    ['nanbeige n-gram layer fusion', { ...NANBEIGE42_CONFIG, insert_ngram_layer_idx: [4] }, 'insert_ngram_layer_idx'],
+    ['nanbeige q/k norm (no tensors in the llama.cpp loader)', { ...NANBEIGE42_CONFIG, qk_layernorm: true }, 'qk_layernorm'],
+    ['nanbeige attention bias', { ...NANBEIGE42_CONFIG, attention_bias: true }, 'attention_bias'],
     ['disk-read n-gram embedding (Qwen3.8-Flash-Next)', { model_type: 'qwen4_exp', text_config: { model_type: 'qwen3_5_moe_text', ngram_vocab_size_base: 20000000, ple_layer_ids: [2] } }, 'n-gram'],
     // 층별 임베딩 표·KV 공유 층은 llama.cpp gemma4 규칙을 확인한 gemma4_text 만 계산한다(10-21 D112) — 다른 구조면 그대로 보류
     ['per-layer embeddings outside gemma4_text', { model_type: 'qwen3', hidden_size_per_layer_input: 256, num_hidden_layers: 28, num_attention_heads: 16, num_key_value_heads: 8, head_dim: 128, max_position_embeddings: 32768 }, 'PLE'],
@@ -706,6 +738,44 @@ describe('classifyArch — new model types and constant-state hybrids (10-03 D63
     const r = classifyArch(config);
     expect(r.kind).toBe('unsupported');
     if (r.kind === 'unsupported') expect(r.reason).toContain(reason);
+  });
+});
+
+describe('classifyArch — looped layers (Nanbeige4.2 num_loops, 10-22 D114)', () => {
+  it('Nanbeige4.2-3B: full attention, loops 2, KV per logical layer 22 × 2 × 8 × 128 × 4 = 180,224 B/tok, llama.cpp refs', () => {
+    const r = classifyArch(NANBEIGE42_CONFIG);
+    expect(r).toMatchObject({
+      kind: 'ok',
+      modelType: 'nanbeige',
+      attnType: 'full',
+      loops: 2,
+      maxContext: 262_144,
+      arch: { layers: 22, kvHeads: 8, headDim: 128, kvBytesPerTokenF16: 180_224 },
+    });
+    if (r.kind !== 'ok') return;
+    expect(r.override).toBeUndefined();
+    expect(r.moe).toBeUndefined();
+    expect(r.refs).toEqual(NANBEIGE_LOOP_REFS);
+    for (const ref of r.refs ?? []) expect(ref).toMatch(/^https:\/\/github\.com\/ggml-org\/llama\.cpp\/blob\/0a1ef309cdbb9f2024f58a38fb4c42352c5db569\//);
+  });
+
+  it('num_loops 1 (or absent) on a nanbeige config is a plain dense model — no loops field', () => {
+    for (const num_loops of [1, undefined]) {
+      const r = classifyArch({ ...NANBEIGE42_CONFIG, num_loops });
+      expect(r).toMatchObject({ kind: 'ok', arch: { kvBytesPerTokenF16: 90_112 } });
+      if (r.kind === 'ok') expect(r.loops).toBeUndefined();
+    }
+  });
+
+  it('options left at their defaults (empty loop_loss_weights, null LoopSplit/n-gram keys, skip_loop_final_norm) are fine', () => {
+    const r = classifyArch({ ...NANBEIGE42_CONFIG, loop_loss_weights: [], loop_middle_layers: null, emb_neighbor_num: null, insert_ngram_layer_idx: [], skip_loop_final_norm: true });
+    expect(r).toMatchObject({ kind: 'ok', loops: 2 });
+  });
+
+  it('buildHfModel (calculator import) refuses looped models — rows need the header-measured loop block', () => {
+    const r = buildHfModel({ hfId: 'Nanbeige/Nanbeige4.2-3B', ggufRepo: 'bartowski/Nanbeige_Nanbeige4.2-3B-GGUF', config: NANBEIGE42_CONFIG, tree: [] });
+    expect(r.kind).toBe('unsupported');
+    if (r.kind === 'unsupported') expect(r.reason).toContain('반복 층');
   });
 });
 

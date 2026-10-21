@@ -152,6 +152,8 @@ export function sumFileGB(entries: readonly TreeEntry[]): number {
 export type ExtractedArch = {
   arch?: { layers: number; kvHeads: number; headDim: number };
   maxContext?: number;
+  /** 반복 층 횟수(config `num_loops`) — 2 이상일 때만 (10-22 D114, sync-models 의 arch.loops 드리프트 확인) */
+  loops?: number;
   missing: string[];
 };
 
@@ -184,6 +186,8 @@ export function extractArch(config: unknown): ExtractedArch {
     if (Number.isInteger(derived) && derived > 0) headDim = derived;
   }
   const maxContext = posInt(cfg['max_position_embeddings'] ?? top['max_position_embeddings']);
+  const loopCount = posInt(cfg['num_loops']);
+  const loops = loopCount !== undefined && loopCount > 1 ? { loops: loopCount } : {};
 
   const missing: string[] = [];
   if (layers === undefined) missing.push('num_hidden_layers');
@@ -191,9 +195,9 @@ export function extractArch(config: unknown): ExtractedArch {
   if (headDim === undefined) missing.push('head_dim');
 
   if (layers === undefined || kvHeads === undefined || headDim === undefined) {
-    return { maxContext, missing };
+    return { maxContext, ...loops, missing };
   }
-  return { arch: { layers, kvHeads, headDim }, maxContext, missing };
+  return { arch: { layers, kvHeads, headDim }, maxContext, ...loops, missing };
 }
 
 /**
@@ -224,6 +228,8 @@ export function extractMoe(config: unknown): { experts: number; topK: number } |
  * https://github.com/ggml-org/llama.cpp/pull/30673) — 셋 다 기존 슬라이딩 윈도 경로(Laguna·Spark 선례).
  * 10-21 D113: k2_horizon(IFM K2-Horizon — dense·MoE·값 전문가 MoVA, https://github.com/ggml-org/llama.cpp/pull/29535) — 전체 어텐션·표준 GQA KV,
  * 아래 전용 가드(`k2HorizonShape`)가 llama.cpp 가 읽는 모양인지와 MoE 층·값 전문가를 본다.
+ * 10-22 D114: nanbeige(Nanbeige4.2 — 반복 층 num_loops, https://github.com/ggml-org/llama.cpp/pull/25994) — 전체 어텐션·표준 GQA, 아래 전용 가드
+ * (`nanbeigeShape`)가 llama.cpp 변환기가 옮기는 옵션(num_loops·skip_loop_final_norm)만 켜진 config 인지 본다. KV·읽기는 논리 층(층 × loops) 기준.
  */
 export const KNOWN_MODEL_TYPES: ReadonlySet<string> = new Set([
   'llama',
@@ -252,6 +258,7 @@ export const KNOWN_MODEL_TYPES: ReadonlySet<string> = new Set([
   'mellum',
   'kolibri1',
   'k2_horizon',
+  'nanbeige',
 ]);
 
 /**
@@ -318,6 +325,50 @@ export const K2_HORIZON_REFS: readonly string[] = [
   `${LLAMA_CPP_K2}/conversion/k2_horizon.py#L34-L44`,
 ];
 
+/**
+ * 반복 층(looped transformer — Nanbeige4.2 num_loops) 근거 — llama.cpp master 0a1ef30 (2026-10-21, 본선 지원 PR #25994 07-27 머지 뒤).
+ * 모델 레코드 sources 에 config 와 함께 남긴다 (10-22 D114)
+ */
+const LLAMA_CPP_0A1E = 'https://github.com/ggml-org/llama.cpp/blob/0a1ef309cdbb9f2024f58a38fb4c42352c5db569';
+export const NANBEIGE_LOOP_REFS: readonly string[] = [
+  // 변환기(LlamaModel 기반)는 반복 옵션 가운데 num_loops·skip_loop_final_norm 만 GGUF 에 옮긴다
+  `${LLAMA_CPP_0A1E}/conversion/nanbeige.py#L13-L25`,
+  // 논리 층 수 = 물리 층 × num_loops(n_layer_all), 물리 가중치를 논리 층이 함께 가리킨다("each slot still has its own KV index")
+  `${LLAMA_CPP_0A1E}/src/models/nanbeige.cpp#L19-L32`,
+  `${LLAMA_CPP_0A1E}/src/models/nanbeige.cpp#L66-L73`,
+  // KV 캐시는 논리 층(n_layer_all)을 돌며 층마다 K·V 를 만든다(has_kv 기본 true — src/llama-hparams.cpp#L321-L332)
+  `${LLAMA_CPP_0A1E}/src/llama-kv-cache.cpp#L102`,
+  `${LLAMA_CPP_0A1E}/src/llama-kv-cache.cpp#L165-L171`,
+];
+
+/**
+ * Nanbeige(nanbeige — llama.cpp nanbeige, PR #25994 · 10-22 D114) config 가드. 원본 config 클래스(configuration_nanbeige.py)에는 LoopSplit·mHC·
+ * 깊이 어텐션·n-gram 임베딩 같은 옵션이 더 있지만 llama.cpp 변환기는 num_loops·skip_loop_final_norm 만 옮긴다(`NANBEIGE_LOOP_REFS` 첫 줄) —
+ * 다른 옵션이 켜진 체크포인트는 변환해도 다른 모델이 되므로 보류한다. loop_loss_weights 가 비어 있지 않으면 원본은 num_loops 대신 그 길이 + 1 번
+ * 반복한다. 로더가 만들지 않는 텐서(q/k 노름, o_proj·MLP bias)를 켜는 옵션도 보류. 결과의 loops 는 2 이상일 때만(1 이면 표준 dense)
+ */
+function nanbeigeShape(
+  cfg: Record<string, unknown>,
+  archs: readonly string[],
+): { kind: 'ok'; loops?: number } | { kind: 'unsupported'; reason: string } {
+  if (!archs.includes('NanbeigeForCausalLM')) return { kind: 'unsupported', reason: `llama.cpp 가 변환하지 않는 nanbeige 변형(${archs.join(',') || 'architectures 없음'})` };
+  const on = (key: string): boolean => cfg[key] === true;
+  const set = (key: string): boolean => cfg[key] !== undefined && cfg[key] !== null;
+  const nonEmpty = (key: string): boolean => Array.isArray(cfg[key]) && (cfg[key] as unknown[]).length > 0;
+  const blocked = [
+    ...(nonEmpty('loop_loss_weights') ? ['loop_loss_weights'] : []),
+    ...['enable_double_loop_split', 'loop_share_kv', 'mhc_diff_for_loop', 'enable_hyper_connection', 'enable_mhc', 'enable_h_res_identity',
+      'mhc_identity_nohresparam', 'enable_depth_attention', 'ngram_insert_all_layers', 'qk_layernorm', 'attention_bias', 'mlp_bias'].filter(on),
+    ...['loop_middle_layers', 'mhc_double_stream_position_for_loop', 'emb_neighbor_num'].filter(set),
+    ...(nonEmpty('insert_ngram_layer_idx') ? ['insert_ngram_layer_idx'] : []),
+  ];
+  if (blocked.length > 0) return { kind: 'unsupported', reason: `llama.cpp 변환기가 옮기지 않는 nanbeige 옵션(${blocked.join(',')}) — 반복은 num_loops 만 계산` };
+  const raw = cfg['num_loops'];
+  if (raw !== undefined && raw !== null && posInt(raw) === undefined) return { kind: 'unsupported', reason: `num_loops ${String(raw)} — 양의 정수가 아님` };
+  const loops = posInt(raw) ?? 1;
+  return { kind: 'ok', ...(loops > 1 ? { loops } : {}) };
+}
+
 export type ArchResult =
   | {
       kind: 'ok';
@@ -342,6 +393,11 @@ export type ArchResult =
       mova?: { experts: number; topK: number };
       /** 구조 근거(llama.cpp 소스, 고정 커밋) — 모델 레코드 sources 에 덧붙인다 */
       refs?: readonly string[];
+      /**
+       * 반복 층(10-22 D114 — nanbeige num_loops ≥ 2): 모델 `arch.loops`. arch.kvBytesPerTokenF16 은 이미 논리 층(층 × loops) 값이고,
+       * 헤더 실측 행은 반복 블록 loopGB 를 갖는다(엔진이 토큰마다 블록을 loops 번 읽는다)
+       */
+      loops?: number;
       vision: boolean;
     }
   | { kind: 'unsupported'; reason: string };
@@ -429,20 +485,24 @@ export function bailingMlaLayers(layers: number, groupSize: number, nextn: numbe
 /**
  * config.json → 엔진이 모델링하는 구조인지 분류 — **선례가 있는 구조만**(PROGRESS §4 D53, D63 개정): 전체 어텐션 ·
  * 슬라이딩 윈도(layer_types) · 하이브리드 선형(layer_types) · 상수 상태 층 하이브리드(Mamba2·short-conv·KDA+MLA — 전용 분기, D63).
- * 처음 보는 model_type, 반복 층·디스크 n-gram 임베딩·압축 어텐션, 층 지도가 없는 MLA·Mamba·conv 는 unsupported.
+ * 처음 보는 model_type, nanbeige 밖의 반복 층·디스크 n-gram 임베딩·압축 어텐션, 층 지도가 없는 MLA·Mamba·conv 는 unsupported.
  * 층별 임베딩 표(PLE)·KV 공유 층은 gemma4_text 의 슬라이딩 층 지도가 있을 때만 계산한다(10-21 D112 — 결과에 `ple`).
+ * 반복 층은 nanbeige(num_loops — 10-22 D114)만 계산한다(결과에 `loops`, KV 는 논리 층 수로).
  */
 export function classifyArch(config: unknown): ArchResult {
   if (typeof config !== 'object' || config === null) return { kind: 'unsupported', reason: 'config 없음' };
   const top = config as Record<string, unknown>;
   const cfg = textConfig(config);
   const has = (key: string): boolean => key in cfg || key in top;
-  // 화이트리스트와 무관하게 먼저 막는다(D63): 반복 층은 토큰마다 같은 층을 N번 지나 가중치 읽기·KV 가 N배(Nanbeige num_loops·Ouro total_ut_steps),
-  // n-gram·PLE 임베딩 표는 llama.cpp 가 디스크에서 행만 읽어(TENSOR_READ_LAZY) 파일 크기로 메모리를 셀 수 없다(Qwen3.8-Flash-Next)
-  const loops = Math.max(posInt(cfg['num_loops']) ?? 1, posInt(cfg['total_ut_steps']) ?? 1);
-  if (loops > 1) return { kind: 'unsupported', reason: `반복 층 — 토큰마다 같은 층을 ${loops}번 지남(가중치 읽기·KV 가 ${loops}배)` };
-  if (has('ngram_vocab_size_base') || has('ple_layer_ids')) return { kind: 'unsupported', reason: '디스크에서 읽는 n-gram 임베딩 표 — 파일 크기로 메모리를 셀 수 없음' };
   const modelType = String(cfg['model_type'] ?? top['model_type'] ?? '');
+  // 화이트리스트와 무관하게 먼저 막는다(D63): 반복 층은 토큰마다 같은 층을 N번 지나 가중치 읽기·KV 가 N배 — llama.cpp 배치를 확인한 nanbeige
+  // (num_loops — 10-22 D114, 아래 전용 가드)만 계산하고, 다른 구조의 반복(Ouro total_ut_steps — 본선 지원 PR #29823 미머지)은 그대로 보류.
+  // n-gram·PLE 임베딩 표는 llama.cpp 가 디스크에서 행만 읽어(TENSOR_READ_LAZY) 파일 크기로 메모리를 셀 수 없다(Qwen3.8-Flash-Next)
+  const loopsAsked = Math.max(posInt(cfg['num_loops']) ?? 1, posInt(cfg['total_ut_steps']) ?? 1);
+  if (loopsAsked > 1 && (modelType !== 'nanbeige' || has('total_ut_steps'))) {
+    return { kind: 'unsupported', reason: `반복 층 — 토큰마다 같은 층을 ${loopsAsked}번 지남(가중치 읽기·KV 가 ${loopsAsked}배), llama.cpp 반복 배치를 확인한 구조(nanbeige)가 아님` };
+  }
+  if (has('ngram_vocab_size_base') || has('ple_layer_ids')) return { kind: 'unsupported', reason: '디스크에서 읽는 n-gram 임베딩 표 — 파일 크기로 메모리를 셀 수 없음' };
   // Gemma 4 E 계열(10-16 D98 보류 → 10-21 D112 계산): 층별 임베딩 표(PLE, hidden_size_per_layer_input > 0)는 입력층이라 llama.cpp 가
   // 늘 시스템 RAM 에 두고 토큰마다 한 줄만 읽는다 — 헤더 실측 행의 pleGB 로 그래픽카드 몫·읽기 바이트에서 뺀다(모델에 arch.ple 표시).
   // 뒤쪽 num_kv_shared_layers 층은 앞 층의 KV 를 다시 써(n_layer_kv_from_start = 층 수 − 공유 층) 아래 슬라이딩 분기가 앞 층만 센다.
@@ -460,6 +520,8 @@ export function classifyArch(config: unknown): ArchResult {
   let branch: StateBranch | undefined;
   // K2-Horizon(10-21 D113): 전체 어텐션 기본 분기에 MoE 층 지도·값 전문가만 더한다
   let k2: { expertLayers?: number[]; mova?: { experts: number; topK: number } } | undefined;
+  // Nanbeige(10-22 D114): 전체 어텐션 기본 분기에 반복 횟수만 더한다 — KV·읽기는 논리 층(층 × loops)
+  let loops: number | undefined;
   if (modelType === 'nemotron_h') branch = 'mamba';
   else if (modelType === 'lfm2') {
     // 같은 model_type 의 임베딩·인코더 변형(Lfm2Model·Lfm2Bidirectional…)은 채팅 모델이 아니다 — llama.cpp 변환기가 CausalLM 으로 받는 것만
@@ -485,6 +547,10 @@ export function classifyArch(config: unknown): ArchResult {
     const shape = k2HorizonShape(cfg, archs);
     if (shape.kind === 'unsupported') return shape;
     k2 = shape;
+  } else if (modelType === 'nanbeige') {
+    const shape = nanbeigeShape(cfg, archs);
+    if (shape.kind === 'unsupported') return shape;
+    loops = shape.loops;
   }
   for (const [key, need] of Object.entries(BRANCH_KEYS)) {
     if (has(key) && need !== branch) return { kind: 'unsupported', reason: `엔진이 모델링하지 않는 구조 (${key})` };
@@ -623,6 +689,11 @@ export function classifyArch(config: unknown): ArchResult {
     k2 && moe
       ? { ...(k2.expertLayers ? { expertLayers: k2.expertLayers } : {}), ...(k2.mova ? { mova: k2.mova } : {}), refs: K2_HORIZON_REFS }
       : {};
+  // 반복 층(10-22 D114): KV 는 논리 층마다 — llama.cpp KV 캐시가 n_layer_all(층 × loops)을 돈다(NANBEIGE_LOOP_REFS). 반복 모델 MoE 는 선례가 없다
+  if (loops !== undefined) {
+    if (moe) return { kind: 'unsupported', reason: '반복 층 MoE — 선례 없음' };
+    return { kind: 'ok', modelType, attnType: 'full', vision, maxContext, loops, refs: NANBEIGE_LOOP_REFS, arch: { layers, kvHeads, headDim, kvBytesPerTokenF16: full * loops } };
+  }
   return { kind: 'ok', modelType, attnType: 'full', vision, maxContext, ...(moe ? { moe } : {}), ...k2Extras, arch: { layers, kvHeads, headDim, kvBytesPerTokenF16: full } };
 }
 
@@ -805,6 +876,9 @@ export function buildHfModel(input: HfModelInput): HfModelResult {
   // 않아 값 전문가를 전부 읽고, 활성 파라미터를 헤더로 셀 때 값 전문가를 전부 활성으로 센다. 라벨(이론 추정)도 카탈로그 모델의 arch.valueExperts 로
   // 붙으므로 카탈로그에 넣을 때(add-model)만 계산한다
   if (arch.mova) return { kind: 'unsupported', reason: '값 전문가(MoVA) — 양자화 행마다 GGUF 헤더 실측(valueExpertGB)이 필요해 카탈로그 모델로만 계산' };
+  // 반복 층(10-22 D114)은 행마다 헤더 실측 반복 블록(loopGB)이 있어야 엔진이 블록만 loops 번 읽는다 — 이 경로는 dense 헤더를 읽지 않아 파일 전체를
+  // loops 번 읽고(15%쯤 낮게 본다), 라벨(이론 추정)도 카탈로그 모델의 arch.loops 로 붙는다. 스니펫 -ngl 도 논리 층 기준이라 카탈로그에 넣을 때(add-model)만 계산한다
+  if (arch.loops !== undefined) return { kind: 'unsupported', reason: '반복 층(num_loops) — 양자화 행마다 GGUF 헤더 실측(반복 블록 loopGB)이 필요해 카탈로그 모델로만 계산' };
 
   const modelId = `${HF_MODEL_ID_PREFIX}${slugFromHfId(input.hfId)}`;
   const records = quantRowsFrom(input.tree, input.ggufRepo, modelId);

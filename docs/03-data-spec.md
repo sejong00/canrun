@@ -30,7 +30,7 @@ Gpu { id, name, aliases[],  // 검색 별칭 + P1-3 계산기 콤보박스·GPU 
      //   "Apple M4(맥 미니·맥북 에어·맥북 프로·아이맥)", 설명(요약 구성 메모리로 파는 계열만), 사양 "이 칩이 들어간 맥" 줄(계열별 메모리). 표시 이름은 messages `MacProduct`,
      //   조립은 `apps/web/lib/search-names.ts`. 콤보 제목에는 넣지 않는다
 Model { id, family, name, hfId, paramsB, activeParamsB?,   // moe ⇒ activeParamsB 필수
-     arch:{layers, kvHeads, headDim, attnType:'full'|'swa'|'mla'|'hybrid', kvBytesPerTokenF16, experts?, topK?, expertLayers?, ple?:true, valueExperts?, valueTopK?},  // 바이트/tok f16 사전계산 (SWA/MLA/하이브리드·KV 공유 층 보정 반영)
+     arch:{layers, kvHeads, headDim, attnType:'full'|'swa'|'mla'|'hybrid', kvBytesPerTokenF16, experts?, topK?, expertLayers?, ple?:true, valueExperts?, valueTopK?, loops?},  // 바이트/tok f16 사전계산 (SWA/MLA/하이브리드·KV 공유 층 보정 반영)
      // experts·topK (10-01 D56): MoE 전용, 둘 다 있거나 둘 다 없음, topK < experts. validateAll 이 모든 MoE 모델에 요구하고 MOE_ARCH 와 대조.
      //   출처 config.json(num_experts·num_local_experts·n_routed_experts / num_experts_per_tok·top_k_experts·experts_per_token), GGUF expert_count·expert_used_count 로 교차 확인
      // expertLayers (10-03 D63): MoE 전용·선택 — 라우팅 전문가가 있는 층 번호(0부터, 트렁크만, 오름차순, 전체 층보다 적게). 일부 층에만 전문가가 있을 때만.
@@ -46,6 +46,11 @@ Model { id, family, name, hfId, paramsB, activeParamsB?,   // moe ⇒ activePara
      //   valueTopK/valueExperts 를 엔진 valueExpertFrac 로 넘겨 읽기 바이트에서 고르지 않은 몫을 뺀다(엔진 0.11.0 — docs/02 §3.1). 값 전문가 라우팅 고정 시간은 세지 않고
      //   공개 실측도 없어 추정 라벨은 이론 추정(assess isTheoretical — docs/02 §4 ⑧·§9). 이 모델의 행은 모두 헤더 분할·valueExpertGB 필수(validateAll — 없으면 모델 수준
      //   유도 nonExpertGB 가 값 전문가를 FFN 전문가처럼 나눠 VRAM 을 적게 센다). 계산기 HF 불러오기는 MoVA 모델을 받지 않는다
+     // loops (10-22 D114): dense 전용·선택 — 반복 층(looped transformer, Nanbeige4.2) 반복 횟수 ≥ 2(zod int ≥ 2). 출처 config.json num_loops — classifyArch(nanbeige)가 기록,
+     //   레코드 sources 에 config 와 llama.cpp 근거(nanbeige.cpp·llama-kv-cache.cpp 고정 커밋). layers 는 물리 층, kvBytesPerTokenF16 은 논리 층(layers × loops) 값 —
+     //   validateAll·sync-models 의 전체 어텐션 공식이 × loops 로 센다(attnOverrides 없음 — 전체 어텐션). 데이터 계층(toModelQuant)이 엔진 loops·loopGB 로 넘겨
+     //   읽기 바이트에 (loops − 1) × loopGB 를 더한다(엔진 0.12.0 — docs/02 §3.1). 추정 라벨은 이론 추정(assess isTheoretical — docs/02 §4 ⑨). 헤더 실측 행은 모두 loopGB(validateAll),
+     //   MoE 에는 둘 수 없다. sync-models 는 config num_loops 가 바뀌면 manual 로만 알린다. 스니펫 -ngl 은 논리 층 기준(docs/02 §3.4). 계산기 HF 불러오기는 반복 모델을 받지 않는다
      attnOverrides?:{kvBytesPerTokenF16, reason, sources[]},  // 비-full 전용, arch.kvBytesPerTokenF16과 일치(미러) — 존재 시 sync가 arch 자동 갱신 안 함 (§5.1)
      maxContext, license, moe:boolean, nonExpertGB?,   // MoE attention+shared GB (derive.ts 균등 bpw 유도) — 10-01 부터 행 실측(ModelQuant.nonExpertGB)이 우선, 이 값은 bpw 사다리 폴백
      category:('chat'|'coding'|'reasoning'|'vision')[] (min 1),
@@ -60,7 +65,7 @@ Model { id, family, name, hfId, paramsB, activeParamsB?,   // moe ⇒ activePara
      //   (hf.ts popularityFrom: 500만↑ 5 · 100만↑ 4 · 20만↑ 3 · 3만↑ 2 · 그 밖 1, `--popularity` 로 덮어쓰기), 사람이 조정한다 — 10-06 기준 43종 중 25종이
      //   다운로드 기준과 다르다(예: 한국어 모델 9종은 모두 높게, 한국어가 아닌 1~2B 급은 낮게, 널리 알려진 옛 모델은 높게). sync-models 는 바꾸지 않는다 — 최신 다운로드 그대로의 순서는 hfDownloads30d("다운로드 많은 순")가 따로 진다.
      //   쓰는 곳: 홈 인기 모델(4 이상), 계산기 인기순·추천순(같은 크기 구간 안에서). 화면 안내도 "다운로드 수만이 아니라 국내 사용도 함께 본 다섯 단계 점수"로 밝힌다
-ModelQuant { modelId, quant:QuantId, fileGB, expertGB?, nonExpertGB?, valueExpertGB?, offGpuGB?, pleGB?, mtpGB?, ggufRepo, fileName?, sources[] }   // 실제 GGUF 크기 (decimal GB, 분할 합산)
+ModelQuant { modelId, quant:QuantId, fileGB, expertGB?, nonExpertGB?, valueExpertGB?, offGpuGB?, pleGB?, mtpGB?, loopGB?, ggufRepo, fileName?, sources[] }   // 실제 GGUF 크기 (decimal GB, 분할 합산)
      // expertGB·nonExpertGB (10-01 D56): GGUF 헤더 실측(scripts/gguf-header.ts), MoE 행 전용, 둘 다 있거나 둘 다 없음,
      //   0.75×fileGB ≤ expertGB + nonExpertGB ≤ fileGB + 0.02 (validateAll — 하한 10-03).
      //   expertGB = 트렁크 층의 `_exps`·`_chexps` 텐서 합(값 전문가 `attn_v_exps` 제외 — llama.cpp --n-cpu-moe 가 옮기는 FFN 전문가만, 10-21 D113). nonExpertGB = GPU 상주분(값 전문가 포함) — 입력층 제외(token_embd·per_layer_token_embd·position_embd·token_types,
@@ -78,6 +83,11 @@ ModelQuant { modelId, quant:QuantId, fileGB, expertGB?, nonExpertGB?, valueExper
      //   arch.ple 모델 행만(validateAll). 엔진은 토큰당 읽기 바이트·부분 오프로드 gpuFrac 분모에서 뺀다(docs/02 §3.1·§2.4-3, 토큰마다 한 줄만 읽는다),
      //   GPU 경로에 토큰당 고정 시간(PLE_TOKEN_OVERHEAD_MS, §3.1)을 더하고, dGPU full-gpu 는 이 행만 offGpuGB 가 사용 가능 시스템 RAM 에 들어가야 한다(§2.4-1). 콤보 분해 바는 이 몫을 시스템 RAM 막대로 보인다. lite 카탈로그 키.
      //   sync-models·add-model 이 offGpuGB 와 같은 측정에서 0 보다 클 때만 기록하고, 새 측정에 없으면 지운다(mtpGB 와 같은 규칙)
+     // loopGB (10-22 D114): dense 반복 층 모델 행 전용 GGUF 헤더 실측 — 반복 블록 GB = 트렁크 `blk.N.*` 텐서 합(classifySplit blockGB — MTP 블록·입력층·출력층 제외).
+     //   offGpuGB 와 함께 · ≤ fileGB − offGpuGB + 0.02(zod refine — 블록은 그래픽카드 상주 몫 안), arch.loops 모델 행만·그 모델의 헤더 실측 행은 모두 필수(validateAll).
+     //   엔진은 토큰당 읽기 바이트·pp 실효 파라미터에 넣고(docs/02 §3.1·§3.5) 배치·VRAM 은 그대로 둔다. lite 카탈로그 키. sync-models·add-model 이 offGpuGB 와 같은 측정에서
+     //   기록하고, 헤더 `<arch>.num_loops` 가 arch.loops 와 다르거나 없으면 그 측정을 보류한다(llama.cpp 가 다른 횟수로 돌리는 파일 — sync 는 manual, 새 행은 넣지 않음,
+     //   add-model 은 쓰지 않음). 키는 offGpuGB(·pleGB) 바로 뒤. Nanbeige4.2 3B bartowski Q4_K_M 1.97 · IQ4_XS 1.75 · Q8_0 3.35 · Q2_K 1.26
      // mtpGB (10-03): MTP/NextN 블록 GB, 0 보다 클 때만 — 측정 행(offGpuGB 또는 분할)에만, GPU 밖 몫 + 0.02 이하(validateAll). 필요량에선 이미 빠져 있고
      //   분해 바·모델 허브 FAQ 가 "MTP 를 켜면 이만큼 + 그 KV 가 더 든다"고 안내한다(Qwen3.5/3.6·Qwen3.8·EXAONE 4.5 27행). 속도식(docs/02 §3.1)은 아직 안 씀
      // fileName (P1-2 D20, PROGRESS §4 09-29): repo 상대 실파일 경로 /^[^\s/][^\s]*\.gguf$/i — 분할이면 첫 조각 `…-00001-of-0000N.gguf`,
@@ -230,7 +240,7 @@ KV = KiB/tok(f16). 파일 크기 = 실측 GGUF(decimal GB), 출처 repo 명기.
 2. 원본 repo `config.json` fetch → layers/kv_heads/head_dim/ctx → `kvBytesPerTokenF16` 재계산. 하이브리드/SWA/MLA는 `attnOverrides` 수동 필드 우선(자동 추출 불가 케이스). 새 모델 추가(`add-model`)는 같은 config 로 `classifyArch` 가 보정값을 계산해 `attnOverrides` 를 쓴다 — 10-03 D63 부터 상수 상태 층 하이브리드(Mamba2·short-conv·KDA+MLA)도 층 지도가 있으면 계산하고, 산식 근거(llama.cpp 소스 URL)를 `attnOverrides.sources` 에 config 와 함께 남긴다(docs/02 §2.2).
 3. diff 있으면 PR 자동 생성(리뷰 후 머지·배포 — 리포트 SUSPICIOUS·ERROR 0이면 Claude가 위임 처리, 그 외는 사람 승인. `docs/PROGRESS.md` §3) — 데이터 조작 방지 + 리뷰 기록.
 4. **`fileName` 기록(P1-2 D20)**: quant별로 매칭된 파일의 repo 상대 경로를 `fileName`에 기록(1의 크기 갱신과 같은 매칭 결과). **드래프트 파일은 제외** — basename 접두 `mmproj-`·`mtp-`·`eagle3-`는 매칭·크기 합산 모두에서 뺀다(gemma-4 MTP/EAGLE 드래프트가 fileGB에 합산되던 버그 교정 — repo 이름의 `MTP`는 무관). 단일 파일이거나 일관된 분할 세트(`-0000N-of-0000M`, 첫 조각을 기록)가 아니면 `error`(ambiguous match)로 리포트하고 반영하지 않는다. 레코드 키 순서는 `ggufRepo` 뒤에 `fileName`(한 레코드 한 줄 직렬화 유지).
-5. **행별 헤더 재측정(10-01 D56 MoE 분할 → 10-03 D62 dense 까지)**: 실측 값이 없거나 이번 동기화에서 fileGB·fileName 이 바뀐 행, 새 양자화 행의 GGUF 헤더를 Range 로 읽어(파일당 4~16MB, 분할은 조각마다) 다시 잰다. MoE 행은 리포트 field `split`(`expertGB`·`nonExpertGB`), dense 행은 field `offgpu`(`offGpuGB`), 둘 다 MTP 블록이 있으면 `mtpGB` 를 함께 기록한다(키는 fileGB 바로 뒤, 새 측정에 MTP 가 없으면 옛 `mtpGB` 삭제). 값이 없던 행의 측정 실패는 manual(다음 동기화 재시도 — 그동안 그 행은 파일 전체로 판정, 보수). **값이 있던 행의 파일이 바뀌었는데 재측정이 실패·보류되면 suspicious**(옛 값이 남으므로 위임 머지를 멈춤). 보류 조건: 측정한 파일 크기(Content-Range)가 fileGB 와 0.02 넘게 다름, MoE 분할 합 > fileGB + 0.02 또는 < 0.75×fileGB, dense offGpuGB − pleGB > 0.25×fileGB(층별 임베딩 표는 상한 밖 — 10-21 D112) — 다른 파일을 잰 것. dense 행의 층별 임베딩 표는 같은 측정의 `pleGB` 로 offGpuGB 뒤에 기록한다. config 의 experts/topK 변화는 manual. 첫 채움(10-03)은 일반 sync 와 섞지 않은 대상 한정 백필(트리·config 미조회, 같은 `planSplitChanges`·`applyChanges`)로 130행 auto·suspicious 0 — scratch 실측표와 ±0.01 일치.
+5. **행별 헤더 재측정(10-01 D56 MoE 분할 → 10-03 D62 dense 까지)**: 실측 값이 없거나 이번 동기화에서 fileGB·fileName 이 바뀐 행, 새 양자화 행의 GGUF 헤더를 Range 로 읽어(파일당 4~16MB, 분할은 조각마다) 다시 잰다. MoE 행은 리포트 field `split`(`expertGB`·`nonExpertGB`), dense 행은 field `offgpu`(`offGpuGB`), 둘 다 MTP 블록이 있으면 `mtpGB` 를 함께 기록한다(키는 fileGB 바로 뒤, 새 측정에 MTP 가 없으면 옛 `mtpGB` 삭제). 값이 없던 행의 측정 실패는 manual(다음 동기화 재시도 — 그동안 그 행은 파일 전체로 판정, 보수). **값이 있던 행의 파일이 바뀌었는데 재측정이 실패·보류되면 suspicious**(옛 값이 남으므로 위임 머지를 멈춤). 보류 조건: 측정한 파일 크기(Content-Range)가 fileGB 와 0.02 넘게 다름, MoE 분할 합 > fileGB + 0.02 또는 < 0.75×fileGB, dense offGpuGB − pleGB > 0.25×fileGB(층별 임베딩 표는 상한 밖 — 10-21 D112) — 다른 파일을 잰 것. dense 행의 층별 임베딩 표는 같은 측정의 `pleGB` 로 offGpuGB 뒤에 기록한다. 반복 층 모델(arch.loops — 10-22 D114)의 dense 행은 같은 측정의 트렁크 블록 합을 `loopGB` 로 기록하고, 헤더 `<arch>.num_loops` 가 arch.loops 와 다르거나 없으면 보류한다(새 행은 이 측정과 함께만 넣는다 — `holdUnmeasuredRows`). config 의 experts/topK·num_loops 변화는 manual. 첫 채움(10-03)은 일반 sync 와 섞지 않은 대상 한정 백필(트리·config 미조회, 같은 `planSplitChanges`·`applyChanges`)로 130행 auto·suspicious 0 — scratch 실측표와 ±0.01 일치.
 
 6. **다운로드 수(10-06 D68)**: 원본 repo 마다 `GET /api/models/{hfId}` 의 `downloads`(최근 30일)를 다시 읽어 `hfDownloads30d`·`hfDownloadsAsOf`(실행일)를 Δ 임계 없이 쓴다(키는 `popularity` 바로 뒤). 리포트에는 모델별 행 없이 요약 한 줄("다운로드 수(원본 저장소 최근 30일) N종 갱신, 기준일 …")만 — 위임 머지 기준(SUSPICIOUS·ERROR 0)과 무관. 읽기 실패한 모델은 기존 값·기준일 유지 + 같은 줄에 실패 수(ERROR 아님). sources 에 HF 모델 URL(`https://huggingface.co/<hfId>`)이 없는 모델(손으로 쓴 레코드)은 값을 쓰지 않고 같은 줄에 "건너뜀"으로 적는다 — 그대로 쓰면 refine 이 쓰기 전 자가검증을 터뜨려 그 주 동기화 전체가 멈춘다(10-06 리뷰 반영). 다운로드 수만 바뀐 동기화는 `data/meta.json` 기준일을 올리지 않는다(페이지 내용이 그대로인데 사이트맵 lastmod·푸터 기준일이 매주 바뀌지 않게 — 다운로드 기준일은 `hfDownloadsAsOf`).
 

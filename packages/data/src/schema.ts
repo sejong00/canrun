@@ -235,6 +235,13 @@ export const ModelSchema = z
        */
       valueExperts: z.number().int().positive().optional(),
       valueTopK: z.number().int().positive().optional(),
+      /**
+       * dense 전용(10-22 D114): 반복 층(looped transformer) 반복 횟수 ≥ 2 — config.json `num_loops`(Nanbeige4.2), GGUF `<arch>.num_loops` 와 대조.
+       * llama.cpp 는 물리 층(`layers`)을 loops 번 이어 붙인 논리 층을 돌며 같은 가중치를 다시 쓴다 — KV 는 논리 층마다라 kvBytesPerTokenF16 은
+       * `layers × loops × kvHeads × headDim × 4`(validateAll 의 전체 어텐션 공식도 × loops), 토큰당 읽기는 반복 블록(행 `loopGB`)을 loops 번(엔진 0.12.0).
+       * 근거 실측이 1점(카탈로그 밖 기기)이라 추정은 이론 추정(assess `isTheoretical`). 헤더 실측 행은 모두 loopGB(validateAll)
+       */
+      loops: z.number().int().min(2).optional(),
     }),
     /**
      * 비-full attention(swa/mla/hybrid) KV 수동 고정 — docs/03 §5.1 "수동 필드 우선".
@@ -395,6 +402,12 @@ export const ModelQuantSchema = z
      * 이미 빠져 있고(offGpuGB·MoE 분할), 화면은 "켜면 이만큼 + 그 KV 가 더 든다"고 안내한다. 측정 행(offGpuGB 또는 분할)에만.
      */
     mtpGB: z.number().positive().optional(),
+    /**
+     * dense 반복 층 모델 전용(10-22 D114) — 반복 블록 GB: 트렁크 `blk.N.*` 텐서 합(GGUF 헤더 실측, `classifySplit` 의 blockGB — MTP 블록·입력층·출력층 제외).
+     * 엔진은 토큰마다 이 블록을 `arch.loops` 번 읽는다고 본다(docs/02 §3.1). 같은 헤더 측정의 offGpuGB 와 함께 · ≤ fileGB − offGpuGB(아래 refine — 블록은
+     * 그래픽카드 상주 몫 안). 모델 `arch.loops` 인 모델의 행만이고, 그 모델의 헤더 실측 행은 모두 이 값을 갖는다(validateAll)
+     */
+    loopGB: z.number().positive().optional(),
     ggufRepo: z.string().min(1),
     /**
      * repo 내 실파일 경로 — 스니펫 태그·다운로드 안내의 정본 (P1-2, docs/03 §1·§5.1 ④).
@@ -418,6 +431,12 @@ export const ModelQuantSchema = z
       ctx.addIssue({
         code: 'custom',
         message: `${mq.modelId}/${mq.quant}: pleGB needs offGpuGB from the same header measurement and must not exceed it`,
+      });
+    }
+    if (mq.loopGB !== undefined && (mq.offGpuGB === undefined || mq.loopGB > mq.fileGB - mq.offGpuGB + 0.02)) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `${mq.modelId}/${mq.quant}: loopGB needs offGpuGB from the same header measurement and must fit in fileGB − offGpuGB`,
       });
     }
     if (

@@ -1014,6 +1014,7 @@
     "nglFitAuto": "With several GPUs the command leaves out -ngl and --n-cpu-moe: llama.cpp b7410 (December 2025) and later place the layers and experts on each card themselves.",
     "nglZero": "-ngl 0 keeps everything on the CPU.",
     "nglN": "-ngl {n} puts {n} of {layers} layers on the GPU; if VRAM overflows, lower it by 1–2.",
+    "nglNLoops": "-ngl {n} counts each pass through the repeated layers: llama.cpp numbers this model's {layers} layers as {logical}, so this puts the weights of {blocks} of the {layers} layers on the GPU. If VRAM overflows, lower it by 1–2.",
     "cpuMoe": "--n-cpu-moe {n} keeps the experts of all {n} layers in system RAM, which is what this estimate assumes.",
     "cpuMoePartial": "--n-cpu-moe {n} keeps the experts in the first {n} layers in system RAM; the remaining {gpu} layers with experts keep them on the GPU. This estimate assumes the same split.",
     "cpuMoeOom": "If loading fails with an out-of-memory error, raise the value to {next1}, or to {next2} if that isn't enough.",

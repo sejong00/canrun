@@ -182,9 +182,12 @@ describe('classifySplit', () => {
       cpu: 160,
       ple: 0,
       mtp: 68 + 128,
+      // 트렁크 blk.0~1 (MTP blk.2 제외) — 반복 층 모델의 반복 블록과 같은 합 (10-22 D114)
+      block: 136 + 128 + 64 + 1152 + 272 + 128,
       total: 160 + 320 + 32 + 136 + 128 + 64 + 1152 + 272 + 128 + 68 + 128,
     });
     expect(m).toMatchObject({ arch: 'qwen35moe', trunkLayers: 2, mtpLayers: 1, expertCount: 4, expertUsed: 2, tiedEmbeddings: false });
+    expect(m).not.toHaveProperty('numLoops');
   });
 
   it('tied (no output.weight): token_embd counted once on the GPU side as the output layer', () => {
@@ -243,6 +246,34 @@ describe('classifySplit', () => {
     expect(m.bytes.nonExpert).toBe(377_487_360 + 2_949_120); // 출력층 사본 + 블록
     expect(m.pleGB).toBe(1.94);
     expect(m.tiedEmbeddings).toBe(true);
+  });
+
+  it('Nanbeige4.2 shape (10-22 D114): blockGB = trunk blk.N.* only (not token_embd·output), numLoops from <arch>.num_loops', () => {
+    // 실제 bartowski Q4_K_M 의 입출력 모양(3072 × 166,144 — token_embd Q4_K · output Q6_K)과 블록 하나
+    const Q6_K = 14;
+    const meta: Kv[] = [
+      { key: 'general.architecture', str: 'nanbeige' },
+      { key: 'nanbeige.block_count', u32: 1 },
+      { key: 'nanbeige.num_loops', u32: 2 },
+      { key: 'nanbeige.skip_loop_final_norm', bool: false },
+    ];
+    const m = classifySplit([
+      parseGgufHeader(
+        gguf(meta, [
+          { name: 'token_embd.weight', dims: [3072, 166_144], type: Q4_K }, // 287,096,832
+          { name: 'output.weight', dims: [3072, 166_144], type: Q6_K }, // 418,682,880
+          { name: 'output_norm.weight', dims: [3072], type: F32 }, // 12,288
+          { name: 'blk.0.attn_q.weight', dims: [3072, 6144], type: Q4_K }, // 10,616,832
+          { name: 'blk.0.attn_norm.weight', dims: [3072], type: F32 }, // 12,288
+        ]),
+      ),
+    ]);
+    expect(m.bytes.cpu).toBe(287_096_832);
+    expect(m.bytes.block).toBe(10_616_832 + 12_288);
+    expect(m.bytes.nonExpert).toBe(418_682_880 + 12_288 + 10_616_832 + 12_288);
+    expect(m.blockGB).toBe(0.01);
+    expect(m.numLoops).toBe(2);
+    expect(m.tiedEmbeddings).toBe(false);
   });
 
   it('a model without MTP keeps every block in the trunk; missing arch keys fail', () => {

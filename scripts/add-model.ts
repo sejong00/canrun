@@ -14,7 +14,8 @@
  *  4) 레코드를 쓰고(원본 저장소 최근 30일 다운로드 수·기준일 포함 — D68), MoE 면 MOE_ARCH 에 한 줄 넣어 nonExpertGB 를 유도, data/meta.json 기준일을 오늘로.
  *     처음 보는 Hugging Face 조직이면 apps/web/content/model-makers.ts 에 그 조직의 이름(조직 정보 API 의 fullname)을 한 줄 넣는다(10-19 D101 — 모델 목록 열).
  *     양자화 행마다 GGUF 헤더를 Range 로 읽는다(scripts/gguf-header.ts): MoE 는 expertGB·nonExpertGB(10-01),
- *     dense 는 그래픽카드에 올리지 않는 몫 offGpuGB(10-03 D62), 둘 다 MTP 블록이 있으면 mtpGB.
+ *     dense 는 그래픽카드에 올리지 않는 몫 offGpuGB(10-03 D62), 둘 다 MTP 블록이 있으면 mtpGB. 반복 층 모델(nanbeige num_loops — 10-22 D114)은
+ *     반복 블록 loopGB 도 재고, 헤더 `<arch>.num_loops` 가 config 와 다르거나 잴 수 없는 행이 있으면 멈춘다.
  *     MoE 는 arch.experts/topK(config)를 기록하고, 헤더의 expert_count·expert_used_count 가 config 와 다르면 멈춘다.
  * 사람이 확인할 것(출력에 표시): 생각 모드(--thinking, 판정 기준 1.5배 — 모델 카드·채팅 템플릿, D59)·카테고리·표시명·인기도·처음 보는 라이선스 문자열·새 조직 이름.
  * 실행 후: pnpm run validate-data → pnpm test → pnpm build → pnpm run test:export.
@@ -82,6 +83,10 @@ export type RowMeasure = {
   pleGB?: number;
   /** 값 전문가(MoVA attn_v_exps, nonExpertGB 안) — 없거나 0 이면 값 전문가 없음 (10-21 D113) */
   valueExpertGB?: number;
+  /** 트렁크 블록(blk.N.*) 합 — 반복 층 모델 행의 loopGB (10-22 D114) */
+  blockGB?: number;
+  /** 헤더 `<arch>.num_loops` — 없으면 생략 (10-22 D114) */
+  numLoops?: number;
   mtpGB: number;
   fileGB?: number;
   trunkLayers: number;
@@ -90,12 +95,19 @@ export type RowMeasure = {
 };
 export type MeasureRowFn = (repo: string, fileName: string) => Promise<RowMeasure>;
 
-/** 행에 헤더 실측을 넣는다 — 키 순서는 시드와 같게 fileGB 바로 뒤(MoE 분할·valueExpertGB | dense offGpuGB·pleGB, 그다음 mtpGB) */
-function withMeasure(row: ModelQuantRecord, m: RowMeasure, moe: boolean): ModelQuantRecord {
+/**
+ * 행에 헤더 실측을 넣는다 — 키 순서는 시드와 같게 fileGB 바로 뒤(MoE 분할·valueExpertGB | dense offGpuGB·pleGB·loopGB, 그다음 mtpGB).
+ * loopGB(반복 블록 — 10-22 D114)는 반복 층 모델(`looped`)의 행에만 쓴다
+ */
+function withMeasure(row: ModelQuantRecord, m: RowMeasure, moe: boolean, looped = false): ModelQuantRecord {
   const { modelId, quant, fileGB, ggufRepo, fileName, sources } = row;
   const split = moe
     ? { expertGB: m.expertGB, nonExpertGB: m.nonExpertGB, ...((m.valueExpertGB ?? 0) > 0 ? { valueExpertGB: m.valueExpertGB } : {}) }
-    : { offGpuGB: m.offGpuGB, ...((m.pleGB ?? 0) > 0 ? { pleGB: m.pleGB } : {}) };
+    : {
+        offGpuGB: m.offGpuGB,
+        ...((m.pleGB ?? 0) > 0 ? { pleGB: m.pleGB } : {}),
+        ...(looped && (m.blockGB ?? 0) > 0 ? { loopGB: m.blockGB } : {}),
+      };
   return {
     modelId,
     quant,
@@ -129,6 +141,8 @@ function implausibleMeasure(m: RowMeasure, fileGB: number, moe: boolean): string
  * 행별 GGUF 헤더 실측 + 헤더 대조. MoE(`moe` 있음)는 expertGB·nonExpertGB(값 전문가가 있으면 valueExpertGB), dense 는 offGpuGB(10-03 D62), 둘 다 mtpGB.
  * problems(쓰기 중단): 헤더 expert_count·expert_used_count ≠ config. 값 전문가 모델(`opts.valueExperts` — MoVA, 10-21 D113)은 행마다 실측이
  * 있어야 하므로(없으면 모델 수준 유도 비전문가로 VRAM 을 적게 센다 — validateAll 도 거부) 측정 실패·파일과 안 맞는 값·값 전문가 텐서 없음도 problems.
+ * 반복 층 모델(`opts.loops` — 10-22 D114)도 행마다 실측(반복 블록 loopGB)이 있어야 하고, 헤더 `<arch>.num_loops` 가 config 와 다르거나 없으면
+ * llama.cpp 가 다른 횟수로 돌리는 파일이라 problems.
  * warnings(진행): 측정 실패·값이 파일과 안 맞음(그 행은 실측 없이 기록 — 다음 sync-models 가 다시 잰다) · 트렁크 층 수 ≠ config layers.
  */
 export async function measureRows(
@@ -136,14 +150,15 @@ export async function measureRows(
   moe: { experts: number; topK: number } | undefined,
   layers: number,
   measure: MeasureRowFn,
-  opts: { valueExperts?: boolean } = {},
+  opts: { valueExperts?: boolean; loops?: number } = {},
 ): Promise<{ rows: ModelQuantRecord[]; problems: string[]; warnings: string[] }> {
   const problems: string[] = [];
   const warnings: string[] = [];
   const out: ModelQuantRecord[] = [];
-  // 실측 없이 기록할 행 — 값 전문가 모델은 쓰지 않는다(중단 사유), 그 밖은 경고만
+  // 실측 없이 기록할 행 — 값 전문가·반복 층 모델은 쓰지 않는다(중단 사유), 그 밖은 경고만
   const unmeasured = (message: string): void => {
     if (opts.valueExperts) problems.push(`${message} — 값 전문가(MoVA) 모델은 행마다 헤더 실측(분할·valueExpertGB)이 필요해 쓰지 않음`);
+    else if (opts.loops !== undefined) problems.push(`${message} — 반복 층 모델은 행마다 헤더 실측(반복 블록 loopGB·num_loops)이 필요해 쓰지 않음`);
     else warnings.push(message);
   };
   for (const row of rows) {
@@ -175,15 +190,21 @@ export async function measureRows(
     if (m.trunkLayers !== layers) {
       warnings.push(`${label}: 헤더 트렁크 층 ${m.trunkLayers} ≠ config num_hidden_layers ${layers} — arch.layers 확인`);
     }
+    if (opts.loops !== undefined && m.numLoops !== opts.loops) {
+      problems.push(`${label}: 헤더 num_loops ${m.numLoops ?? '없음'} ≠ config num_loops ${opts.loops}`);
+    }
     const problem =
       implausibleMeasure(m, row.fileGB, moe !== undefined) ??
-      (opts.valueExperts && !((m.valueExpertGB ?? 0) > 0) ? '헤더에 값 전문가 텐서(attn_v_exps)가 없음' : undefined);
+      (opts.valueExperts && !((m.valueExpertGB ?? 0) > 0) ? '헤더에 값 전문가 텐서(attn_v_exps)가 없음' : undefined) ??
+      (opts.loops !== undefined && !((m.blockGB ?? 0) > 0 && m.blockGB! <= row.fileGB - m.offGpuGB + 0.02)
+        ? `반복 블록 ${m.blockGB ?? '없음'}GB 가 그래픽카드 상주 몫(fileGB − offGpuGB)에 맞지 않음`
+        : undefined);
     if (problem !== undefined) {
       unmeasured(`${label}: ${problem} — 실측 없이 기록`);
       out.push(row);
       continue;
     }
-    out.push(withMeasure(row, m, moe !== undefined));
+    out.push(withMeasure(row, m, moe !== undefined, opts.loops !== undefined));
   }
   return { rows: out, problems, warnings };
 }
@@ -420,6 +441,7 @@ export async function planAddition(
   // 값 전문가 모델(MoVA, 10-21 D113)은 행마다 실측(분할·valueExpertGB)이 없으면 쓰지 않는다
   const measured = await measureRows(rows, arch.moe, arch.arch.layers, (repo, fileName) => measureSplit(repo, fileName, { token }), {
     valueExperts: arch.mova !== undefined,
+    ...(arch.loops !== undefined ? { loops: arch.loops } : {}),
   });
   if (measured.problems.length > 0) {
     throw new Error(`GGUF 헤더가 config 와 다르거나 필요한 실측이 없음 — 쓰지 않음:\n  ${measured.problems.join('\n  ')}`);
@@ -464,6 +486,8 @@ export async function planAddition(
       ...(arch.ple ? { ple: true } : {}),
       // 값 전문가(MoVA — 10-21 D113): 헤더 분할은 값 전문가를 비전문가(그래픽카드 상주)로 세고, 추정은 이론 추정
       ...(arch.mova ? { valueExperts: arch.mova.experts, valueTopK: arch.mova.topK } : {}),
+      // 반복 층(10-22 D114): KV 는 이미 논리 층(층 × loops) 값, 헤더 실측 행은 반복 블록 loopGB, 추정은 이론 추정
+      ...(arch.loops !== undefined ? { loops: arch.loops } : {}),
     },
     // 산식 근거(llama.cpp 가 KV 를 두는 층 — D63)가 있으면 config 출처 뒤에 덧붙인다
     ...(arch.override
@@ -478,8 +502,9 @@ export async function planAddition(
     // 출시일과 카탈로그 추가일(D72 — 업데이트 소식 페이지가 날짜별로 묶는다)
     ...catalogDates(info.createdAt, today),
     note: `add-model 생성(${today}). releasedAt = HF createdAt${mirror ? `. gated — arch 는 ${mirror} 미러 config` : ''}`,
-    // MoE 는 experts/topK 의 출처로 config.json 을 명시 (게이트면 미러 config). 분류기가 구조 근거(llama.cpp 소스)를 주면 덧붙인다(K2-Horizon MoE — D113)
-    sources: [hfUrl(hfId), ...(mirror ? [configUrl(mirror)] : arch.moe ? [configUrl(hfId)] : []), ...(arch.refs ?? [])],
+    // MoE 는 experts/topK, 반복 층 모델은 num_loops 의 출처로 config.json 을 명시 (게이트면 미러 config). 분류기가 구조 근거(llama.cpp 소스)를 주면
+    // 덧붙인다(K2-Horizon MoE — D113, Nanbeige 반복 층 — D114)
+    sources: [hfUrl(hfId), ...(mirror ? [configUrl(mirror)] : arch.moe || arch.loops !== undefined ? [configUrl(hfId)] : []), ...(arch.refs ?? [])],
   };
 
   // 스키마 검증 — 쓰기 전에. 교차 검증은 쓴 뒤 validate-data 로(MOE_ARCH 를 새로 읽어야 해서 별도 프로세스)
@@ -495,6 +520,9 @@ export async function planAddition(
   lines.push(`  KV ${arch.override?.kvBytesPerTokenF16 ?? arch.arch.kvBytesPerTokenF16} B/token · maxContext ${arch.maxContext} · params ${paramsB}B · license ${license} · popularity ${popularity} · category ${category.join(',')}`);
   if (arch.override) lines.push(`  ${arch.override.reason}`);
   if (arch.expertLayers) lines.push(`  expert layers ${arch.expertLayers.length}/${arch.arch.layers}: ${arch.expertLayers.join(',')}`);
+  if (arch.loops !== undefined) {
+    lines.push(`  looped layers ×${arch.loops} — KV 는 논리 층 ${arch.arch.layers * arch.loops}개, 행 loopGB(트렁크 블록)를 토큰마다 ${arch.loops}번 읽는다·이론 추정`);
+  }
   if (arch.mova) {
     lines.push(`  MoVA value experts ${arch.mova.experts} top-${arch.mova.topK} — attn_v_exps 는 비전문가(그래픽카드 상주, llama.cpp --n-cpu-moe·--fit 이 옮기지 않음), 행 valueExpertGB 로 고른 몫만 읽기 바이트에 넣는다·이론 추정`);
   }
@@ -503,7 +531,7 @@ export async function planAddition(
       r.expertGB !== undefined
         ? `  (expert ${r.expertGB} · non-expert ${String(r.nonExpertGB)} GB)`
         : r.offGpuGB !== undefined
-          ? `  (off-GPU ${r.offGpuGB}${r.pleGB !== undefined ? ` · per-layer embedding ${r.pleGB}` : ''} GB)`
+          ? `  (off-GPU ${r.offGpuGB}${r.pleGB !== undefined ? ` · per-layer embedding ${r.pleGB}` : ''}${r.loopGB !== undefined ? ` · loop block ${r.loopGB}` : ''} GB)`
           : '';
     lines.push(`  ${r.quant.padEnd(10)} ${String(r.fileGB).padStart(7)} GB  ${r.ggufRepo}/${r.fileName ?? ''}${split}`);
   }

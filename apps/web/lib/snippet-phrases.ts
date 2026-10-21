@@ -18,7 +18,12 @@ export function llamaNotes(t: Translate, locale: string, plan: CommandPlan, kvQ8
   // 명령의 대안 안내라 뜻이 맞지 않는다(리뷰 반영). 지금 이 함수를 부르는 곳(콤보 페이지)은 1장이라 닿지 않고, 계산기는 fitAutoNote 를 쓴다
   else if (llama.ngl === 'auto') notes.push({ key: 'ngl', text: t('nglFitAuto') });
   else if (llama.ngl === 0) notes.push({ key: 'ngl', text: t('nglZero') });
-  else notes.push({ key: 'ngl', text: t('nglN', { n: llama.ngl, layers: plan.layers }) });
+  else if (plan.loops !== undefined) {
+    // 반복 층 모델(10-22 D114): -ngl 이 논리 층(층 × loops)과 출력층을 센다 — GPU 에 가중치가 가는 물리 층 수를 함께 말한다(snippet.ts 헤더)
+    const logical = plan.layers * plan.loops;
+    const blocks = Math.max(0, llama.ngl - plan.layers * (plan.loops - 1) - 1);
+    notes.push({ key: 'ngl', text: t('nglNLoops', { n: llama.ngl, logical, layers: plan.layers, blocks }) });
+  } else notes.push({ key: 'ngl', text: t('nglN', { n: llama.ngl, layers: plan.layers }) });
   if (llama.nCpuMoe !== undefined) {
     // GPU 쪽은 블록 수가 아니라 전문가 층 수로 센다 — 판정 문장과 같은 값(10-03 D63, MoE 블록이 섞인 Nemotron)
     const gpuLayers = llama.gpuExpertLayers ?? 0;

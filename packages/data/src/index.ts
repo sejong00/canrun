@@ -147,9 +147,14 @@ export function validateAll(files: SeedFiles): string[] {
   const valueExpertModelIds = new Set(
     files.models.filter((model) => model.arch.valueExperts !== undefined).map((model) => model.id),
   );
+  // 반복 층 모델(10-22 D114) — dense 만
+  const loopModelIds = new Set(files.models.filter((model) => model.arch.loops !== undefined).map((model) => model.id));
   for (const model of files.models) {
     if (model.arch.ple === true && model.activeParamsB !== undefined) {
       problems.push(`models/${model.id}: arch.ple is for dense models only`);
+    }
+    if (model.arch.loops !== undefined && model.activeParamsB !== undefined) {
+      problems.push(`models/${model.id}: arch.loops is for dense models only`);
     }
   }
 
@@ -209,6 +214,14 @@ export function validateAll(files: SeedFiles): string[] {
     }
     if (valueExpertModelIds.has(mq.modelId) && (!hasSplit || mq.valueExpertGB === undefined)) {
       problems.push(`${id}: every row of a value-expert (MoVA) model needs the header-measured expertGB/nonExpertGB and valueExpertGB`);
+    }
+    // 반복 층(10-22 D114): arch.loops 인 dense 모델 행만 · 헤더 실측(offGpuGB)이 있는 그 모델 행은 모두 loopGB 를 갖는다
+    // (없으면 엔진이 읽기 바이트 전체를 반복 블록으로 봐 속도를 15%쯤 낮게 본다 — 보수지만 실측이 있는 행은 블록을 적는다)
+    if (mq.loopGB !== undefined && !loopModelIds.has(mq.modelId)) {
+      problems.push(`${id}: loopGB only for models with arch.loops (looped layers)`);
+    }
+    if (loopModelIds.has(mq.modelId) && mq.offGpuGB !== undefined && mq.loopGB === undefined) {
+      problems.push(`${id}: header-measured row of a looped model needs loopGB`);
     }
     // MTP 블록(10-03): 같은 헤더 측정이 있는 행만 · GPU 밖 몫(offGpuGB 또는 파일 − 분할) 안
     if (mq.mtpGB !== undefined) {
@@ -299,10 +312,10 @@ export function validateAll(files: SeedFiles): string[] {
       }
     }
 
-    // full attention 모델은 kvBytesPerTokenF16 이 GQA 공식과 일치해야 한다 (docs/02 §2.2)
+    // full attention 모델은 kvBytesPerTokenF16 이 GQA 공식과 일치해야 한다 (docs/02 §2.2) — 반복 층 모델(10-22 D114)은 논리 층(layers × loops)마다 KV
     if (model.arch.attnType === 'full') {
       const formula = kvBytesPerToken({
-        layers: model.arch.layers,
+        layers: model.arch.layers * (model.arch.loops ?? 1),
         kvHeads: model.arch.kvHeads,
         headDim: model.arch.headDim,
       });

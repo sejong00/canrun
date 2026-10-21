@@ -10,7 +10,8 @@
  * 3) MoE: 기준 quant(Q4_K_M/MXFP4) 크기 변경 시 nonExpertGB 유도값 연쇄 갱신
  *    (validateAll 허용 오차 0.02GB 유지).
  * 4) 행별 GGUF 헤더 실측(scripts/gguf-header.ts) — MoE 는 텐서 분할(expertGB/nonExpertGB, 10-01), dense 는 그래픽카드에
- *    올리지 않는 몫(offGpuGB, 10-03 D62), 둘 다 MTP 블록 크기(mtpGB, 있을 때만). 값이 없거나 이번 동기화에서 파일 크기·파일명이
+ *    올리지 않는 몫(offGpuGB, 10-03 D62), 둘 다 MTP 블록 크기(mtpGB, 있을 때만). 반복 층 모델(arch.loops — 10-22 D114)은 반복 블록 loopGB 도
+ *    재고, 헤더 `<arch>.num_loops` 가 arch.loops 와 다르면 보류한다. 값이 없거나 이번 동기화에서 파일 크기·파일명이
  *    바뀐 행, 새 양자화 행은 헤더를 Range 로 읽어 다시 잰다. 실패하면 manual — 값은 그대로.
  * 5) models.json: 원본 repo 의 최근 30일 다운로드 수(`/api/models/{hfId}` 의 downloads)와 기준일을 매주 다시 쓴다(10-06 D68 —
  *    계산기 "다운로드 많은 순"). Δ 임계 없이 반영하고 리포트에는 요약 한 줄만(모델별 행 없음 — 위임 머지 기준과 무관).
@@ -85,12 +86,18 @@ export type Change = {
 
 /**
  * 행에 기록하는 헤더 실측 — MoE: expertGB·nonExpertGB(값 전문가가 있으면 valueExpertGB 도 — 10-21 D113), dense: offGpuGB(층별 임베딩 표가 있으면
- * pleGB 도 — 10-21 D112). mtpGB·pleGB·valueExpertGB 는 0 보다 클 때만
+ * pleGB 도 — 10-21 D112, 반복 층 모델이면 반복 블록 loopGB 도 — 10-22 D114). mtpGB·pleGB·valueExpertGB 는 0 보다 클 때만
  */
-export type SplitValues = { expertGB?: number; nonExpertGB?: number; valueExpertGB?: number; offGpuGB?: number; pleGB?: number; mtpGB?: number };
+export type SplitValues = { expertGB?: number; nonExpertGB?: number; valueExpertGB?: number; offGpuGB?: number; pleGB?: number; loopGB?: number; mtpGB?: number };
 
-/** 행 하나의 헤더 측정 결과 (gguf-header.measureSplit 의 부분집합). fileGB = Content-Range 기준 파일 크기(알면) */
-export type MeasuredSplit = { expertGB: number; nonExpertGB: number; valueExpertGB?: number; offGpuGB: number; pleGB?: number; mtpGB: number; fileGB?: number };
+/**
+ * 행 하나의 헤더 측정 결과 (gguf-header.measureSplit 의 부분집합). fileGB = Content-Range 기준 파일 크기(알면).
+ * blockGB = 트렁크 blk.N.* 합(반복 층 모델의 loopGB), numLoops = 헤더 `<arch>.num_loops`(없으면 생략 — 10-22 D114)
+ */
+export type MeasuredSplit = {
+  expertGB: number; nonExpertGB: number; valueExpertGB?: number; offGpuGB: number; pleGB?: number; mtpGB: number; fileGB?: number;
+  blockGB?: number; numLoops?: number;
+};
 
 /** 행 하나의 분할 측정 — 실행부는 gguf-header.measureSplit, 테스트는 모킹 */
 export type MeasureSplitFn = (repo: string, fileName: string) => Promise<MeasuredSplit>;
@@ -331,7 +338,21 @@ export function buildSyncPlan(input: SyncInput): Change[] {
       }
     }
 
-    const kvFull = kvBytesPerToken(arch);
+    // 반복 층 모델(10-22 D114)은 논리 층(층 × loops)마다 KV — 공식값도 그 층 수로 센다(validateAll 과 같은 규칙)
+    const kvFull = kvBytesPerToken({ ...arch, layers: arch.layers * (model.arch.loops ?? 1) });
+    const nextLoops = extracted.loops;
+    if (nextLoops !== model.arch.loops) {
+      // 반복 횟수가 바뀌면 KV·읽기 바이트가 함께 바뀐다 — 자동 반영하지 않는다(헤더 num_loops·loopGB 재측정과 함께 사람이)
+      changes.push({
+        file: 'models.json',
+        id: model.id,
+        field: 'arch.loops',
+        old: model.arch.loops,
+        next: nextLoops,
+        kind: 'manual',
+        note: 'config num_loops 가 arch.loops 와 다름 — 확인 후 arch.loops·kvBytesPerTokenF16 수동 반영 (10-22 D114)',
+      });
+    }
     if (autoArch) {
       if (kvFull !== model.arch.kvBytesPerTokenF16) {
         changes.push({
@@ -398,13 +419,14 @@ const fmtSplit = (v: SplitValues | undefined): string | undefined => {
     v.offGpuGB !== undefined ? [`off-GPU ${v.offGpuGB}`] : [`expert ${String(v.expertGB)}`, `non-expert ${String(v.nonExpertGB)}`];
   if (v.valueExpertGB !== undefined) parts.push(`value experts ${v.valueExpertGB}`);
   if (v.pleGB !== undefined) parts.push(`per-layer embedding ${v.pleGB}`);
+  if (v.loopGB !== undefined) parts.push(`loop block ${v.loopGB}`);
   if (v.mtpGB !== undefined) parts.push(`MTP ${v.mtpGB}`);
   return parts.join(' / ');
 };
 
-const SPLIT_KEYS = ['expertGB', 'nonExpertGB', 'valueExpertGB', 'offGpuGB', 'pleGB', 'mtpGB'] as const;
-/** 새 측정에 없으면 옛 값을 지우는 키 — 0 일 때 기록하지 않는 값(MTP 블록·층별 임베딩 표·값 전문가) */
-const DROPPABLE_SPLIT_KEYS: ReadonlySet<string> = new Set(['valueExpertGB', 'pleGB', 'mtpGB']);
+const SPLIT_KEYS = ['expertGB', 'nonExpertGB', 'valueExpertGB', 'offGpuGB', 'pleGB', 'loopGB', 'mtpGB'] as const;
+/** 새 측정에 없으면 옛 값을 지우는 키 — 0 일 때 기록하지 않는 값(MTP 블록·층별 임베딩 표·값 전문가·반복 블록) */
+const DROPPABLE_SPLIT_KEYS: ReadonlySet<string> = new Set(['valueExpertGB', 'pleGB', 'loopGB', 'mtpGB']);
 
 const sameSplit = (a: SplitValues, b: SplitValues): boolean => SPLIT_KEYS.every((k) => a[k] === b[k]);
 
@@ -418,26 +440,36 @@ function recordedSplit(mq: ModelQuantRecord, moe: boolean): SplitValues | undefi
       : undefined;
   }
   const ple = mq.pleGB !== undefined ? { pleGB: mq.pleGB } : {};
-  return mq.offGpuGB !== undefined ? { offGpuGB: mq.offGpuGB, ...ple, ...mtp } : undefined;
+  const loop = mq.loopGB !== undefined ? { loopGB: mq.loopGB } : {};
+  return mq.offGpuGB !== undefined ? { offGpuGB: mq.offGpuGB, ...ple, ...loop, ...mtp } : undefined;
 }
 
-/** 측정 결과 → 행에 쓸 값 (MoE/dense 별 필드, MTP 는 있을 때만) */
-function toSplitValues(m: MeasuredSplit, moe: boolean): SplitValues {
+/**
+ * 측정 결과 → 행에 쓸 값 (MoE/dense 별 필드, MTP 는 있을 때만). 반복 층 모델(`looped` — arch.loops, 10-22 D114)의 dense 행은 반복 블록(트렁크 blk.N.* 합)을
+ * loopGB 로 — 다른 모델은 블록 값이 헤더에서 나와도 기록하지 않는다(기존 행이 바뀌지 않게)
+ */
+function toSplitValues(m: MeasuredSplit, moe: boolean, looped = false): SplitValues {
   const mtp = m.mtpGB > 0 ? { mtpGB: m.mtpGB } : {};
   const ple = (m.pleGB ?? 0) > 0 ? { pleGB: m.pleGB } : {};
+  const loop = looped && (m.blockGB ?? 0) > 0 ? { loopGB: m.blockGB } : {};
   const value = (m.valueExpertGB ?? 0) > 0 ? { valueExpertGB: m.valueExpertGB } : {};
-  return moe ? { expertGB: m.expertGB, nonExpertGB: m.nonExpertGB, ...value, ...mtp } : { offGpuGB: m.offGpuGB, ...ple, ...mtp };
+  return moe ? { expertGB: m.expertGB, nonExpertGB: m.nonExpertGB, ...value, ...mtp } : { offGpuGB: m.offGpuGB, ...ple, ...loop, ...mtp };
 }
 
 /**
  * 기록하면 validateAll 이 거부할 측정 — 다른 파일을 잰 것으로 보고 보류한다. 문제 없으면 undefined.
- * 값 전문가 모델(`valueExperts` — arch.valueExperts, 10-21 D113)은 값 전문가 텐서(attn_v_exps)가 잡혀야 한다(행마다 valueExpertGB 필수)
+ * 값 전문가 모델(`valueExperts` — arch.valueExperts, 10-21 D113)은 값 전문가 텐서(attn_v_exps)가 잡혀야 한다(행마다 valueExpertGB 필수).
+ * 반복 층 모델(`loops` — arch.loops, 10-22 D114)은 헤더 `<arch>.num_loops` 가 같아야 한다 — 없거나 다르면 llama.cpp 가 다른 횟수로 돌리는 파일이다
  */
-function implausible(v: SplitValues, m: MeasuredSplit, fileGB: number, valueExperts = false): string | undefined {
+function implausible(v: SplitValues, m: MeasuredSplit, fileGB: number, valueExperts = false, loops?: number): string | undefined {
   if (m.fileGB !== undefined && Math.abs(m.fileGB - fileGB) > 0.02) {
     return `측정한 파일 크기 ${m.fileGB}GB ≠ fileGB ${fileGB}`;
   }
   if (valueExperts && v.valueExpertGB === undefined) return '값 전문가(MoVA) 모델인데 헤더에 값 전문가 텐서(attn_v_exps)가 없음';
+  if (loops !== undefined && m.numLoops !== loops) return `헤더 num_loops ${m.numLoops ?? '없음'} ≠ arch.loops ${loops}`;
+  if (loops !== undefined && (v.loopGB === undefined || v.offGpuGB === undefined || v.loopGB > fileGB - v.offGpuGB + 0.02)) {
+    return `반복 블록 ${v.loopGB ?? '없음'}GB 가 그래픽카드 상주 몫(fileGB ${fileGB} − ${v.offGpuGB ?? '?'})에 맞지 않음`;
+  }
   if (v.offGpuGB !== undefined) {
     // 층별 임베딩 표(PLE)는 상한 밖 — 나머지에만 건다 (validateAll 과 같은 규칙, 10-21 D112)
     const other = v.offGpuGB - (v.pleGB ?? 0);
@@ -470,6 +502,8 @@ export async function planSplitChanges(
   const moeIds = new Set(input.models.filter((m) => m.activeParamsB !== undefined).map((m) => m.id));
   // 값 전문가 모델(MoVA, 10-21 D113) — 행마다 valueExpertGB 필수(validateAll)
   const valueExpertIds = new Set(input.models.filter((m) => m.arch.valueExperts !== undefined).map((m) => m.id));
+  // 반복 층 모델(10-22 D114) — 헤더 실측 행은 loopGB 필수(validateAll), 헤더 num_loops 대조
+  const loopsById = new Map(input.models.flatMap((m) => (m.arch.loops !== undefined ? [[m.id, m.arch.loops] as const] : [])));
   type Target = { id: string; moe: boolean; repo: string; fileName?: string; fileGB: number; old?: SplitValues; reason: string };
   const targets: Target[] = [];
   for (const mq of input.quants) {
@@ -520,9 +554,11 @@ export async function planSplitChanges(
         : { ...base, kind: 'manual', note: `GGUF 헤더 측정 실패(${reason}) — ${fields} 그대로` };
       return;
     }
-    const split = toSplitValues(m, t.moe);
+    const modelId = t.id.split('/')[0] ?? '';
+    const loops = loopsById.get(modelId);
+    const split = toSplitValues(m, t.moe, loops !== undefined);
     if (t.old && sameSplit(t.old, split)) return;
-    const problem = implausible(split, m, t.fileGB, valueExpertIds.has(t.id.split('/')[0] ?? ''));
+    const problem = implausible(split, m, t.fileGB, valueExpertIds.has(modelId), loops);
     if (problem !== undefined) {
       results[i] = {
         ...base,
@@ -538,19 +574,32 @@ export async function planSplitChanges(
 }
 
 /**
- * 4b) 값 전문가 모델(arch.valueExperts — MoVA, 10-21 D113)의 새 양자화 행은 같은 동기화의 헤더 실측(분할·valueExpertGB, kind auto)이 있을 때만 넣는다.
+ * 4b) 값 전문가 모델(arch.valueExperts — MoVA, 10-21 D113)과 반복 층 모델(arch.loops — 10-22 D114)의 새 양자화 행은 같은 동기화의 헤더 실측
+ * (MoVA 는 분할·valueExpertGB, 반복 모델은 offGpuGB·loopGB·num_loops 일치 — kind auto)이 있을 때만 넣는다. 반복 모델의 실측 없는 행은 validateAll 이
+ * 받지만, 헤더 num_loops 를 확인하지 못한 파일은 llama.cpp 가 다른 횟수로 돌릴 수 있어 넣지 않는다(보수).
+ * 아래는 MoVA 의 이유:
  * 실측 없이 넣으면 엔진이 모델 수준 유도 비전문가(값 전문가를 FFN 전문가처럼 나눈 값 — MoVA Q4_K_M 0.65 vs 실측 6.0)로 떨어져 늘 그래픽카드에 있는
  * 값 전문가 몫을 빼고 VRAM 을 적게 세고, validateAll 도 그 행을 거부한다(그러면 데이터 동기화 PR 의 CI 가 멈춘다). 그런 새 행은 manual 로 내려
  * 넣지 않는다 — 시드에 행이 없으니 다음 동기화가 새 행으로 다시 찾아 다시 잰다. 다른 모델의 새 행은 그대로(측정 실패는 파일 전체로 판정 — 보수)
  */
 export function holdUnmeasuredRows(planned: readonly Change[], splitChanges: readonly Change[], models: readonly Model[]): Change[] {
   const valueExpertIds = new Set(models.filter((m) => m.arch.valueExperts !== undefined).map((m) => m.id));
+  const loopIds = new Set(models.filter((m) => m.arch.loops !== undefined).map((m) => m.id));
   const measured = new Set(
     splitChanges.filter((c) => c.kind === 'auto' && c.split?.valueExpertGB !== undefined).map((c) => c.id),
   );
+  const loopMeasured = new Set(splitChanges.filter((c) => c.kind === 'auto' && c.split?.loopGB !== undefined).map((c) => c.id));
   return planned.map((c) => {
     if (c.field !== 'row' || c.kind !== 'auto') return c;
-    if (!valueExpertIds.has(c.id.split('/')[0] ?? '') || measured.has(c.id)) return c;
+    const modelId = c.id.split('/')[0] ?? '';
+    if (loopIds.has(modelId) && !loopMeasured.has(c.id)) {
+      return {
+        ...c,
+        kind: 'manual',
+        note: `${c.note ?? '새 양자화 행'} — 반복 층 모델은 GGUF 헤더 실측(반복 블록·num_loops 일치)과 함께만 넣는다: 이번엔 넣지 않음(다음 동기화가 다시 잰다)`,
+      };
+    }
+    if (!valueExpertIds.has(modelId) || measured.has(c.id)) return c;
     return {
       ...c,
       kind: 'manual',
@@ -837,7 +886,7 @@ async function main(): Promise<void> {
     { modelIds: targetIds },
   );
   if (splitChanges.length > 0) console.log(`measured ${splitChanges.length} row(s) from GGUF headers`);
-  // 값 전문가 모델의 새 행은 헤더 실측과 함께만 넣는다(10-21 D113)
+  // 값 전문가 모델(10-21 D113)·반복 층 모델(10-22 D114)의 새 행은 헤더 실측과 함께만 넣는다
   const planned = holdUnmeasuredRows(plan, splitChanges, models);
   const changes = [...planned, ...splitChanges];
   const downloads = planDownloads(targetModels, downloadsByHfId, today);
