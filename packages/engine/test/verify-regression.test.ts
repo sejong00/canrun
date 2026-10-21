@@ -511,7 +511,7 @@ describe('13) 반복 층 — Nanbeige4.2-3B (10-22 D114, docs/02 §2.2·§3.1·�
     expect(ratioErr(wholeFile, c)).toBeCloseTo(c.recordedErr.wholeFile, 2);
   });
 
-  it('pp: 실효 파라미터 × (1 + 반복 블록/파일) 이면 같은 실행의 비가 rough ±40% 안 — 반복을 빼면 밖', () => {
+  it('pp: 실효 파라미터 × (1 + 반복 블록/파일) 이면 같은 기기 비가 rough ±40% 안 — 반복을 빼면 밖', () => {
     const hw = { effClass: 'amd' as const, fp16Tflops: 3.2 };
     const pp = (mq: ModelQuant) => ppEstimate(hw, mq)!;
     for (const c of LOOP_RATIO_CASES) {

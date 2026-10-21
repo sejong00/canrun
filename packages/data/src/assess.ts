@@ -396,7 +396,8 @@ export function isTheoretical(gpu: GpuCore, model: ModelCore, mode: Mode): boole
   // 따로 세지 않고(라우팅 FFN 전문가 고정 시간 꼴 — 근거 실측 없음) 공개 실측도 없어 보정 추정의 근거가 안 된다(docs/02 §4·§9, PROGRESS §4 D113)
   if (model.arch.valueExperts !== undefined) return true;
   // 반복 층(Nanbeige4.2 — 10-22 D114): 엔진 0.12.0 이 반복 블록을 loops 번 읽지만, 근거 실측이 같은 기기 비율 1점(Steam Deck Vulkan — 카탈로그 밖 기기,
-  // −2.6%)뿐이고 여러 장 층 분할에서 가중치가 앞쪽 반복의 카드에만 있는 점(코드로 본 추론)도 실측이 없어 보정 추정의 근거가 안 된다(docs/02 §4 ⑨·§9, PROGRESS §4 D114)
+  // −2.6%)뿐이고, 부분 오프로드(KV 읽기 GPU 몫을 명령 배치대로 — docs/02 §3.4)와 여러 장 층 분할(가중치가 앞쪽 카드에 몰린다 — llama.cpp 코드로 확인,
+  // docs/02 §9)도 실측이 없어 보정 추정의 근거가 안 된다(docs/02 §4 ⑨, PROGRESS §4 D114)
   if (model.arch.loops !== undefined) return true;
   // FP16 크리플 구형 GPU — 계수 도출 표본(RTX 30~50·RDNA3/4) 밖
   if (isFp16Crippled(gpu)) return true;
