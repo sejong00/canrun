@@ -6,7 +6,7 @@ CanRun changes often. New models arrive, the calculator gains features, and now 
 
 ### Models that run their layers more than once are now calculated
 
-CanRun now calculates <SiteLink to="/model/nanbeige4.2-3b">Nanbeige4.2 3B</SiteLink>, whose 22 layers run twice for every token on the same weights. llama.cpp keeps a separate KV cache for each pass, so at long contexts this small model needs as much memory for that cache as a much larger one. CanRun counts the repeated layers twice in the speed estimate too, and when we checked, Q4_K_M with a 32k context on an 8GB RTX 4060 was calculated as partial offload. llama.cpp also counts each pass as its own layer, so when part of the model stays on the CPU, the `-ngl` value in its command is higher than its layer count. Only one public measurement backs the speed estimate, so every combination for this model carries the theoretical label.
+CanRun now calculates <SiteLink to="/model/nanbeige4.2-3b">Nanbeige4.2 3B</SiteLink>, whose 22 layers run twice for every token on the same weights. llama.cpp keeps a separate KV cache for each pass, so at long contexts this small model needs as much memory for that cache as a much larger one; that cache is why Q4_K_M with a 32k context on an 8GB RTX 4060 was calculated as partial offload. llama.cpp also counts each pass as its own layer, so when part of the model stays on the CPU, the `-ngl` value in its command is higher than its layer count. The speed estimate reads the repeated layers twice for every token. Only one public measurement backs it, so every combination for this model carries the theoretical label.
 
 </Update>
 

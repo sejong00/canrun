@@ -24,7 +24,7 @@ The table below covers the whole catalog at 8k, 32k and 128k (a dash means the m
 
 ### Grouped-query attention
 
-In grouped-query attention (GQA), many query heads share one KV head, so the cache stores fewer keys and values per token; the Llama 3.1 model card says all its versions use GQA. For a model with full attention on every layer, the cost follows layers × KV heads × head size, not the total parameter count, which is why Phi-4, a 14B model, costs more per token than Qwen3 14B.
+In grouped-query attention (GQA), many query heads share one KV head, so the cache stores fewer keys and values per token; the Llama 3.1 model card says all its versions use GQA. For a model with full attention on every layer, the cost follows layers × KV heads × head size, not the total parameter count, which is why Phi-4, a 14B model, costs more per token than Qwen3 14B. A model that reuses its layers pays for every pass: <HubLink model="nanbeige4.2-3b" /> runs its <Num kind="layers" model="nanbeige4.2-3b" /> layers twice for every token, and llama.cpp keeps a separate KV cache for each pass, so this small model costs more per token than Qwen3 14B.
 
 ### Sliding-window attention
 
