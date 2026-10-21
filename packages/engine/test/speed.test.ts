@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { fit } from '../src/fit';
 import { gpuSharesOf, gpuUnitsOf } from '../src/memory';
-import { bytesPerTokenGB, gpuThroughputGBs, moeOverheadSeconds, ppEffectiveParamsB, ppEstimate, resolveEff, tgEstimate } from '../src/speed';
+import { bytesPerTokenGB, gpuThroughputGBs, moeOverheadSeconds, partialKvGpuShare, ppEffectiveParamsB, ppEstimate, resolveEff, tgEstimate } from '../src/speed';
 import type { Hardware, ModelQuant } from '../src/types';
 import {
   CPU_MOE_RAM_EFF,
@@ -15,7 +15,7 @@ import {
   PP_MOE,
   PP_REF_PARAMS_B,
 } from '../src/constants';
-import { GEMMA4_E4B_Q4, GPT_OSS_20B, K2_MOVA_Q4, LLAMA2_7B_Q4_0, LLAMA33_70B_Q4, NANBEIGE42_Q4, QWEN3_8B_Q4, QWEN35_35B_A3B_Q4, QWEN36_35B_A3B_Q4_SPLIT, RTX_3060_12GB, RTX_4090 } from './fixtures';
+import { GEMMA4_E4B_Q4, GPT_OSS_20B, K2_MOVA_Q4, LLAMA2_7B_Q4_0, LLAMA33_70B_Q4, NANBEIGE42_Q4, QWEN3_8B_Q4, QWEN35_35B_A3B_Q4, QWEN36_35B_A3B_Q4_SPLIT, RTX_3060_12GB, RTX_4060_8GB, RTX_4090 } from './fixtures';
 
 describe('resolveEff (§3.2)', () => {
   it('uses class defaults — GPU classes have one (dense) value since 10-16 D88, MoE reads with it too', () => {
@@ -172,6 +172,33 @@ describe('tgEstimate (§3.1~3.4)', () => {
       (0.43 * 89.6) / bytes,
       1,
     );
+  });
+
+  it('partial-offload of a looped model (Nanbeige4.2, 10-22 D114 review): KV reads sit on the GPU by ((loops − 1) + gpuFrac) / loops — the -ngl command puts the later loop’s KV there', () => {
+    const ctx = 32768;
+    const gpuFrac = 0.259;
+    const kv = (180_224 * ctx) / 1e9;
+    const weights = 2.68 + 1.97; // 파일 + 반복 블록 한 번 더
+    const G = gpuThroughputGBs(RTX_4060_8GB);
+    const C = resolveEff({ effClass: 'cpu' }, false) * RTX_4060_8GB.ramBandwidthGBs;
+    const share = (1 + gpuFrac) / 2;
+    const seconds = (gpuFrac * weights) / G + ((1 - gpuFrac) * weights) / C + (share * kv) / G + ((1 - share) * kv) / C;
+    expect(partialKvGpuShare(NANBEIGE42_Q4, gpuFrac)).toBeCloseTo(share, 12);
+    expect(partialKvGpuShare({ loops: 3 }, 0.4)).toBeCloseTo(2.4 / 3, 12);
+    const looped = tgEstimate(RTX_4060_8GB, NANBEIGE42_Q4, { mode: 'partial-offload', gpuFrac }, { ctx });
+    expect(looped).toBeCloseTo(1 / seconds, 9);
+    // KV 를 gpuFrac 으로만 나누던 식(10-21 첫 판)보다 빠르고 full-gpu 를 넘지 않는다
+    const full = tgEstimate(RTX_4060_8GB, NANBEIGE42_Q4, { mode: 'full-gpu' }, { ctx });
+    const cpu = tgEstimate(RTX_4060_8GB, NANBEIGE42_Q4, { mode: 'cpu-only' }, { ctx });
+    expect(looped).toBeGreaterThan(1 / (gpuFrac / full + (1 - gpuFrac) / cpu));
+    expect(looped).toBeLessThan(full);
+    // 반복이 없으면 기존 조화 평균과 바이트까지 같다
+    const plain = { ...NANBEIGE42_Q4, loops: undefined };
+    const plainFull = tgEstimate(RTX_4060_8GB, plain, { mode: 'full-gpu' }, { ctx });
+    const plainCpu = tgEstimate(RTX_4060_8GB, plain, { mode: 'cpu-only' }, { ctx });
+    expect(tgEstimate(RTX_4060_8GB, plain, { mode: 'partial-offload', gpuFrac }, { ctx })).toBe(1 / (gpuFrac / plainFull + (1 - gpuFrac) / plainCpu));
+    expect(partialKvGpuShare(plain, gpuFrac)).toBe(gpuFrac);
+    expect(partialKvGpuShare({ loops: 1 }, gpuFrac)).toBe(gpuFrac);
   });
 
   it('partial-offload without gpuFrac degrades to cpu speed (defensive default 0)', () => {

@@ -278,7 +278,7 @@ describe('§2.4 looped dense (Nanbeige4.2 — 10-22 D114): placement is one copy
     expect(fit(RTX_4060_8GB, NANBEIGE42_Q4, { ctx: 32768 }).mode).toBe('partial-offload');
   });
 
-  it('bestQuant ladder keeps the loop block structure (scaled loopGB) — fit itself never reads it', () => {
+  it('a failed fit gives the same bestQuant with or without loops — the ladder only re-runs fit, which never reads loops or loopGB', () => {
     const tiny: Hardware = { ...RTX_4060_8GB, vramGB: 2, ramGB: 6 };
     const r = fit(tiny, { ...NANBEIGE42_Q4, quant: 'Q8_0', fileGB: 4.43, loopGB: 3.35, offGpuGB: 0.55 }, { ctx: 8192 });
     expect(r.fits).toBe(false);

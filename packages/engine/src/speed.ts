@@ -196,10 +196,30 @@ function tgCpuMoe(
   return Math.min(1 / seconds, tgFullGpu(hw, mq, bytes));
 }
 
-/** partial-offload(§3.4): 조화 평균 — dense 절벽. gpuFrac 은 GPU 에 올린 몫 ÷ (파일 − 층별 임베딩 표) — 읽기 바이트와 같은 기준(fit.ts) */
-function tgPartial(hw: Hardware, mq: ModelQuant, bytes: number, cpu: number, gpuFrac: number): number {
+/**
+ * 반복 층 모델(`loops` ≥ 2 — 10-22 D114 리뷰)의 부분 오프로드에서 KV 읽기의 GPU 몫 = ((loops − 1) + gpuFrac) / loops (§3.4).
+ * 스니펫 `-ngl = 층 × (loops − 1) + 1 + floor(gpuFrac × 층)` 이면 llama.cpp 는 논리 층 `층 × (loops − 1) + k` 개를 GPU 장치에 두고
+ * (`i_gpu_start = n_layer_all + 1 − ngl`, https://github.com/ggml-org/llama.cpp/blob/0a1ef309cdbb9f2024f58a38fb4c42352c5db569/src/llama-model.cpp#L1670-L1695),
+ * KV 캐시는 논리 층마다 그 층의 장치에 만든다(같은 커밋 src/llama-kv-cache.cpp#L216-L219) — 뒤쪽 반복 층의 KV 는 가중치가 CPU 에 있어도 GPU 에 간다.
+ * 가중치 읽기의 GPU 몫은 gpuFrac 그대로(물리 k 층 + 출력층 — 이 몫보다 조금 크다, 보수). 반복이 없으면 gpuFrac(기존 식)
+ */
+export function partialKvGpuShare(mq: Pick<ModelQuant, 'loops'>, gpuFrac: number): number {
+  if (mq.loops === undefined || mq.loops <= 1) return gpuFrac;
+  return (mq.loops - 1 + gpuFrac) / mq.loops;
+}
+
+/**
+ * partial-offload(§3.4): 조화 평균 — dense 절벽. gpuFrac 은 GPU 에 올린 몫 ÷ (파일 − 층별 임베딩 표) — 읽기 바이트와 같은 기준(fit.ts).
+ * 반복 층 모델은 KV 읽기만 `partialKvGpuShare` 몫을 GPU 속도로 읽는다(그 명령의 배치 — 위 주석). 반복이 없는 모델은 기존 식 그대로(바이트까지 같다)
+ */
+function tgPartial(hw: Hardware, mq: ModelQuant, bytes: number, kvRead: number, cpu: number, gpuFrac: number): number {
   const gpu = tgFullGpu(hw, mq, bytes);
-  return 1 / (gpuFrac / gpu + (1 - gpuFrac) / cpu);
+  const seconds = gpuFrac / gpu + (1 - gpuFrac) / cpu;
+  if (mq.loops === undefined || mq.loops <= 1) return 1 / seconds;
+  // 기존 식은 KV 도 gpuFrac 으로 나눈다 — 반복 모델은 KV 의 (몫 − gpuFrac) 만큼을 CPU 속도에서 GPU 속도로 옮긴다
+  const cpuGBs = resolveEff({ effClass: 'cpu' }, false) * hw.ramBandwidthGBs;
+  const moved = (partialKvGpuShare(mq, gpuFrac) - gpuFrac) * kvRead;
+  return 1 / (seconds + moved * (1 / gpuThroughputGBs(hw) - 1 / cpuGBs));
 }
 
 /** 모드별 tg 추정 tok/s (§3.1~3.4). 밴드 적용 전 원시 추정값. */
@@ -218,7 +238,7 @@ export function tgEstimate(
     case 'cpu-moe':
       return tgCpuMoe(hw, mq, bytes, kvRead, fitResult.cpuMoeLayers);
     case 'partial-offload':
-      return tgPartial(hw, mq, bytes, tgCpuOnly(hw, mq, ctx, opts?.kvQuant, bytes), fitResult.gpuFrac ?? 0);
+      return tgPartial(hw, mq, bytes, kvRead, tgCpuOnly(hw, mq, ctx, opts?.kvQuant, bytes), fitResult.gpuFrac ?? 0);
     case 'cpu-only':
       return tgCpuOnly(hw, mq, ctx, opts?.kvQuant, bytes);
   }
