@@ -380,6 +380,9 @@ export function isTheoretical(gpu: GpuCore, model: ModelCore, mode: Mode): boole
   // 층별 임베딩 표(PLE — Gemma 4 E 계열, 10-21 D112): 엔진이 토큰당 고정 시간(백엔드별 상수)을 더해 공개 실측 10점 중 9점이 −10.9~+11.0%
   // 지만, 상수 근거가 카드 몇 장·백엔드 둘뿐이고 A770 은 +78%(intel-arc 계수)라 보정 추정(±20%)의 근거가 안 된다(docs/02 §4 ⑦·§7, PROGRESS §4 D112)
   if (model.arch.ple === true) return true;
+  // 값 전문가(MoVA — K2-Horizon, 10-21 D113): 값 전문가는 llama.cpp 가 늘 그래픽카드에 두므로 비전문가로 세는데, 토큰마다 일부만 읽는 것을 엔진은
+  // 전부 읽는다고 본다(보수 근사 — 대역폭이 병목인 경로일수록 낮게 본다). 공개 실측도 없어 보정 추정의 근거가 안 된다(docs/02 §4·§9, PROGRESS §4 D113)
+  if (model.arch.valueExperts !== undefined) return true;
   // FP16 크리플 구형 GPU — 계수 도출 표본(RTX 30~50·RDNA3/4) 밖
   if (isFp16Crippled(gpu)) return true;
   // 통합 메모리 칩의 CPU 추론 — cpu 계수 검증점은 데스크톱 DDR5 뿐 (unifiedCpuBandwidth 는 상한 보정)

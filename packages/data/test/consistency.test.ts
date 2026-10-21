@@ -154,6 +154,16 @@ describe('MoE arch.experts/topK (10-01)', () => {
     const dense = validateAll(withModel('llama-3.1-8b', { experts: 8, topK: 2 }));
     expect(dense.some((p) => p.includes('llama-3.1-8b') && p.includes('only for MoE'))).toBe(true);
   });
+
+  it('value experts (MoVA, 10-21 D113): MoE only, set together, valueTopK < valueExperts', () => {
+    expect(validateAll(withModel('gpt-oss-20b', { valueExperts: 64, valueTopK: 4 }))).toEqual([]);
+    const dense = validateAll(withModel('llama-3.1-8b', { valueExperts: 64, valueTopK: 4 }));
+    expect(dense.some((p) => p.includes('llama-3.1-8b') && p.includes('valueExperts/valueTopK only for MoE'))).toBe(true);
+    const half = validateAll(withModel('gpt-oss-20b', { valueExperts: 64 }));
+    expect(half.some((p) => p.includes('must be set together'))).toBe(true);
+    const inverted = validateAll(withModel('gpt-oss-20b', { valueExperts: 4, valueTopK: 4 }));
+    expect(inverted.some((p) => p.includes('arch.valueTopK 4 must be < arch.valueExperts 4'))).toBe(true);
+  });
 });
 
 describe('seed scale (docs/06 P0-3)', () => {

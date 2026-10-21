@@ -226,6 +226,14 @@ export const ModelSchema = z
        * 헤더 실측 행은 `pleGB` 를 갖는다(validateAll). 속도 모델이 검증되지 않은 구조라 추정은 이론 추정(assess `isTheoretical`)
        */
       ple: z.literal(true).optional(),
+      /**
+       * MoE 전용(10-21 D113): 값 전문가(MoVA — K2-Horizon) 수 · 토큰당 고르는 수. MoE 층마다 V 투영을 값 전문가로 만든다(KV 캐시는 표준 GQA).
+       * 출처 = config.json `mova_num_experts`·`mova_num_experts_per_tok`(GGUF `<arch>.attention.value_expert_count`·`value_expert_used_count`).
+       * 값 전문가 텐서(attn_v_exps)는 llama.cpp 가 늘 그래픽카드에 두어 헤더 분할이 비전문가로 센다 — 속도식은 토큰마다 전부 읽는다고 보는 보수 근사라
+       * 추정은 이론 추정(assess `isTheoretical`). 둘 다 있거나 둘 다 없거나, valueTopK < valueExperts(validateAll)
+       */
+      valueExperts: z.number().int().positive().optional(),
+      valueTopK: z.number().int().positive().optional(),
     }),
     /**
      * 비-full attention(swa/mla/hybrid) KV 수동 고정 — docs/03 §5.1 "수동 필드 우선".

@@ -273,6 +273,17 @@ export function validateAll(files: SeedFiles): string[] {
     if (arch && topK !== undefined && topK !== arch.topK) {
       problems.push(`models/${model.id}: arch.topK ${topK} != MOE_ARCH ${arch.topK}`);
     }
+    // 값 전문가(MoVA, 10-21 D113): MoE 모델만 · 둘 다 함께 · valueTopK < valueExperts
+    const { valueExperts, valueTopK } = model.arch;
+    if (valueExperts !== undefined || valueTopK !== undefined) {
+      if (model.activeParamsB === undefined) {
+        problems.push(`models/${model.id}: arch.valueExperts/valueTopK only for MoE models (activeParamsB)`);
+      } else if (valueExperts === undefined || valueTopK === undefined) {
+        problems.push(`models/${model.id}: arch.valueExperts and arch.valueTopK must be set together`);
+      } else if (valueTopK >= valueExperts) {
+        problems.push(`models/${model.id}: arch.valueTopK ${valueTopK} must be < arch.valueExperts ${valueExperts}`);
+      }
+    }
 
     // full attention 모델은 kvBytesPerTokenF16 이 GQA 공식과 일치해야 한다 (docs/02 §2.2)
     if (model.arch.attnType === 'full') {

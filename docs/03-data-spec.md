@@ -30,7 +30,7 @@ Gpu { id, name, aliases[],  // 검색 별칭 + P1-3 계산기 콤보박스·GPU 
      //   "Apple M4(맥 미니·맥북 에어·맥북 프로·아이맥)", 설명(요약 구성 메모리로 파는 계열만), 사양 "이 칩이 들어간 맥" 줄(계열별 메모리). 표시 이름은 messages `MacProduct`,
      //   조립은 `apps/web/lib/search-names.ts`. 콤보 제목에는 넣지 않는다
 Model { id, family, name, hfId, paramsB, activeParamsB?,   // moe ⇒ activeParamsB 필수
-     arch:{layers, kvHeads, headDim, attnType:'full'|'swa'|'mla'|'hybrid', kvBytesPerTokenF16, experts?, topK?, expertLayers?, ple?:true},  // 바이트/tok f16 사전계산 (SWA/MLA/하이브리드·KV 공유 층 보정 반영)
+     arch:{layers, kvHeads, headDim, attnType:'full'|'swa'|'mla'|'hybrid', kvBytesPerTokenF16, experts?, topK?, expertLayers?, ple?:true, valueExperts?, valueTopK?},  // 바이트/tok f16 사전계산 (SWA/MLA/하이브리드·KV 공유 층 보정 반영)
      // experts·topK (10-01 D56): MoE 전용, 둘 다 있거나 둘 다 없음, topK < experts. validateAll 이 모든 MoE 모델에 요구하고 MOE_ARCH 와 대조.
      //   출처 config.json(num_experts·num_local_experts·n_routed_experts / num_experts_per_tok·top_k_experts·experts_per_token), GGUF expert_count·expert_used_count 로 교차 확인
      // expertLayers (10-03 D63): MoE 전용·선택 — 라우팅 전문가가 있는 층 번호(0부터, 트렁크만, 오름차순, 전체 층보다 적게). 일부 층에만 전문가가 있을 때만.
@@ -39,6 +39,11 @@ Model { id, family, name, hfId, paramsB, activeParamsB?,   // moe ⇒ activePara
      // ple (10-21 D112): 층별 임베딩 표(PLE — config hidden_size_per_layer_input > 0, Gemma 4 E2B·E4B)가 있는 dense 모델 — classifyArch(gemma4_text) 가 기록.
      //   헤더 실측 행(offGpuGB 있음)은 모두 pleGB 를 가져야 하고, MoE 에는 둘 수 없다(validateAll). 추정 라벨은 이론 추정(assess isTheoretical — docs/02 §4 ⑦).
      //   KV 공유 층(num_kv_shared_layers)은 따로 필드를 두지 않는다 — kvBytesPerTokenF16 이 앞 `층 수 − 공유 층` 안의 전체 어텐션 층만 센 값(attnOverrides.reason·sources 에 llama.cpp 근거)
+     // valueExperts·valueTopK (10-21 D113): MoE 전용·선택 — 값 전문가(MoVA, K2-Horizon) 수와 토큰당 고르는 수. 둘 다 있거나 둘 다 없음, valueTopK < valueExperts(validateAll).
+     //   출처 config.json mova_num_experts·mova_num_experts_per_tok(GGUF attention.value_expert_count·value_expert_used_count) — classifyArch(k2_horizon)가 기록, 레코드 sources 에 llama.cpp 근거.
+     //   MoE 층마다 V 투영을 값 전문가 중 몇 개로 만들어 그 합을 V 로 쓴다 — 토큰당 V 모양이 표준과 같아 KV 는 표준 GQA 식. 값 전문가 텐서(attn_v_exps)는
+     //   llama.cpp 가 --n-cpu-moe·--fit 에서도 그래픽카드에 둬 행의 nonExpertGB 에 들어 있다(아래 expertGB). 엔진은 이 필드를 읽지 않는다 — 속도식이 값 전문가를
+     //   토큰마다 전부 읽는다고 보는 보수 근사라 추정 라벨이 이론 추정이다(assess isTheoretical — docs/02 §4·§9). 계산기 HF 불러오기는 MoVA 모델을 받지 않는다
      attnOverrides?:{kvBytesPerTokenF16, reason, sources[]},  // 비-full 전용, arch.kvBytesPerTokenF16과 일치(미러) — 존재 시 sync가 arch 자동 갱신 안 함 (§5.1)
      maxContext, license, moe:boolean, nonExpertGB?,   // MoE attention+shared GB (derive.ts 균등 bpw 유도) — 10-01 부터 행 실측(ModelQuant.nonExpertGB)이 우선, 이 값은 bpw 사다리 폴백
      category:('chat'|'coding'|'reasoning'|'vision')[] (min 1),
@@ -56,7 +61,7 @@ Model { id, family, name, hfId, paramsB, activeParamsB?,   // moe ⇒ activePara
 ModelQuant { modelId, quant:QuantId, fileGB, expertGB?, nonExpertGB?, offGpuGB?, pleGB?, mtpGB?, ggufRepo, fileName?, sources[] }   // 실제 GGUF 크기 (decimal GB, 분할 합산)
      // expertGB·nonExpertGB (10-01 D56): GGUF 헤더 실측(scripts/gguf-header.ts), MoE 행 전용, 둘 다 있거나 둘 다 없음,
      //   0.75×fileGB ≤ expertGB + nonExpertGB ≤ fileGB + 0.02 (validateAll — 하한 10-03).
-     //   expertGB = 트렁크 층의 `_exps`·`_chexps` 텐서 합. nonExpertGB = GPU 상주분 — 입력층 제외(token_embd·per_layer_token_embd·position_embd·token_types,
+     //   expertGB = 트렁크 층의 `_exps`·`_chexps` 텐서 합(값 전문가 `attn_v_exps` 제외 — llama.cpp --n-cpu-moe 가 옮기는 FFN 전문가만, 10-21 D113). nonExpertGB = GPU 상주분(값 전문가 포함) — 입력층 제외(token_embd·per_layer_token_embd·position_embd·token_types,
      //   llama.cpp 는 입력층을 CPU 에 둔다, 출력층 없는 tied 모델은 token_embd 1회 포함), MTP·NextN 블록 제외(기본 로드 안 함). token_embd_norm 은 GPU.
      //   엔진 cpu-moe 배치·속도의 입력(docs/02 §3.3)이자 합이 full-gpu 의 그래픽카드 상주 가중치(docs/02 §2.4-1). sync-models 가 새 행·바뀐 파일만 다시 잰다(§5.1 ⑤)
      // offGpuGB (10-03 D62): dense 행 전용 GGUF 헤더 실측 — 파일 바이트 − (전문가 + 비전문가) = 입력층·MTP 블록·헤더 메타데이터. dGPU full-gpu 필요량 = fileGB − offGpuGB.

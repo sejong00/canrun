@@ -860,3 +860,107 @@ describe('browser limits (10-01 review)', () => {
     expect(tiny.kind).toBe('no-params');
   });
 });
+
+describe('classifyArch — K2-Horizon dense and MoVA (k2_horizon, 10-21 D113)', () => {
+  // IFM/K2-Horizon-7B · IFM/K2-Horizon-MoVA-36B-A4B config.json 의 구조 값 그대로(2026-10-21 확인)
+  const K2_7B = {
+    architectures: ['K2HorizonForCausalLM'], model_type: 'k2_horizon', attention_gate_func: null, decoder_sparse_step: 1,
+    head_dim: 128, hidden_size: 4096, intermediate_size: 12288, layernorm_num_groups: 4, max_position_embeddings: 524288,
+    mlp_only_layers: Array.from({ length: 36 }, (_, i) => i), moe_intermediate_size: 0, mova_num_experts: 0, mova_num_experts_per_tok: 0,
+    num_attention_heads: 32, num_experts: 0, num_experts_per_tok: 0, num_hidden_layers: 36, num_key_value_heads: 8, num_shared_experts: 0,
+    sliding_window: null, use_sliding_window: false, tie_word_embeddings: false, vocab_size: 250624,
+  };
+  const K2_MOVA = {
+    architectures: ['K2HorizonForCausalLM'], model_type: 'k2_horizon', attention_gate_func: 'softplus', decoder_sparse_step: 1,
+    head_dim: 128, hidden_size: 2560, intermediate_size: 6144, layernorm_num_groups: 2, max_position_embeddings: 524288,
+    mlp_only_layers: [0, 1, 2], moe_intermediate_size: 768, mova_num_experts: 64, mova_num_experts_per_tok: 4,
+    num_attention_heads: 32, num_experts: 100, num_experts_per_tok: 8, num_hidden_layers: 48, num_key_value_heads: 8, num_shared_experts: 1,
+    sliding_window: null, use_sliding_window: false, tie_word_embeddings: false, vocab_size: 250624,
+  };
+
+  it('7B: plain GQA dense — every layer full attention, 36 × 8 × 128 × 4 = 147,456 B/token, no MoE fields or extra sources', () => {
+    const r = okArch(K2_7B);
+    expect(r).toMatchObject({ modelType: 'k2_horizon', attnType: 'full', vision: false, maxContext: 524288 });
+    expect(r.arch).toEqual({ layers: 36, kvHeads: 8, headDim: 128, kvBytesPerTokenF16: 147_456 });
+    expect(r.moe).toBeUndefined();
+    expect(r.mova).toBeUndefined();
+    expect(r.expertLayers).toBeUndefined();
+    expect(r.refs).toBeUndefined();
+    expect(r.override).toBeUndefined();
+  });
+
+  it('MoVA 36B-A4B: MoE 100 × top-8 on the 45 layers after the 3 leading dense layers, value experts 64 × top-4, standard KV 196,608 B/token', () => {
+    const r = okArch(K2_MOVA);
+    expect(r).toMatchObject({ attnType: 'full', moe: { experts: 100, topK: 8 }, mova: { experts: 64, topK: 4 } });
+    // 값 전문가 합이 표준 V 와 같은 모양이라 KV 는 기본식 — 48 × 8 × 128 × 4
+    expect(r.arch).toEqual({ layers: 48, kvHeads: 8, headDim: 128, kvBytesPerTokenF16: 196_608 });
+    expect(r.expertLayers).toEqual(Array.from({ length: 45 }, (_, i) => i + 3));
+    // 근거는 머지 커밋에 고정한 llama.cpp 소스
+    expect(r.refs?.length).toBeGreaterThan(0);
+    for (const url of r.refs ?? []) expect(url).toMatch(/^https:\/\/github\.com\/ggml-org\/llama\.cpp\/blob\/4625240437c6821ee5c2da99e12d4817c6a8f07f\//);
+  });
+
+  it('a K2-Horizon MoE without value experts (375B-A23B shape) keeps the layer map but no MoVA; num_dense_layers wins over mlp_only_layers', () => {
+    const r = okArch({ ...K2_MOVA, attention_gate_func: null, num_hidden_layers: 61, num_experts: 192, mova_num_experts: 0, mova_num_experts_per_tok: 0 });
+    expect(r.mova).toBeUndefined();
+    expect(r.expertLayers?.[0]).toBe(3);
+    expect(r.expertLayers).toHaveLength(58);
+    const explicit = okArch({ ...K2_MOVA, num_dense_layers: 0, mlp_only_layers: [] });
+    expect(explicit.expertLayers).toBeUndefined(); // 모든 층이 MoE — 균등 근사가 정확
+  });
+
+  it.each([
+    ['another class', { ...K2_MOVA, architectures: ['K2HorizonModel'] }, 'k2_horizon 변형'],
+    ['an attention gate the converter refuses', { ...K2_MOVA, attention_gate_func: 'sigmoid' }, 'softplus'],
+    ['value experts without MoE', { ...K2_7B, mova_num_experts: 64, mova_num_experts_per_tok: 4 }, 'MoE 층에만'],
+    ['only one of the value-expert counts', { ...K2_MOVA, mova_num_experts_per_tok: 0 }, '하나만'],
+    ['value top-k ≥ value experts', { ...K2_MOVA, mova_num_experts_per_tok: 64 }, '≥ 값 전문가'],
+    ['an MoE layer step other than 1', { ...K2_MOVA, decoder_sparse_step: 2 }, 'decoder_sparse_step'],
+    ['a dense layer after the leading block', { ...K2_MOVA, mlp_only_layers: [0, 1, 2, 10] }, 'mlp_only_layers'],
+    ['sliding layers', { ...K2_7B, layer_types: repeat(12, 'sliding_attention', 'sliding_attention', 'full_attention') }, '전체 어텐션'],
+  ] as const)('refuses %s', (_name, config, reason) => {
+    const r = classifyArch(config);
+    expect(r.kind).toBe('unsupported');
+    if (r.kind === 'unsupported') expect(r.reason).toContain(reason);
+  });
+
+  it('buildHfModel (calculator out-of-catalog path) takes the dense 7B but refuses MoVA — the label and active count need the catalog record', () => {
+    const dense = ok(buildHfModel({ hfId: 'IFM/K2-Horizon-7B', ggufRepo: 'IFM/K2-Horizon-7B-GGUF', config: K2_7B, tree: [file('K2-Horizon-7B-Q4_K_M.gguf', 5.59)], info: { paramsB: 9.0 } }));
+    expect(dense.model.arch).toMatchObject({ attnType: 'full', kvBytesPerTokenF16: 147_456 });
+    const mova = buildHfModel({
+      hfId: 'IFM/K2-Horizon-MoVA-36B-A4B', ggufRepo: 'IFM/K2-Horizon-MoVA-36B-A4B-GGUF', config: K2_MOVA,
+      tree: [file('K2-Horizon-MoVA-36B-A4B-Q4_K_M.gguf', 22.37)], info: { paramsB: 37.44 },
+    });
+    expect(mova).toMatchObject({ kind: 'unsupported', reason: expect.stringContaining('MoVA') });
+  });
+});
+
+describe('classifySplit — MoVA value experts stay on the GPU (10-21 D113)', () => {
+  const Q4_K = 12;
+  const F32 = 0;
+  const header: GgufHeader = {
+    version: 3,
+    kv: { 'general.architecture': 'k2-horizon', 'k2-horizon.block_count': 2, 'k2-horizon.expert_count': 4, 'k2-horizon.expert_used_count': 2 },
+    tensors: [
+      { name: 'token_embd.weight', dims: [256, 4], type: Q4_K }, // 576 — CPU
+      { name: 'output.weight', dims: [256, 4], type: Q4_K }, // 576
+      { name: 'blk.0.attn_v.weight', dims: [256, 2], type: Q4_K }, // 288 — 앞 dense 층의 표준 V
+      { name: 'blk.1.attn_v_gate.weight', dims: [256, 4], type: Q4_K }, // 576 — 값 라우터
+      { name: 'blk.1.attn_v_exps.weight', dims: [256, 2, 4], type: Q4_K }, // 1152 — 값 전문가
+      { name: 'blk.1.ffn_gate_exps.weight', dims: [256, 2, 4], type: Q4_K }, // 1152 — FFN 전문가
+      { name: 'blk.1.ffn_gate_inp.weight', dims: [8, 4], type: F32 }, // 128
+    ],
+    headerBytes: 0,
+  };
+
+  it('attn_v_exps counts as non-expert (llama.cpp --n-cpu-moe/--fit move ffn_*_exps only) and is reported separately', () => {
+    const m = classifySplit([header]);
+    expect(m.bytes.expert).toBe(1152);
+    expect(m.bytes.nonExpert).toBe(576 + 288 + 576 + 1152 + 128);
+    expect(m.bytes.valueExpert).toBe(1152);
+    expect(m.bytes.cpu).toBe(576);
+    // 파라미터 수도 FFN 전문가만 전문가로 센다(값 전문가는 total 에만)
+    expect(m.expertParams).toBe(256 * 2 * 4);
+    expect(m.totalParams).toBe(256 * 4 + 256 * 4 + 256 * 2 + 256 * 4 + 256 * 2 * 4 + 256 * 2 * 4 + 8 * 4);
+  });
+});

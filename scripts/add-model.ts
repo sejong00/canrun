@@ -448,6 +448,8 @@ export async function planAddition(
       ...(arch.expertLayers ? { expertLayers: arch.expertLayers } : {}),
       // 층별 임베딩 표(PLE — 10-21 D112): 헤더 실측 행이 pleGB 를 갖고, 추정은 이론 추정
       ...(arch.ple ? { ple: true } : {}),
+      // 값 전문가(MoVA — 10-21 D113): 헤더 분할은 값 전문가를 비전문가(그래픽카드 상주)로 세고, 추정은 이론 추정
+      ...(arch.mova ? { valueExperts: arch.mova.experts, valueTopK: arch.mova.topK } : {}),
     },
     // 산식 근거(llama.cpp 가 KV 를 두는 층 — D63)가 있으면 config 출처 뒤에 덧붙인다
     ...(arch.override
@@ -462,8 +464,8 @@ export async function planAddition(
     // 출시일과 카탈로그 추가일(D72 — 업데이트 소식 페이지가 날짜별로 묶는다)
     ...catalogDates(info.createdAt, today),
     note: `add-model 생성(${today}). releasedAt = HF createdAt${mirror ? `. gated — arch 는 ${mirror} 미러 config` : ''}`,
-    // MoE 는 experts/topK 의 출처로 config.json 을 명시 (게이트면 미러 config)
-    sources: [hfUrl(hfId), ...(mirror ? [configUrl(mirror)] : arch.moe ? [configUrl(hfId)] : [])],
+    // MoE 는 experts/topK 의 출처로 config.json 을 명시 (게이트면 미러 config). 분류기가 구조 근거(llama.cpp 소스)를 주면 덧붙인다(K2-Horizon MoE — D113)
+    sources: [hfUrl(hfId), ...(mirror ? [configUrl(mirror)] : arch.moe ? [configUrl(hfId)] : []), ...(arch.refs ?? [])],
   };
 
   // 스키마 검증 — 쓰기 전에. 교차 검증은 쓴 뒤 validate-data 로(MOE_ARCH 를 새로 읽어야 해서 별도 프로세스)
@@ -479,6 +481,9 @@ export async function planAddition(
   lines.push(`  KV ${arch.override?.kvBytesPerTokenF16 ?? arch.arch.kvBytesPerTokenF16} B/token · maxContext ${arch.maxContext} · params ${paramsB}B · license ${license} · popularity ${popularity} · category ${category.join(',')}`);
   if (arch.override) lines.push(`  ${arch.override.reason}`);
   if (arch.expertLayers) lines.push(`  expert layers ${arch.expertLayers.length}/${arch.arch.layers}: ${arch.expertLayers.join(',')}`);
+  if (arch.mova) {
+    lines.push(`  MoVA value experts ${arch.mova.experts} top-${arch.mova.topK} — attn_v_exps 는 비전문가(그래픽카드 상주, llama.cpp --n-cpu-moe·--fit 이 옮기지 않음), 속도는 전부 읽는 보수 근사·이론 추정`);
+  }
   for (const r of rows) {
     const split =
       r.expertGB !== undefined

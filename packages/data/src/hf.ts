@@ -222,6 +222,8 @@ export function extractMoe(config: unknown): { experts: number; topK: number } |
  * llama.cpp https://github.com/ggml-org/llama.cpp/pull/26841) · mellum(JetBrains Mellum2·2.1 — SWA 3:1 + MoE, 전 층 MoE 만,
  * https://github.com/ggml-org/llama.cpp/pull/23966) · kolibri1(Aleph Alpha Kolibri-1 — SWA 4:1 + MoE,
  * https://github.com/ggml-org/llama.cpp/pull/30673) — 셋 다 기존 슬라이딩 윈도 경로(Laguna·Spark 선례).
+ * 10-21 D113: k2_horizon(IFM K2-Horizon — dense·MoE·값 전문가 MoVA, https://github.com/ggml-org/llama.cpp/pull/29535) — 전체 어텐션·표준 GQA KV,
+ * 아래 전용 가드(`k2HorizonShape`)가 llama.cpp 가 읽는 모양인지와 MoE 층·값 전문가를 본다.
  */
 export const KNOWN_MODEL_TYPES: ReadonlySet<string> = new Set([
   'llama',
@@ -249,6 +251,7 @@ export const KNOWN_MODEL_TYPES: ReadonlySet<string> = new Set([
   'muse_glimmer_text',
   'mellum',
   'kolibri1',
+  'k2_horizon',
 ]);
 
 /**
@@ -298,6 +301,23 @@ const KV_SHARED_REFS: readonly string[] = [
   `${LLAMA_CPP_9A3B}/src/llama-kv-cache.cpp#L165-L169`,
 ];
 
+/**
+ * K2-Horizon 구조 근거 — llama.cpp 본선 지원 PR #29535 머지 커밋 4625240 (2026-10-06). MoE 모델 레코드 sources 에 config 와 함께 남긴다
+ */
+const LLAMA_CPP_K2 = 'https://github.com/ggml-org/llama.cpp/blob/4625240437c6821ee5c2da99e12d4817c6a8f07f';
+export const K2_HORIZON_REFS: readonly string[] = [
+  // MoE 층 = 앞 dense 층(leading_dense_block_count) 뒤 전부, MoVA 층은 attn_v 대신 값 전문가 attn_v_exps {n_embd, n_embd_v_gqa, 전문가 수}
+  `${LLAMA_CPP_K2}/src/models/k2-horizon.cpp#L67-L84`,
+  // 값 = 고른 값 전문가 출력의 가중 합 — 토큰마다 {n_embd_v_gqa} 한 줄(표준 V 와 같은 모양)이라 KV 캐시는 표준 GQA
+  `${LLAMA_CPP_K2}/src/models/k2-horizon.cpp#L137-L211`,
+  `${LLAMA_CPP_K2}/src/models/k2-horizon.cpp#L225`,
+  // --cpu-moe·--n-cpu-moe 와 --fit 자동 배치는 ffn_*_exps 만 CPU 로 옮긴다 — 값 전문가는 늘 그래픽카드
+  `${LLAMA_CPP_K2}/common/common.h#L1225`,
+  `${LLAMA_CPP_K2}/common/fit.cpp#L618`,
+  // 앞 dense 층 = mlp_only_layers 의 앞부분(num_dense_layers 가 없으면)
+  `${LLAMA_CPP_K2}/conversion/k2_horizon.py#L34-L44`,
+];
+
 export type ArchResult =
   | {
       kind: 'ok';
@@ -315,9 +335,67 @@ export type ArchResult =
        * 앞쪽 dense 층(bailing_hybrid first_k_dense_replace). `--n-cpu-moe N` 이 "앞 N 층"이라 엔진 근사(전문가 균등 분포)와 어긋나는 것을 막는다
        */
       expertLayers?: number[];
+      /**
+       * 값 전문가(MoVA — K2-Horizon, 10-21 D113): MoE 층마다 V 투영을 값 전문가 experts 개 중 topK 개로 만든다 — 모델 `arch.valueExperts`·`valueTopK`.
+       * 값 전문가 텐서는 llama.cpp 가 어느 배치에서도 CPU 로 옮기지 않아 헤더 분할이 비전문가(그래픽카드 상주)로 센다(classifySplit)
+       */
+      mova?: { experts: number; topK: number };
+      /** 구조 근거(llama.cpp 소스, 고정 커밋) — 모델 레코드 sources 에 덧붙인다 */
+      refs?: readonly string[];
       vision: boolean;
     }
   | { kind: 'unsupported'; reason: string };
+
+/** 0 이상 정수 — 0 을 "없음"과 구별해야 하는 필드(앞 dense 층 수) */
+const nonNegInt = (v: unknown): number | undefined => (typeof v === 'number' && Number.isInteger(v) && v >= 0 ? v : undefined);
+
+/**
+ * K2-Horizon(k2_horizon — llama.cpp k2-horizon, PR #29535 · 10-21 D113) 가드와 층 지도. 전체 어텐션·표준 GQA KV 라 KV 산식은 기본 분기 그대로고,
+ * 여기서는 llama.cpp 가 변환·로드하는 모양인지와 MoE 층·값 전문가만 본다(근거 `K2_HORIZON_REFS`):
+ * - 변환기는 K2HorizonForCausalLM 만 받고, 어텐션 게이트는 softplus(또는 없음)만 받는다(conversion/k2_horizon.py#L60-L61)
+ * - MoE 층 = 앞 dense 층 뒤 전부(`is_moe_layer = n_expert > 0 && i >= n_layer_dense_lead` — moe_every_n_layers 는 읽지만 쓰지 않는다).
+ *   앞 dense 층 수는 num_dense_layers, 없으면 mlp_only_layers 의 앞부분 — 그 뒤에 dense 층이 섞이거나 층 간격(decoder_sparse_step)이 1 이 아니면
+ *   텐서가 맞지 않아 로드되지 않으므로 보류
+ * - 값 전문가(mova_num_experts·mova_num_experts_per_tok)는 MoE 층에만 있다(`is_mova_layer = is_moe_layer && n_value_expert > 0`)
+ */
+function k2HorizonShape(
+  cfg: Record<string, unknown>,
+  archs: readonly string[],
+): { kind: 'ok'; expertLayers?: number[]; mova?: { experts: number; topK: number } } | { kind: 'unsupported'; reason: string } {
+  if (!archs.includes('K2HorizonForCausalLM')) return { kind: 'unsupported', reason: `llama.cpp 가 변환하지 않는 k2_horizon 변형(${archs.join(',') || 'architectures 없음'})` };
+  const gate = cfg['attention_gate_func'];
+  if (gate !== undefined && gate !== null && gate !== 'softplus') return { kind: 'unsupported', reason: `어텐션 게이트 ${String(gate)} — llama.cpp 변환기는 softplus 만 받는다` };
+  // llama.cpp k2-horizon 은 모든 층이 전체 어텐션(슬라이딩 창·선형 층 경로 없음)
+  const layerTypes = cfg['layer_types'];
+  if (Array.isArray(layerTypes) && layerTypes.some((t) => t !== 'full_attention')) return { kind: 'unsupported', reason: 'k2_horizon 에 전체 어텐션이 아닌 층(layer_types) — llama.cpp k2-horizon 은 전 층 전체 어텐션만' };
+  const layers = posInt(cfg['num_hidden_layers']);
+  const moe = extractMoe(cfg);
+  const valueExperts = posInt(cfg['mova_num_experts']);
+  const valueTopK = posInt(cfg['mova_num_experts_per_tok']);
+  if ((valueExperts === undefined) !== (valueTopK === undefined)) return { kind: 'unsupported', reason: 'MoVA 값 전문가 수·토큰당 수(mova_num_experts·mova_num_experts_per_tok) 중 하나만 있음' };
+  const mova = valueExperts !== undefined && valueTopK !== undefined ? { experts: valueExperts, topK: valueTopK } : undefined;
+  if (mova && mova.topK >= mova.experts) return { kind: 'unsupported', reason: `MoVA 토큰당 값 전문가 ${mova.topK} ≥ 값 전문가 ${mova.experts}` };
+  if (mova && !moe) return { kind: 'unsupported', reason: 'MoVA 인데 MoE 가 아님 — llama.cpp 는 MoE 층에만 값 전문가를 둔다' };
+  if (!moe || layers === undefined) return { kind: 'ok' };
+  const step = cfg['decoder_sparse_step'];
+  if (step !== undefined && step !== null && step !== 1) return { kind: 'unsupported', reason: `MoE 층 간격 ${String(step)}(decoder_sparse_step) — llama.cpp 는 앞 dense 층 뒤를 모두 MoE 로 읽는다` };
+  const mlpOnly = Array.isArray(cfg['mlp_only_layers']) ? (cfg['mlp_only_layers'] as unknown[]).map(Number) : [];
+  const onlySet = new Set(mlpOnly);
+  let dense = nonNegInt(cfg['num_dense_layers']);
+  if (dense === undefined) {
+    dense = 0;
+    while (onlySet.has(dense)) dense += 1;
+  }
+  if (mlpOnly.some((i) => !(Number.isInteger(i) && i >= 0 && i < dense!))) {
+    return { kind: 'unsupported', reason: `mlp_only_layers 에 앞쪽 ${dense}층 뒤의 dense 층이 있음 — llama.cpp 는 앞 dense 층 뒤를 모두 MoE 로 읽는다` };
+  }
+  if (dense >= layers) return { kind: 'unsupported', reason: `앞 dense 층 ${dense} ≥ 층 수 ${layers} — MoE 층 없음` };
+  return {
+    kind: 'ok',
+    ...(dense > 0 ? { expertLayers: Array.from({ length: layers - dense }, (_, i) => dense! + i) } : {}),
+    ...(mova ? { mova } : {}),
+  };
+}
 
 /** Mamba 하이브리드 층 지도 → 블록 종류(attention·mamba·moe·mlp). 구형 hybrid_override_pattern 문자열('*' 어텐션·'M' Mamba2·'E' MoE·'-' MLP) 도 받는다 */
 function mambaBlocks(cfg: Record<string, unknown>): string[] | undefined {
@@ -380,6 +458,8 @@ export function classifyArch(config: unknown): ArchResult {
   }
   const archs = [cfg['architectures'], top['architectures']].flatMap((a) => (Array.isArray(a) ? a.map(String) : []));
   let branch: StateBranch | undefined;
+  // K2-Horizon(10-21 D113): 전체 어텐션 기본 분기에 MoE 층 지도·값 전문가만 더한다
+  let k2: { expertLayers?: number[]; mova?: { experts: number; topK: number } } | undefined;
   if (modelType === 'nemotron_h') branch = 'mamba';
   else if (modelType === 'lfm2') {
     // 같은 model_type 의 임베딩·인코더 변형(Lfm2Model·Lfm2Bidirectional…)은 채팅 모델이 아니다 — llama.cpp 변환기가 CausalLM 으로 받는 것만
@@ -401,6 +481,10 @@ export function classifyArch(config: unknown): ArchResult {
     const mlp = cfg['mlp_layer_types'];
     if (!archs.includes('MellumForCausalLM')) return { kind: 'unsupported', reason: `llama.cpp 가 읽지 않는 mellum 변형(${archs.join(',') || 'architectures 없음'})` };
     if (Array.isArray(mlp) && mlp.some((t) => t !== 'sparse')) return { kind: 'unsupported', reason: 'llama.cpp 가 읽지 않는 mellum 변형(dense 층 포함 — mlp_layer_types)' };
+  } else if (modelType === 'k2_horizon') {
+    const shape = k2HorizonShape(cfg, archs);
+    if (shape.kind === 'unsupported') return shape;
+    k2 = shape;
   }
   for (const [key, need] of Object.entries(BRANCH_KEYS)) {
     if (has(key) && need !== branch) return { kind: 'unsupported', reason: `엔진이 모델링하지 않는 구조 (${key})` };
@@ -534,7 +618,12 @@ export function classifyArch(config: unknown): ArchResult {
   if (!layerTypes && sw !== undefined && cfg['use_sliding_window'] !== false && sw < maxContext) {
     return { kind: 'unsupported', reason: `전 층 슬라이딩 윈도(${sw}) — 선례 없음` };
   }
-  return { kind: 'ok', modelType, attnType: 'full', vision, maxContext, ...(moe ? { moe } : {}), arch: { layers, kvHeads, headDim, kvBytesPerTokenF16: full } };
+  // K2-Horizon MoE(10-21 D113): 앞 dense 층이 있으면 전문가 층 지도(`--n-cpu-moe` 가 "앞 N 블록"), 값 전문가, 근거 소스
+  const k2Extras =
+    k2 && moe
+      ? { ...(k2.expertLayers ? { expertLayers: k2.expertLayers } : {}), ...(k2.mova ? { mova: k2.mova } : {}), refs: K2_HORIZON_REFS }
+      : {};
+  return { kind: 'ok', modelType, attnType: 'full', vision, maxContext, ...(moe ? { moe } : {}), ...k2Extras, arch: { layers, kvHeads, headDim, kvBytesPerTokenF16: full } };
 }
 
 const DROP_SUFFIX = /[-_](?:instruct|it|chat|hf)$/i;
@@ -712,6 +801,9 @@ export function buildHfModel(input: HfModelInput): HfModelResult {
   // 층별 임베딩 표(10-21 D112)는 양자화 행마다 헤더 실측(pleGB)이 있어야 그래픽카드 몫·읽기 바이트를 셀 수 있다 — 이 경로는 dense 헤더를
   // 읽지 않아 표를 그래픽카드 몫으로 세고 속도를 1.6배쯤 낮게 본다. 카탈로그에 넣을 때(add-model)만 계산한다
   if (arch.ple) return { kind: 'unsupported', reason: '층별 임베딩 표(PLE) — 양자화 행마다 GGUF 헤더 실측이 필요해 카탈로그 모델로만 계산' };
+  // 값 전문가(MoVA, 10-21 D113)는 헤더 분할이 비전문가(그래픽카드 상주)로 세어 속도식이 토큰마다 전부 읽는다고 본다(보수 근사) — 그 라벨(이론 추정)은
+  // 카탈로그 모델의 arch.valueExperts 로 붙는다. 이 경로는 활성 파라미터를 헤더로 셀 때 값 전문가를 전부 활성으로 세기도 해 카탈로그로만 계산한다
+  if (arch.mova) return { kind: 'unsupported', reason: '값 전문가(MoVA) — 보수 근사·이론 추정 라벨이 붙는 카탈로그 모델로만 계산' };
 
   const modelId = `${HF_MODEL_ID_PREFIX}${slugFromHfId(input.hfId)}`;
   const records = quantRowsFrom(input.tree, input.ggufRepo, modelId);

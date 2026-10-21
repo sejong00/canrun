@@ -303,12 +303,14 @@ export const tensorElements = (t: GgufTensorInfo): number => t.dims.reduce((a, b
 // ---------------------------------------------------------------------------
 
 export type SplitMeasure = {
-  /** 라우팅 전문가(트렁크 블록) — decimal GB 2자리 */
+  /** 라우팅 FFN 전문가(트렁크 블록 — llama.cpp `--n-cpu-moe` 가 옮기는 텐서) — decimal GB 2자리 */
   expertGB: number;
-  /** GPU 상주 비전문가 — 입력층 제외(공유 임베딩이면 token_embd 1회 포함), MTP 제외 */
+  /** GPU 상주 비전문가 — 입력층 제외(공유 임베딩이면 token_embd 1회 포함), MTP 제외, 값 전문가(MoVA) 포함 */
   nonExpertGB: number;
   /** GPU 상주 가중치 = 전문가 + 비전문가 (원시 바이트 합을 한 번만 반올림) — `-ngl all`·MTP 미적재일 때 llama.cpp 가 올리는 양 */
   gpuGB: number;
+  /** 값 전문가(MoVA `attn_v_exps` — nonExpertGB 의 일부, 늘 그래픽카드) — 없으면 0 (10-21 D113) */
+  valueExpertGB: number;
   /** 입력층 텐서 (token_embd·per_layer_token_embd·position_embd·token_types — 항상 CPU) */
   cpuGB: number;
   /** 층별 임베딩 표 `per_layer_token_embd`(PLE, cpuGB 의 일부) — 없으면 0 (10-21 D112) */
@@ -322,7 +324,7 @@ export type SplitMeasure = {
    * safetensors 메타데이터(HF `safetensors.total`)가 없을 때 paramsB 대용 (`totalParams / 1e9`).
    */
   totalParams: number;
-  /** 라우팅 전문가 텐서 원소 수(트렁크) — 활성 파라미터 ≈ total − expert + expert × topK/experts. dense 는 0 */
+  /** 라우팅 FFN 전문가 텐서 원소 수(트렁크) — 활성 파라미터 ≈ total − expert + expert × topK/experts. dense 는 0. 값 전문가(MoVA)는 total 에만 들어 있어 이 식이 전부 활성으로 센다 */
   expertParams: number;
   arch: string;
   /** block_count − nextn_predict_layers */
@@ -333,7 +335,7 @@ export type SplitMeasure = {
   /** output.weight 없음 → token_embd 를 출력층으로 공유 */
   tiedEmbeddings: boolean;
   /** 원시 바이트 — 반올림 전 정밀값 */
-  bytes: { expert: number; nonExpert: number; cpu: number; ple: number; mtp: number; total: number };
+  bytes: { expert: number; nonExpert: number; valueExpert: number; cpu: number; ple: number; mtp: number; total: number };
 };
 
 const round2 = (x: number): number => Math.round(x * 100) / 100;
@@ -345,6 +347,13 @@ function numKv(kv: Record<string, GgufValue>, key: string): number | undefined {
 }
 
 const EXPERT_RE = /_exps|_chexps/;
+/**
+ * 값 전문가(MoVA — K2-Horizon `blk.N.attn_v_exps`, 10-21 D113): 이름에 `_exps` 가 있지만 FFN 전문가가 아니다. llama.cpp `--cpu-moe`·`--n-cpu-moe`
+ * (LLM_FFN_EXPS_REGEX `\.ffn_(up|down|gate|gate_up)_(ch|)exps`)와 `--fit` 자동 배치가 CPU 로 옮기지 않아 늘 그래픽카드에 있으므로 비전문가로 센다
+ * (https://github.com/ggml-org/llama.cpp/blob/4625240437c6821ee5c2da99e12d4817c6a8f07f/common/common.h#L1225 · common/fit.cpp#L618).
+ * 토큰마다 일부만 읽지만 속도식은 비전문가를 전부 읽는다고 본다 — 보수 근사(docs/02 §9)
+ */
+const GPU_EXPERT_RE = /\.attn_v_exps\./;
 const BLOCK_RE = /^blk\.(\d+)\./;
 /** llama.cpp 입력층(LLM_TENSOR_LAYER_INPUT) 텐서 이름 — 항상 CPU. POS_EMBD 의 GGUF 이름은 `position_embd`
  *  (https://github.com/ggml-org/llama.cpp/blob/cb7934c/src/llama-arch.cpp#L750-L752 · #L957) */
@@ -372,7 +381,7 @@ export function classifySplit(shards: readonly GgufHeader[]): SplitMeasure {
 
   const tensors = shards.flatMap((h) => h.tensors);
   const tied = !tensors.some((t) => t.name === 'output.weight');
-  const bytes = { expert: 0, nonExpert: 0, cpu: 0, ple: 0, mtp: 0, total: 0 };
+  const bytes = { expert: 0, nonExpert: 0, valueExpert: 0, cpu: 0, ple: 0, mtp: 0, total: 0 };
   let totalParams = 0;
   let expertParams = 0;
   for (const t of tensors) {
@@ -391,6 +400,9 @@ export function classifySplit(shards: readonly GgufHeader[]): SplitMeasure {
       bytes.cpu += size;
       if (t.name === PLE_TENSOR) bytes.ple += size;
       if (tied && t.name === 'token_embd.weight') bytes.nonExpert += size; // GPU 출력층 복제
+    } else if (GPU_EXPERT_RE.test(t.name)) {
+      bytes.nonExpert += size;
+      bytes.valueExpert += size;
     } else if (EXPERT_RE.test(t.name)) {
       bytes.expert += size;
       expertParams += elements;
@@ -402,6 +414,7 @@ export function classifySplit(shards: readonly GgufHeader[]): SplitMeasure {
     expertGB: gb(bytes.expert),
     nonExpertGB: gb(bytes.nonExpert),
     gpuGB: gb(bytes.expert + bytes.nonExpert),
+    valueExpertGB: gb(bytes.valueExpert),
     cpuGB: gb(bytes.cpu),
     pleGB: gb(bytes.ple),
     mtpGB: gb(bytes.mtp),

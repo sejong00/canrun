@@ -178,6 +178,7 @@ describe('classifySplit', () => {
     expect(m.bytes).toEqual({
       expert: 1152 + 272 + 128,
       nonExpert: 320 + 32 + 136 + 128 + 64,
+      valueExpert: 0,
       cpu: 160,
       ple: 0,
       mtp: 68 + 128,
