@@ -13,9 +13,11 @@
 
 import type { ModelCore, ModelQuantCore } from './core';
 import { deriveNonExpertGB } from './derive';
+import { QUANT_FILE_ALIASES, quantTokenRe } from './quant-alias';
 import type { ModelQuantRecord } from './schema';
 
 export * from './gguf';
+export * from './quant-alias';
 
 type QuantId = ModelQuantRecord['quant'];
 
@@ -95,12 +97,10 @@ export function parseHfInput(text: string): string | undefined {
  */
 const DRAFT_FILE_PREFIX = /^(?:mmproj|mtp-|eagle3-|dflash-|dspark-)/i;
 
-export function matchQuantFiles(entries: readonly TreeEntry[], quant: QuantId): TreeEntry[] {
-  const esc = quant.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const re = new RegExp(`(?:^|[-_./])${esc}(?:[-./]|$)`, 'i');
-  const udRe = quant.startsWith('UD-')
-    ? undefined
-    : new RegExp(`(?:^|[-_./])UD-${esc}(?:[-./]|$)`, 'i');
+/** ud: 'fallback' = 플레인 우선·없으면 UD- 변형, 'as-is' = 둘 다(UD- quant 자신), 'never' = 플레인만(별칭) */
+function matchToken(entries: readonly TreeEntry[], token: string, ud: 'fallback' | 'as-is' | 'never'): TreeEntry[] {
+  const re = quantTokenRe(token);
+  const udRe = ud === 'as-is' ? undefined : quantTokenRe(token, true);
   const candidates = entries.filter((entry) => {
     if (entry.type !== 'file') return false;
     const path = entry.path;
@@ -111,7 +111,19 @@ export function matchQuantFiles(entries: readonly TreeEntry[], quant: QuantId): 
   });
   if (udRe === undefined) return candidates;
   const plain = candidates.filter((entry) => !udRe.test(entry.path));
-  return plain.length > 0 ? plain : candidates;
+  return plain.length > 0 || ud === 'never' ? plain : candidates;
+}
+
+/**
+ * 정확한 토큰의 파일이 하나도 없으면 별칭 토큰(`QUANT_FILE_ALIASES` — `Q4_K` 를 Q4_K_M 으로, 10-22 엔진 후속 ⑧-b)의 플레인 파일을 받는다.
+ * 별칭 행은 헤더 `general.file_type` 대조(aliasFileTypeProblem)를 add-model·sync-models 가 한다
+ */
+export function matchQuantFiles(entries: readonly TreeEntry[], quant: QuantId): TreeEntry[] {
+  const exact = matchToken(entries, quant, quant.startsWith('UD-') ? 'as-is' : 'fallback');
+  if (exact.length > 0) return exact;
+  // 별칭(10-22 ⑧-b): 정확한 토큰이 없을 때만 — 플레인 파일만(UD- 변형은 별칭으로 받지 않는다)
+  const alias = QUANT_FILE_ALIASES[quant];
+  return alias ? matchToken(entries, alias.token, 'never') : exact;
 }
 
 const SHARD_RE = /-(\d{5})-of-(\d{5})\.gguf$/i;
@@ -182,12 +194,20 @@ export function extractArch(config: unknown): ExtractedArch {
 
   const layers = posInt(cfg['num_hidden_layers']);
   const attnHeads = posInt(cfg['num_attention_heads']);
-  const kvHeads = posInt(cfg['num_key_value_heads']) ?? attnHeads;
+  let kvHeads = posInt(cfg['num_key_value_heads']) ?? attnHeads;
   const hiddenSize = posInt(cfg['hidden_size']);
   let headDim = posInt(cfg['head_dim']);
   if (headDim === undefined && hiddenSize !== undefined && attnHeads !== undefined) {
     const derived = hiddenSize / attnHeads;
     if (Number.isInteger(derived) && derived > 0) headDim = derived;
+  }
+  // GLM-5.3-Flash(glm5_next_text — 10-22 엔진 후속 ⑧-b): head_dim 0(변환기가 버린다)·num_key_value_heads 64 는 KV 를 두지 않는 KDA 층 값이라,
+  // classifyArch(glm5NextArch)와 같이 DSA 층의 MLA 잠재 K 하나로 적는다(GGUF head_count_kv 1·key_length = kv_lora_rank + qk_rope_head_dim) —
+  // sync-models 가 매주 카탈로그 기록(1·512)과 config 파생값(64·64)의 차이를 manual 로 내지 않게
+  const glmLatent = posInt(cfg['kv_lora_rank']);
+  if (String(cfg['model_type'] ?? '') === 'glm5_next_text' && glmLatent !== undefined) {
+    kvHeads = 1;
+    headDim = glmLatent + (typeof cfg['qk_rope_head_dim'] === 'number' ? cfg['qk_rope_head_dim'] : 0);
   }
   const maxContext = posInt(cfg['max_position_embeddings'] ?? top['max_position_embeddings']);
   const loopCount = posInt(cfg['num_loops']);
@@ -236,6 +256,9 @@ export function extractMoe(config: unknown): { experts: number; topK: number } |
  * (`nanbeigeShape`)가 llama.cpp 변환기가 옮기는 옵션(num_loops·skip_loop_final_norm)만 켜진 config 인지 본다. KV·읽기는 논리 층(층 × loops) 기준.
  * 10-22 D115: deepseek_v4(DeepSeek V4 Flash — 압축 어텐션 CSA·HCA + 하이퍼 커넥션 mHC + MoE, llama.cpp deepseek4 — https://github.com/ggml-org/llama.cpp/pull/24162) —
  * 아래 전용 분기(`deepseekV4Arch`)가 llama.cpp 변환기·로더가 읽는 키만 켜진 config 인지 보고 KV 를 압축 캐시 산식으로 센다.
+ * 10-22 ⑧-b: glm5_next_text(GLM-5.3-Flash — KDA 선형 층 + DSA 희소 MLA 층(라이트닝 인덱서 k-pool) + mHC + MoE, llama.cpp glm5-next —
+ * https://github.com/ggml-org/llama.cpp/pull/27773. model_type 은 text_config 값, 최상위는 glm5_next·비전은 별도 mmproj) — 아래 전용 분기(`glm5NextArch`)가
+ * 변환기·로더가 읽는 키만 켜진 config 인지 보고 KV 를 DSA 층의 MLA 잠재 K + 인덱서 행으로 센다.
  */
 export const KNOWN_MODEL_TYPES: ReadonlySet<string> = new Set([
   'llama',
@@ -266,6 +289,7 @@ export const KNOWN_MODEL_TYPES: ReadonlySet<string> = new Set([
   'k2_horizon',
   'nanbeige',
   'deepseek_v4',
+  'glm5_next_text',
 ]);
 
 /**
@@ -286,10 +310,10 @@ const ALWAYS_UNSUPPORTED_KEYS = ['compress_ratios'];
 /** 압축 어텐션을 계산하는 model_type (10-22 D115) — llama.cpp deepseek4 의 KV 캐시 구성을 확인한 것만 */
 const COMPRESSED_MODEL_TYPES: ReadonlySet<string> = new Set(['deepseek_v4']);
 /**
- * 하이퍼 커넥션(mHC — config `hc_mult` > 1)을 받는 model_type (10-22 D115). 층마다 잔차 흐름을 hc_mult 갈래로 섞는 연산을 속도식이 세지 않아 결과에 `mhc`
+ * 하이퍼 커넥션(mHC — config `hc_mult` > 1)을 받는 model_type (10-22 D115 deepseek_v4 · ⑧-b glm5_next_text — 둘 다 llama.cpp 가 hc_mult 4 만 받는다). 층마다 잔차 흐름을 hc_mult 갈래로 섞는 연산을 속도식이 세지 않아 결과에 `mhc`
  * (모델 `arch.mhc` — 이론 추정)를 단다. 다른 model_type 에 hc_mult 가 있으면 llama.cpp 가 그 구조를 어떻게 도는지 확인하지 않았으므로 보류
  */
-const MHC_MODEL_TYPES: ReadonlySet<string> = new Set(['deepseek_v4']);
+const MHC_MODEL_TYPES: ReadonlySet<string> = new Set(['deepseek_v4', 'glm5_next_text']);
 const KNOWN_LAYER_TYPES: ReadonlySet<string> = new Set(['full_attention', 'sliding_attention', 'linear_attention']);
 /** 상수 상태 층(선형 어텐션·short-conv) — KV 가 없고 상태 크기가 컨텍스트와 무관하다 */
 const STATE_LAYER_TYPES: ReadonlySet<string> = new Set(['linear_attention', 'conv']);
@@ -544,6 +568,187 @@ function deepseekV4Arch(cfg: Record<string, unknown>, top: Record<string, unknow
   };
 }
 
+/**
+ * GLM-5.3-Flash(glm5_next — llama.cpp glm5-next, 본선 지원 PR #27773 09-30 머지, 그 뒤 수정 12건) 근거 — master a37cc46 (2026-10-21 21:26 UTC).
+ * 모델 레코드 sources 에 config 와 함께 남긴다 (10-22 엔진 후속 ⑧-b)
+ */
+const LLAMA_CPP_A37C = 'https://github.com/ggml-org/llama.cpp/blob/a37cc46104eb50900d5ab4a9ba02a0abdac039db';
+export const GLM5_NEXT_REFS: readonly string[] = [
+  // 변환기(Glm5NextForConditionalGeneration): 선형 층은 KV 헤드 0·나머지(DSA)는 1, KDA 헤드 수 = 어텐션 헤드 수(assert), MLA 는 rope 없는 꼴만(assert),
+  // 인덱서 k-pool·mHC·앞 dense 층·MoE 를 GGUF 에 옮긴다. MTP(nextn)는 --no-mtp 면 본 파일에서 빠진다(ggml-org 본 파일 — 별도 mtp-*.gguf)
+  `${LLAMA_CPP_A37C}/conversion/glm.py#L407-L516`,
+  // 로더: KV 헤드 0 인 층 = 순환(KDA), MLA 캐시는 잠재 벡터(kv_lora_rank), k-pool > 1·top_k % k-pool == 0, hc_mult == 4 만(assert)
+  `${LLAMA_CPP_A37C}/src/models/glm5-next.cpp#L7-L59`,
+  // 앞 dense 층(leading_dense_block_count) 뒤가 MoE 층(라우팅 _exps + 공유 전문가 + exp_probs_b 편향 — noaux_tc 꼴)
+  `${LLAMA_CPP_A37C}/src/models/glm5-next.cpp#L155-L174`,
+];
+
+/**
+ * GLM-5.3-Flash KV 산식 근거 (llama.cpp master a37cc46) — attnOverrides.sources 에 config 와 함께 남긴다.
+ * llama_memory_hybrid_idx = 어텐션 캐시(DSA 층 — MLA 잠재 K 만) + 순환 상태(KDA 층, 시퀀스마다) + 인덱서 캐시(DSA 층 중 indexer full — 헤드 1, 행 폭 =
+ * index_head_dim × indexer_kpool_row(3: key | gate | pooled), K 만). 어텐션·인덱서 캐시는 표준 llama_kv_cache(통합 KV 면 슬롯들이 셀을 나눠 쓴다)
+ */
+const GLM5_NEXT_KV_REFS: readonly string[] = [
+  `${LLAMA_CPP_A37C}/src/llama-model.cpp#L2883-L2926`,
+  `${LLAMA_CPP_A37C}/src/llama-memory-hybrid-idx.cpp#L52-L74`,
+  `${LLAMA_CPP_A37C}/src/llama-hparams.h#L314`,
+  // MLA 층은 V 캐시 없음(has_v = !is_mla) — 인덱서 캐시도 MLA 로 꾸며 V 를 두지 않는다
+  `${LLAMA_CPP_A37C}/src/llama-kv-cache.cpp#L231`,
+];
+
+/**
+ * 인덱서 캐시 행 하나에 든 index_head_dim 칸 수 — llama.cpp 구현값(config 가 아니다): k-pool 인덱서는 토큰마다 key | gate | pooled 를 나란히 저장한다.
+ * source: https://github.com/ggml-org/llama.cpp/blob/a37cc46104eb50900d5ab4a9ba02a0abdac039db/src/llama-hparams.h#L314
+ * (사용처 src/llama-memory-hybrid-idx.cpp#L58 — n_embd_head_k_full = indexer_head_size × indexer_kpool_row)
+ */
+export const GLM5_NEXT_INDEXER_ROW_SLOTS = 3;
+
+/** llama.cpp glm5-next 가 받는 층 종류 — 선형(KDA) · DSA(희소 MLA + 인덱서) */
+const GLM5_NEXT_LAYER_TYPES: ReadonlySet<string> = new Set(['linear_attention', 'deepseek_sparse_attention']);
+
+/**
+ * glm5_next_text config(text_config)에서 llama.cpp glm5-next 변환기·로더가 읽는(또는 계산에 무관한) 키 — 이 밖의 키가 켜져 있으면 처음 보는 옵션으로 보고
+ * 보류한다(deepseek_v4 와 같은 화이트리스트 방식). 값이 계산을 바꾸는 키는 아래 값 검사가 따로 막는다(rope 를 쓰는 MLA·다른 점수 함수·그룹 라우팅 등)
+ */
+const GLM5_NEXT_KEYS: ReadonlySet<string> = new Set([
+  // 공통 HF 메타
+  'architectures', 'model_type', 'torch_dtype', 'dtype', 'transformers_version', 'use_cache', 'bos_token_id', 'eos_token_id', 'pad_token_id',
+  'initializer_range', 'attention_dropout', 'quantization_config', 'rms_norm_eps', 'rope_theta', 'rope_scaling', 'rope_parameters',
+  'max_position_embeddings', 'vocab_size', 'hidden_act', 'attention_bias', 'tie_word_embeddings', 'output_router_logits', 'router_aux_loss_coef',
+  'moe_router_dtype',
+  // 층 지도·KDA(선형 어텐션)
+  'num_hidden_layers', 'hidden_size', 'intermediate_size', 'num_attention_heads', 'num_key_value_heads', 'head_dim', 'layer_types', 'linear_attn_config',
+  // DSA(희소 MLA — rope 없는 꼴) + 라이트닝 인덱서(k-pool)
+  'kv_lora_rank', 'q_lora_rank', 'qk_head_dim', 'qk_nope_head_dim', 'qk_rope_head_dim', 'v_head_dim', 'mla_use_nope',
+  'index_n_heads', 'index_head_dim', 'index_topk', 'index_kpool', 'index_kpool_always_select_tail', 'index_kpool_compress', 'indexer_types',
+  'indexer_rope_interleave', 'index_share_for_mtp_iteration',
+  // MoE(앞 dense 층 포함)
+  'first_k_dense_replace', 'mlp_layer_types', 'moe_intermediate_size', 'n_routed_experts', 'n_shared_experts', 'num_experts_per_tok', 'norm_topk_prob',
+  'routed_scaling_factor', 'scoring_func', 'topk_method', 'n_group', 'topk_group', 'swiglu_limit',
+  // 하이퍼 커넥션(mHC)
+  'mhc', 'hc_mult', 'hc_sinkhorn_iters', 'hc_eps',
+  // MTP — ggml-org 본 파일에 없다(--no-mtp 변환, 별도 mtp-*.gguf)
+  'num_nextn_predict_layers',
+]);
+
+/** linear_attn_config 안에서 읽는 키 — 그 밖의 키가 켜져 있으면 보류 */
+const GLM5_NEXT_LINEAR_KEYS: ReadonlySet<string> = new Set([
+  'num_heads', 'head_dim', 'short_conv_kernel_size', 'gate_lower_bound', 'kda_layers', 'full_attn_layers',
+]);
+
+/**
+ * GLM-5.3-Flash(glm5_next_text — llama.cpp glm5-next) 분류 (10-22 엔진 후속 ⑧-b). 근거 `GLM5_NEXT_REFS`(구조)·`GLM5_NEXT_KV_REFS`(KV).
+ * - 가드: Glm5NextForConditionalGeneration 만 · 아는 키 밖의 옵션이 켜지면 보류 · layer_types ⊂ {linear_attention, deepseek_sparse_attention}(길이 = 층 수) ·
+ *   KDA 헤드 수 = 어텐션 헤드 수(변환기 assert) · rope 없는 MLA(mla_use_nope·qk_rope_head_dim 0 — 변환기 assert) · k-pool > 1·top_k % k-pool == 0
+ *   (로더 assert) · indexer_types 는 모두 full(그 밖의 꼴은 llama.cpp 가 어떻게 도는지 확인하지 않았다) · hc_mult 4(로더 assert) · mhc 꺼짐 아님 ·
+ *   점수 sigmoid·noaux_tc(로더가 exp_probs_b 편향 텐서를 요구)·그룹 라우팅 없음 · attention_bias·tie_word_embeddings 꺼짐(출력층 텐서 필수) ·
+ *   mlp_layer_types 가 있으면 앞 first_k_dense_replace 층만 dense
+ * - KV(f16, B/tok): DSA 층마다 MLA 잠재 K(kv_lora_rank + qk_rope_head_dim) × 2B + indexer full 인 DSA 층마다 index_head_dim × 3(key | gate | pooled — 구현값
+ *   `GLM5_NEXT_INDEXER_ROW_SLOTS`) × 2B, V 캐시 없음 — GLM-5.3-Flash 11 × (512 × 2 + 128 × 3 × 2) = 19,712(#30499 로그의 KV 2,816 MiB + 인덱서 2,112 MiB @ 262,144셀과 일치)
+ * - KDA 순환 상태(층마다 head_dim² × 헤드 f32 + conv 3 × (kernel − 1) × 폭 f32 — 34층 ≈ 153MB)는 컨텍스트와 무관하고 시퀀스(슬롯)마다 한 벌이라
+ *   다른 상수 상태 층 하이브리드(D63)처럼 미계상 — 스니펫은 `-np 1` 로 한 벌만 잡게 한다(docs/02 §2.2·§9)
+ * - 결과: attnType hybrid · override(KV 근거) · moe · expertLayers(앞 dense 층 뒤) · mhc · vision(비전 인코더는 별도 mmproj) · offFileModules(MTP) · refs
+ */
+function glm5NextArch(cfg: Record<string, unknown>, top: Record<string, unknown>, archs: readonly string[]): ArchResult {
+  const no = (reason: string): ArchResult => ({ kind: 'unsupported', reason });
+  if (!archs.includes('Glm5NextForConditionalGeneration')) return no(`llama.cpp 가 변환하지 않는 glm5_next 변형(${archs.join(',') || 'architectures 없음'})`);
+  const unknown = Object.keys(cfg).filter((k) => !GLM5_NEXT_KEYS.has(k) && optionOn(cfg[k]));
+  if (unknown.length > 0) return no(`처음 보는 glm5_next 옵션(${unknown.join(',')}) — llama.cpp glm5-next 변환기·로더가 읽는 키만 계산`);
+  const linRaw = cfg['linear_attn_config'];
+  const lin = typeof linRaw === 'object' && linRaw !== null && !Array.isArray(linRaw) ? (linRaw as Record<string, unknown>) : undefined;
+  if (!lin) return no('linear_attn_config 없음 — KDA 층 설정을 알 수 없음');
+  const linUnknown = Object.keys(lin).filter((k) => !GLM5_NEXT_LINEAR_KEYS.has(k) && optionOn(lin[k]));
+  if (linUnknown.length > 0) return no(`처음 보는 linear_attn_config 옵션(${linUnknown.join(',')})`);
+
+  const layers = posInt(cfg['num_hidden_layers']);
+  const heads = posInt(cfg['num_attention_heads']);
+  const rank = posInt(cfg['kv_lora_rank']);
+  const indexHeadDim = posInt(cfg['index_head_dim']);
+  const kpool = posInt(cfg['index_kpool']);
+  const topkIdx = posInt(cfg['index_topk']);
+  const maxContext = posInt(cfg['max_position_embeddings'] ?? top['max_position_embeddings']);
+  const required = [
+    'num_hidden_layers', 'num_attention_heads', 'hidden_size', 'kv_lora_rank', 'q_lora_rank', 'qk_nope_head_dim', 'v_head_dim', 'index_n_heads',
+    'index_head_dim', 'index_topk', 'index_kpool', 'hc_mult', 'hc_sinkhorn_iters', 'moe_intermediate_size', 'max_position_embeddings',
+  ];
+  const missing = required.filter((k) => posInt(cfg[k] ?? (k === 'max_position_embeddings' ? top[k] : undefined)) === undefined);
+  const linMissing = ['num_heads', 'head_dim', 'short_conv_kernel_size'].filter((k) => posInt(lin[k]) === undefined);
+  if (!layers || !heads || !rank || !indexHeadDim || !kpool || !topkIdx || !maxContext || missing.length + linMissing.length > 0) {
+    return no(`glm5_next config 필드 누락(${[...missing, ...linMissing.map((k) => `linear_attn_config.${k}`)].join(',')})`);
+  }
+  const rope = cfg['qk_rope_head_dim'];
+  const firstDense = nonNegInt(cfg['first_k_dense_replace'] ?? 0);
+  const nGroup = cfg['n_group'];
+  const topkGroup = cfg['topk_group'];
+  const blocked = [
+    ...(cfg['attention_bias'] === true ? ['attention_bias'] : []),
+    ...(cfg['tie_word_embeddings'] === true || top['tie_word_embeddings'] === true ? ['tie_word_embeddings'] : []),
+    ...(cfg['hidden_act'] !== undefined && cfg['hidden_act'] !== 'silu' ? [`hidden_act ${String(cfg['hidden_act'])}`] : []),
+    ...(cfg['mla_use_nope'] !== true || rope !== 0 ? [`rope 를 쓰는 MLA(mla_use_nope ${String(cfg['mla_use_nope'])}·qk_rope_head_dim ${String(rope)})`] : []),
+    ...(posInt(lin['num_heads']) !== heads ? [`KDA 헤드 ${String(lin['num_heads'])} ≠ 어텐션 헤드 ${heads}`] : []),
+    ...(kpool < 2 || topkIdx % kpool !== 0 ? [`index_kpool ${kpool}·index_topk ${topkIdx}`] : []),
+    ...(cfg['index_kpool_compress'] !== undefined && cfg['index_kpool_compress'] !== true ? ['index_kpool_compress 꺼짐'] : []),
+    ...(cfg['indexer_rope_interleave'] !== undefined && cfg['indexer_rope_interleave'] !== true ? ['indexer_rope_interleave 꺼짐'] : []),
+    ...(cfg['mhc'] === false ? ['mhc 꺼짐'] : []),
+    ...(cfg['hc_mult'] !== 4 ? [`hc_mult ${String(cfg['hc_mult'])}(로더는 4 만)`] : []),
+    ...(cfg['scoring_func'] !== undefined && cfg['scoring_func'] !== 'sigmoid' ? [`scoring_func ${String(cfg['scoring_func'])}`] : []),
+    ...(cfg['topk_method'] !== undefined && cfg['topk_method'] !== 'noaux_tc' ? [`topk_method ${String(cfg['topk_method'])}`] : []),
+    ...((nGroup !== undefined && nGroup !== null && nGroup !== 1) || (topkGroup !== undefined && topkGroup !== null && topkGroup !== 1)
+      ? [`그룹 라우팅(n_group ${String(nGroup)}·topk_group ${String(topkGroup)})`]
+      : []),
+  ];
+  if (blocked.length > 0) return no(`llama.cpp glm5-next 변환기·로더가 받지 않는 설정(${blocked.join(', ')})`);
+
+  const layerTypes = Array.isArray(cfg['layer_types']) ? (cfg['layer_types'] as unknown[]).map(String) : undefined;
+  if (!layerTypes || layerTypes.length !== layers) return no(`layer_types 가 없거나 층 수 ${layers} 와 길이가 다름 — 선형·DSA 층을 셀 수 없음`);
+  const strange = [...new Set(layerTypes.filter((t) => !GLM5_NEXT_LAYER_TYPES.has(t)))];
+  if (strange.length > 0) return no(`처음 보는 층 종류 ${strange.join(',')} — glm5-next 는 linear_attention·deepseek_sparse_attention 만`);
+  const dsa = layerTypes.flatMap((t, i) => (t === 'deepseek_sparse_attention' ? [i] : []));
+  if (dsa.length === 0) return no('DSA(희소 어텐션) 층 없음 — 선례 없음');
+  // config 의 KDA·전체 어텐션 층 목록이 있으면 layer_types 와 같아야 한다(다르면 어느 쪽을 llama.cpp 가 따르는지 모른다 — 변환기는 layer_types 를 쓴다)
+  const sameList = (key: string, want: readonly number[]): boolean => {
+    const v = lin[key];
+    return v === undefined || (Array.isArray(v) && v.length === want.length && v.every((x, i) => x === want[i]));
+  };
+  const kda = layerTypes.flatMap((t, i) => (t === 'linear_attention' ? [i] : []));
+  if (!sameList('kda_layers', kda) || !sameList('full_attn_layers', dsa)) return no('linear_attn_config 의 층 목록이 layer_types 와 다름');
+  const idxTypes = cfg['indexer_types'];
+  if (idxTypes !== undefined && !(Array.isArray(idxTypes) && idxTypes.length >= layers && idxTypes.every((t) => t === 'full'))) {
+    return no('indexer_types 에 full 밖의 값(또는 층 수보다 짧음) — llama.cpp 의 공유 인덱서 경로를 확인하지 않았다');
+  }
+  const moe = extractMoe(cfg);
+  if (!moe || moe.topK >= moe.experts) return no('glm5_next MoE 구조(n_routed_experts·num_experts_per_tok) 누락·모순');
+  if (nonNegInt(cfg['n_shared_experts'] ?? 0) === undefined) return no(`n_shared_experts ${String(cfg['n_shared_experts'])} — 0 이상 정수가 아님`);
+  if (firstDense === undefined || firstDense >= layers) return no(`first_k_dense_replace ${String(cfg['first_k_dense_replace'])} — 층 수 ${layers} 안의 0 이상 정수가 아님`);
+  const mlp = cfg['mlp_layer_types'];
+  if (mlp !== undefined && !(Array.isArray(mlp) && mlp.length === layers && mlp.every((t, i) => t === (i < firstDense ? 'dense' : 'sparse')))) {
+    return no(`mlp_layer_types 가 앞 ${firstDense}층 dense·나머지 sparse 꼴이 아님 — llama.cpp 는 앞 dense 층 뒤를 모두 MoE 로 읽는다`);
+  }
+
+  // f16 2B: DSA 층 = MLA 잠재 K(V 없음) + (indexer full 이면) 인덱서 행 key | gate | pooled
+  const latent = rank + (typeof rope === 'number' ? rope : 0);
+  const kv = dsa.length * latent * 2 + dsa.length * indexHeadDim * GLM5_NEXT_INDEXER_ROW_SLOTS * 2;
+  const nextn = posInt(cfg['num_nextn_predict_layers']);
+  const reason =
+    `hybrid KDA+DSA — DSA ${dsa.length}/${layers} layers × (MLA latent ${latent} + indexer ${indexHeadDim} × ${GLM5_NEXT_INDEXER_ROW_SLOTS} key|gate|pooled) × 2B, ` +
+    `V 캐시 없음(KDA ${kda.length}층 순환 상태는 컨텍스트와 무관한 상수·시퀀스마다 한 벌이라 미계상) (add-model)`;
+  return {
+    kind: 'ok',
+    modelType: 'glm5_next_text',
+    attnType: 'hybrid',
+    vision: 'vision_config' in top,
+    maxContext,
+    moe,
+    ...(firstDense > 0 ? { expertLayers: Array.from({ length: layers - firstDense }, (_, i) => firstDense + i) } : {}),
+    mhc: true,
+    ...(nextn ? { offFileModules: ['MTP'] as const } : {}),
+    refs: GLM5_NEXT_REFS,
+    // KV 헤드 1 × 잠재 폭 — GGUF head_count_kv(DSA 층 1)·key_length(kv_lora_rank + rope)와 같은 표기
+    arch: { layers, kvHeads: 1, headDim: latent, kvBytesPerTokenF16: kv },
+    override: { kvBytesPerTokenF16: kv, reason, refs: GLM5_NEXT_KV_REFS },
+  };
+}
+
 export type ArchResult =
   | {
       kind: 'ok';
@@ -669,6 +874,7 @@ export function bailingMlaLayers(layers: number, groupSize: number, nextn: numbe
  * 층별 임베딩 표(PLE)·KV 공유 층은 gemma4_text 의 슬라이딩 층 지도가 있을 때만 계산한다(10-21 D112 — 결과에 `ple`).
  * 반복 층은 nanbeige(num_loops — 10-22 D114)만 계산한다(결과에 `loops`, KV 는 논리 층 수로).
  * 압축 어텐션(CSA·HCA)·하이퍼 커넥션은 deepseek_v4(10-22 D115)만 계산한다(attnType compressed, 결과에 `mhc`).
+ * KDA + DSA(희소 MLA·라이트닝 인덱서)·하이퍼 커넥션은 glm5_next_text(GLM-5.3-Flash — 10-22 ⑧-b)만 계산한다(attnType hybrid, 결과에 `mhc`).
  */
 export function classifyArch(config: unknown): ArchResult {
   if (typeof config !== 'object' || config === null) return { kind: 'unsupported', reason: 'config 없음' };
@@ -707,6 +913,8 @@ export function classifyArch(config: unknown): ArchResult {
   const archs = [cfg['architectures'], top['architectures']].flatMap((a) => (Array.isArray(a) ? a.map(String) : []));
   // DeepSeek V4(10-22 D115): 압축 어텐션 KV·MoE·mHC 를 전용 분기가 모두 정한다
   if (modelType === 'deepseek_v4') return deepseekV4Arch(cfg, top, archs);
+  // GLM-5.3-Flash(10-22 ⑧-b): KDA + DSA(희소 MLA·인덱서) KV·MoE 층 지도·mHC 를 전용 분기가 모두 정한다(kv_lora_rank 는 이 분기 안에서만 — BRANCH_KEYS 검사 전)
+  if (modelType === 'glm5_next_text') return glm5NextArch(cfg, top, archs);
   let branch: StateBranch | undefined;
   // K2-Horizon(10-21 D113): 전체 어텐션 기본 분기에 MoE 층 지도·값 전문가만 더한다
   let k2: { expertLayers?: number[]; mova?: { experts: number; topK: number } } | undefined;

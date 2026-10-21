@@ -327,6 +327,11 @@ export type SplitMeasure = {
   blockGB: number;
   /** 헤더 `<arch>.num_loops`(반복 층 — llama.cpp nanbeige 가 읽는 키, 없으면 1회) — 없으면 생략 (10-22 D114) */
   numLoops?: number;
+  /**
+   * 헤더 `general.file_type`(llama_ftype — 15 = Q4_K_M) — 없으면 생략. 파일 이름 별칭(`Q4_K` 를 Q4_K_M 행으로 — hf.ts QUANT_FILE_ALIASES, 10-22 ⑧-b)을
+   * 받은 행이 실제로 그 형식인지 add-model·sync-models 가 대조한다
+   */
+  fileType?: number;
   /** 전 텐서 합 (분할 파일 합산) */
   totalGB: number;
   /**
@@ -422,6 +427,7 @@ export function classifySplit(shards: readonly GgufHeader[]): SplitMeasure {
   const expertCount = numKv(first.kv, `${arch}.expert_count`);
   const expertUsed = numKv(first.kv, `${arch}.expert_used_count`);
   const numLoops = numKv(first.kv, `${arch}.num_loops`);
+  const fileType = numKv(first.kv, 'general.file_type');
   return {
     expertGB: gb(bytes.expert),
     nonExpertGB: gb(bytes.nonExpert),
@@ -432,6 +438,7 @@ export function classifySplit(shards: readonly GgufHeader[]): SplitMeasure {
     mtpGB: gb(bytes.mtp),
     blockGB: gb(bytes.block),
     ...(numLoops !== undefined ? { numLoops } : {}),
+    ...(fileType !== undefined ? { fileType } : {}),
     totalGB: gb(bytes.total),
     totalParams,
     expertParams,

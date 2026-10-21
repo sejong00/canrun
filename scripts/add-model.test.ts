@@ -218,6 +218,20 @@ describe('MoE — experts/topK from config, per-row split from the GGUF header (
     expect(res.warnings).toEqual([expect.stringContaining('HTTP 503'), expect.stringContaining('> fileGB 10')]);
   });
 
+  it('file name alias (10-22 엔진 후속 ⑧-b): a Q4_K_M row taken from a "Q4_K" file needs header file_type 15 — anything else stops the write', async () => {
+    const alias: ModelQuantRecord = { ...row('Q4_K_M', 18.56), fileName: 'm-Q4_K-00001-of-00002.gguf' };
+    const good = await measureRows([alias], { experts: 128, topK: 8 }, 48, () => Promise.resolve({ ...ok, fileType: 15 }));
+    expect(good.problems).toEqual([]);
+    expect(good.rows[0]).toMatchObject({ expertGB: 17.55, nonExpertGB: 0.82 });
+    const wrong = await measureRows([alias], { experts: 128, topK: 8 }, 48, () => Promise.resolve({ ...ok, fileType: 14 }));
+    expect(wrong.problems).toEqual([expect.stringContaining('general.file_type 14 ≠ 15')]);
+    const none = await measureRows([alias], { experts: 128, topK: 8 }, 48, () => Promise.resolve(ok));
+    expect(none.problems).toEqual([expect.stringContaining('general.file_type 없음')]);
+    // 정확한 Q4_K_M 파일은 file_type 을 보지 않는다(기존 행 그대로)
+    const exact = await measureRows([row('Q4_K_M', 18.56)], { experts: 128, topK: 8 }, 48, () => Promise.resolve({ ...ok, fileType: 7 }));
+    expect(exact.problems).toEqual([]);
+  });
+
   it('records the MTP block after the split when the header has one (10-03)', async () => {
     const res = await measureRows([row('Q4_K_M', 22.29)], { experts: 256, topK: 8 }, 40, () =>
       Promise.resolve({ ...ok, expertGB: 19.5, nonExpertGB: 1.59, offGpuGB: 1.2, mtpGB: 0.9, trunkLayers: 40, expertCount: 256 }),
@@ -330,20 +344,20 @@ describe('organization names for model-makers.ts (10-19 D101)', () => {
       expect(hasMakerEntry(registry, org), org).toBe(true);
       expect(makerNameFrom(registry, org), org).toBe(name);
     }
-    expect(hasMakerEntry(registry, 'zai-org')).toBe(false);
-    expect(makerNameFrom(registry, 'zai-org')).toBeUndefined();
+    expect(hasMakerEntry(registry, 'example-lab')).toBe(false);
+    expect(makerNameFrom(registry, 'example-lab')).toBeUndefined();
     // 앞부분만 같은 조직 id 는 다른 조직
     expect(hasMakerEntry(registry, 'Qwe')).toBe(false);
   });
 
   it('inserts one line before the end of MODEL_MAKERS, quoting keys that are not identifiers and escaping quotes', () => {
-    const line = makerLine('zai-org', "Z.ai's lab", '2026-10-19');
-    expect(line).toBe("  'zai-org': 'Z.ai\\'s lab', // add-model 2026-10-19 — https://huggingface.co/api/organizations/zai-org/overview");
+    const line = makerLine('example-lab', "Example's lab", '2026-10-19');
+    expect(line).toBe("  'example-lab': 'Example\\'s lab', // add-model 2026-10-19 — https://huggingface.co/api/organizations/example-lab/overview");
     expect(makerLine('tencent', 'Tencent', '2026-10-19')).toMatch(/^  tencent: 'Tencent', /);
     const next = insertMakerLine(registry, line);
     expect(next.split('\n').length).toBe(registry.split('\n').length + 1);
-    expect(hasMakerEntry(next, 'zai-org')).toBe(true);
-    expect(makerNameFrom(next, 'zai-org')).toBe("Z.ai's lab");
+    expect(hasMakerEntry(next, 'example-lab')).toBe(true);
+    expect(makerNameFrom(next, 'example-lab')).toBe("Example's lab");
     // 블록 밖(함수들)은 그대로
     expect(next.slice(next.indexOf('/** `hfId` → Hugging Face 조직 id'))).toBe(registry.slice(registry.indexOf('/** `hfId` → Hugging Face 조직 id')));
     expect(() => insertMakerLine('export const OTHER = {};', line)).toThrow(/MODEL_MAKERS/);

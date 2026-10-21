@@ -1023,6 +1023,7 @@
     "cpuMoeOomOne": "불러올 때 메모리가 부족하다는 오류가 나면 값을 {next}까지 올리세요.",
     "cpuMoeFit": "llama.cpp b7410(2025년 12월) 이후 버전은 -ngl과 --n-cpu-moe를 빼고 실행해도 VRAM에 맞춰 비슷하게 나눠 올립니다.",
     "np1": "-np 1: 요청 슬롯을 하나만 엽니다. llama-server는 기본으로 슬롯 4개를 여는데, 이 모델은 압축 KV 캐시를 슬롯마다 따로 잡아서 슬롯이 4개면 KV 캐시가 이 추정의 4배로 늘어납니다.",
+    "np1State": "-np 1: 요청 슬롯을 하나만 엽니다. llama-server는 기본으로 슬롯 4개를 여는데, 이 모델은 선형 어텐션 상태(약 0.15GB)를 슬롯마다 따로 잡아서 슬롯이 4개면 이 추정보다 메모리가 약 0.5GB 더 듭니다.",
     "fa": "-fa on: 플래시 어텐션을 켭니다. KV 캐시를 양자화하려면 필요합니다.",
     "kv": "--cache-type-k q8_0 --cache-type-v q8_0: {ctx} 기준 KV 캐시가 {kv}GB로 줄어듭니다.",
     "ctx": "Ollama는 24GB 미만 GPU에서 컨텍스트 기본값이 4k입니다. 서버를 띄울 때 OLLAMA_CONTEXT_LENGTH를 지정하거나, 대화 안에서 /set parameter num_ctx를 쓰세요.",

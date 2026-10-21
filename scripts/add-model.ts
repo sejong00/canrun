@@ -38,6 +38,7 @@ import {
 } from '../packages/data/src/index';
 import {
   activeFromName,
+  aliasFileTypeProblem,
   classifyArch,
   displayName,
   familyOf,
@@ -90,6 +91,8 @@ export type RowMeasure = {
   blockGB?: number;
   /** 헤더 `<arch>.num_loops` — 없으면 생략 (10-22 D114) */
   numLoops?: number;
+  /** 헤더 `general.file_type`(llama_ftype) — 파일 이름 별칭(`Q4_K` → Q4_K_M, 10-22 엔진 후속 ⑧-b)으로 잡은 행의 대조용. 없으면 생략 */
+  fileType?: number;
   mtpGB: number;
   fileGB?: number;
   trunkLayers: number;
@@ -142,7 +145,7 @@ function implausibleMeasure(m: RowMeasure, fileGB: number, moe: boolean): string
 
 /**
  * 행별 GGUF 헤더 실측 + 헤더 대조. MoE(`moe` 있음)는 expertGB·nonExpertGB(값 전문가가 있으면 valueExpertGB), dense 는 offGpuGB(10-03 D62), 둘 다 mtpGB.
- * problems(쓰기 중단): 헤더 expert_count·expert_used_count ≠ config. 값 전문가 모델(`opts.valueExperts` — MoVA, 10-21 D113)은 행마다 실측이
+ * problems(쓰기 중단): 헤더 expert_count·expert_used_count ≠ config · 파일 이름 별칭으로 잡은 행(`Q4_K` → Q4_K_M — 10-22 ⑧-b)의 헤더 file_type ≠ 15. 값 전문가 모델(`opts.valueExperts` — MoVA, 10-21 D113)은 행마다 실측이
  * 있어야 하므로(없으면 모델 수준 유도 비전문가로 VRAM 을 적게 센다 — validateAll 도 거부) 측정 실패·파일과 안 맞는 값·값 전문가 텐서 없음도 problems.
  * 반복 층 모델(`opts.loops` — 10-22 D114)도 행마다 실측(반복 블록 loopGB)이 있어야 하고, 헤더 `<arch>.num_loops` 가 config 와 다르거나 없으면
  * llama.cpp 가 다른 횟수로 돌리는 파일이라 problems.
@@ -196,6 +199,9 @@ export async function measureRows(
     if (opts.loops !== undefined && m.numLoops !== opts.loops) {
       problems.push(`${label}: 헤더 num_loops ${m.numLoops ?? '없음'} ≠ config num_loops ${opts.loops}`);
     }
+    // 파일 이름 별칭(10-22 ⑧-b — `Q4_K` 를 Q4_K_M 행으로): 헤더 file_type 이 그 형식(15)이 아니면 다른 양자화 파일이라 쓰지 않는다
+    const aliasProblem = aliasFileTypeProblem(row.quant, row.fileName, m.fileType);
+    if (aliasProblem !== undefined) problems.push(`${label}: ${aliasProblem}`);
     const problem =
       implausibleMeasure(m, row.fileGB, moe !== undefined) ??
       (opts.valueExperts && !((m.valueExpertGB ?? 0) > 0) ? '헤더에 값 전문가 텐서(attn_v_exps)가 없음' : undefined) ??

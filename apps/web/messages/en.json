@@ -1023,6 +1023,7 @@
     "cpuMoeOomOne": "If loading fails with an out-of-memory error, raise the value to {next}.",
     "cpuMoeFit": "llama.cpp b7410 (December 2025) and later split the model in a similar way on their own if you leave out -ngl and --n-cpu-moe.",
     "np1": "-np 1 opens a single request slot. llama-server opens four by default, and this model keeps a separate compressed KV cache for each slot, so four slots would need four times the KV cache this estimate counts.",
+    "np1State": "-np 1 opens a single request slot. llama-server opens four by default, and this model keeps a separate linear-attention state of about 0.15 GB for each slot, so four slots would need about 0.5 GB more than this estimate counts.",
     "fa": "-fa on enables flash attention (needed for KV cache quantization).",
     "kv": "--cache-type-k q8_0 --cache-type-v q8_0 shrinks the KV cache to {kv} GB at {ctx} context.",
     "ctx": "Ollama defaults to 4k context on GPUs under 24 GB. Set OLLAMA_CONTEXT_LENGTH when starting the server, or /set parameter num_ctx inside the chat.",

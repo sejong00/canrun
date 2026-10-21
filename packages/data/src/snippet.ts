@@ -32,6 +32,11 @@
  *    DSV4 캐시는 통합 모드여도 raw SWA·CSA·HCA·인덱서·압축기 상태를 시퀀스마다 따로 잡아(src/llama-kv-cache-dsv4.cpp#L1247-L1248 · #L1291-L1333,
  *    텐서 = kv_size × n_stream — src/llama-kv-cache.cpp#L84 · #L233) 기본 4슬롯이면 KV 가 엔진 값의 4배다. `-np 1` 이면 n_seq_max 1 — #27680 로그의
  *    `1/1 seqs`·`streams = 1` 과 같은 조건이라 엔진 KV(요청 하나)와 맞는다
+ *  - 하이퍼 커넥션 하이브리드(GLM-5.3-Flash — `arch.mhc` + attnType hybrid, 10-22 엔진 후속 ⑧-b)도 `-np 1` 을 붙인다. 이 모델의 어텐션·인덱서 캐시는 표준
+ *    llama_kv_cache 라 통합 KV 면 슬롯들이 n_ctx 셀을 나눠 쓴다(KV 는 엔진 값 그대로 — https://github.com/ggml-org/llama.cpp/blob/a37cc46104eb50900d5ab4a9ba02a0abdac039db/src/llama-memory-hybrid-idx.cpp#L52-L74).
+ *    대신 KDA 순환 상태(층마다 128² × 64헤드 f32 + conv — 34층 ≈ 153MB)는 시퀀스마다 한 벌(recurrent_rs_size = n_seq_max — 같은 커밋 src/llama-model.cpp#L2883-L2926)이라
+ *    기본 4슬롯이면 ≈ 0.61GB 로 엔진의 연산 버퍼 근사(8k 0.575GB)를 넘고, 인덱서 k-pool 의 최악 크기 연산 예약도 n_seq_max 에 비례한다
+ *    (n_pool_max = 셀 / k-pool × n_seq_max — src/llama-memory-hybrid-idx.cpp#L483-L494, #29950). `-np 1` 이면 상태 한 벌(≈ 0.15GB)로 D63 의 미계상 가정 안이다
  *  - Ollama KV 캐시 양자화 = 서버 env `OLLAMA_KV_CACHE_TYPE`(f16|q8_0|q4_0, 전역), 플래시 어텐션 필요 —
  *    `OLLAMA_FLASH_ATTENTION=1` 로 강제 (https://docs.ollama.com/faq "How can I set the quantization type for the K/V cache?",
  *    "How can I enable Flash Attention?"). f16(기본)이면 env 를 붙이지 않는다
@@ -46,6 +51,7 @@ import {
 } from '@canrun/engine';
 import type { HwConfig, QuantAssessment } from './assess';
 import type { GpuCore, ModelCore, ModelQuantCore } from './core';
+import { quantFileAlias } from './quant-alias';
 
 const SHARD_RE = /-(\d{5})-of-(\d{5})\.gguf$/i;
 
@@ -62,12 +68,15 @@ export function isUdFile(fileName: string | undefined): boolean {
 
 /**
  * HF 다운로드 태그 — 파일명에 실제로 적힌 quant 토큰(`UD-Q4_K_M`·`MXFP4`·`Q4_K_M`).
+ * 별칭으로 잡힌 행(파일 이름에 `Q4_K_M` 이 없고 `Q4_K` 만 — quant-alias.ts, 10-22 엔진 후속 ⑧-b)은 파일의 실제 토큰(`Q4_K`) — llama.cpp `-hf` 는 태그 + `[.-]` 를
+ * 파일 이름에서 찾는다(`Q4_K_M` 이면 이 파일을 못 고른다).
  * 파일명이 없거나 토큰을 못 찾으면 quant id 그대로 (llama.cpp·Ollama 모두 대소문자 무시).
  */
 export function ggufTag(fileName: string | undefined, quant: string): string {
   if (!fileName) return quant;
   const base = fileName.split('/').at(-1) ?? fileName;
-  const esc = quant.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const token = quantFileAlias(quant, base)?.token ?? quant;
+  const esc = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const m = new RegExp(`(?:^|[-_./])((?:UD-)?${esc})(?=[-./]|$)`, 'i').exec(base);
   return m?.[1] ?? quant;
 }
@@ -126,8 +135,11 @@ export type LlamaCppPlan = {
    * GPU 여러 장의 반복 층 모델(full-gpu·부분 오프로드 — 10-22 D114 리뷰, 헤더 주석)
    */
   ngl: 'all' | 'auto' | number;
-  /** `-np 1`(요청 슬롯 하나)을 붙였나 — 압축 어텐션 모델만(헤더 주석: 압축 캐시가 슬롯마다 따로 잡힌다, 10-22 D115 리뷰) */
-  singleSlot?: true;
+  /**
+   * `-np 1`(요청 슬롯 하나)을 붙였나 — true: 압축 어텐션 모델(헤더 주석: 압축 캐시가 슬롯마다 따로 잡힌다, 10-22 D115 리뷰) ·
+   * 'state': 하이퍼 커넥션 하이브리드(GLM-5.3-Flash — KV 는 슬롯들이 나눠 쓰고 KDA 순환 상태·인덱서 k-pool 연산 예약이 슬롯마다, 10-22 ⑧-b)
+   */
+  singleSlot?: true | 'state';
   /**
    * cpu-moe: 전문가를 CPU 에 둘 층 수 = 엔진 fit 이 VRAM 여유로 정한 값(추정의 근거와 같은 배치, 10-01 D56).
    * 전체 층과 같으면 전문가 전부 RAM.
@@ -248,8 +260,10 @@ export function commandPlan(
       break;
   }
 
-  // 압축 어텐션(10-22 D115 리뷰): llama-server 기본 4슬롯이면 압축 KV·raw SWA·상태가 슬롯마다 붙는다 — 요청 하나로 띄워 엔진 KV 와 맞춘다(헤더 주석)
-  const singleSlot = model.arch.attnType === 'compressed';
+  // 압축 어텐션(10-22 D115 리뷰): llama-server 기본 4슬롯이면 압축 KV·raw SWA·상태가 슬롯마다 붙는다 — 요청 하나로 띄워 엔진 KV 와 맞춘다(헤더 주석).
+  // 하이퍼 커넥션 하이브리드(GLM-5.3-Flash — 10-22 ⑧-b): KV 는 슬롯들이 나눠 쓰지만 KDA 순환 상태(≈ 153MB)와 인덱서 k-pool 연산 예약이 슬롯 수만큼 — 'state'
+  const singleSlot: LlamaCppPlan['singleSlot'] =
+    model.arch.attnType === 'compressed' ? true : model.arch.mhc === true ? 'state' : undefined;
   const flags = [
     `-hf ${file.repo}:${file.tag}`,
     `-c ${ctx}`,
@@ -262,7 +276,7 @@ export function commandPlan(
   const llamaCpp: LlamaCppPlan = {
     command: `llama-server ${flags.join(' ')}`,
     ngl,
-    ...(singleSlot ? { singleSlot: true as const } : {}),
+    ...(singleSlot !== undefined ? { singleSlot } : {}),
     ...(nCpuMoe !== undefined
       ? {
           nCpuMoe,

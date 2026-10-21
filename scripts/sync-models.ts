@@ -36,7 +36,7 @@ import {
   type ModelQuantRecord,
 } from '../packages/data/src/index';
 import { kvBytesPerToken } from '../packages/engine/src/index';
-import { extractArch, extractMoe, matchQuantFiles, primaryFile, sumFileGB } from '../packages/data/src/hf';
+import { aliasFileTypeProblem, extractArch, extractMoe, matchQuantFiles, primaryFile, sumFileGB } from '../packages/data/src/hf';
 import { measureSplit } from './gguf-header';
 import {
   fetchConfig,
@@ -97,6 +97,8 @@ export type SplitValues = { expertGB?: number; nonExpertGB?: number; valueExpert
 export type MeasuredSplit = {
   expertGB: number; nonExpertGB: number; valueExpertGB?: number; offGpuGB: number; pleGB?: number; mtpGB: number; fileGB?: number;
   blockGB?: number; numLoops?: number;
+  /** 헤더 `general.file_type` — 파일 이름 별칭(`Q4_K` → Q4_K_M, 10-22 엔진 후속 ⑧-b)으로 잡은 행의 대조용 */
+  fileType?: number;
 };
 
 /** 행 하나의 분할 측정 — 실행부는 gguf-header.measureSplit, 테스트는 모킹 */
@@ -558,7 +560,9 @@ export async function planSplitChanges(
     const loops = loopsById.get(modelId);
     const split = toSplitValues(m, t.moe, loops !== undefined);
     if (t.old && sameSplit(t.old, split)) return;
-    const problem = implausible(split, m, t.fileGB, valueExpertIds.has(modelId), loops);
+    // 파일 이름 별칭으로 잡은 행(10-22 ⑧-b — `Q4_K` → Q4_K_M)은 헤더 file_type 이 그 형식이어야 한다(아니면 다른 양자화 파일)
+    const quant = t.id.slice(modelId.length + 1);
+    const problem = implausible(split, m, t.fileGB, valueExpertIds.has(modelId), loops) ?? aliasFileTypeProblem(quant, t.fileName, m.fileType);
     if (problem !== undefined) {
       results[i] = {
         ...base,

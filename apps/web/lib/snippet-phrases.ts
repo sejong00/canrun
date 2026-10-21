@@ -8,7 +8,7 @@ import type { Translate } from './phrases';
 
 export type SnippetNote = { key: 'ngl' | 'cpuMoe' | 'cpuMoeOom' | 'cpuMoeFit' | 'np' | 'fa' | 'kv'; text: string };
 
-/** llama.cpp 블록 각주 — `-ngl` 의미 · `--n-cpu-moe` 배치(10-01 D56) · `-np 1`(압축 어텐션, 10-22 D115 리뷰) · 플래시 어텐션 · KV q8_0 절감 */
+/** llama.cpp 블록 각주 — `-ngl` 의미 · `--n-cpu-moe` 배치(10-01 D56) · `-np 1`(압축 어텐션 10-22 D115 리뷰 · 하이퍼 커넥션 하이브리드 ⑧-b) · 플래시 어텐션 · KV q8_0 절감 */
 export function llamaNotes(t: Translate, locale: string, plan: CommandPlan, kvQ8GB: number): SnippetNote[] {
   const llama = plan.llamaCpp;
   if (!llama) return [];
@@ -41,8 +41,9 @@ export function llamaNotes(t: Translate, locale: string, plan: CommandPlan, kvQ8
     }
     notes.push({ key: 'cpuMoeFit', text: t('cpuMoeFit') });
   }
-  // 압축 어텐션(10-22 D115 리뷰): 압축 캐시가 슬롯마다 따로 잡혀 기본 4슬롯이면 KV 가 4배 — 명령이 -np 1 을 붙인 이유(snippet.ts 헤더)
-  if (llama.singleSlot) notes.push({ key: 'np', text: t('np1') });
+  // 압축 어텐션(10-22 D115 리뷰): 압축 캐시가 슬롯마다 따로 잡혀 기본 4슬롯이면 KV 가 4배 — 명령이 -np 1 을 붙인 이유(snippet.ts 헤더).
+  // 하이퍼 커넥션 하이브리드(GLM-5.3-Flash — 10-22 ⑧-b): KV 는 슬롯들이 나눠 쓰지만 선형 어텐션 상태가 슬롯마다 한 벌('state')
+  if (llama.singleSlot) notes.push({ key: 'np', text: t(llama.singleSlot === 'state' ? 'np1State' : 'np1') });
   notes.push({ key: 'fa', text: t('fa') });
   // KV 양자화 절감 안내는 f16 명령에만 — 이미 q8_0/q4_0 인 셀엔 중복
   if (plan.kvQuant === 'f16') {

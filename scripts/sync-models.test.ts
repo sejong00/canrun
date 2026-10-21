@@ -1078,3 +1078,60 @@ describe('planSplitChanges + applyChanges — dense offGpuGB (10-03 D62)', () =>
     });
   });
 });
+
+describe('file name alias Q4_K → Q4_K_M (10-22 엔진 후속 ⑧-b — ggml-org/GLM-5.3-Flash-GGUF)', () => {
+  const moeModel = fullModel({
+    id: 'glm-test',
+    hfId: 'org/glm-test',
+    paramsB: 320,
+    activeParamsB: 18,
+    moe: true,
+    arch: { layers: 45, kvHeads: 1, headDim: 512, attnType: 'hybrid', kvBytesPerTokenF16: 19712, experts: 288, topK: 8 },
+  });
+  const repo = 'org/glm-test-GGUF';
+  // ggml-org/GLM-5.3-Flash-GGUF 의 실제 배치(10-22) — Q4_K_M 파일은 없고 Q4_K 만
+  const tree = new Map([[repo, [
+    file('GLM-5.3-Flash-Q2_K-00001-of-00002.gguf', 9_430_112),
+    file('GLM-5.3-Flash-Q2_K-00002-of-00002.gguf', 133_799_626_432),
+    file('GLM-5.3-Flash-Q2_K_S-00001-of-00002.gguf', 9_430_112),
+    file('GLM-5.3-Flash-Q2_K_S-00002-of-00002.gguf', 110_017_922_752),
+    file('GLM-5.3-Flash-Q4_K-00001-of-00002.gguf', 9_429_856),
+    file('GLM-5.3-Flash-Q4_K-00002-of-00002.gguf', 181_363_033_792),
+    file('mmproj-GLM-5.3-Flash-Q8_0.gguf', 652_829_376),
+    file('mtp-GLM-5.3-Flash-Q4_0.gguf', 4_947_286_976),
+    file('mtp-GLM-5.3-Flash-Q8_0.gguf', 9_284_197_312),
+  ]]]);
+  const rows = [
+    quantRow({ modelId: 'glm-test', fileGB: 181.37, expertGB: 171.23, nonExpertGB: 9.46, ggufRepo: repo, fileName: 'GLM-5.3-Flash-Q4_K-00001-of-00002.gguf', sources: [`https://huggingface.co/${repo}`] }),
+    quantRow({ modelId: 'glm-test', quant: 'Q2_K', fileGB: 133.81, expertGB: 123.66, nonExpertGB: 9.46, ggufRepo: repo, fileName: 'GLM-5.3-Flash-Q2_K-00001-of-00002.gguf', sources: [`https://huggingface.co/${repo}`] }),
+  ];
+
+  it('the recorded Q4_K_M row matches the Q4_K split — no error, no change; no new rows (IQ4_XS/Q8_0 absent, Q2_K_S is not Q2_K)', () => {
+    const input = makeInput({ models: [moeModel], quants: rows, treeByRepo: tree });
+    const changes = buildSyncPlan(input).filter((c) => c.file === 'model-quants.json');
+    expect(changes).toEqual([]);
+  });
+
+  it('extractArch reads the GLM-5.3-Flash text_config as the record does (DSA MLA latent: 1 head × 512) — no weekly manual rows from head_dim 0 / num_key_value_heads 64', () => {
+    const config = {
+      model_type: 'glm5_next',
+      text_config: { model_type: 'glm5_next_text', num_hidden_layers: 45, num_attention_heads: 64, num_key_value_heads: 64, head_dim: 0, hidden_size: 4096, kv_lora_rank: 512, qk_rope_head_dim: 0, max_position_embeddings: 1048576 },
+    };
+    expect(extractArch(config)).toEqual({ arch: { layers: 45, kvHeads: 1, headDim: 512 }, maxContext: 1048576, missing: [] });
+    // 다른 model_type 의 kv_lora_rank(Ling-3.0 등)는 config 값 그대로
+    expect(extractArch({ ...config.text_config, model_type: 'bailing_hybrid', head_dim: 128 }).arch).toEqual({ layers: 45, kvHeads: 64, headDim: 128 });
+  });
+
+  it('a re-measured alias row whose header is not Q4_K_M (file_type ≠ 15) is held, not written', async () => {
+    const grown = new Map([[repo, tree.get(repo)!.map((e) => (e.path === 'GLM-5.3-Flash-Q4_K-00002-of-00002.gguf' ? { ...e, size: 181_563_033_792 } : e))]]);
+    const input = makeInput({ models: [moeModel], quants: rows, treeByRepo: grown });
+    const plan = buildSyncPlan(input);
+    expect(plan.find((c) => c.id === 'glm-test/Q4_K_M' && c.field === 'fileGB')).toMatchObject({ kind: 'auto', next: 181.57 });
+    const measure = (fileType: number): MeasureSplitFn => () =>
+      Promise.resolve({ expertGB: 171.43, nonExpertGB: 9.46, offGpuGB: 0.68, mtpGB: 0, fileGB: 181.57, fileType });
+    const bad = await planSplitChanges(input, plan, measure(14));
+    expect(bad).toEqual([expect.objectContaining({ id: 'glm-test/Q4_K_M', kind: 'suspicious', note: expect.stringContaining('general.file_type 14 ≠ 15') })]);
+    const good = await planSplitChanges(input, plan, measure(15));
+    expect(good).toEqual([expect.objectContaining({ id: 'glm-test/Q4_K_M', kind: 'auto', next: 'expert 171.43 / non-expert 9.46' })]);
+  });
+});

@@ -328,7 +328,8 @@ const A_RANK = verdictRank('A');
  * 그대로 두는 임시 기본값이다(6b060f2 대비 대안 변화 0 — PROGRESS §2 큐 3·§4 D113). 이 모델 자신의 콤보·허브는 그대로 만든다.
  * 하이퍼 커넥션·압축 어텐션(DeepSeek V4 Flash — `arch.mhc`·attnType compressed, 10-22 D115)도 같은 임시 기본값으로 뺀다 — 늘 이론 추정이고(assess
  * `isTheoretical`) 카탈로그에서 가장 커서(284.33B), 후보로 두면 기존 콤보 168곳(GPU 허브 구성 — M3·M5 Ultra·M2 Ultra 등의 '더 큰 모델')이
- * Solar Open2 250B(보정 추정)에서 이 모델로 바뀐다(f7f1e32 대비)
+ * Solar Open2 250B(보정 추정)에서 이 모델로 바뀐다(f7f1e32 대비). GLM-5.3-Flash(하이퍼 커넥션 하이브리드 — `arch.mhc`, 10-22 ⑧-b, 320B)도 같은 필터로 빠진다
+ * — 늘 이론 추정이고 DeepSeek V4 Flash 보다도 커서, 후보로 두면 같은 '더 큰 모델' 자리를 가져간다
  */
 const isModelAltCandidate = (model: Model): boolean =>
   model.arch.valueExperts === undefined && model.arch.mhc !== true && model.arch.attnType !== 'compressed';

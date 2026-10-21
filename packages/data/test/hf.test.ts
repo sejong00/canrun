@@ -20,7 +20,12 @@ import {
   classifyArch,
   classifySplit,
   DEEPSEEK_V4_REFS,
+  GLM5_NEXT_REFS,
+  aliasFileTypeProblem,
   fetchRange,
+  matchQuantFiles,
+  quantFileAlias,
+  quantRowsFrom,
   measureSplit,
   mapLicense,
   NANBEIGE_LOOP_REFS,
@@ -1179,5 +1184,193 @@ describe('classifyArch — DeepSeek V4 compressed attention and hyper-connection
     // 헤더를 못 읽으면 safetensors 로 돌아간다(활성 파라미터는 이름에서 못 읽어 no-params)
     const r3 = buildHfModel({ ...base, config: DSV4_CONFIG });
     expect(r3.kind).toBe('no-params');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GLM-5.3-Flash — KDA + DSA(희소 MLA·인덱서) + 하이퍼 커넥션, 파일 이름 별칭 Q4_K (10-22 엔진 후속 ⑧-b)
+// ---------------------------------------------------------------------------
+
+const GLM_LAYERS = Array.from({ length: 45 }, (_, i) => ((i + 1) % 4 === 0 ? 'deepseek_sparse_attention' : 'linear_attention'));
+const GLM_DSA = GLM_LAYERS.flatMap((t, i) => (t === 'deepseek_sparse_attention' ? [i] : []));
+const GLM_KDA = GLM_LAYERS.flatMap((t, i) => (t === 'linear_attention' ? [i] : []));
+/** zai-org/GLM-5.3-Flash config.json text_config (10-22 — 값 그대로) + 최상위 래퍼(비전 설정은 일부만, quantization_config 생략) */
+const GLM_TEXT = {
+  attention_bias: false, attention_dropout: 0.0, dtype: 'bfloat16', eos_token_id: [154820, 154827, 154829], first_k_dense_replace: 3, hc_eps: 1e-6,
+  hc_mult: 4, hc_sinkhorn_iters: 20, head_dim: 0, hidden_act: 'silu', hidden_size: 4096, index_head_dim: 128, index_kpool: 4,
+  index_kpool_always_select_tail: true, index_kpool_compress: true, index_n_heads: 32, index_topk: 2048, index_share_for_mtp_iteration: true,
+  indexer_rope_interleave: true, indexer_types: Array<string>(45).fill('full'), initializer_range: 0.02, intermediate_size: 12288, kv_lora_rank: 512,
+  layer_types: GLM_LAYERS,
+  linear_attn_config: { num_heads: 64, gate_lower_bound: -5.0, head_dim: 128, short_conv_kernel_size: 4, kda_layers: GLM_KDA, full_attn_layers: GLM_DSA },
+  max_position_embeddings: 1048576, mhc: true, mla_use_nope: true,
+  mlp_layer_types: Array.from({ length: 45 }, (_, i) => (i < 3 ? 'dense' : 'sparse')),
+  model_type: 'glm5_next_text', moe_intermediate_size: 2048, moe_router_dtype: 'float32', n_group: 1, n_routed_experts: 288, n_shared_experts: 1,
+  norm_topk_prob: true, num_attention_heads: 64, num_experts_per_tok: 8, num_hidden_layers: 45, num_key_value_heads: 64, num_nextn_predict_layers: 1,
+  output_router_logits: false, pad_token_id: 154820, q_lora_rank: 1536, qk_head_dim: 256, qk_nope_head_dim: 256, qk_rope_head_dim: 0, rms_norm_eps: 1e-5,
+  routed_scaling_factor: 2.5, router_aux_loss_coef: 0.001, scoring_func: 'sigmoid', swiglu_limit: 10.0, tie_word_embeddings: false, topk_group: 1,
+  topk_method: 'noaux_tc', use_cache: true, v_head_dim: 256, vocab_size: 154880,
+};
+const glmConfig = (text: Record<string, unknown> = GLM_TEXT, top: Record<string, unknown> = {}) => ({
+  architectures: ['Glm5NextForConditionalGeneration'],
+  text_config: text,
+  vision_config: { depth: 24, hidden_size: 1024, model_type: 'glm5_next_vision', out_hidden_size: 4096, patch_size: 14 },
+  image_token_id: 154854,
+  tie_word_embeddings: false,
+  model_type: 'glm5_next',
+  transformers_version: '5.16.0',
+  ...top,
+});
+
+describe('classifyArch — GLM-5.3-Flash KDA + DSA and hyper-connections (glm5_next_text, 10-22 엔진 후속 ⑧-b)', () => {
+  it('the config of record: 34 KDA + 11 DSA layers (3, 7, …, 43), first 3 layers dense', () => {
+    expect(GLM_DSA).toEqual([3, 7, 11, 15, 19, 23, 27, 31, 35, 39, 43]);
+    expect(GLM_KDA).toHaveLength(34);
+  });
+
+  it('GLM-5.3-Flash: hybrid, KV = 11 × (512 × 2 + 128 × 3 × 2) = 19,712 B/tok, MoE 288 top-8 on layers 3–44, mHC, vision (mmproj), MTP off the main file', () => {
+    const r = classifyArch(glmConfig());
+    expect(r).toMatchObject({
+      kind: 'ok',
+      modelType: 'glm5_next_text',
+      attnType: 'hybrid',
+      mhc: true,
+      vision: true,
+      maxContext: 1048576,
+      moe: { experts: 288, topK: 8 },
+      arch: { layers: 45, kvHeads: 1, headDim: 512, kvBytesPerTokenF16: 19712 },
+    });
+    if (r.kind !== 'ok') return;
+    expect(r.override?.kvBytesPerTokenF16).toBe(19712);
+    expect(r.override?.reason).toContain('DSA 11/45 layers');
+    expect(r.override?.reason).toContain('KDA 34층');
+    expect(r.expertLayers).toEqual(Array.from({ length: 42 }, (_, i) => i + 3));
+    expect(r.offFileModules).toEqual(['MTP']);
+    expect(r.refs).toEqual(GLM5_NEXT_REFS);
+    for (const ref of [...(r.refs ?? []), ...(r.override?.refs ?? [])]) {
+      expect(ref).toMatch(/^https:\/\/github\.com\/ggml-org\/llama\.cpp\/blob\/a37cc46104eb50900d5ab4a9ba02a0abdac039db\//);
+    }
+  });
+
+  it('options left off (null, false, 0, empty) are not "new options"; no mlp_layer_types / indexer_types is fine', () => {
+    const { mlp_layer_types: _m, indexer_types: _i, ...rest } = GLM_TEXT;
+    const r = classifyArch(glmConfig({ ...rest, some_future_flag: false, another: null, empty_list: [] }));
+    expect(r).toMatchObject({ kind: 'ok', arch: { kvBytesPerTokenF16: 19712 } });
+  });
+
+  it.each([
+    ['an option the llama.cpp converter does not read', { ...GLM_TEXT, enable_new_router: true }, '처음 보는 glm5_next 옵션(enable_new_router)'],
+    ['an unknown linear_attn_config option', { ...GLM_TEXT, linear_attn_config: { ...GLM_TEXT.linear_attn_config, use_lora: true } }, 'linear_attn_config 옵션(use_lora)'],
+    ['MLA with rope (the converter asserts nope only)', { ...GLM_TEXT, qk_rope_head_dim: 64 }, 'rope 를 쓰는 MLA'],
+    ['mla_use_nope off', { ...GLM_TEXT, mla_use_nope: false }, 'rope 를 쓰는 MLA'],
+    ['KDA heads ≠ attention heads', { ...GLM_TEXT, linear_attn_config: { ...GLM_TEXT.linear_attn_config, num_heads: 32 } }, 'KDA 헤드 32'],
+    ['k-pool 1 (the loader asserts > 1)', { ...GLM_TEXT, index_kpool: 1 }, 'index_kpool 1'],
+    ['top_k not a multiple of the k-pool', { ...GLM_TEXT, index_topk: 2050 }, 'index_topk 2050'],
+    ['an indexer that is not full on every layer', { ...GLM_TEXT, indexer_types: [...Array<string>(44).fill('full'), 'shared'] }, 'indexer_types'],
+    ['hc_mult 2 (the loader takes 4 only)', { ...GLM_TEXT, hc_mult: 2 }, 'hc_mult 2'],
+    ['mhc off', { ...GLM_TEXT, mhc: false }, 'mhc 꺼짐'],
+    ['k-pool compression off', { ...GLM_TEXT, index_kpool_compress: false }, 'index_kpool_compress'],
+    ['softmax scoring', { ...GLM_TEXT, scoring_func: 'softmax' }, 'scoring_func softmax'],
+    ['a different top-k method (the loader needs exp_probs_b)', { ...GLM_TEXT, topk_method: 'greedy' }, 'topk_method greedy'],
+    ['grouped routing', { ...GLM_TEXT, n_group: 8, topk_group: 4 }, '그룹 라우팅'],
+    ['tied embeddings (the loader needs output.weight)', { ...GLM_TEXT, tie_word_embeddings: true }, 'tie_word_embeddings'],
+    ['an unknown layer type', { ...GLM_TEXT, layer_types: [...GLM_LAYERS.slice(0, 44), 'full_attention'] }, '처음 보는 층 종류 full_attention'],
+    ['a layer map shorter than the layer count', { ...GLM_TEXT, layer_types: GLM_LAYERS.slice(0, 44) }, 'layer_types'],
+    ['a KDA layer list that disagrees with layer_types', { ...GLM_TEXT, linear_attn_config: { ...GLM_TEXT.linear_attn_config, kda_layers: GLM_KDA.slice(1) } }, '층 목록'],
+    ['dense layers after the leading block', { ...GLM_TEXT, mlp_layer_types: GLM_TEXT.mlp_layer_types.map((t, i) => (i === 10 ? 'dense' : t)) }, 'mlp_layer_types'],
+    ['no DSA layer', { ...GLM_TEXT, layer_types: Array<string>(45).fill('linear_attention'), linear_attn_config: { ...GLM_TEXT.linear_attn_config, kda_layers: undefined, full_attn_layers: undefined } }, 'DSA'],
+    ['a missing indexer width', { ...GLM_TEXT, index_head_dim: undefined }, 'index_head_dim'],
+  ] as const)('refuses %s', (_name, text, reason) => {
+    const r = classifyArch(glmConfig(text as Record<string, unknown>));
+    expect(r.kind).toBe('unsupported');
+    if (r.kind === 'unsupported') expect(r.reason).toContain(reason);
+  });
+
+  it('refuses another class and the bare top-level type (no text_config — the converter reads text_config)', () => {
+    expect(classifyArch(glmConfig(GLM_TEXT, { architectures: ['Glm5NextForCausalLM'] }))).toMatchObject({
+      kind: 'unsupported',
+      reason: expect.stringContaining('glm5_next 변형'),
+    });
+    const { text_config: _t, ...wrapper } = glmConfig();
+    expect(classifyArch({ ...wrapper, ...GLM_TEXT, model_type: 'glm5_next' })).toMatchObject({
+      kind: 'unsupported',
+      reason: expect.stringContaining('model_type=glm5_next'),
+    });
+  });
+});
+
+describe('file name alias Q4_K → Q4_K_M (10-22 엔진 후속 ⑧-b — ggml-org/GLM-5.3-Flash-GGUF)', () => {
+  const f = (path: string, size = 1): TreeEntry => ({ type: 'file', path, size });
+  const GLM_TREE = [
+    f('GLM-5.3-Flash-Q2_K-00001-of-00002.gguf', 9_430_112),
+    f('GLM-5.3-Flash-Q2_K-00002-of-00002.gguf', 133_799_626_432),
+    f('GLM-5.3-Flash-Q2_K_S-00001-of-00002.gguf', 9_430_112),
+    f('GLM-5.3-Flash-Q2_K_S-00002-of-00002.gguf', 110_017_922_752),
+    f('GLM-5.3-Flash-Q4_K-00001-of-00002.gguf', 9_429_856),
+    f('GLM-5.3-Flash-Q4_K-00002-of-00002.gguf', 181_363_033_792),
+    f('mmproj-GLM-5.3-Flash-Q8_0.gguf', 652_829_376),
+    f('mtp-GLM-5.3-Flash-Q4_0.gguf', 4_947_286_976),
+    f('mtp-GLM-5.3-Flash-Q8_0.gguf', 9_284_197_312),
+  ];
+
+  it('Q4_K_M takes the Q4_K files only when no Q4_K_M file exists; Q2_K does not take Q2_K_S; sidecars stay out', () => {
+    expect(matchQuantFiles(GLM_TREE, 'Q4_K_M').map((e) => e.path)).toEqual(['GLM-5.3-Flash-Q4_K-00001-of-00002.gguf', 'GLM-5.3-Flash-Q4_K-00002-of-00002.gguf']);
+    expect(matchQuantFiles(GLM_TREE, 'Q2_K').map((e) => e.path)).toEqual(['GLM-5.3-Flash-Q2_K-00001-of-00002.gguf', 'GLM-5.3-Flash-Q2_K-00002-of-00002.gguf']);
+    expect(matchQuantFiles(GLM_TREE, 'Q8_0')).toEqual([]);
+    // 정확한 Q4_K_M 이 있으면 별칭은 쓰지 않는다(플레인이든 UD 든)
+    expect(matchQuantFiles([...GLM_TREE, f('X-Q4_K_M.gguf')], 'Q4_K_M').map((e) => e.path)).toEqual(['X-Q4_K_M.gguf']);
+    expect(matchQuantFiles([...GLM_TREE, f('X-UD-Q4_K_M.gguf')], 'Q4_K_M').map((e) => e.path)).toEqual(['X-UD-Q4_K_M.gguf']);
+    // 다른 이웃 토큰은 별칭으로 잡히지 않는다 — Q4_K_S·Q4_K_L·UD-Q4_K_XL·IQ4_K·UD-Q4_K
+    expect(matchQuantFiles([f('X-Q4_K_S.gguf'), f('X-Q4_K_L.gguf'), f('X-UD-Q4_K_XL.gguf'), f('X-IQ4_K.gguf'), f('X-UD-Q4_K.gguf')], 'Q4_K_M')).toEqual([]);
+  });
+
+  it('quantRowsFrom: the Q4_K files become the Q4_K_M baseline row, then Q2_K (2 shards each, sizes summed)', () => {
+    const rows = quantRowsFrom(GLM_TREE, 'ggml-org/GLM-5.3-Flash-GGUF', 'glm-5.3-flash');
+    expect(rows.map((r) => [r.quant, r.fileGB, r.fileName])).toEqual([
+      ['Q4_K_M', 181.37, 'GLM-5.3-Flash-Q4_K-00001-of-00002.gguf'],
+      ['Q2_K', 133.81, 'GLM-5.3-Flash-Q2_K-00001-of-00002.gguf'],
+    ]);
+  });
+
+  it('quantFileAlias / aliasFileTypeProblem: only an alias-matched file is checked against the header file_type (15 = LLAMA_FTYPE_MOSTLY_Q4_K_M)', () => {
+    expect(quantFileAlias('Q4_K_M', 'GLM-5.3-Flash-Q4_K-00001-of-00002.gguf')).toEqual({ token: 'Q4_K', fileType: 15 });
+    expect(quantFileAlias('Q4_K_M', 'sub/dir/GLM-5.3-Flash-Q4_K.gguf')).toEqual({ token: 'Q4_K', fileType: 15 });
+    expect(quantFileAlias('Q4_K_M', 'Qwen3-8B-Q4_K_M.gguf')).toBeUndefined();
+    expect(quantFileAlias('Q4_K_M', 'X-UD-Q4_K_M-00001-of-00002.gguf')).toBeUndefined();
+    expect(quantFileAlias('Q2_K', 'GLM-5.3-Flash-Q2_K-00001-of-00002.gguf')).toBeUndefined();
+    expect(quantFileAlias('Q4_K_M', undefined)).toBeUndefined();
+    expect(aliasFileTypeProblem('Q4_K_M', 'GLM-5.3-Flash-Q4_K-00001-of-00002.gguf', 15)).toBeUndefined();
+    expect(aliasFileTypeProblem('Q4_K_M', 'GLM-5.3-Flash-Q4_K-00001-of-00002.gguf', 14)).toContain('file_type 14 ≠ 15');
+    expect(aliasFileTypeProblem('Q4_K_M', 'GLM-5.3-Flash-Q4_K-00001-of-00002.gguf', undefined)).toContain('없음');
+    // 별칭 행이 아니면 대조하지 않는다(기존 행은 헤더 file_type 을 보지 않는다)
+    expect(aliasFileTypeProblem('Q4_K_M', 'Qwen3-8B-Q4_K_M.gguf', 7)).toBeUndefined();
+    expect(aliasFileTypeProblem('Q2_K', 'GLM-5.3-Flash-Q2_K-00001-of-00002.gguf', 10)).toBeUndefined();
+  });
+
+  it('classifySplit reports the header general.file_type (and leaves it out when absent)', () => {
+    const tensors: GgufTensorInfo[] = [{ name: 'blk.0.attn_q.weight', dims: [256, 1], type: 12 }];
+    const h = (kv: Record<string, number | string>): GgufHeader => ({ version: 3, kv, tensors, headerBytes: 0 });
+    expect(classifySplit([h({ 'general.architecture': 'x', 'x.block_count': 1, 'general.file_type': 15 })]).fileType).toBe(15);
+    expect(classifySplit([h({ 'general.architecture': 'x', 'x.block_count': 1 })])).not.toHaveProperty('fileType');
+  });
+
+  it('buildHfModel (calculator import) builds a glm5_next model from the Q4_K tree: header paramsB (MTP is in the config, not in the main file), mhc, vision', () => {
+    const r = buildHfModel({
+      hfId: 'someone/GLM-5.3-Flash-Finetune',
+      ggufRepo: 'someone/GLM-5.3-Flash-Finetune-GGUF',
+      config: glmConfig(),
+      tree: GLM_TREE,
+      info: { license: 'mit', paramsB: 321.32303139 },
+      baseSplit: { expertGB: 171.23, nonExpertGB: 9.46, totalParamsB: 313.326811966, expertParamsB: 304.405807104 },
+    });
+    expect(r.kind).toBe('ok');
+    if (r.kind !== 'ok') return;
+    expect(r.model.arch).toMatchObject({ attnType: 'hybrid', kvBytesPerTokenF16: 19712, experts: 288, topK: 8, mhc: true });
+    expect(r.model.paramsB).toBe(313.33);
+    expect(r.model.activeParamsB).toBe(17.38);
+    expect(r.notes).toContain('params-from-header');
+    expect(r.rows.map((row) => [row.quant, row.fileName])).toEqual([
+      ['Q4_K_M', 'GLM-5.3-Flash-Q4_K-00001-of-00002.gguf'],
+      ['Q2_K', 'GLM-5.3-Flash-Q2_K-00001-of-00002.gguf'],
+    ]);
   });
 });
