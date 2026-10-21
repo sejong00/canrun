@@ -30,6 +30,9 @@ const AUTO_IDS: Readonly<Record<string, string | undefined>> = {
   'Qwen/Qwen3-235B-A22B-Instruct-2507': 'qwen3',
   'meta-llama/Llama-3.1-70B-Instruct': 'llama-3.1',
   'Qwen/Qwen3-4B-Base': undefined,
+  // K2-Horizon(10-21 D113) — 카탈로그 밖 크기도 같은 계열로(자동 추가가 넣을 수 있다)
+  'IFM/K2-Horizon-3.7B': 'k2-horizon',
+  'IFM/K2-Horizon-375B-A23B': 'k2-horizon',
 };
 
 /** 계열 → 적어도 이 모델들 (카탈로그 10-19 기준) */
@@ -46,6 +49,7 @@ const EXPECTED: Readonly<Record<string, readonly string[]>> = {
   'kanana-1.5': ['kanana-1.5-8b', 'kanana-1.5-15.7b-a3b'],
   minicpm5: ['minicpm5-1b', 'minicpm5-2b'],
   'ling-3.0': ['ling-3.0-tiny', 'ling-3.0-flash'],
+  'k2-horizon': ['k2-horizon-7b', 'k2-horizon-mova-36b-a4b'],
 };
 
 /** 계열 → 구성원 (카탈로그 전체) */

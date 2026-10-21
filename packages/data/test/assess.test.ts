@@ -9,6 +9,7 @@ import {
   canMixWith,
   cheapestOptions,
   classifyLicense,
+  commandPlan,
   ctxMatrix,
   ggufPublisher,
   hardwareConfigs,
@@ -751,6 +752,39 @@ describe('Gemma 4 E4B·E2B — 층별 임베딩 표 (10-21 D112)', () => {
       expect(combo(gpuId, 'gemma-4-e2b').baseline.result.confidence, gpuId).toBe('theoretical');
     }
     expect(combo('rtx-4060', 'gemma-4-12b').baseline.estimate.confidence).toBe('calibrated');
+  });
+});
+
+describe('K2-Horizon 7B·MoVA 36B-A4B (10-21 D113)', () => {
+  it('7B: 표준 dense — RTX 4060 Q4_K_M 8k 전량 탑재, 보정 추정(생각 모드 always 라 임계 ×1.5)', () => {
+    const c = combo('rtx-4060', 'k2-horizon-7b');
+    expect(c.baseline.quant).toBe('Q4_K_M');
+    expect(c.baseline.result).toMatchObject({ mode: 'full-gpu', confidence: 'calibrated' });
+    // 그래픽카드 상주 = 파일 − 입력 임베딩(헤더 실측 offGpuGB)
+    expect(c.baseline.result.vram.weights).toBeCloseTo(5.59 - 0.59, 6);
+  });
+
+  it('MoVA: 값 전문가는 비전문가(그래픽카드 상주)라 cpu-moe 도 VRAM 에 남고, --n-cpu-moe 는 앞 dense 3층을 건너뛴 블록 수', () => {
+    const g = gpu('rtx-3060-12gb');
+    const config = hardwareConfigs(g, seed.gpus)[0]!;
+    const m = model('k2-horizon-mova-36b-a4b');
+    const c = assessCombo(seed, g, config, m);
+    expect(c.baseline.result.mode).toBe('cpu-moe');
+    // VRAM 가중치 = 비전문가(값 전문가 4.25GB 포함 6.0) + GPU 에 남긴 FFN 전문가 층
+    const perLayer = 15.99 / 45;
+    const onCpu = c.baseline.result.cpuMoeLayers!;
+    expect(c.baseline.result.vram.weights).toBeCloseTo(6.0 + perLayer * (45 - onCpu), 6);
+    const row = seed.modelQuants.find((q) => q.modelId === m.id && q.quant === 'Q4_K_M')!;
+    const n = commandPlan(g, config, m, row, c.baseline).llamaCpp!.nCpuMoe!;
+    expect(n).toBe(onCpu + 3);
+  });
+
+  it('MoVA: 값 전문가를 토큰마다 전부 읽는 보수 근사라 GPU·모드와 무관하게 이론 추정', () => {
+    for (const [gpuId, index] of [['rtx-5090', 0], ['rtx-3060-12gb', 0], ['rtx-4060', 0], ['apple-m4-pro', 2], ['cpu-ddr5-5600-2ch', 2]] as const) {
+      const c = combo(gpuId, 'k2-horizon-mova-36b-a4b', index);
+      expect(c.baseline.result.confidence, gpuId).toBe('theoretical');
+    }
+    expect(combo('rtx-5090', 'k2-horizon-mova-36b-a4b').baseline.result.mode).toBe('full-gpu');
   });
 });
 

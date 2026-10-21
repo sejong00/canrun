@@ -11,7 +11,8 @@
  *   (번호가 바뀌면 학습 데이터·구조가 다른 모델이라 "같은 모델의 다른 크기"가 아니다). 같은 버전의 날짜 갱신(`-2507`)은 같은 계열이다.
  *   이름 줄기가 다른 모델(HyperCLOVA X SEED 와 SEED Think, MiniCPM5 와 MiniCPM-V)도 따로다 — id 앞부분이 다르다.
  * - 예외 두 표: `SERIES_OVERRIDES`(모델 id → 계열 — 크기 꼬리가 없는 Ling-3.0 Tiny·Flash, 이름 줄기가 다른 DeepSeek R1 0528 Qwen3 8B) ·
- *   `SERIES_ALIASES`(뗀 앞부분 → 계열 — R1 Distill 은 손으로 정한 id(`deepseek-r1-distill-14b`)든 자동 id(`deepseek-r1-distill-qwen-7b`)든 'deepseek-r1' 로).
+ *   `SERIES_ALIASES`(뗀 앞부분 → 계열 — R1 Distill 은 손으로 정한 id(`deepseek-r1-distill-14b`)든 자동 id(`deepseek-r1-distill-qwen-7b`)든 'deepseek-r1' 로,
+ *   K2-Horizon MoVA 는 카드가 같은 계열의 MoE 구성원이라 밝혀 'k2-horizon' 으로 — 10-21 D113).
  * - 구성원이 하나뿐인 계열은 표를 그리지 않는다(`seriesMembers` 가 빈 배열).
  */
 
@@ -30,6 +31,9 @@ export const SERIES_ALIASES: Readonly<Record<string, string>> = {
   'deepseek-r1-distill': 'deepseek-r1',
   'deepseek-r1-distill-qwen': 'deepseek-r1',
   'deepseek-r1-distill-llama': 'deepseek-r1',
+  // K2-Horizon MoVA 36B-A4B 는 모델 카드가 K2-Horizon 계열의 MoE 구성원("the sparse member of the K2-Horizon family")이라고 밝힌다 —
+  // 같은 학습 데이터·같은 세대라 7B 등 dense 크기와 한 표에 둔다(10-21 D113, 이름 줄기의 MoVA 는 구조 이름)
+  'k2-horizon-mova': 'k2-horizon',
 };
 
 /**

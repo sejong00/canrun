@@ -110,6 +110,7 @@ export const MOE_ARCH: Readonly<Record<string, MoeArch>> = Object.freeze({
   'minicpm-v-4.7-35b-a3b': { totalParamsB: 35.21, activeParamsB: 3, experts: 256, topK: 8 }, // add-model 2026-10-13 — openbmb/MiniCPM-V-4.7-35B-A3B config
   'mellum2.1-12b-a2.5b-thinking': { totalParamsB: 12.15, activeParamsB: 2.5, experts: 64, topK: 8 }, // add-model 2026-10-20 — JetBrains/Mellum2.1-12B-A2.5B-Thinking config
   'kolibri-1': { totalParamsB: 78.1, activeParamsB: 3.46, experts: 384, topK: 6 }, // add-model 2026-10-20 — Aleph-Alpha/Kolibri-1 config
+  'k2-horizon-mova-36b-a4b': { totalParamsB: 37.44, activeParamsB: 4, experts: 100, topK: 8 }, // add-model 2026-10-21 — IFM/K2-Horizon-MoVA-36B-A4B config
 });
 
 /**
