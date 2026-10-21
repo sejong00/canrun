@@ -83,11 +83,14 @@ export type Change = {
   split?: SplitValues;
 };
 
-/** 행에 기록하는 헤더 실측 — MoE: expertGB·nonExpertGB, dense: offGpuGB(층별 임베딩 표가 있으면 pleGB 도 — 10-21 D112). mtpGB·pleGB 는 0 보다 클 때만 */
-export type SplitValues = { expertGB?: number; nonExpertGB?: number; offGpuGB?: number; pleGB?: number; mtpGB?: number };
+/**
+ * 행에 기록하는 헤더 실측 — MoE: expertGB·nonExpertGB(값 전문가가 있으면 valueExpertGB 도 — 10-21 D113), dense: offGpuGB(층별 임베딩 표가 있으면
+ * pleGB 도 — 10-21 D112). mtpGB·pleGB·valueExpertGB 는 0 보다 클 때만
+ */
+export type SplitValues = { expertGB?: number; nonExpertGB?: number; valueExpertGB?: number; offGpuGB?: number; pleGB?: number; mtpGB?: number };
 
 /** 행 하나의 헤더 측정 결과 (gguf-header.measureSplit 의 부분집합). fileGB = Content-Range 기준 파일 크기(알면) */
-export type MeasuredSplit = { expertGB: number; nonExpertGB: number; offGpuGB: number; pleGB?: number; mtpGB: number; fileGB?: number };
+export type MeasuredSplit = { expertGB: number; nonExpertGB: number; valueExpertGB?: number; offGpuGB: number; pleGB?: number; mtpGB: number; fileGB?: number };
 
 /** 행 하나의 분할 측정 — 실행부는 gguf-header.measureSplit, 테스트는 모킹 */
 export type MeasureSplitFn = (repo: string, fileName: string) => Promise<MeasuredSplit>;
@@ -393,14 +396,15 @@ const fmtSplit = (v: SplitValues | undefined): string | undefined => {
   if (v === undefined) return undefined;
   const parts =
     v.offGpuGB !== undefined ? [`off-GPU ${v.offGpuGB}`] : [`expert ${String(v.expertGB)}`, `non-expert ${String(v.nonExpertGB)}`];
+  if (v.valueExpertGB !== undefined) parts.push(`value experts ${v.valueExpertGB}`);
   if (v.pleGB !== undefined) parts.push(`per-layer embedding ${v.pleGB}`);
   if (v.mtpGB !== undefined) parts.push(`MTP ${v.mtpGB}`);
   return parts.join(' / ');
 };
 
-const SPLIT_KEYS = ['expertGB', 'nonExpertGB', 'offGpuGB', 'pleGB', 'mtpGB'] as const;
-/** 새 측정에 없으면 옛 값을 지우는 키 — 0 일 때 기록하지 않는 값(MTP 블록·층별 임베딩 표) */
-const DROPPABLE_SPLIT_KEYS: ReadonlySet<string> = new Set(['pleGB', 'mtpGB']);
+const SPLIT_KEYS = ['expertGB', 'nonExpertGB', 'valueExpertGB', 'offGpuGB', 'pleGB', 'mtpGB'] as const;
+/** 새 측정에 없으면 옛 값을 지우는 키 — 0 일 때 기록하지 않는 값(MTP 블록·층별 임베딩 표·값 전문가) */
+const DROPPABLE_SPLIT_KEYS: ReadonlySet<string> = new Set(['valueExpertGB', 'pleGB', 'mtpGB']);
 
 const sameSplit = (a: SplitValues, b: SplitValues): boolean => SPLIT_KEYS.every((k) => a[k] === b[k]);
 
@@ -408,8 +412,9 @@ const sameSplit = (a: SplitValues, b: SplitValues): boolean => SPLIT_KEYS.every(
 function recordedSplit(mq: ModelQuantRecord, moe: boolean): SplitValues | undefined {
   const mtp = mq.mtpGB !== undefined ? { mtpGB: mq.mtpGB } : {};
   if (moe) {
+    const value = mq.valueExpertGB !== undefined ? { valueExpertGB: mq.valueExpertGB } : {};
     return mq.expertGB !== undefined && mq.nonExpertGB !== undefined
-      ? { expertGB: mq.expertGB, nonExpertGB: mq.nonExpertGB, ...mtp }
+      ? { expertGB: mq.expertGB, nonExpertGB: mq.nonExpertGB, ...value, ...mtp }
       : undefined;
   }
   const ple = mq.pleGB !== undefined ? { pleGB: mq.pleGB } : {};
@@ -420,14 +425,19 @@ function recordedSplit(mq: ModelQuantRecord, moe: boolean): SplitValues | undefi
 function toSplitValues(m: MeasuredSplit, moe: boolean): SplitValues {
   const mtp = m.mtpGB > 0 ? { mtpGB: m.mtpGB } : {};
   const ple = (m.pleGB ?? 0) > 0 ? { pleGB: m.pleGB } : {};
-  return moe ? { expertGB: m.expertGB, nonExpertGB: m.nonExpertGB, ...mtp } : { offGpuGB: m.offGpuGB, ...ple, ...mtp };
+  const value = (m.valueExpertGB ?? 0) > 0 ? { valueExpertGB: m.valueExpertGB } : {};
+  return moe ? { expertGB: m.expertGB, nonExpertGB: m.nonExpertGB, ...value, ...mtp } : { offGpuGB: m.offGpuGB, ...ple, ...mtp };
 }
 
-/** 기록하면 validateAll 이 거부할 측정 — 다른 파일을 잰 것으로 보고 보류한다. 문제 없으면 undefined */
-function implausible(v: SplitValues, m: MeasuredSplit, fileGB: number): string | undefined {
+/**
+ * 기록하면 validateAll 이 거부할 측정 — 다른 파일을 잰 것으로 보고 보류한다. 문제 없으면 undefined.
+ * 값 전문가 모델(`valueExperts` — arch.valueExperts, 10-21 D113)은 값 전문가 텐서(attn_v_exps)가 잡혀야 한다(행마다 valueExpertGB 필수)
+ */
+function implausible(v: SplitValues, m: MeasuredSplit, fileGB: number, valueExperts = false): string | undefined {
   if (m.fileGB !== undefined && Math.abs(m.fileGB - fileGB) > 0.02) {
     return `측정한 파일 크기 ${m.fileGB}GB ≠ fileGB ${fileGB}`;
   }
+  if (valueExperts && v.valueExpertGB === undefined) return '값 전문가(MoVA) 모델인데 헤더에 값 전문가 텐서(attn_v_exps)가 없음';
   if (v.offGpuGB !== undefined) {
     // 층별 임베딩 표(PLE)는 상한 밖 — 나머지에만 건다 (validateAll 과 같은 규칙, 10-21 D112)
     const other = v.offGpuGB - (v.pleGB ?? 0);
@@ -458,6 +468,8 @@ export async function planSplitChanges(
 ): Promise<Change[]> {
   const inScope = new Set(input.models.filter((m) => opts.modelIds?.has(m.id) ?? true).map((m) => m.id));
   const moeIds = new Set(input.models.filter((m) => m.activeParamsB !== undefined).map((m) => m.id));
+  // 값 전문가 모델(MoVA, 10-21 D113) — 행마다 valueExpertGB 필수(validateAll)
+  const valueExpertIds = new Set(input.models.filter((m) => m.arch.valueExperts !== undefined).map((m) => m.id));
   type Target = { id: string; moe: boolean; repo: string; fileName?: string; fileGB: number; old?: SplitValues; reason: string };
   const targets: Target[] = [];
   for (const mq of input.quants) {
@@ -510,7 +522,7 @@ export async function planSplitChanges(
     }
     const split = toSplitValues(m, t.moe);
     if (t.old && sameSplit(t.old, split)) return;
-    const problem = implausible(split, m, t.fileGB);
+    const problem = implausible(split, m, t.fileGB, valueExpertIds.has(t.id.split('/')[0] ?? ''));
     if (problem !== undefined) {
       results[i] = {
         ...base,
@@ -523,6 +535,28 @@ export async function planSplitChanges(
     results[i] = { ...base, next: fmtSplit(split), kind: 'auto', note: `GGUF 헤더 실측 — ${t.reason}`, split };
   });
   return results.filter((c): c is Change => c !== undefined);
+}
+
+/**
+ * 4b) 값 전문가 모델(arch.valueExperts — MoVA, 10-21 D113)의 새 양자화 행은 같은 동기화의 헤더 실측(분할·valueExpertGB, kind auto)이 있을 때만 넣는다.
+ * 실측 없이 넣으면 엔진이 모델 수준 유도 비전문가(값 전문가를 FFN 전문가처럼 나눈 값 — MoVA Q4_K_M 0.65 vs 실측 6.0)로 떨어져 늘 그래픽카드에 있는
+ * 값 전문가 몫을 빼고 VRAM 을 적게 세고, validateAll 도 그 행을 거부한다(그러면 데이터 동기화 PR 의 CI 가 멈춘다). 그런 새 행은 manual 로 내려
+ * 넣지 않는다 — 시드에 행이 없으니 다음 동기화가 새 행으로 다시 찾아 다시 잰다. 다른 모델의 새 행은 그대로(측정 실패는 파일 전체로 판정 — 보수)
+ */
+export function holdUnmeasuredRows(planned: readonly Change[], splitChanges: readonly Change[], models: readonly Model[]): Change[] {
+  const valueExpertIds = new Set(models.filter((m) => m.arch.valueExperts !== undefined).map((m) => m.id));
+  const measured = new Set(
+    splitChanges.filter((c) => c.kind === 'auto' && c.split?.valueExpertGB !== undefined).map((c) => c.id),
+  );
+  return planned.map((c) => {
+    if (c.field !== 'row' || c.kind !== 'auto') return c;
+    if (!valueExpertIds.has(c.id.split('/')[0] ?? '') || measured.has(c.id)) return c;
+    return {
+      ...c,
+      kind: 'manual',
+      note: `${c.note ?? '새 양자화 행'} — 값 전문가(MoVA) 모델은 GGUF 헤더 실측(분할·valueExpertGB)과 함께만 넣는다: 이번엔 넣지 않음(다음 동기화가 다시 잰다)`,
+    };
+  });
 }
 
 /** `key` 를 `after` 바로 뒤에 두고(이미 있으면 제자리 갱신) 레코드를 재구성한다. */
@@ -794,15 +828,17 @@ async function main(): Promise<void> {
   });
 
   const input: SyncInput = { rawModels, rawQuants, models, quants, treeByRepo, configByHfId };
-  const planned = buildSyncPlan(input);
+  const plan = buildSyncPlan(input);
   // 행별 헤더 실측(MoE 분할·dense 그래픽카드 밖 몫·MTP) — 헤더만 Range 로 읽는다(행당 수 MB). 측정 실패는 manual 로 리포트
   const splitChanges = await planSplitChanges(
     input,
-    planned,
+    plan,
     (repo, fileName) => measureSplit(repo, fileName, { token }),
     { modelIds: targetIds },
   );
   if (splitChanges.length > 0) console.log(`measured ${splitChanges.length} row(s) from GGUF headers`);
+  // 값 전문가 모델의 새 행은 헤더 실측과 함께만 넣는다(10-21 D113)
+  const planned = holdUnmeasuredRows(plan, splitChanges, models);
   const changes = [...planned, ...splitChanges];
   const downloads = planDownloads(targetModels, downloadsByHfId, today);
   const report = renderReport(changes, downloads);

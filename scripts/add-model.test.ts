@@ -201,6 +201,25 @@ describe('MoE — experts/topK from config, per-row split from the GGUF header (
     expect(Object.keys(res.rows[0]!).slice(2, 7)).toEqual(['fileGB', 'expertGB', 'nonExpertGB', 'mtpGB', 'ggufRepo']);
     expect(res.rows[0]).not.toHaveProperty('offGpuGB');
   });
+
+  it('value experts (MoVA, 10-21 D113): valueExpertGB right after nonExpertGB; a row without it stops the write instead of a warning', async () => {
+    const mova = { ...ok, expertGB: 15.99, nonExpertGB: 6.0, valueExpertGB: 4.25, offGpuGB: 0.38, trunkLayers: 48, expertCount: 100 };
+    const moe = { experts: 100, topK: 8 };
+    const res = await measureRows([row('Q4_K_M', 22.37)], moe, 48, () => Promise.resolve(mova), { valueExperts: true });
+    expect(res.problems).toEqual([]);
+    expect(Object.keys(res.rows[0]!).slice(2, 7)).toEqual(['fileGB', 'expertGB', 'nonExpertGB', 'valueExpertGB', 'ggufRepo']);
+    expect(res.rows[0]).toMatchObject({ nonExpertGB: 6.0, valueExpertGB: 4.25 });
+    // 측정 실패·값 전문가 텐서 없음 → 중단 사유(실측 없는 행은 모델 수준 유도 비전문가로 VRAM 을 적게 센다)
+    const failed = await measureRows([row('Q4_K_M', 22.37)], moe, 48, () => Promise.reject(new Error('HTTP 503')), { valueExperts: true });
+    expect(failed.problems).toEqual([expect.stringContaining('값 전문가(MoVA) 모델은 행마다 헤더 실측')]);
+    const { valueExpertGB: _v, ...noValue } = mova;
+    const missing = await measureRows([row('Q4_K_M', 22.37)], moe, 48, () => Promise.resolve(noValue), { valueExperts: true });
+    expect(missing.problems).toEqual([expect.stringContaining('attn_v_exps')]);
+    // 값 전문가가 없는 MoE 는 예전처럼 경고만
+    const plain = await measureRows([row('Q4_K_M', 22.37)], moe, 48, () => Promise.reject(new Error('HTTP 503')));
+    expect(plain.problems).toEqual([]);
+    expect(plain.warnings).toEqual([expect.stringContaining('HTTP 503')]);
+  });
 });
 
 describe('dense — per-row offGpuGB from the GGUF header (10-03 D62)', () => {

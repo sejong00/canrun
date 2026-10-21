@@ -8,6 +8,7 @@ import {
   buildSyncPlan,
   extractArch,
   extractMoe,
+  holdUnmeasuredRows,
   matchQuantFiles,
   parseArgs,
   planDownloads,
@@ -816,6 +817,73 @@ describe('planSplitChanges + applyChanges — MoE split', () => {
     expect(changes.find((c) => c.field === 'arch.experts')).toEqual(expect.objectContaining({ old: 128, next: 64, kind: 'manual' }));
     expect(changes.find((c) => c.field === 'arch.topK')).toBeUndefined();
     expect(changes.find((c) => c.field === 'nonExpertGB')).toBeUndefined();
+  });
+
+  describe('value experts (MoVA, 10-21 D113)', () => {
+    const movaModel = fullModel({
+      id: 'mova-36b',
+      hfId: 'org/mova-36b',
+      paramsB: 37.44,
+      activeParamsB: 4,
+      moe: true,
+      arch: { layers: 48, kvHeads: 8, headDim: 128, attnType: 'full', kvBytesPerTokenF16: 196608, experts: 100, topK: 8, valueExperts: 64, valueTopK: 4 },
+    });
+    const mrepo = 'org/mova-36b-GGUF';
+    const mrow = (over: Record<string, unknown> = {}): Record<string, unknown> =>
+      quantRow({ modelId: 'mova-36b', fileGB: 22.37, ggufRepo: mrepo, fileName: 'v-Q4_K_M.gguf', sources: [`https://huggingface.co/${mrepo}`], ...over });
+    const split = { expertGB: 15.99, nonExpertGB: 6.0 };
+
+    it('writes valueExpertGB right after nonExpertGB and keeps it when a re-measure is the same', async () => {
+      const input = makeInput({ models: [movaModel], quants: [mrow()] });
+      const { fn } = fakeMeasure({ 'v-Q4_K_M.gguf': header(split, { valueExpertGB: 4.25, offGpuGB: 0.38 }) });
+      const changes = await planSplitChanges(input, [], fn);
+      expect(changes).toEqual([
+        expect.objectContaining({ kind: 'auto', next: 'expert 15.99 / non-expert 6 / value experts 4.25', split: { ...split, valueExpertGB: 4.25 } }),
+      ]);
+      applyChanges(changes, input);
+      expect(Object.keys(input.rawQuants[0]!).slice(2, 7)).toEqual(['fileGB', 'expertGB', 'nonExpertGB', 'valueExpertGB', 'ggufRepo']);
+      const steady = makeInput({ models: [movaModel], quants: [mrow({ ...split, valueExpertGB: 4.25 })], treeByRepo: new Map([[mrepo, [file('v-Q4_K_M.gguf', 22_370_000_000)]]]) });
+      expect(await planSplitChanges(steady, buildSyncPlan(steady), fakeMeasure({}).fn)).toEqual([]);
+    });
+
+    it('a header without value experts on a MoVA model is held (another file) — it would drop valueExpertGB', async () => {
+      const input = makeInput({ models: [movaModel], quants: [mrow()] });
+      const { fn } = fakeMeasure({ 'v-Q4_K_M.gguf': header(split, { offGpuGB: 0.38 }) });
+      const changes = await planSplitChanges(input, [], fn);
+      expect(changes.map((c) => [c.kind, c.note?.includes('값 전문가 텐서(attn_v_exps)가 없음')])).toEqual([['manual', true]]);
+      // 값 전문가가 없는 MoE 모델은 같은 헤더를 그대로 받는다
+      const plain = makeInput({ models: [moeModel], quants: [row()] });
+      expect((await planSplitChanges(plain, [], fakeMeasure({ 'm-Q4_K_M.gguf': header(measured) }).fn))[0]?.kind).toBe('auto');
+    });
+
+    it('a new quant row of a MoVA model goes in only with its header split — otherwise it is held as manual and not inserted', async () => {
+      const tree = new Map([[mrepo, [file('v-Q4_K_M.gguf', 22_370_000_000), file('v-Q8_0.gguf', 39_830_000_000)]]]);
+      const base = () => makeInput({ models: [movaModel], quants: [mrow({ ...split, valueExpertGB: 4.25 })], treeByRepo: tree });
+      // 측정 실패 → 새 행은 manual, 시드는 그대로(다음 동기화가 새 행으로 다시 찾는다)
+      const failed = base();
+      const plan = buildSyncPlan(failed);
+      const splitFail = await planSplitChanges(failed, plan, fakeMeasure({ 'v-Q8_0.gguf': new Error('HTTP 503 for x') }).fn);
+      const held = holdUnmeasuredRows(plan, splitFail, failed.models);
+      expect(held.find((c) => c.field === 'row')).toEqual(expect.objectContaining({ id: 'mova-36b/Q8_0', kind: 'manual' }));
+      expect(held.find((c) => c.field === 'row')?.note).toContain('넣지 않음');
+      const before = JSON.stringify(failed.rawQuants);
+      applyChanges([...held, ...splitFail], failed);
+      expect(JSON.stringify(failed.rawQuants)).toBe(before);
+      // 측정 성공 → 새 행과 분할·valueExpertGB 가 함께 들어간다
+      const ok = base();
+      const plan2 = buildSyncPlan(ok);
+      const splitOk = await planSplitChanges(ok, plan2, fakeMeasure({ 'v-Q8_0.gguf': header({ expertGB: 28.2, nonExpertGB: 10.94 }, { valueExpertGB: 8.02, offGpuGB: 0.69 }) }).fn);
+      const kept = holdUnmeasuredRows(plan2, splitOk, ok.models);
+      expect(kept.find((c) => c.field === 'row')?.kind).toBe('auto');
+      applyChanges([...kept, ...splitOk], ok);
+      expect(ok.rawQuants[1]).toMatchObject({ quant: 'Q8_0', fileGB: 39.83, expertGB: 28.2, nonExpertGB: 10.94, valueExpertGB: 8.02 });
+      expect(() => parseModelQuants(ok.rawQuants)).not.toThrow();
+      // 다른 모델의 새 행은 측정이 실패해도 그대로 넣는다(파일 전체로 판정 — 보수)
+      const other = makeInput({ models: [moeModel], quants: [row(measured)], treeByRepo: new Map([[repo, [file('m-Q4_K_M.gguf', 18_560_000_000), file('m-Q8_0.gguf', 32_480_000_000)]]]) });
+      const plan3 = buildSyncPlan(other);
+      const split3 = await planSplitChanges(other, plan3, fakeMeasure({ 'm-Q8_0.gguf': new Error('HTTP 503 for x') }).fn);
+      expect(holdUnmeasuredRows(plan3, split3, other.models)).toEqual(plan3);
+    });
   });
 });
 

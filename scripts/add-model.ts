@@ -80,6 +80,8 @@ export type RowMeasure = {
   offGpuGB: number;
   /** 층별 임베딩 표(PLE) — 없거나 0 이면 표 없음 (10-21 D112) */
   pleGB?: number;
+  /** 값 전문가(MoVA attn_v_exps, nonExpertGB 안) — 없거나 0 이면 값 전문가 없음 (10-21 D113) */
+  valueExpertGB?: number;
   mtpGB: number;
   fileGB?: number;
   trunkLayers: number;
@@ -88,11 +90,11 @@ export type RowMeasure = {
 };
 export type MeasureRowFn = (repo: string, fileName: string) => Promise<RowMeasure>;
 
-/** 행에 헤더 실측을 넣는다 — 키 순서는 시드와 같게 fileGB 바로 뒤(MoE 분할 | dense offGpuGB·pleGB, 그다음 mtpGB) */
+/** 행에 헤더 실측을 넣는다 — 키 순서는 시드와 같게 fileGB 바로 뒤(MoE 분할·valueExpertGB | dense offGpuGB·pleGB, 그다음 mtpGB) */
 function withMeasure(row: ModelQuantRecord, m: RowMeasure, moe: boolean): ModelQuantRecord {
   const { modelId, quant, fileGB, ggufRepo, fileName, sources } = row;
   const split = moe
-    ? { expertGB: m.expertGB, nonExpertGB: m.nonExpertGB }
+    ? { expertGB: m.expertGB, nonExpertGB: m.nonExpertGB, ...((m.valueExpertGB ?? 0) > 0 ? { valueExpertGB: m.valueExpertGB } : {}) }
     : { offGpuGB: m.offGpuGB, ...((m.pleGB ?? 0) > 0 ? { pleGB: m.pleGB } : {}) };
   return {
     modelId,
@@ -124,8 +126,9 @@ function implausibleMeasure(m: RowMeasure, fileGB: number, moe: boolean): string
 }
 
 /**
- * 행별 GGUF 헤더 실측 + 헤더 대조. MoE(`moe` 있음)는 expertGB·nonExpertGB, dense 는 offGpuGB(10-03 D62), 둘 다 mtpGB.
- * problems(쓰기 중단): 헤더 expert_count·expert_used_count ≠ config.
+ * 행별 GGUF 헤더 실측 + 헤더 대조. MoE(`moe` 있음)는 expertGB·nonExpertGB(값 전문가가 있으면 valueExpertGB), dense 는 offGpuGB(10-03 D62), 둘 다 mtpGB.
+ * problems(쓰기 중단): 헤더 expert_count·expert_used_count ≠ config. 값 전문가 모델(`opts.valueExperts` — MoVA, 10-21 D113)은 행마다 실측이
+ * 있어야 하므로(없으면 모델 수준 유도 비전문가로 VRAM 을 적게 센다 — validateAll 도 거부) 측정 실패·파일과 안 맞는 값·값 전문가 텐서 없음도 problems.
  * warnings(진행): 측정 실패·값이 파일과 안 맞음(그 행은 실측 없이 기록 — 다음 sync-models 가 다시 잰다) · 트렁크 층 수 ≠ config layers.
  */
 export async function measureRows(
@@ -133,14 +136,20 @@ export async function measureRows(
   moe: { experts: number; topK: number } | undefined,
   layers: number,
   measure: MeasureRowFn,
+  opts: { valueExperts?: boolean } = {},
 ): Promise<{ rows: ModelQuantRecord[]; problems: string[]; warnings: string[] }> {
   const problems: string[] = [];
   const warnings: string[] = [];
   const out: ModelQuantRecord[] = [];
+  // 실측 없이 기록할 행 — 값 전문가 모델은 쓰지 않는다(중단 사유), 그 밖은 경고만
+  const unmeasured = (message: string): void => {
+    if (opts.valueExperts) problems.push(`${message} — 값 전문가(MoVA) 모델은 행마다 헤더 실측(분할·valueExpertGB)이 필요해 쓰지 않음`);
+    else warnings.push(message);
+  };
   for (const row of rows) {
     const label = `${row.quant} ${row.ggufRepo}/${row.fileName ?? ''}`;
     if (row.fileName === undefined) {
-      warnings.push(`${label}: 파일명 없음 — 헤더 측정 생략`);
+      unmeasured(`${label}: 파일명 없음 — 헤더 측정 생략`);
       out.push(row);
       continue;
     }
@@ -148,7 +157,7 @@ export async function measureRows(
     try {
       m = await measure(row.ggufRepo, row.fileName);
     } catch (err) {
-      warnings.push(`${label}: GGUF 헤더 측정 실패(${err instanceof Error ? err.message : String(err)}) — 실측 없이 기록, 다음 sync-models 가 다시 잰다`);
+      unmeasured(`${label}: GGUF 헤더 측정 실패(${err instanceof Error ? err.message : String(err)}) — 실측 없이 기록, 다음 sync-models 가 다시 잰다`);
       out.push(row);
       continue;
     }
@@ -166,9 +175,11 @@ export async function measureRows(
     if (m.trunkLayers !== layers) {
       warnings.push(`${label}: 헤더 트렁크 층 ${m.trunkLayers} ≠ config num_hidden_layers ${layers} — arch.layers 확인`);
     }
-    const problem = implausibleMeasure(m, row.fileGB, moe !== undefined);
+    const problem =
+      implausibleMeasure(m, row.fileGB, moe !== undefined) ??
+      (opts.valueExperts && !((m.valueExpertGB ?? 0) > 0) ? '헤더에 값 전문가 텐서(attn_v_exps)가 없음' : undefined);
     if (problem !== undefined) {
-      warnings.push(`${label}: ${problem} — 실측 없이 기록`);
+      unmeasured(`${label}: ${problem} — 실측 없이 기록`);
       out.push(row);
       continue;
     }
@@ -406,9 +417,12 @@ export async function planAddition(
   let moeFields: Record<string, unknown> = {};
   const splitWarnings: string[] = [];
   // 행마다 헤더 실측 — MoE 분할(10-01), dense 그래픽카드 밖 몫(10-03 D62), MTP 블록
-  const measured = await measureRows(rows, arch.moe, arch.arch.layers, (repo, fileName) => measureSplit(repo, fileName, { token }));
+  // 값 전문가 모델(MoVA, 10-21 D113)은 행마다 실측(분할·valueExpertGB)이 없으면 쓰지 않는다
+  const measured = await measureRows(rows, arch.moe, arch.arch.layers, (repo, fileName) => measureSplit(repo, fileName, { token }), {
+    valueExperts: arch.mova !== undefined,
+  });
   if (measured.problems.length > 0) {
-    throw new Error(`GGUF 헤더의 MoE 구조가 config 와 다름 — 쓰지 않음:\n  ${measured.problems.join('\n  ')}`);
+    throw new Error(`GGUF 헤더가 config 와 다르거나 필요한 실측이 없음 — 쓰지 않음:\n  ${measured.problems.join('\n  ')}`);
   }
   rows = measured.rows;
   splitWarnings.push(...measured.warnings);
@@ -482,7 +496,7 @@ export async function planAddition(
   if (arch.override) lines.push(`  ${arch.override.reason}`);
   if (arch.expertLayers) lines.push(`  expert layers ${arch.expertLayers.length}/${arch.arch.layers}: ${arch.expertLayers.join(',')}`);
   if (arch.mova) {
-    lines.push(`  MoVA value experts ${arch.mova.experts} top-${arch.mova.topK} — attn_v_exps 는 비전문가(그래픽카드 상주, llama.cpp --n-cpu-moe·--fit 이 옮기지 않음), 속도는 전부 읽는 보수 근사·이론 추정`);
+    lines.push(`  MoVA value experts ${arch.mova.experts} top-${arch.mova.topK} — attn_v_exps 는 비전문가(그래픽카드 상주, llama.cpp --n-cpu-moe·--fit 이 옮기지 않음), 행 valueExpertGB 로 고른 몫만 읽기 바이트에 넣는다·이론 추정`);
   }
   for (const r of rows) {
     const split =
