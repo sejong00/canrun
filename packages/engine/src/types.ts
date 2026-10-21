@@ -98,8 +98,11 @@ export type ModelQuant = {
   quant: QuantId;
   /** f16 기준 사전 계산값 (docs/03 kvBytesPerTokenF16) — KV quant 스케일은 엔진이 적용 */
   kvBytesPerToken: number;
-  /** KV 스케일링 표시용 (SWA/MLA/하이브리드 보정은 사전 계산값에 반영됨) */
-  attnType: 'full' | 'swa' | 'mla' | 'hybrid';
+  /**
+   * KV 스케일링 표시용 (SWA/MLA/하이브리드/압축 보정은 사전 계산값에 반영됨). 엔진 산식은 이 값을 읽지 않는다.
+   * compressed = 압축 어텐션(DeepSeek V4 — 층마다 KV 를 4·128 토큰씩 묶어 저장, 10-22 D115) — KV 는 데이터 계층의 `kvBytesPerToken` 이 이미 압축 몫
+   */
+  attnType: 'full' | 'swa' | 'mla' | 'hybrid' | 'compressed';
   /**
    * MoE: GPU 에 상주하는 비전문가 텐서 GB(어텐션·공유 전문가·라우터·출력층 — llama.cpp 는 token_embd 를 CPU 에 둔다).
    * `expertGB` 와 함께 오면 그 GGUF 파일 헤더 실측값, 없으면 기준 양자화에서 균등 bpw 로 유도한 값(§3.3).

@@ -22,11 +22,14 @@
  * 13) 반복 층(Nanbeige4.2-3B — 10-22 D114, 엔진 0.12.0): KV 180,224 B/tok(논리 44층) · 같은 기기 비율(Steam Deck Vulkan fa 1·0, 빌드 b10360 추정 — 카탈로그 밖
  *     기기라 비율로 대역폭·계수를 지운다) 추정 비/실측 비 ±5%(−2.6%·−0.6%), 반복을 빼면 +60% 넘게·파일 전체 × 2 면 −10% 넘게 벗어남을 함께 고정,
  *     pp 는 rough ±40% 안(반복을 빼면 밖) — 라벨은 이론 추정(근거 1점·카탈로그 밖 기기, docs/02 §4 ⑨·§7·§9)
+ * 14) DeepSeek V4 Flash(압축 어텐션·mHC — 10-22 D115, 엔진 산식 변화 없음): 압축 KV 6,880 B/tok 이 llama.cpp 로그(#27680)의 CSA·인덱서·HCA 캐시와
+ *     ±1% 안(256 셀 패딩), raw SWA 창·압축기 상태는 컨텍스트와 무관한 상수(엔진은 연산 버퍼 근사에 맡긴다), 공개 실측 참고점 M2 Ultra(#28948 tg32)는
+ *     추정이 +25% 높고(±30% 안 — 실측 ≥ 추정 × 0.7) 08-03 옛 빌드는 +33%, 문맥 감쇠는 실측 −19%·엔진 −1.6% — 라벨은 이론 추정(docs/02 §4 ⑩·§7·§9)
  */
 import { describe, expect, it } from 'vitest';
 import { fit } from '../src/fit';
 import { evaluate } from '../src/index';
-import { gpuResidentGBFor, kvBytesPerToken, kvGB, weightsGBFromBpw } from '../src/memory';
+import { computeBufferGB, gpuResidentGBFor, kvBytesPerToken, kvGB, weightsGBFromBpw } from '../src/memory';
 import { PLE_CUDA_CLASSES, PLE_TOKEN_OVERHEAD_MS } from '../src/constants';
 import { bytesPerTokenGB, gpuThroughputGBs, pleOverheadSeconds, ppEstimate, tgEstimate } from '../src/speed';
 import type { Hardware, ModelQuant } from '../src/types';
@@ -35,6 +38,11 @@ import {
   LLAMA2_7B_Q4_0,
   PP_SIZE_CASES,
   CPU_MOE_CASES,
+  DSV4_FLASH_MXFP4,
+  DSV4_FLASH_Q2K,
+  DSV4_KV_LOG,
+  DSV4_M2_ULTRA,
+  DSV4_REFERENCE,
   GEMMA4_E2B_Q4,
   GEMMA4_E4B_Q4,
   GEMMA4_E4B_Q8,
@@ -520,5 +528,74 @@ describe('13) 반복 층 — Nanbeige4.2-3B (10-22 D114, docs/02 §2.2·§3.1·�
       expect(Math.abs(err), c.label).toBeLessThanOrEqual(0.4);
       expect(pp(noLoops) / pp(LOOP_RATIO_REFERENCE) / measured - 1, c.label).toBeGreaterThan(0.4);
     }
+  });
+});
+
+describe('14) DeepSeek V4 Flash — 압축 어텐션(CSA·HCA)·하이퍼 커넥션 (10-22 D115, docs/02 §2.2·§4 ⑩·§7·§9)', () => {
+  const MIB = 2 ** 20;
+  const log = DSV4_KV_LOG;
+  const tg = (ctx: number) => tgEstimate(DSV4_M2_ULTRA, DSV4_FLASH_MXFP4, { mode: 'full-gpu' }, { ctx });
+
+  it('KV per layer and cell matches the llama.cpp cache log: CSA 512 + indexer 128 K at 4 tokens a cell, HCA 512 at 128 — K only, 2B', () => {
+    expect(log.source).toMatch(/^https:\/\//);
+    expect((log.csa.mib * MIB) / (log.csa.cells * log.csa.layers)).toBeCloseTo(1024, 0);
+    expect((log.indexer.mib * MIB) / (log.indexer.cells * log.indexer.layers)).toBeCloseTo(256, 0);
+    expect((log.hca.mib * MIB) / (log.hca.cells * log.hca.layers)).toBeCloseTo(1024, 0);
+    // 셀 수 = PAD(ceil(ctx / 비율), 256)
+    expect(log.csa.cells).toBe(Math.ceil(Math.ceil(log.ctx / 4) / 256) * 256);
+    expect(log.hca.cells).toBe(Math.ceil(Math.ceil(log.ctx / 128) / 256) * 256);
+    // 토큰당 = 21 × (1024 + 256) / 4 + 20 × 1024 / 128
+    expect(log.csa.layers * (1024 + 256) / 4 + log.hca.layers * 1024 / 128).toBe(DSV4_FLASH_MXFP4.kvBytesPerToken);
+    expect(DSV4_FLASH_MXFP4.kvBytesPerToken).toBe(6880);
+  });
+
+  it('the engine KV at the log context is the three compressed caches within ±1% (padding), and the constant parts stay out', () => {
+    const compressed = (log.csa.mib + log.indexer.mib + log.hca.mib) * MIB / 1e9;
+    const engine = kvGB(DSV4_FLASH_MXFP4.kvBytesPerToken, log.ctx);
+    expect(Math.abs(engine / compressed - 1)).toBeLessThan(0.01);
+    // raw SWA = PAD(min(ctx, 창 + ubatch), 256) 셀 × 43층 × 1KB — 컨텍스트와 무관(로그 ub 4096 191.6MB, 기본 ub 512 면 768셀 33.8MB)
+    expect(log.rawSwa.cells).toBe(Math.ceil((log.swaWindow + log.ubatch) / 256) * 256);
+    expect((log.rawSwa.mib * MIB) / (log.rawSwa.cells * log.rawSwa.layers)).toBeCloseTo(1024, 0);
+    const rawDefault = (Math.ceil((log.swaWindow + 512) / 256) * 256 * log.rawSwa.layers * 1024) / 1e9;
+    const states = (log.states.reduce((a, b) => a + b, 0) * MIB) / 1e9;
+    expect(rawDefault).toBeCloseTo(0.0338, 3);
+    // 기본 ubatch 의 상수 몫(≈ 0.05GB)은 8k 연산 버퍼 근사(0.575GB)의 1/10 아래 — 따로 세지 않는다(docs/02 §9)
+    expect(rawDefault + states).toBeLessThan(0.1 * computeBufferGB(8192));
+    // 로그의 연산 버퍼(-ub 4096)는 엔진 근사의 두 배가 넘는다 — 한계로 적는다(docs/02 §9)
+    expect((log.computeBufferMib[0] * MIB) / 1e9).toBeGreaterThan(2 * computeBufferGB(log.ctx));
+  });
+
+  it('weights: experts in RAM / GPU split is the header measurement; nothing else changes (no engine formula for mHC)', () => {
+    expect(gpuResidentGBFor(DSV4_FLASH_MXFP4)).toBeCloseTo(154.42, 9);
+    expect(gpuResidentGBFor(DSV4_FLASH_Q2K)).toBeCloseTo(116.79, 9);
+    // 통합 메모리 192GB(사용 가능 134.4)에는 MXFP4 가 안 들어가 CPU 경로, Q2_K 는 들어간다
+    expect(fit(DSV4_M2_ULTRA, DSV4_FLASH_MXFP4).mode).toBe('cpu-only');
+    expect(fit(DSV4_M2_ULTRA, DSV4_FLASH_Q2K).mode).toBe('full-gpu');
+  });
+
+  it('reference (not fitted): M2 Ultra #28948 tg32 is +25% under the estimate — inside the theoretical band (measured ≥ est × 0.7), recorded error ±1%p', () => {
+    const c = DSV4_REFERENCE.current;
+    expect(c.source).toMatch(/^https:\/\//);
+    const err = tg(c.ctx) / c.measuredTg - 1;
+    expect(err).toBeCloseTo(c.recordedErr, 2);
+    expect(c.measuredTg).toBeGreaterThanOrEqual(tg(c.ctx) * 0.7);
+    expect(c.masterTg).toBeGreaterThanOrEqual(tg(c.ctx) * 0.7);
+    // pp2048(-ub 2048 가정)은 rough ±40% 안
+    const pp = ppEstimate({ effClass: 'apple-ultra', fp16Tflops: 27.2 }, DSV4_FLASH_MXFP4, { ubatch: c.ubatch })!;
+    expect(Math.abs(pp / c.measuredPp - 1)).toBeLessThan(0.4);
+  });
+
+  it('reference: the 08-03 branch build is +33% at depth 0, and llama.cpp slows −19% by 30k where the engine slows −1.6% (indexer work grows with context)', () => {
+    const o = DSV4_REFERENCE.oldBuild;
+    const [d0, , , d30] = o.depths;
+    expect(tg(d0!.ctx) / d0!.measuredTg - 1).toBeCloseTo(o.recordedErr, 2);
+    const measuredDecay = d30!.measuredTg / d0!.measuredTg - 1;
+    const engineDecay = tg(d30!.ctx) / tg(d0!.ctx) - 1;
+    expect(measuredDecay).toBeCloseTo(-0.19, 2);
+    expect(engineDecay).toBeCloseTo(-0.016, 3);
+    // 30k 에서 옛 빌드 실측이 표시 범위(추정 × 0.7) 밑 — 긴 문맥 셀이 낙관적이라는 한계(docs/02 §9)
+    expect(d30!.measuredTg).toBeLessThan(tg(d30!.ctx) * 0.7);
+    const pp = ppEstimate({ effClass: 'apple-ultra', fp16Tflops: 27.2 }, DSV4_FLASH_MXFP4, { ubatch: o.ubatch })!;
+    expect(Math.abs(pp / o.measuredPp - 1)).toBeLessThan(0.4);
   });
 });

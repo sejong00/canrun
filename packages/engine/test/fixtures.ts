@@ -988,3 +988,56 @@ export const LOOP_RATIO_CASES: readonly LoopRatioCase[] = [
   { label: 'Steam Deck Vulkan (b10360 추정) fa 1', fa: 1, measured: { loop: 16.36, reference: 18.40 }, measuredPp: { loop: 126.28, reference: 164.34 }, recordedErr: { formula: -0.026, noLoops: 0.68, wholeFile: -0.158 } },
   { label: 'Steam Deck Vulkan (b10360 추정) fa 0', fa: 0, measured: { loop: 15.27, reference: 17.52 }, measuredPp: { loop: 123.81, reference: 144.31 }, recordedErr: { formula: -0.006, noLoops: 0.714, wholeFile: -0.141 } },
 ];
+
+/**
+ * DeepSeek V4 Flash 0731 (10-22 D115) — 압축 어텐션(CSA·HCA) + 하이퍼 커넥션(mHC) + MoE 256 × top-6(43층 모두). ggml-org MXFP4(2분할) 헤더 실측: 전문가 147.17 ·
+ * 비전문가 7.25GB(나머지 Q8_0), Q2_K 109.66 · 7.13GB. KV = 압축 캐시만 6,880 B/tok(데이터 계층 classifyArch — docs/02 §2.2).
+ * https://huggingface.co/ggml-org/DeepSeek-V4-Flash-0731-GGUF
+ */
+const DSV4: MoeBase = { paramsB: 284.33, activeParamsB: 13.8, quant: 'MXFP4', kvBytesPerToken: 6880, attnType: 'compressed', activeExpertFrac: 6 / 256, moeLayers: 43, topK: 6, maxContext: 1048576 };
+export const DSV4_FLASH_MXFP4: ModelQuant = moeFile(DSV4, 154.99, 147.17, 7.25);
+export const DSV4_FLASH_Q2K: ModelQuant = moeFile({ ...DSV4, quant: 'Q2_K' }, 117.35, 109.66, 7.13);
+
+/**
+ * llama.cpp KV 캐시 로그(#27680 — RTX 4090, b10567·b10568, n_ctx 64000·n_ubatch 4096, bf16 캐시 = f16 과 같은 2B) — 압축 KV 산식 대조용.
+ * CSA 16,128셀(= PAD(ceil(64000/4), 256)) × 21층 · 인덱서 같은 셀 × 21층 · HCA 512셀(= PAD(500, 256)) × 20층 · raw SWA 4,352셀(= PAD(128 + 4096, 256)) × 43층
+ */
+export const DSV4_KV_LOG = {
+  source: 'https://github.com/ggml-org/llama.cpp/issues/27680',
+  ctx: 64000,
+  ubatch: 4096,
+  swaWindow: 128,
+  csa: { cells: 16128, layers: 21, mib: 330.75 },
+  indexer: { cells: 16128, layers: 21, mib: 82.69 },
+  hca: { cells: 512, layers: 20, mib: 10.0 },
+  rawSwa: { cells: 4352, layers: 43, mib: 182.75 },
+  /** 압축기 상태 csa·hca·lid (MiB) — 컨텍스트와 무관 */
+  states: [1.31, 10.0, 0.33],
+  /** 같은 로그의 CUDA0 연산 버퍼(MiB) — b10567 · b10568(회귀가 의심된 빌드) */
+  computeBufferMib: [2366.28, 2570.28],
+} as const;
+
+/**
+ * 공개 실측 참고점(회귀에 맞춘 값이 아니다 — 10-22 D115). M2 Ultra 192GB(메모리는 미기재 — 155GB 파일이라 192GB 구성, wired limit 을 올려 GPU 에 전부 실은 실행)
+ * - #28948(09-19 머지) 비교 표의 PR 열(= 지금 master, b10809 열은 29.20) tg32 — 모델 줄은 "deepseek4 ?B MXFP4 MoE" 뿐이라 파일은 같은 작성자(ggerganov)가 08-03 에
+ *   명시한 ggml-org 0731 MXFP4 로 본 가정(시기·작성자 추정)이다. pp2048 은 같은 PR 의 다른 점처럼 -ub 2048 가정
+ * - #25893 브랜치(08-03 머지 전 — HC 융합 op 포함) ggml-org 0731 MXFP4 144.34 GiB 명시, -fa 1 -ub 2048, tg128 깊이 0 · 10k · 20k · 30k — 옛 빌드 참고와 문맥 감쇠
+ * 깊이 0 의 tgN 은 ctx 512(위 MoE 회귀와 같은 관례), 깊이 d 는 d + 64(tg128 평균)
+ */
+export const DSV4_M2_ULTRA: Hardware = unified(192, 800, 'apple-ultra');
+export const DSV4_REFERENCE = {
+  current: { label: 'M2 Ultra #28948 PR (master) tg32', source: PR(28948), ctx: 512, measuredTg: 29.45, masterTg: 29.2, measuredPp: 419.11, ubatch: 2048, recordedErr: 0.25 },
+  oldBuild: {
+    label: 'M2 Ultra #25893 branch tg128',
+    source: PR(25893, '5162332599'),
+    depths: [
+      { ctx: 64, measuredTg: 27.6 },
+      { ctx: 10064, measuredTg: 25.19 },
+      { ctx: 20064, measuredTg: 23.44 },
+      { ctx: 30064, measuredTg: 22.35 },
+    ],
+    measuredPp: 408.93,
+    ubatch: 2048,
+    recordedErr: 0.334,
+  },
+} as const;
