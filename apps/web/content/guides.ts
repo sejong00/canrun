@@ -518,8 +518,11 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
   },
   'gemma-4-models': {
     ...PUBLISHED_1019,
+    // 10-21 D112: E2B·E4B 계산 — Ollama 절의 "아직 계산하지 않음"을 실제 필요량·8GB 카드·노트북·16GB 맥 판정(MemoryBreakdown + <Expect>)으로
+    dateModified: '2026-10-21',
     grids: {
-      // 8~32GB 데스크톱 dGPU 8종 × Gemma 4 세 크기 — 배치 2 의 Gemma 4 dGPU 콤보를 덮는다. E2B·E4B 는 카탈로그 밖(D98)이라 본문 산문으로만
+      // 8~32GB 데스크톱 dGPU 8종 × Gemma 4 세 크기 — 배치 2 의 Gemma 4 dGPU 콤보를 덮는다. E2B·E4B(10-21 D112 카탈로그)는 그리드 밖 —
+      // 제목이 세 크기 비교라 Ollama 절의 MemoryBreakdown·산문 <Expect> 로만
       gemma4: {
         gpus: ['rtx-4060', 'rtx-3060-12gb', 'rtx-4070', 'rtx-5070', 'rtx-5060-ti-16gb', 'rtx-3090', 'rtx-4090', 'rtx-5090'],
         models: ['gemma-4-12b', 'gemma-4-26b-a4b', 'gemma-4-31b'],
@@ -588,6 +591,8 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
   },
   'ollama-lm-studio-requirements': {
     ...PUBLISHED_1019,
+    // 10-21 D112: 빠른 시작 예제 모델 E2B·기본 gemma4 태그 E4B 의 "계산하지 않음" → 8GB 카드 fit(<Expect>)
+    dateModified: '2026-10-21',
     grids: {
       // 8·12·16·24·32GB 한 장씩 × 크기 순 모델 6 — gpt-oss-20b·qwen3-14b 칸은 배치 1 이라 링크된다
       ollamaTiers: {

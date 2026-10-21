@@ -1,4 +1,4 @@
-젬마 4(Gemma 4) 12B는 Q4_K_M을 8k 컨텍스트로 띄우면 12GB 카드에 전부 올라갑니다<Expect model="gemma-4-12b" gpu="rtx-3060-12gb" fits="true" mode="full-gpu" />. 26B-A4B와 31B를 GPU에 전부 올리려면 24GB가 필요합니다<Expect model="gemma-4-26b-a4b" gpu="rtx-3090" fits="true" mode="full-gpu" /><Expect model="gemma-4-31b" gpu="rtx-3090" fits="true" mode="full-gpu" />. RTX 5060 Ti 16GB에서 MoE 모델인 26B-A4B는 전문가 일부를 시스템 RAM에 둡니다<Expect model="gemma-4-26b-a4b" gpu="rtx-5060-ti-16gb" fits="true" mode="cpu-moe" />. dense 모델인 31B는 일부가 RAM으로 넘어가 겨우 돌아갑니다<Expect model="gemma-4-31b" gpu="rtx-5060-ti-16gb" verdict="B" mode="partial-offload" confidence="calibrated" />.
+젬마 4(Gemma 4) 12B는 Q4_K_M을 8k 컨텍스트로 띄우면 12GB 카드에 전부 올라갑니다<Expect model="gemma-4-12b" gpu="rtx-3060-12gb" fits="true" mode="full-gpu" />. 26B-A4B와 31B를 GPU에 전부 올리려면 24GB가 필요합니다<Expect model="gemma-4-26b-a4b" gpu="rtx-3090" fits="true" mode="full-gpu" /><Expect model="gemma-4-31b" gpu="rtx-3090" fits="true" mode="full-gpu" />. RTX 5060 Ti 16GB에서 MoE 모델인 26B-A4B는 전문가 일부를 시스템 RAM에 둡니다<Expect model="gemma-4-26b-a4b" gpu="rtx-5060-ti-16gb" fits="true" mode="cpu-moe" />. dense 모델인 31B는 일부가 RAM으로 넘어가 겨우 돌아갑니다<Expect model="gemma-4-31b" gpu="rtx-5060-ti-16gb" verdict="B" mode="partial-offload" confidence="calibrated" />. `ollama run gemma4`로 받는 작은 E4B는 8GB 카드에도 전부 올라갑니다<Expect model="gemma-4-e4b" gpu="rtx-4060" fits="true" mode="full-gpu" />.
 
 ## 세 모델은 무엇이 다른가
 
@@ -124,7 +124,19 @@ RTX 3090에서 31B Q4_K_M은 32k까지 GPU에 전부 올라가 쾌적하게 돌�
 
 ## Ollama gemma4 태그와 CanRun이 계산하는 파일
 
-`ollama run gemma4`를 실행하면 `gemma4:latest` 태그를 받습니다. Ollama 라이브러리 페이지를 보면 이 태그는 `gemma4:e4b`와 같은 빌드입니다(2026년 10월 확인). 엣지용 모델 E4B를 받는 셈입니다. CanRun은 E2B와 E4B를 아직 계산하지 않습니다. 두 모델은 층마다 따로 임베딩 표를 두고, 일부 층은 앞쪽 층의 KV 캐시를 다시 씁니다. 이 구조는 지금의 CanRun 메모리 공식으로는 계산하지 못합니다.
+`ollama run gemma4`를 실행하면 `gemma4:latest` 태그를 받습니다. Ollama 라이브러리 페이지를 보면 이 태그는 `gemma4:e4b`와 같은 빌드입니다(2026년 10월 확인). 이 글의 세 모델이 아니라 엣지용 모델 E4B를 받는 셈입니다. 구글 모델 카드에 따르면 이름의 E는 실효(effective) 파라미터를 뜻합니다. E4B는 실효 파라미터가 4.5B이고 전체는 8B이며, E2B는 각각 2.3B와 5.1B입니다. 그 차이는 층별 임베딩(Per-Layer Embeddings) 표입니다. 토큰마다 층별로 작은 임베딩을 하나씩 담은 큰 표입니다. 모델 카드에 따르면 이 표는 값을 빠르게 찾아 읽는 데만 쓰입니다.
+
+llama.cpp는 이 표를 입력층으로 분류하고, 입력층은 늘 CPU에 둡니다. 그래서 모든 층을 GPU에 올려도 이 표는 시스템 RAM에 남고, 토큰마다 그 토큰의 행만 읽습니다. 아래 막대는 RTX 4060에서 E4B가 이렇게 나뉜 모습입니다.
+
+<MemoryBreakdown model="gemma-4-e4b" gpu="rtx-4060" />
+
+E4B Q4_K_M 파일은 <Num kind="fileGB" model="gemma-4-e4b" />이고, 그중 그래픽카드에 올라가는 가중치는 <Num kind="gpuWeightsGB" model="gemma-4-e4b" />입니다. 나머지는 거의 다 층별 임베딩 표이고, CanRun 계산으로는 이만큼이 시스템 RAM에 들어가야 합니다. KV 캐시와 연산 버퍼까지 더하면 8k에서 E4B는 <Num kind="needGB" model="gemma-4-e4b" />, E2B는 <Num kind="needGB" model="gemma-4-e2b" />의 VRAM이 필요합니다. KV 캐시도 층 수에 비해 작습니다. 설정 파일을 보면 E4B는 42층 중 뒤쪽 18층, E2B는 35층 중 뒤쪽 20층이 앞쪽 층의 KV 캐시를 다시 씁니다.
+
+RTX 4060에서는 12B가 다 들어가지 않지만<Expect model="gemma-4-12b" gpu="rtx-4060" mode="partial-offload" />, 두 엣지 모델은 GPU에 전부 올라가 쾌적하게 돌아갑니다<Expect model="gemma-4-e4b" gpu="rtx-4060" verdict="S" mode="full-gpu" confidence="theoretical" /><Expect model="gemma-4-e2b" gpu="rtx-4060" verdict="S" mode="full-gpu" confidence="theoretical" />. 이 속도는 이론 추정입니다. E4B는 f16 KV 캐시로 최대 컨텍스트인 128k를 써도 이 카드에 전부 들어갑니다<Expect model="gemma-4-e4b" gpu="rtx-4060" ctx="131072" fits="true" mode="full-gpu" />. 다만 필요량이 <Num kind="needGB" model="gemma-4-e4b" ctx="131072" />라 여유가 적으니 `ollama ps`로 확인하세요. 8k라면 Q8_0 파일도 전부 들어갑니다<Expect model="gemma-4-e4b" gpu="rtx-4060" quant="Q8_0" fits="true" mode="full-gpu" />. 시스템 RAM이 16GB여도 표가 들어갈 자리는 남습니다<Expect model="gemma-4-e4b" gpu="rtx-4060" ram="16" fits="true" mode="full-gpu" />. 8GB 노트북 GPU인 RTX 4060 Laptop과 RTX 4070 Laptop에서도 두 모델 모두 쾌적하게 돌아갑니다<Expect model="gemma-4-e4b" gpu="rtx-4060-laptop" verdict="S" mode="full-gpu" confidence="theoretical" /><Expect model="gemma-4-e2b" gpu="rtx-4060-laptop" verdict="S" mode="full-gpu" confidence="theoretical" /><Expect model="gemma-4-e4b" gpu="rtx-4070-laptop" verdict="S" mode="full-gpu" confidence="theoretical" /><Expect model="gemma-4-e2b" gpu="rtx-4070-laptop" verdict="S" mode="full-gpu" confidence="theoretical" />. 이 판정도 이론 추정입니다.
+
+맥은 GPU와 CPU가 메모리 하나를 같이 쓰므로, CanRun은 표까지 포함한 파일 전체로 계산합니다. 그래서 맥에서 E4B에 필요한 메모리는 <Num kind="needGB" model="gemma-4-e4b" gpu="apple-m4" />입니다. 메모리 16GB인 M4 맥에는 전부 들어가고 원활하게 돌아갑니다<Expect model="gemma-4-e4b" gpu="apple-m4" ram="16" verdict="A" mode="full-gpu" confidence="theoretical" />. 이 속도는 이론 추정이고, 아래 생각 모드 절에서 설명하는 엄격한 쾌적 기준에 조금 못 미칩니다. 같은 맥에서 E2B는 쾌적하게 돌아가며<Expect model="gemma-4-e2b" gpu="apple-m4" ram="16" verdict="S" mode="full-gpu" confidence="theoretical" />, 이것도 이론 추정입니다.
+
+RTX 5090에서는 두 모델 모두 llama.cpp를 Vulkan으로 돌린 공개 벤치마크 결과가 있습니다<Expect model="gemma-4-e4b" gpu="rtx-5090" verdict="S" confidence="measured" /><Expect model="gemma-4-e2b" gpu="rtx-5090" verdict="S" confidence="measured" />. 이런 결과는 메모리 대역폭만으로 계산한 속도보다 토큰마다 일정한 시간만큼 느립니다. 그래서 CanRun은 E2B·E4B 속도를 추정할 때 이 지연을 더합니다. 공개 벤치마크가 있는 카드가 아직 몇 장뿐이라, 나머지 E2B·E4B 속도는 이론 추정(±30%)으로 둡니다. Ollama의 `gemma4:e4b`·`gemma4:e2b`는 Ollama가 직접 만든 빌드입니다. 받는 크기도 CanRun이 계산하는 unsloth 파일보다 큽니다. 모델을 띄운 뒤 `ollama ps`로 확인하세요.
 
 이 글의 세 모델은 `gemma4:12b`·`gemma4:26b`·`gemma4:31b`처럼 태그에 크기를 붙여 받습니다. 예를 들어 26B-A4B는 `ollama run gemma4:26b`로 실행합니다. Ollama 페이지는 26B를 활성 파라미터가 4B인 MoE 모델로, 31B를 dense 모델로 소개합니다. 다만 이 태그들은 Ollama가 직접 만든 빌드라서, CanRun이 계산하는 unsloth GGUF 파일과 다릅니다. 크기도 Ollama 페이지에 따로 나와 있습니다.
 
@@ -133,6 +145,8 @@ RTX 3090에서 31B Q4_K_M은 32k까지 GPU에 전부 올라가 쾌적하게 돌�
 CanRun이 계산한 파일을 그대로 쓰려면 Hugging Face에서 받습니다. 모델에 맞는 줄 하나를 실행하세요.
 
 ```powershell
+ollama run hf.co/unsloth/gemma-4-E2B-it-GGUF:Q4_K_M
+ollama run hf.co/unsloth/gemma-4-E4B-it-GGUF:Q4_K_M
 ollama run hf.co/unsloth/gemma-4-12b-it-GGUF:Q4_K_M
 ollama run hf.co/unsloth/gemma-4-26B-A4B-it-GGUF:UD-Q4_K_M
 ollama run hf.co/unsloth/gemma-4-31B-it-GGUF:Q4_K_M
@@ -148,21 +162,21 @@ macOS·Linux에서는 `OLLAMA_CONTEXT_LENGTH=8192 ollama serve`로 씁니다. �
 
 ## 생각 모드 — 모델은 꺼 두고, Ollama는 켠다
 
-세 모델 모두 생각 모드가 있습니다. 모델 카드에 따르면 시스템 프롬프트가 `<|think|>` 토큰으로 시작할 때만 생각 모드가 켜집니다. 채팅 템플릿도 `enable_thinking`의 기본값을 false로 둡니다. 그래서 CanRun은 Gemma 4를 ‘생각 모드 기본 꺼짐’으로 기록합니다.
+세 모델 모두 생각 모드가 있고, E2B·E4B도 마찬가지입니다. 모델 카드에 따르면 시스템 프롬프트가 `<|think|>` 토큰으로 시작할 때만 생각 모드가 켜집니다. 채팅 템플릿도 `enable_thinking`의 기본값을 false로 둡니다. 그래서 CanRun은 Gemma 4를 ‘생각 모드 기본 꺼짐’으로 기록합니다.
 
 그런데도 CanRun은 Gemma 4에 1.5배 엄격한 생각 모드 기준을 적용합니다. 판정 기준표에는 이 내용이 나오지 않습니다. 이유는 런타임의 기본값에 있습니다. Ollama는 로컬에서 생각 모드를 켜고 끌 수 있는 모델이면 기본으로 켜 둡니다. Ollama 소스의 테스트에도 로컬 Gemma 모델의 생각 모드가 기본으로 켜지는지 확인하는 항목이 있습니다. llama-server의 `--reasoning` 옵션은 기본값이 `auto`라서, 템플릿이 지원하면 생각 모드를 켭니다.
 
 생각 모드를 끄고 쓰면 표보다 한 단계 좋은 판정이 나오는 Gemma 4 조합이 있을 수 있습니다. 예를 들어 RTX 4060에서 12B IQ4_XS는 GPU에 전부 올라가는데도 원활하게 돌아가는 데 그칩니다<Expect model="gemma-4-12b" gpu="rtx-4060" quant="IQ4_XS" verdict="A" mode="full-gpu" />. 추정 속도가 엄격해진 쾌적 기준에 조금 못 미치기 때문입니다.
 
-끄는 방법은 런타임마다 다릅니다. Ollama에서는 `ollama run gemma4:26b --think=false`처럼 실행합니다. llama-server에서는 `--reasoning off`를 붙입니다. 모델 카드에 따르면 12B·26B-A4B·31B는 생각 모드를 꺼도 빈 생각 블록을 출력합니다. 자세한 내용은 ‘<GuideLink slug="thinking-models" />’ 가이드에 있습니다.
+끄는 방법은 런타임마다 다릅니다. Ollama에서는 `ollama run gemma4:26b --think=false`처럼 실행합니다. llama-server에서는 `--reasoning off`를 붙입니다. 모델 카드에 따르면 12B·26B-A4B·31B는 생각 모드를 꺼도 빈 생각 블록을 출력합니다. E2B·E4B는 출력하지 않습니다. 자세한 내용은 ‘<GuideLink slug="thinking-models" />’ 가이드에 있습니다.
 
 ## 이 숫자는 얼마나 확실한가
 
-메모리 수치는 실제 GGUF 파일 크기와 각 모델의 설정 파일로 계산합니다. MoE 모델은 GGUF 헤더에서 전문가와 공유 가중치의 크기를 따로 읽습니다. 그래서 모델이 들어가는지는 추정이 아니라 공식으로 계산한 결과입니다.
+메모리 수치는 실제 GGUF 파일 크기와 각 모델의 설정 파일로 계산합니다. MoE 모델은 GGUF 헤더에서 전문가와 공유 가중치의 크기를 따로 읽습니다. E2B·E4B는 층별 임베딩 표의 크기도 헤더에서 읽습니다. 그래서 모델이 들어가는지는 추정이 아니라 공식으로 계산한 결과입니다.
 
-속도에는 신뢰 라벨이 붙습니다. ‘실측’은 그 카드·모델·양자화 조합의 공개 벤치마크 결과입니다. 이 글에서는 RTX 3090·RTX 5090의 26B-A4B와 RX 9060 XT 16GB의 12B가 여기에 해당합니다<Expect model="gemma-4-26b-a4b" gpu="rtx-3090" confidence="measured" verdict="S" /><Expect model="gemma-4-26b-a4b" gpu="rtx-5090" confidence="measured" verdict="S" /><Expect model="gemma-4-12b" gpu="rx-9060-xt-16gb" confidence="measured" verdict="S" />. RTX 3090 결과는 Ollama가 직접 만든 Q4_K_M 빌드로 잰 것입니다.
+속도에는 신뢰 라벨이 붙습니다. ‘실측’은 그 카드·모델·양자화 조합의 공개 벤치마크 결과입니다. 이 글에서는 RTX 3090·RTX 5090의 26B-A4B와 RX 9060 XT 16GB의 12B가 여기에 해당합니다<Expect model="gemma-4-26b-a4b" gpu="rtx-3090" confidence="measured" verdict="S" /><Expect model="gemma-4-26b-a4b" gpu="rtx-5090" confidence="measured" verdict="S" /><Expect model="gemma-4-12b" gpu="rx-9060-xt-16gb" confidence="measured" verdict="S" />. RTX 5090의 E2B·E4B도 마찬가지입니다<Expect model="gemma-4-e2b" gpu="rtx-5090" confidence="measured" verdict="S" /><Expect model="gemma-4-e4b" gpu="rtx-5090" confidence="measured" verdict="S" />. RTX 3090 결과는 Ollama가 직접 만든 Q4_K_M 빌드로 잰 것입니다.
 
-‘보정된 추정’은 12B·31B처럼 dense 모델을 NVIDIA·AMD 카드에 전부 올릴 때 ±12%입니다. MoE 모델을 GPU에 전부 올리거나 부분 오프로드로 돌릴 때는 ±20%입니다. ‘이론 추정’은 ±30%로, 전문가를 시스템 RAM에 두는 구성에 붙입니다.
+‘보정된 추정’은 12B·31B처럼 dense 모델을 NVIDIA·AMD 카드에 전부 올릴 때 ±12%입니다. MoE 모델을 GPU에 전부 올리거나 부분 오프로드로 돌릴 때는 ±20%입니다. ‘이론 추정’은 ±30%로, 전문가를 시스템 RAM에 두는 구성과 공개 벤치마크가 없는 E2B·E4B 조합에 붙입니다.
 
 모든 판정은 다음 조건을 가정합니다. Windows에서 그 카드가 화면 출력도 맡고, 시스템 RAM은 32GB(DDR5-5600 듀얼 채널)입니다. 8k 컨텍스트와 f16 KV 캐시로 모델 하나를 띄워, 요청을 하나씩 처리합니다. Ollama와 llama.cpp는 메모리를 저마다의 방식으로 추정합니다. 그래서 아슬아슬하게 들어가는 조합은 `ollama ps`로 실제 배치를 확인하세요. 생각 모드가 있는 모델에는 속도 기준을 1.5배 엄격하게 적용하며, 아래 기준표에는 이 내용이 빠져 있습니다.
 
@@ -175,7 +189,7 @@ macOS·Linux에서는 `OLLAMA_CONTEXT_LENGTH=8192 ollama serve`로 씁니다. �
 - ‘<GuideLink slug="thinking-models" />’ 가이드에서 생각 모드의 속도 비용과 끄는 방법을 볼 수 있습니다.
 - ‘<GuideLink slug="gguf-quantization" />’ 가이드는 IQ4_XS·Q8_0 같은 양자화 등급을 비교합니다.
 - ‘<GuideLink slug="vram-requirements" />’ 가이드에 VRAM 구간별로 들어가는 모델을 정리했습니다.
-- 모델 페이지 <HubLink model="gemma-4-12b" />, <HubLink model="gemma-4-26b-a4b" />, <HubLink model="gemma-4-31b" />에서 카드별 판정을 볼 수 있습니다.
+- 모델 페이지 <HubLink model="gemma-4-e2b" />, <HubLink model="gemma-4-e4b" />, <HubLink model="gemma-4-12b" />, <HubLink model="gemma-4-26b-a4b" />, <HubLink model="gemma-4-31b" />에서 카드별 판정을 볼 수 있습니다.
 - 카드 페이지 <HubLink gpu="rtx-5060-ti-16gb" />, <HubLink gpu="rtx-3090" />에는 그 카드에서 돌아가는 모델이 모여 있습니다.
 
 ## 자주 묻는 질문
@@ -184,9 +198,9 @@ macOS·Linux에서는 `OLLAMA_CONTEXT_LENGTH=8192 ollama serve`로 씁니다. �
 
 26B-A4B는 토큰마다 약 4B 파라미터만 쓰는 MoE 모델이고, 31B는 모든 가중치를 쓰는 dense 모델입니다. 메모리는 둘 다 많이 듭니다. Q4_K_M을 GPU에 전부 올리려면 두 모델 모두 24GB가 필요합니다<Expect model="gemma-4-26b-a4b" gpu="rtx-3090" fits="true" mode="full-gpu" /><Expect model="gemma-4-31b" gpu="rtx-3090" fits="true" mode="full-gpu" />. RTX 5060 Ti 16GB에서 31B는 일부가 시스템 RAM으로 넘어가 겨우 돌아갑니다<Expect model="gemma-4-31b" gpu="rtx-5060-ti-16gb" verdict="B" mode="partial-offload" confidence="calibrated" />. 같은 카드에서 26B-A4B는 IQ4_XS 파일이면 GPU에 전부 올라가 쾌적하게 돌아갑니다<Expect model="gemma-4-26b-a4b" gpu="rtx-5060-ti-16gb" quant="IQ4_XS" verdict="S" mode="full-gpu" />. RTX 3090에서는 둘 다 쾌적하게 돌아가고<Expect model="gemma-4-26b-a4b" gpu="rtx-3090" verdict="S" confidence="measured" /><Expect model="gemma-4-31b" gpu="rtx-3090" verdict="S" />, 26B-A4B 쪽은 공개 벤치마크 결과도 있습니다.
 
-### Gemma 4 12B·26B-A4B·31B에는 VRAM이 얼마나 필요한가요?
+### Gemma 4에는 VRAM이 얼마나 필요한가요?
 
-Q4_K_M을 8k 컨텍스트로 GPU에 전부 올리려면 12B는 12GB, 26B-A4B와 31B는 24GB를 목표로 잡으세요. 필요량은 12B가 <Num kind="needGB" model="gemma-4-12b" />, 26B-A4B가 <Num kind="needGB" model="gemma-4-26b-a4b" />, 31B가 <Num kind="needGB" model="gemma-4-31b" />입니다. 12B는 RTX 3060 12GB에서 쾌적하게 돌아갑니다<Expect model="gemma-4-12b" gpu="rtx-3060-12gb" verdict="S" mode="full-gpu" />. 26B-A4B와 31B는 RTX 3090에 전부 올라갑니다<Expect model="gemma-4-26b-a4b" gpu="rtx-3090" fits="true" mode="full-gpu" /><Expect model="gemma-4-31b" gpu="rtx-3090" fits="true" mode="full-gpu" />. 8GB인 RTX 4060에서도 12B는 90% 이상이 GPU에 남아 원활하게 돌아갑니다<Expect model="gemma-4-12b" gpu="rtx-4060" verdict="A" mode="partial-offload" confidence="calibrated" />. 16GB 카드라면 26B-A4B를 IQ4_XS로 받아 GPU에 전부 올릴 수 있습니다<Expect model="gemma-4-26b-a4b" gpu="rtx-5060-ti-16gb" quant="IQ4_XS" fits="true" mode="full-gpu" />.
+Q4_K_M을 8k 컨텍스트로 GPU에 전부 올리려면 12B는 12GB, 26B-A4B와 31B는 24GB를 목표로 잡으세요. 엣지 모델 E2B·E4B는 8GB 카드에도 전부 올라갑니다<Expect model="gemma-4-e2b" gpu="rtx-4060" fits="true" mode="full-gpu" /><Expect model="gemma-4-e4b" gpu="rtx-4060" fits="true" mode="full-gpu" />. 필요량은 12B가 <Num kind="needGB" model="gemma-4-12b" />, 26B-A4B가 <Num kind="needGB" model="gemma-4-26b-a4b" />, 31B가 <Num kind="needGB" model="gemma-4-31b" />입니다. 12B는 RTX 3060 12GB에서 쾌적하게 돌아갑니다<Expect model="gemma-4-12b" gpu="rtx-3060-12gb" verdict="S" mode="full-gpu" />. 26B-A4B와 31B는 RTX 3090에 전부 올라갑니다<Expect model="gemma-4-26b-a4b" gpu="rtx-3090" fits="true" mode="full-gpu" /><Expect model="gemma-4-31b" gpu="rtx-3090" fits="true" mode="full-gpu" />. 8GB인 RTX 4060에서도 12B는 90% 이상이 GPU에 남아 원활하게 돌아갑니다<Expect model="gemma-4-12b" gpu="rtx-4060" verdict="A" mode="partial-offload" confidence="calibrated" />. 16GB 카드라면 26B-A4B를 IQ4_XS로 받아 GPU에 전부 올릴 수 있습니다<Expect model="gemma-4-26b-a4b" gpu="rtx-5060-ti-16gb" quant="IQ4_XS" fits="true" mode="full-gpu" />.
 
 ### 시스템 RAM이 16GB여도 Gemma 4 26B-A4B를 돌릴 수 있나요?
 
@@ -194,7 +208,7 @@ CanRun 계산으로는 돌릴 수 있습니다. 8GB인 RTX 4060에서도 전문�
 
 ### `ollama run gemma4`는 어떤 모델을 받나요?
 
-엣지용 모델 E4B를 받습니다. 기본 태그 `gemma4:latest`가 `gemma4:e4b`와 같은 빌드이기 때문입니다(2026년 10월 확인). CanRun은 아직 E4B를 계산하지 않습니다. 이 글의 세 모델을 쓰려면 `gemma4:12b`·`gemma4:26b`·`gemma4:31b` 태그를 쓰세요. CanRun이 계산한 파일을 그대로 쓰려면 위 Ollama 절의 `hf.co` 명령으로 받으면 됩니다.
+엣지용 모델 E4B를 받습니다. 기본 태그 `gemma4:latest`가 `gemma4:e4b`와 같은 빌드이기 때문입니다(2026년 10월 확인). CanRun 계산으로는 E4B Q4_K_M이 RTX 4060 같은 8GB 카드에도 전부 올라갑니다<Expect model="gemma-4-e4b" gpu="rtx-4060" fits="true" mode="full-gpu" />. 층별 임베딩 표는 시스템 RAM에 따로 두기 때문입니다. Ollama 빌드는 Ollama가 따로 만든 더 큰 파일이니, 모델을 띄운 뒤 `ollama ps`로 확인하세요. 이 글의 세 모델을 쓰려면 `gemma4:12b`·`gemma4:26b`·`gemma4:31b` 태그를 쓰세요. CanRun이 계산한 파일을 그대로 쓰려면 위 Ollama 절의 `hf.co` 명령으로 받으면 됩니다.
 
 ### Gemma 4도 생각 모드가 있나요?
 
@@ -205,15 +219,17 @@ CanRun 계산으로는 돌릴 수 있습니다. 8GB인 RTX 4060에서도 전문�
 - [Gemma 4 12B 모델 카드](https://huggingface.co/google/gemma-4-12B-it): ‘12B Unified’ dense 모델, 인코더 없이 받는 텍스트·이미지·오디오 입력, 256K 컨텍스트, Apache 2.0, `<|think|>`로 켜는 생각 모드와 꺼도 출력되는 빈 생각 블록
 - [Gemma 4 26B-A4B 모델 카드](https://huggingface.co/google/gemma-4-26B-A4B-it): 전체·활성 파라미터 수, 전문가 128개 중 8개와 공유 전문가 1개, 30층, 4B 모델에 가까운 속도라는 설명
 - [Gemma 4 31B 모델 카드](https://huggingface.co/google/gemma-4-31B-it): dense 모델, 60층, 텍스트·이미지 입력, 256K 컨텍스트
-- [Gemma 4 E4B 모델 카드](https://huggingface.co/google/gemma-4-E4B-it): 이름의 E가 실효(effective) 파라미터를 뜻한다는 설명, 층별 임베딩(Per-Layer Embeddings)
+- [Gemma 4 E4B 모델 카드](https://huggingface.co/google/gemma-4-E4B-it): 이름의 E가 실효(effective) 파라미터를 뜻한다는 설명, E2B·E4B의 실효·전체 파라미터 수, 값을 찾아 읽는 데만 쓰는 층별 임베딩(Per-Layer Embeddings) 표, 생각 모드를 끄면 E2B·E4B는 빈 생각 블록을 출력하지 않는다는 점
+- [Gemma 4 E2B 모델 카드](https://huggingface.co/google/gemma-4-E2B-it): 더 작은 엣지용 모델, 텍스트·이미지·오디오 입력, 128K 컨텍스트
 - 설정 파일 [12B](https://huggingface.co/google/gemma-4-12B-it/blob/main/config.json)·[26B-A4B](https://huggingface.co/google/gemma-4-26B-A4B-it/blob/main/config.json)·[31B](https://huggingface.co/google/gemma-4-31B-it/blob/main/config.json): 층 수, 전체 어텐션 층 수와 KV 헤드 수, 1024토큰 슬라이딩 윈도, 26B-A4B의 전문가 수와 토큰마다 고르는 전문가 수
-- [Gemma 4 E4B 설정 파일](https://huggingface.co/google/gemma-4-E4B-it/blob/main/config.json): 층별 임베딩(`hidden_size_per_layer_input`), 앞 층의 KV 캐시를 다시 쓰는 층(`num_kv_shared_layers`)
+- 설정 파일 [E4B](https://huggingface.co/google/gemma-4-E4B-it/blob/main/config.json)·[E2B](https://huggingface.co/google/gemma-4-E2B-it/blob/main/config.json): 층별 임베딩(`hidden_size_per_layer_input`), 앞 층의 KV 캐시를 다시 쓰는 층(`num_kv_shared_layers` — E4B 42층 중 18층, E2B 35층 중 20층)
+- llama.cpp 소스 [llama-arch.cpp 1031번 줄](https://github.com/ggml-org/llama.cpp/blob/9a3b91c6801e68f412fcf1b6f8e153aa562b8536/src/llama-arch.cpp#L1031)과 [llama-model.cpp 1684~1686번 줄](https://github.com/ggml-org/llama.cpp/blob/9a3b91c6801e68f412fcf1b6f8e153aa562b8536/src/llama-model.cpp#L1684-L1686): 층별 임베딩 표를 행 단위로 찾아 읽는 입력층 텐서로 분류하는 줄, 입력층을 늘 CPU에 둔다는 줄
 - [Gemma 4 26B-A4B 채팅 템플릿](https://huggingface.co/google/gemma-4-26B-A4B-it/blob/main/chat_template.jinja): `enable_thinking`의 기본값 false
 - [구글의 Gemma 4 출시 글](https://blog.google/innovation-and-ai/technology/developers-tools/gemma-4/): 2026년 4월 공개, Apache 2.0, 양자화 버전을 소비자용 GPU에서 돌릴 수 있다는 설명
 - [구글의 Gemma 4 12B 출시 글](https://blog.google/innovation-and-ai/technology/developers-tools/introducing-gemma-4-12B/): 2026년 6월 공개, 멀티모달 인코더가 없는 구조, VRAM이나 통합 메모리 16GB로 로컬에서 돌릴 수 있다는 설명
-- [Ollama gemma4 라이브러리 페이지](https://ollama.com/library/gemma4)와 [태그 목록](https://ollama.com/library/gemma4/tags): `latest`와 `e4b`가 같은 빌드라는 점, `12b`·`26b`·`31b` 태그와 소개 문구, 빌드 ID(2026년 10월 확인)
+- [Ollama gemma4 라이브러리 페이지](https://ollama.com/library/gemma4)와 [태그 목록](https://ollama.com/library/gemma4/tags): `latest`와 `e4b`가 같은 빌드라는 점, `e2b`·`e4b`·`12b`·`26b`·`31b` 태그와 소개 문구·받는 크기, 빌드 ID(2026년 10월 확인)
 - [Hugging Face의 Ollama 사용 안내](https://huggingface.co/docs/hub/ollama): `ollama run hf.co/사용자/저장소:양자화` 형식
-- unsloth GGUF 저장소 [12B](https://huggingface.co/unsloth/gemma-4-12b-it-GGUF)·[26B-A4B](https://huggingface.co/unsloth/gemma-4-26B-A4B-it-GGUF)·[31B](https://huggingface.co/unsloth/gemma-4-31B-it-GGUF): CanRun이 계산하는 파일
+- unsloth GGUF 저장소 [E2B](https://huggingface.co/unsloth/gemma-4-E2B-it-GGUF)·[E4B](https://huggingface.co/unsloth/gemma-4-E4B-it-GGUF)·[12B](https://huggingface.co/unsloth/gemma-4-12b-it-GGUF)·[26B-A4B](https://huggingface.co/unsloth/gemma-4-26B-A4B-it-GGUF)·[31B](https://huggingface.co/unsloth/gemma-4-31B-it-GGUF): CanRun이 계산하는 파일
 - [llama.cpp 서버 README](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md): `--cpu-moe`, `--n-cpu-moe N`(앞쪽 N개 층의 MoE 가중치를 CPU에 둠), 기본으로 켜진 `--fit`, 기본값이 `auto`인 `--reasoning`
 - [llama.cpp b7410 릴리스](https://github.com/ggml-org/llama.cpp/releases/tag/b7410): `--fit`이 들어간 2025년 12월 빌드
 - [Ollama v0.30.0 릴리스 노트](https://github.com/ollama/ollama/releases/tag/v0.30.0): llama.cpp로 모델을 돌린다는 설명
@@ -223,3 +239,4 @@ CanRun 계산으로는 돌릴 수 있습니다. 8GB인 RTX 4060에서도 전문�
 - [Ollama 이슈 #15237의 댓글](https://github.com/ollama/ollama/issues/15237#issuecomment-4198569953): 본문의 RTX 3090 공개 벤치마크 결과
 - [Ollama 이슈 #15353의 댓글](https://github.com/ollama/ollama/issues/15353#issuecomment-4189666281)과 [llama.cpp PR #23615](https://github.com/ggml-org/llama.cpp/pull/23615): 본문의 RTX 5090 공개 벤치마크 결과(Ollama에서 플래시 어텐션을 끄고 잰 결과와 llama-bench 결과)
 - llama.cpp 토론 [Vulkan 성능](https://github.com/ggml-org/llama.cpp/discussions/10879#discussioncomment-18709094)·[ROCm 성능](https://github.com/ggml-org/llama.cpp/discussions/15021#discussioncomment-18709095)의 댓글: 본문의 RX 9060 XT 16GB 공개 벤치마크 결과
+- [llama.cpp PR #28618](https://github.com/ggml-org/llama.cpp/pull/28618): 본문의 RTX 5090 E2B·E4B 공개 벤치마크 결과(Vulkan, unsloth Q4_K_M 파일)

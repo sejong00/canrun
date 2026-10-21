@@ -1,4 +1,4 @@
-At Q4_K_M, the usual 4-bit quant, and an 8k context, Gemma 4 12B fits fully on a 12GB card,<Expect model="gemma-4-12b" gpu="rtx-3060-12gb" fits="true" mode="full-gpu" /> while 26B-A4B and 31B need 24GB to sit fully on the GPU.<Expect model="gemma-4-26b-a4b" gpu="rtx-3090" fits="true" mode="full-gpu" /><Expect model="gemma-4-31b" gpu="rtx-3090" fits="true" mode="full-gpu" /> On the 16GB RTX 5060 Ti, the MoE 26B-A4B keeps part of its experts in system RAM,<Expect model="gemma-4-26b-a4b" gpu="rtx-5060-ti-16gb" fits="true" mode="cpu-moe" /> and the dense 31B Runs slowly with part of it in RAM.<Expect model="gemma-4-31b" gpu="rtx-5060-ti-16gb" verdict="B" mode="partial-offload" confidence="calibrated" />
+At Q4_K_M, the usual 4-bit quant, and an 8k context, Gemma 4 12B fits fully on a 12GB card,<Expect model="gemma-4-12b" gpu="rtx-3060-12gb" fits="true" mode="full-gpu" /> while 26B-A4B and 31B need 24GB to sit fully on the GPU.<Expect model="gemma-4-26b-a4b" gpu="rtx-3090" fits="true" mode="full-gpu" /><Expect model="gemma-4-31b" gpu="rtx-3090" fits="true" mode="full-gpu" /> On the 16GB RTX 5060 Ti, the MoE 26B-A4B keeps part of its experts in system RAM,<Expect model="gemma-4-26b-a4b" gpu="rtx-5060-ti-16gb" fits="true" mode="cpu-moe" /> and the dense 31B Runs slowly with part of it in RAM.<Expect model="gemma-4-31b" gpu="rtx-5060-ti-16gb" verdict="B" mode="partial-offload" confidence="calibrated" /> The small E4B that `ollama run gemma4` pulls fits fully even on an 8GB card.<Expect model="gemma-4-e4b" gpu="rtx-4060" fits="true" mode="full-gpu" />
 
 ## Three sizes, two designs
 
@@ -120,13 +120,25 @@ Context also depends on the runtime. <RuntimeFact id="ollama-default-ctx" />. A 
 
 ## Ollama's gemma4 tags and the files CanRun calculates
 
-On Ollama's library page (checked October 2026), `ollama run gemma4` pulls `gemma4:latest`, which is the same build as `gemma4:e4b`. That is the E4B edge model, not one of the three sizes in this guide. CanRun does not calculate E2B and E4B yet. Every layer in them has its own embedding table, which Google calls per-layer embeddings, and some layers reuse the KV cache of earlier layers. Both break the memory formula CanRun uses for the other models.
+On Ollama's library page (checked October 2026), `ollama run gemma4` pulls `gemma4:latest`, which is the same build as `gemma4:e4b`. That is the E4B edge model, not one of the three sizes above. Google's model card says the E stands for effective parameters: E4B has 4.5B of them and 8B in total, E2B 2.3B and 5.1B. The gap is the per-layer embeddings, a large table that gives every layer its own small embedding for each token and is used only for lookups. llama.cpp counts that table as part of the input layer, which it always keeps on the CPU, so the table stays in system RAM even with every layer on the GPU, and each token reads just its own rows. The bars show the split for E4B on the RTX 4060.
+
+<MemoryBreakdown model="gemma-4-e4b" gpu="rtx-4060" />
+
+Of the <Num kind="fileGB" model="gemma-4-e4b" /> Q4_K_M file, <Num kind="gpuWeightsGB" model="gemma-4-e4b" /> goes on the graphics card. In CanRun's calculation the rest, almost all of it the per-layer table, needs room in system RAM instead. With the KV cache and the compute buffer, E4B needs <Num kind="needGB" model="gemma-4-e4b" /> of VRAM at 8k and E2B <Num kind="needGB" model="gemma-4-e2b" />. Their KV cache is small too: according to the configuration files, the last 18 of E4B's 42 layers and the last 20 of E2B's 35 reuse the KV cache of earlier layers.
+
+On the RTX 4060, where the 12B spills over,<Expect model="gemma-4-12b" gpu="rtx-4060" mode="partial-offload" /> both edge models fit fully and Run great, as theoretical estimates.<Expect model="gemma-4-e4b" gpu="rtx-4060" verdict="S" mode="full-gpu" confidence="theoretical" /><Expect model="gemma-4-e2b" gpu="rtx-4060" verdict="S" mode="full-gpu" confidence="theoretical" /> E4B stays fully on that card even at its full 128k context with an f16 KV cache, needing <Num kind="needGB" model="gemma-4-e4b" ctx="131072" />, with little margin; check `ollama ps`.<Expect model="gemma-4-e4b" gpu="rtx-4060" ctx="131072" fits="true" mode="full-gpu" /> Its 8-bit Q8_0 file fits fully at 8k too,<Expect model="gemma-4-e4b" gpu="rtx-4060" quant="Q8_0" fits="true" mode="full-gpu" /> and 16GB of system RAM leaves enough room for the table.<Expect model="gemma-4-e4b" gpu="rtx-4060" ram="16" fits="true" mode="full-gpu" /> The 8GB laptop chips, the RTX 4060 Laptop and the RTX 4070 Laptop, get the same verdicts in CanRun's calculation, again as theoretical estimates.<Expect model="gemma-4-e4b" gpu="rtx-4060-laptop" verdict="S" mode="full-gpu" confidence="theoretical" /><Expect model="gemma-4-e2b" gpu="rtx-4060-laptop" verdict="S" mode="full-gpu" confidence="theoretical" /><Expect model="gemma-4-e4b" gpu="rtx-4070-laptop" verdict="S" mode="full-gpu" confidence="theoretical" /><Expect model="gemma-4-e2b" gpu="rtx-4070-laptop" verdict="S" mode="full-gpu" confidence="theoretical" />
+
+On a Mac, CanRun counts the whole file, table included, because the GPU and the CPU share one pool of memory. E4B needs <Num kind="needGB" model="gemma-4-e4b" gpu="apple-m4" /> there, fits fully on a 16GB M4 and Runs well, a theoretical estimate.<Expect model="gemma-4-e4b" gpu="apple-m4" ram="16" verdict="A" mode="full-gpu" confidence="theoretical" /> Its estimate falls under the stricter Runs great line for thinking models, explained below. E2B Runs great on the same Mac, also a theoretical estimate.<Expect model="gemma-4-e2b" gpu="apple-m4" ram="16" verdict="S" mode="full-gpu" confidence="theoretical" />
+
+A public llama.cpp benchmark through Vulkan backs the RTX 5090 results for both models.<Expect model="gemma-4-e4b" gpu="rtx-5090" verdict="S" confidence="measured" /><Expect model="gemma-4-e2b" gpu="rtx-5090" verdict="S" confidence="measured" /> Such runs come out slower than memory bandwidth alone predicts, by a fixed delay per token, and CanRun adds that delay to its E2B and E4B estimates. With public benchmarks from only a few cards, it keeps the other E2B and E4B speeds as theoretical estimates (±30%). Ollama's `gemma4:e4b` and `gemma4:e2b` are its own builds and larger downloads than the unsloth files CanRun calculates, so check `ollama ps` after loading one.
 
 For the three sizes here, name the tag: `ollama run gemma4:12b`, `ollama run gemma4:26b` or `ollama run gemma4:31b`. Ollama's page labels the 26B a "Mixture of Experts model with 4B active parameters" and the 31B "Dense". These tags are Ollama's own builds, not the unsloth GGUF files CanRun calculates. A tag can also point to a new build over time. The April 2026 RTX 3090 report above used build `5571076f3d70`, which Ollama now lists as `gemma4:26b-a4b-it-q4_K_M`, while `gemma4:26b` now points to a different build.
 
 To run the exact files CanRun calculates, pull them from Hugging Face with one of these commands:
 
 ```powershell
+ollama run hf.co/unsloth/gemma-4-E2B-it-GGUF:Q4_K_M
+ollama run hf.co/unsloth/gemma-4-E4B-it-GGUF:Q4_K_M
 ollama run hf.co/unsloth/gemma-4-12b-it-GGUF:Q4_K_M
 ollama run hf.co/unsloth/gemma-4-26B-A4B-it-GGUF:UD-Q4_K_M
 ollama run hf.co/unsloth/gemma-4-31B-it-GGUF:Q4_K_M
@@ -136,23 +148,23 @@ While the model is loaded, the PROCESSOR column of `ollama ps` shows how it is s
 
 ## Thinking mode: off in the model, on by default in Ollama
 
-All three sizes have a thinking mode. According to the model card, it is on only when the system prompt starts with the `<|think|>` token, and the chat template sets `enable_thinking` to false by default. CanRun therefore records Gemma 4 as a model with thinking off by default.
+All three sizes have a thinking mode, and so do E2B and E4B. According to the model card, it is on only when the system prompt starts with the `<|think|>` token, and the chat template sets `enable_thinking` to false by default. CanRun therefore records Gemma 4 as a model with thinking off by default.
 
 CanRun still holds Gemma 4 to the 1.5× stricter speed thresholds for thinking models, which the legend does not show. The reason is the runtimes. Ollama's local default keeps thinking on for models that can switch it, and its own tests include the case "local gemma default on". llama-server's `--reasoning` option defaults to `auto`, which turns thinking on when the chat template supports it.
 
 With thinking off, a Gemma 4 cell can be one grade better than the grid shows. The 12B IQ4_XS file on the RTX 4060 is an example: it is fully on the GPU, yet it Runs well,<Expect model="gemma-4-12b" gpu="rtx-4060" quant="IQ4_XS" verdict="A" mode="full-gpu" /> because its estimate sits just under the stricter Runs great line.
 
-To turn thinking off, run `ollama run gemma4:26b --think=false` in Ollama, or start llama-server with `--reasoning off`. According to the model card, the 12B, 26B and 31B still print an empty thought block when thinking is off. For the speed cost of thinking, see <GuideLink slug="thinking-models" />.
+To turn thinking off, run `ollama run gemma4:26b --think=false` in Ollama, or start llama-server with `--reasoning off`. According to the model card, the 12B, 26B and 31B still print an empty thought block when thinking is off; E2B and E4B do not. For the speed cost of thinking, see <GuideLink slug="thinking-models" />.
 
 ## How sure are these numbers?
 
-Memory figures come by formula from the real GGUF file sizes, each model's configuration file, and the expert and non-expert sizes in the GGUF headers. Whether a model fits is a calculation, not an estimate.
+Memory figures come by formula from the real GGUF file sizes, each model's configuration file, and the sizes in the GGUF headers: the expert and non-expert weights, and for E2B and E4B the per-layer embedding table. Whether a model fits is a calculation, not an estimate.
 
-Speeds are estimates with a band and a label. Measured means a public benchmark for that card, model and quant: here, the 26B-A4B on the RTX 3090 and the RTX 5090, and the 12B on the Radeon RX 9060 XT 16GB. The RTX 3090 run used Ollama's own build of the Q4_K_M quant. Calibrated means ±12% for dense models fully on an NVIDIA or AMD card, such as the 12B and the 31B, and ±20% for MoE models fully on the GPU and for partial offload. Theoretical means ±30%, used when experts sit in system RAM.
+Speeds are estimates with a band and a label. Measured means a public benchmark for that card, model and quant: here, the 26B-A4B on the RTX 3090 and the RTX 5090, the 12B on the Radeon RX 9060 XT 16GB, and E2B and E4B on the RTX 5090. The RTX 3090 run used Ollama's own build of the Q4_K_M quant. Calibrated means ±12% for dense models fully on an NVIDIA or AMD card, such as the 12B and the 31B, and ±20% for MoE models fully on the GPU and for partial offload. Theoretical means ±30%, used when experts sit in system RAM and for every E2B and E4B cell without a matching benchmark.
 
 All verdicts assume Windows with the card driving the display, 32GB of DDR5-5600 dual-channel system RAM, an 8k context, an f16 KV cache, one model and one request at a time. Ollama and llama.cpp estimate memory their own way, so check `ollama ps` when a model fits with little margin.
 
-Models with a thinking mode, all three Gemma 4 sizes among them, face 1.5× stricter speed thresholds, which the legend below does not show. The thresholds:
+Models with a thinking mode, every Gemma 4 model among them, face 1.5× stricter speed thresholds, which the legend below does not show. The thresholds:
 
 <Threshold />
 
@@ -163,7 +175,7 @@ Models with a thinking mode, all three Gemma 4 sizes among them, face 1.5× stri
 - <GuideLink slug="thinking-models" />: the speed cost of thinking, and how to turn it off.
 - <GuideLink slug="gguf-quantization" />: quant levels and quality groups, including the 2-bit files above.
 - <GuideLink slug="vram-requirements" />: the memory formula and what fits on each VRAM size.
-- Model pages for <HubLink model="gemma-4-12b" />, <HubLink model="gemma-4-26b-a4b" /> and <HubLink model="gemma-4-31b" /> list every card.
+- Model pages for <HubLink model="gemma-4-e2b" />, <HubLink model="gemma-4-e4b" />, <HubLink model="gemma-4-12b" />, <HubLink model="gemma-4-26b-a4b" /> and <HubLink model="gemma-4-31b" /> list every card.
 - Card pages such as the <HubLink gpu="rtx-5060-ti-16gb" /> and the <HubLink gpu="rtx-3090" /> list every model.
 
 ## FAQ
@@ -174,7 +186,7 @@ The 26B-A4B is an MoE model that uses about 4B of its parameters per token, whil
 
 ### How much VRAM does Gemma 4 need?
 
-At Q4_K_M and an 8k context, aim for 12GB for the 12B and 24GB for the 26B-A4B and the 31B to keep them fully on the GPU. They need <Num kind="needGB" model="gemma-4-12b" />, <Num kind="needGB" model="gemma-4-26b-a4b" /> and <Num kind="needGB" model="gemma-4-31b" />. The 12B Runs great on the RTX 3060 12GB,<Expect model="gemma-4-12b" gpu="rtx-3060-12gb" verdict="S" mode="full-gpu" /> and the larger two fit fully on the RTX 3090.<Expect model="gemma-4-26b-a4b" gpu="rtx-3090" fits="true" mode="full-gpu" /><Expect model="gemma-4-31b" gpu="rtx-3090" fits="true" mode="full-gpu" /> On the 8GB RTX 4060, the 12B keeps at least 90% of itself on the GPU and Runs well.<Expect model="gemma-4-12b" gpu="rtx-4060" verdict="A" mode="partial-offload" confidence="calibrated" /> On the 16GB RTX 5060 Ti, the 26B-A4B fits fully as IQ4_XS.<Expect model="gemma-4-26b-a4b" gpu="rtx-5060-ti-16gb" quant="IQ4_XS" fits="true" mode="full-gpu" />
+At Q4_K_M and an 8k context, aim for 12GB for the 12B and 24GB for the 26B-A4B and the 31B to keep them fully on the GPU, while the edge models E2B and E4B fit fully on 8GB.<Expect model="gemma-4-e2b" gpu="rtx-4060" fits="true" mode="full-gpu" /><Expect model="gemma-4-e4b" gpu="rtx-4060" fits="true" mode="full-gpu" /> The three larger sizes need <Num kind="needGB" model="gemma-4-12b" />, <Num kind="needGB" model="gemma-4-26b-a4b" /> and <Num kind="needGB" model="gemma-4-31b" />. The 12B Runs great on the RTX 3060 12GB,<Expect model="gemma-4-12b" gpu="rtx-3060-12gb" verdict="S" mode="full-gpu" /> and the larger two fit fully on the RTX 3090.<Expect model="gemma-4-26b-a4b" gpu="rtx-3090" fits="true" mode="full-gpu" /><Expect model="gemma-4-31b" gpu="rtx-3090" fits="true" mode="full-gpu" /> On the 8GB RTX 4060, the 12B keeps at least 90% of itself on the GPU and Runs well.<Expect model="gemma-4-12b" gpu="rtx-4060" verdict="A" mode="partial-offload" confidence="calibrated" /> On the 16GB RTX 5060 Ti, the 26B-A4B fits fully as IQ4_XS.<Expect model="gemma-4-26b-a4b" gpu="rtx-5060-ti-16gb" quant="IQ4_XS" fits="true" mode="full-gpu" />
 
 ### Can Gemma 4 26B-A4B run with only 16GB of system RAM?
 
@@ -182,7 +194,7 @@ In CanRun's calculation, yes, even on the 8GB RTX 4060, by keeping most of its e
 
 ### Which model does `ollama run gemma4` download?
 
-The E4B edge model: the default `gemma4:latest` is the same build as `gemma4:e4b` (checked October 2026). CanRun does not calculate E4B yet. For the sizes in this guide, use `gemma4:12b`, `gemma4:26b` or `gemma4:31b`, or the `hf.co` commands above for the exact files CanRun calculates.
+The E4B edge model: the default `gemma4:latest` is the same build as `gemma4:e4b` (checked October 2026). In CanRun's calculation, E4B at Q4_K_M fits fully even on an 8GB card such as the RTX 4060, with its per-layer embedding table in system RAM.<Expect model="gemma-4-e4b" gpu="rtx-4060" fits="true" mode="full-gpu" /> Ollama's build is its own, larger file, so check `ollama ps` after loading it. For the three larger sizes, use `gemma4:12b`, `gemma4:26b` or `gemma4:31b`, or the `hf.co` commands above for the exact files CanRun calculates.
 
 ### Does Gemma 4 think before it answers?
 
@@ -193,15 +205,17 @@ It can, but only when the system prompt starts with `<|think|>`; otherwise the m
 - [Gemma 4 12B model card](https://huggingface.co/google/gemma-4-12B-it): listed as "12B Unified" among the dense models, text, image and audio input, 256K context, Apache 2.0, and thinking switched on with `<|think|>` at the start of the system prompt.
 - [Gemma 4 26B-A4B model card](https://huggingface.co/google/gemma-4-26B-A4B-it): total and active parameters, 8 of 128 experts per token plus 1 shared expert, 30 layers, text and image input, and "almost as fast as a 4B-parameter model".
 - [Gemma 4 31B model card](https://huggingface.co/google/gemma-4-31B-it): a dense model with 60 layers, 256K context and text and image input.
-- [Gemma 4 E4B model card](https://huggingface.co/google/gemma-4-E4B-it): what the E in E2B and E4B means, and per-layer embeddings.
+- [Gemma 4 E4B model card](https://huggingface.co/google/gemma-4-E4B-it): what the E in E2B and E4B means, their effective and total parameters, per-layer embedding tables that are "only used for quick lookups", and no empty thought block from E2B and E4B when thinking is off.
+- [Gemma 4 E2B model card](https://huggingface.co/google/gemma-4-E2B-it): the smaller edge model, with text, image and audio input and a 128K context.
 - [Gemma 4 12B configuration](https://huggingface.co/google/gemma-4-12B-it/blob/main/config.json), [26B-A4B configuration](https://huggingface.co/google/gemma-4-26B-A4B-it/blob/main/config.json) and [31B configuration](https://huggingface.co/google/gemma-4-31B-it/blob/main/config.json): layer counts, the 1024-token sliding window, full-attention layers and their KV heads, and for the 26B-A4B the expert count and experts per token.
-- [Gemma 4 E4B configuration](https://huggingface.co/google/gemma-4-E4B-it/blob/main/config.json): `hidden_size_per_layer_input` and `num_kv_shared_layers`, the per-layer embeddings and the layers that reuse earlier KV caches.
+- [Gemma 4 E4B configuration](https://huggingface.co/google/gemma-4-E4B-it/blob/main/config.json) and [E2B configuration](https://huggingface.co/google/gemma-4-E2B-it/blob/main/config.json): `hidden_size_per_layer_input` for the per-layer embeddings, and `num_kv_shared_layers`, the 18 of 42 and 20 of 35 layers that reuse earlier KV caches.
+- [llama.cpp source: llama-arch.cpp, line 1031](https://github.com/ggml-org/llama.cpp/blob/9a3b91c6801e68f412fcf1b6f8e153aa562b8536/src/llama-arch.cpp#L1031) and [llama-model.cpp, lines 1684 to 1686](https://github.com/ggml-org/llama.cpp/blob/9a3b91c6801e68f412fcf1b6f8e153aa562b8536/src/llama-model.cpp#L1684-L1686): the per-layer embedding table is an input-layer tensor read by row lookup, and llama.cpp "always" keeps the input layer on the CPU.
 - [Gemma 4 26B-A4B chat template](https://huggingface.co/google/gemma-4-26B-A4B-it/blob/main/chat_template.jinja): `enable_thinking` defaults to false.
 - [Google: Gemma 4 launch post](https://blog.google/innovation-and-ai/technology/developers-tools/gemma-4/): the April 2026 launch of E2B, E4B, 26B-A4B and 31B under Apache 2.0, with quantized versions for consumer GPUs.
 - [Google: introducing Gemma 4 12B](https://blog.google/innovation-and-ai/technology/developers-tools/introducing-gemma-4-12B/): the June 2026 release, no multimodal encoders, and small enough for 16GB of VRAM or unified memory.
-- [Ollama library: gemma4](https://ollama.com/library/gemma4) and [its tags](https://ollama.com/library/gemma4/tags): `latest` is the same build as `e4b`, the `12b`, `26b` and `31b` tags with their descriptions, and the build IDs (checked October 2026).
+- [Ollama library: gemma4](https://ollama.com/library/gemma4) and [its tags](https://ollama.com/library/gemma4/tags): `latest` is the same build as `e4b`, the `e2b`, `e4b`, `12b`, `26b` and `31b` tags with their descriptions and download sizes, and the build IDs (checked October 2026).
 - [Hugging Face: using Ollama with GGUF models on the Hub](https://huggingface.co/docs/hub/ollama): the `ollama run hf.co/user/repo:quant` form.
-- [unsloth Gemma 4 12B GGUF](https://huggingface.co/unsloth/gemma-4-12b-it-GGUF), [unsloth Gemma 4 26B-A4B GGUF](https://huggingface.co/unsloth/gemma-4-26B-A4B-it-GGUF) and [unsloth Gemma 4 31B GGUF](https://huggingface.co/unsloth/gemma-4-31B-it-GGUF): the files CanRun calculates.
+- [unsloth Gemma 4 E2B GGUF](https://huggingface.co/unsloth/gemma-4-E2B-it-GGUF), [unsloth Gemma 4 E4B GGUF](https://huggingface.co/unsloth/gemma-4-E4B-it-GGUF), [unsloth Gemma 4 12B GGUF](https://huggingface.co/unsloth/gemma-4-12b-it-GGUF), [unsloth Gemma 4 26B-A4B GGUF](https://huggingface.co/unsloth/gemma-4-26B-A4B-it-GGUF) and [unsloth Gemma 4 31B GGUF](https://huggingface.co/unsloth/gemma-4-31B-it-GGUF): the files CanRun calculates.
 - [llama.cpp: server README](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md): `--cpu-moe`, `--n-cpu-moe N` (MoE weights of the first N layers on the CPU), `--fit` (on by default) and `--reasoning` (`auto` by default).
 - [llama.cpp release b7410](https://github.com/ggml-org/llama.cpp/releases/tag/b7410): a December 2025 build that includes `--fit`.
 - [Ollama v0.30.0 release notes](https://github.com/ollama/ollama/releases/tag/v0.30.0): Ollama runs models with llama.cpp.
@@ -210,4 +224,5 @@ It can, but only when the system prompt starts with `<|think|>`; otherwise the m
 - [Ollama FAQ](https://docs.ollama.com/faq): the PROCESSOR column of `ollama ps`.
 - [Ollama issue #15237, RTX 3090 report](https://github.com/ollama/ollama/issues/15237#issuecomment-4198569953): the measured Gemma 4 26B-A4B result on the RTX 3090, with Ollama 0.20.3 on Windows 11, flash attention off and a 32k context.
 - [Ollama issue #15353](https://github.com/ollama/ollama/issues/15353#issuecomment-4189666281) and [llama.cpp PR #23615](https://github.com/ggml-org/llama.cpp/pull/23615): the measured Gemma 4 26B-A4B results on the RTX 5090, one through Ollama with flash attention off and one through llama-bench.
+- [llama.cpp PR #28618](https://github.com/ggml-org/llama.cpp/pull/28618): the measured E2B and E4B results on the RTX 5090, through Vulkan with the unsloth Q4_K_M files.
 - [llama.cpp Vulkan benchmark thread](https://github.com/ggml-org/llama.cpp/discussions/10879#discussioncomment-18709094) and [llama.cpp ROCm benchmark thread](https://github.com/ggml-org/llama.cpp/discussions/15021#discussioncomment-18709095): the measured Gemma 4 12B results on the Radeon RX 9060 XT 16GB.

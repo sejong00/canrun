@@ -8,7 +8,7 @@ Ollama's Windows page asks for <RuntimeFact id="ollama-windows-req" />. It insta
 
 Ollama's hardware support page asks for <RuntimeFact id="ollama-nvidia-req" />. The two pages give different minimum NVIDIA drivers. `nvidia-smi` shows yours; if it is older than either page asks, update it. The RTX 4060, RTX 3060, RTX 5060 Ti, RTX 3090 and RTX 5090 all appear in that page's compute capability table.
 
-On a Mac, Ollama needs <RuntimeFact id="ollama-macos-req" />. None of these requirement sections lists a RAM or VRAM minimum. Ollama's quickstart recommends VRAM only for its example model, Gemma 4 E2B, which CanRun does not calculate. With less VRAM, it adds, Ollama can use system RAM but may answer more slowly.
+On a Mac, Ollama needs <RuntimeFact id="ollama-macos-req" />. None of these requirement sections lists a RAM or VRAM minimum. Ollama's quickstart recommends VRAM only for its example model, Gemma 4 E2B, and adds that with less VRAM Ollama can use system RAM but may answer more slowly. In CanRun's calculation, E2B at Q4_K_M fits fully on an 8GB card such as the RTX 4060.<Expect model="gemma-4-e2b" gpu="rtx-4060" fits="true" mode="full-gpu" />
 
 ### LM Studio
 
@@ -108,7 +108,7 @@ What the tag pages listed when we checked (= marks the same build):
 - `gpt-oss:20b` = `gpt-oss:latest`, Ollama's own MXFP4 build.
 - `gemma4:12b` and `gemma4:26b` (= `gemma4:26b-a4b`) list MLX and llama.cpp variants. The llama.cpp one is Q4_K_M plus a vision projector and a small "draft" model.
 - `qwen3.6:35b` = `qwen3.6:35b-a3b` = `qwen3.6:latest`, with the same two variants; the llama.cpp one is Q4_K_M plus a vision projector.
-- Bare `gemma4` is E4B, which CanRun does not calculate, so always name the size.
+- Bare `gemma4` is the small E4B, which fits fully on the RTX 4060 in CanRun's calculation;<Expect model="gemma-4-e4b" gpu="rtx-4060" fits="true" mode="full-gpu" /> name the size to get the 12B or 26B. <GuideLink slug="gemma-4-models" /> covers E4B and E2B.
 
 These are Ollama's own builds, not the Hugging Face GGUF files CanRun calculates. For the exact files, use the `hf.co` form:
 

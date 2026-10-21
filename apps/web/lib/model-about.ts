@@ -60,6 +60,14 @@ const LOADERS: Readonly<Record<ModelAboutId, Readonly<Record<ContentLocale, () =
     en: () => import('@/content/en/model-about/gemma-4-31b.mdx') as Promise<AboutModule>,
     ko: () => import('@/content/ko/model-about/gemma-4-31b.mdx') as Promise<AboutModule>,
   },
+  'gemma-4-e2b': {
+    en: () => import('@/content/en/model-about/gemma-4-e2b.mdx') as Promise<AboutModule>,
+    ko: () => import('@/content/ko/model-about/gemma-4-e2b.mdx') as Promise<AboutModule>,
+  },
+  'gemma-4-e4b': {
+    en: () => import('@/content/en/model-about/gemma-4-e4b.mdx') as Promise<AboutModule>,
+    ko: () => import('@/content/ko/model-about/gemma-4-e4b.mdx') as Promise<AboutModule>,
+  },
   'gpt-oss-120b': {
     en: () => import('@/content/en/model-about/gpt-oss-120b.mdx') as Promise<AboutModule>,
     ko: () => import('@/content/ko/model-about/gpt-oss-120b.mdx') as Promise<AboutModule>,

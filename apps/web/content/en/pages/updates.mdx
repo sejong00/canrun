@@ -2,6 +2,14 @@ CanRun changes often. New models arrive, the calculator gains features, and now 
 
 ## Changes to the site
 
+<Update id="gemma4-e-series">
+
+### Gemma 4 E2B and E4B are now calculated
+
+Gemma 4's two edge models give each layer its own embedding table, and many of their layers reuse the KV cache of earlier layers, so CanRun had left them out. It now reads the size of that per-layer table from each GGUF file's header, keeps the table in system RAM instead of on the graphics card as llama.cpp does, and counts KV cache only for the layers that store their own. When we checked, <SiteLink to="/model/gemma-4-e4b">Gemma 4 E4B</SiteLink>, which `ollama run gemma4` downloads, and <SiteLink to="/model/gemma-4-e2b">Gemma 4 E2B</SiteLink> both fit fully at Q4_K_M on an 8GB RTX 4060 with an 8k context. Their speed estimates add a small fixed delay per token that public benchmarks showed, and they carry the theoretical label except where a benchmark matches, as on the RTX 5090. <SiteLink to="/guides/gemma-4-models">The Gemma 4 guide</SiteLink> now covers both.
+
+</Update>
+
 <Update id="apple-m6">
 
 ### Apple M6 added

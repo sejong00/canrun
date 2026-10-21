@@ -2,6 +2,14 @@ CanRun은 자주 바뀝니다. 새 모델이 들어오고, 계산기에 기능�
 
 ## 바뀐 기능과 고친 계산
 
+<Update id="gemma4-e-series">
+
+### Gemma 4 E4B·E2B도 계산합니다
+
+`ollama run gemma4`가 기본으로 받는 <SiteLink to="/model/gemma-4-e4b">Gemma 4 E4B</SiteLink>와 더 작은 <SiteLink to="/model/gemma-4-e2b">Gemma 4 E2B</SiteLink>를 이제 계산합니다. 두 모델에는 층마다 쓸 임베딩을 따로 담은 큰 표가 있는데, CanRun은 llama.cpp처럼 이 표를 그래픽카드가 아닌 시스템 RAM 몫으로 셉니다. 그렇게 계산하니 8k 컨텍스트에서는 두 모델 모두 Q4_K_M이 8GB인 RTX 4060에 전부 들어갔습니다. 공개 벤치마크가 있는 RTX 5090 같은 조합을 빼면 속도는 이론 추정입니다. <SiteLink to="/guides/gemma-4-models">젬마 4 모델별 차이</SiteLink> 가이드에서도 두 모델을 다룹니다.
+
+</Update>
+
 <Update id="apple-m6">
 
 ### Apple M6를 추가했습니다

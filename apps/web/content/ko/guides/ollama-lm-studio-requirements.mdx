@@ -8,7 +8,7 @@ Ollama의 Windows 요구 사항은 <RuntimeFact id="ollama-windows-req" />입니
 
 하드웨어 지원 문서는 <RuntimeFact id="ollama-nvidia-req" />을 요구합니다. 두 문서의 NVIDIA 드라이버 하한은 서로 다릅니다. `nvidia-smi`로 본 버전이 어느 한쪽보다 낮으면 업데이트합니다. RTX 4060·3060·5060 Ti·3090·5090은 모두 이 문서의 Compute Capability 표에 있습니다.
 
-맥에서 Ollama를 쓰는 조건은 <RuntimeFact id="ollama-macos-req" />입니다. Ollama 요구 사항 어디에도 RAM·VRAM 최소치는 없습니다. 빠른 시작 문서의 메모리 권장은 CanRun이 계산하지 않는 예제 모델 Gemma 4 E2B 기준입니다. VRAM이 모자라면 시스템 RAM을 쓰지만 답이 느려질 수 있다고도 적혀 있습니다.
+맥에서 Ollama를 쓰는 조건은 <RuntimeFact id="ollama-macos-req" />입니다. Ollama 요구 사항 어디에도 RAM·VRAM 최소치는 없습니다. 빠른 시작 문서의 메모리 권장은 예제 모델 Gemma 4 E2B 기준입니다. VRAM이 모자라면 시스템 RAM을 쓰지만 답이 느려질 수 있다고도 적혀 있습니다. CanRun 계산으로는 E2B Q4_K_M이 메모리 16GB인 M4 맥에도 전부 들어갑니다<Expect model="gemma-4-e2b" gpu="apple-m4" ram="16" fits="true" mode="full-gpu" />.
 
 ### LM Studio
 
@@ -108,7 +108,7 @@ gemma4:26b = gemma4:26b-a4b
 qwen3.6:35b = qwen3.6:35b-a3b = qwen3.6:latest
 ```
 
-`gpt-oss:20b`는 Ollama가 만든 MXFP4 빌드입니다. `gemma4:12b`·`gemma4:26b`·`qwen3.6:35b`에는 MLX용과 llama.cpp용이 있습니다. llama.cpp용은 Q4_K_M에 비전 프로젝터가 붙고, Gemma 4에는 작은 draft 모델도 붙습니다. 크기 없는 `gemma4`는 CanRun이 계산하지 않는 E4B라서, 크기까지 적어 받습니다.
+`gpt-oss:20b`는 Ollama가 만든 MXFP4 빌드입니다. `gemma4:12b`·`gemma4:26b`·`qwen3.6:35b`에는 MLX용과 llama.cpp용이 있습니다. llama.cpp용은 Q4_K_M에 비전 프로젝터가 붙고, Gemma 4에는 작은 draft 모델도 붙습니다. 크기 없는 `gemma4`는 엣지용 모델 E4B입니다. CanRun 계산으로는 <HubLink model="gemma-4-e4b" /> Q4_K_M이 8GB인 RTX 4060에도 전부 올라갑니다<Expect model="gemma-4-e4b" gpu="rtx-4060" fits="true" mode="full-gpu" />. 12B·26B-A4B·31B는 태그에 크기까지 적어 받습니다. E4B와 E2B가 메모리를 어떻게 나눠 쓰는지는 ‘<GuideLink slug="gemma-4-models" />’ 가이드에 정리했습니다.
 
 이 태그들은 Ollama 자체 빌드라 CanRun이 계산한 Hugging Face GGUF와 다릅니다. 그 파일을 그대로 받으려면 `hf.co` 형식을 씁니다.
 
