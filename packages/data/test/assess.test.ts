@@ -1008,3 +1008,66 @@ describe('DeepSeek V4 Flash 0731 — compressed attention, mHC, MXFP4 baseline (
     expect(plan.ollamaOmitted).toBe('sharded');
   });
 });
+
+describe('GLM-5.3-Flash — KDA + DSA hybrid, mHC, Q4_K file as the Q4_K_M baseline (10-22 엔진 후속 ⑧-b)', () => {
+  const GLM = 'glm-5.3-flash';
+  const at = (gpuId: string, ramGB: number, opts: { gpuCount?: number } = {}) => {
+    const g = gpu(gpuId);
+    const config = hardwareConfigs(g, seed.gpus, { ramGB, ...opts })[0]!;
+    return assessCombo(seed, g, config, model(GLM));
+  };
+  const q = (c: ReturnType<typeof at>, quant: string) => c.perQuant.find((x) => x.quant === quant)!;
+
+  it('record: hybrid KV 19,712 B/tok (DSA 11 layers), MoE 288 top-8 on 42 layers, mHC, always thinking, both rows header-measured', () => {
+    const m = model(GLM);
+    expect(m.arch).toMatchObject({ attnType: 'hybrid', kvBytesPerTokenF16: 19712, experts: 288, topK: 8, mhc: true, layers: 45 });
+    expect(m.arch.expertLayers).toHaveLength(42);
+    expect(m.attnOverrides?.kvBytesPerTokenF16).toBe(19712);
+    expect(m.thinking).toBe('always');
+    const rows = seed.modelQuants.filter((r) => r.modelId === GLM);
+    expect(rows.map((r) => [r.quant, r.fileGB, r.expertGB, r.nonExpertGB, r.fileName])).toEqual([
+      ['Q4_K_M', 181.37, 171.23, 9.46, 'GLM-5.3-Flash-Q4_K-00001-of-00002.gguf'],
+      ['Q2_K', 133.81, 123.66, 9.46, 'GLM-5.3-Flash-Q2_K-00001-of-00002.gguf'],
+    ]);
+    expect(at('apple-m3-ultra', 512).baseline.quant).toBe('Q4_K_M');
+  });
+
+  it('isTheoretical: every GPU and mode (mHC)', () => {
+    const m = model(GLM);
+    for (const id of ['rtx-5090', 'rtx-4060', 'apple-m3-ultra', 'nvidia-dgx-spark', 'cpu-ddr5-5600-2ch']) {
+      for (const mode of ['full-gpu', 'cpu-moe', 'partial-offload', 'cpu-only'] as const) expect(isTheoretical(gpu(id), m, mode), `${id} ${mode}`).toBe(true);
+    }
+  });
+
+  it('Macs: Q4_K_M on the GPU only with 512GB (181.37GB > 179.2 on 256GB); Q2_K on the GPU from 256GB; M2 Ultra 192GB is 0.15GB short for Q2_K (CPU path)', () => {
+    expect(at('apple-m3-ultra', 512).baseline.result).toMatchObject({ verdict: 'A', mode: 'full-gpu', confidence: 'theoretical' });
+    expect(at('apple-m5-ultra', 512).baseline.result).toMatchObject({ verdict: 'S', mode: 'full-gpu' });
+    for (const id of ['apple-m3-ultra', 'apple-m5-ultra']) {
+      const c = at(id, 256);
+      expect(c.baseline.result, id).toMatchObject({ verdict: 'B', mode: 'cpu-only' });
+      expect(q(c, 'Q2_K').result, id).toMatchObject({ verdict: 'S', mode: 'full-gpu' });
+    }
+    const m2 = at('apple-m2-ultra', 192);
+    expect(m2.baseline.result).toMatchObject({ verdict: 'B', mode: 'cpu-only' });
+    expect(q(m2, 'Q2_K').result).toMatchObject({ verdict: 'B', mode: 'cpu-only' });
+    // GPU 경로 8k 필요량(256GB 맥에서 잰 값 134.55)이 192GB 의 GPU 몫 134.4(× 0.70)를 넘는다 — sysctl 로 한도를 올리면 GPU(기존 툴팁)
+    const gpuNeed = q(at('apple-m3-ultra', 256), 'Q2_K').memory.needGB;
+    expect(gpuNeed).toBeGreaterThan(134.4);
+    expect(gpuNeed - 134.4).toBeLessThan(0.2);
+  });
+
+  it('128GB unified memory (DGX Spark, Strix Halo) and RTX 4060 + 32GB: neither file fits', () => {
+    for (const [id, ram] of [['nvidia-dgx-spark', 128], ['amd-strix-halo', 128], ['rtx-4060', 32]] as const) {
+      expect(at(id, ram).perQuant.every((x) => !x.fits), id).toBe(true);
+    }
+  });
+
+  it('dGPU + system RAM: experts in RAM with an RTX 5090 + 192GB / RTX 4090 + 256GB (Q4_K_M), Q2_K only from 128GB; 4 × RTX 3090 + 128GB', () => {
+    expect(at('rtx-5090', 192).baseline.result).toMatchObject({ verdict: 'B', mode: 'cpu-moe', confidence: 'theoretical' });
+    expect(at('rtx-4090', 256).baseline.result).toMatchObject({ verdict: 'B', mode: 'cpu-moe' });
+    const small = at('rtx-5090', 128);
+    expect(small.baseline.fits).toBe(false);
+    expect(q(small, 'Q2_K').result).toMatchObject({ verdict: 'B', mode: 'cpu-moe' });
+    expect(at('rtx-3090', 128, { gpuCount: 4 }).baseline.result).toMatchObject({ verdict: 'B', mode: 'cpu-moe' });
+  });
+});

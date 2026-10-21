@@ -27,6 +27,10 @@
  *     추정이 +25% 높고(±30% 안 — 실측 ≥ 추정 × 0.7) 08-03 옛 빌드는 +33%, 문맥 감쇠는 실측 −19%·엔진 −1.6% — 라벨은 이론 추정(docs/02 §4 ⑩·§7·§9).
  *     로그는 슬롯 하나(-np 1 — 1/1 seqs)라 토큰당 KV 는 슬롯 하나 기준(스니펫이 -np 1 을 붙인다, 기본 4슬롯이면 4배), pp 는 30k 깊이에서 0.26배로
  *     떨어지는데 엔진 pp 는 깊이와 무관 — 엔진 밖 한계로 고정(10-22 D115 리뷰)
+ * 15) GLM-5.3-Flash(KDA + DSA 희소 MLA·인덱서 + mHC — 10-22 엔진 후속 ⑧-b, 엔진 산식 변화 없음): KV 19,712 B/tok 이 llama.cpp 메모리 로그(#30499 댓글)의
+ *     MLA·인덱서 캐시와 정확히 같고, KDA 순환 상태(시퀀스마다 ≈ 153MB — 로그와 일치)는 슬롯 하나면 연산 버퍼 근사 안·기본 4슬롯이면 밖(스니펫이 -np 1 을 붙인다).
+ *     공개 실측 참고점 3곳(M2 Ultra #29958 · DGX Spark #30640 · 6 × 3090 #29928 — 모두 파일 가정이나 카탈로그 밖 구성이라 조인 안 됨)은 추정이 8~26% 높고
+ *     ±30% 표시 범위 안, 문맥 감쇠는 엔진과 같다(DeepSeek V4 와 다르다) — 라벨은 이론 추정(docs/02 §4 ⑩·§7·§9)
  */
 import { describe, expect, it } from 'vitest';
 import { fit } from '../src/fit';
@@ -45,6 +49,15 @@ import {
   DSV4_KV_LOG,
   DSV4_M2_ULTRA,
   DSV4_REFERENCE,
+  GLM53_3090X6,
+  GLM53_AVAR6_Q2Q3,
+  GLM53_KV_LOG,
+  GLM53_M2_ULTRA,
+  GLM53_Q2K,
+  GLM53_Q4K,
+  GLM53_REFERENCE,
+  GLM53_SPARK,
+  GLM53_UD_IQ2XXS,
   GEMMA4_E2B_Q4,
   GEMMA4_E4B_Q4,
   GEMMA4_E4B_Q8,
@@ -623,5 +636,78 @@ describe('14) DeepSeek V4 Flash — 압축 어텐션(CSA·HCA)·하이퍼 커넥
     for (let i = 1; i < o.ppDepths.length; i++) expect(o.ppDepths[i]!.measuredPp).toBeLessThan(o.ppDepths[i - 1]!.measuredPp);
     const pp = ppEstimate({ effClass: 'apple-ultra', fp16Tflops: 27.2 }, DSV4_FLASH_MXFP4, { ubatch: o.ubatch })!;
     expect(pp30.measuredPp).toBeLessThan(pp * 0.6);
+  });
+});
+
+describe('15) GLM-5.3-Flash — KDA + DSA(희소 MLA·인덱서)·하이퍼 커넥션 (10-22 엔진 후속 ⑧-b, docs/02 §2.2·§4 ⑩·§7·§9)', () => {
+  const MIB = 2 ** 20;
+  const log = GLM53_KV_LOG;
+  const tgAt = (hw: Hardware, mq: ModelQuant, ctx: number) => tgEstimate(hw, mq, { mode: 'full-gpu' }, { ctx });
+
+  it('KV per layer and cell matches the llama.cpp memory log: MLA latent 512 × 2B, indexer 128 × 3 (key | gate | pooled) × 2B, no V — 19,712 B/tok', () => {
+    expect(log.source).toMatch(/^https:\/\//);
+    expect((log.mla.mib * MIB) / (log.mla.cells * log.mla.layers)).toBe(1024);
+    expect((log.indexer.mib * MIB) / (log.indexer.cells * log.indexer.layers)).toBe(768);
+    expect(log.mla.layers * (1024 + 768)).toBe(GLM53_Q4K.kvBytesPerToken);
+    // 엔진 KV(요청 하나) = 로그의 두 캐시 합 — 셀 패딩 1 이라 정확히 같다
+    expect(kvGB(GLM53_Q4K.kvBytesPerToken, log.ctx)).toBeCloseTo(((log.mla.mib + log.indexer.mib) * MIB) / 1e9, 9);
+    expect(log.seqs).toBe(1);
+  });
+
+  it('the KDA recurrent state is ≈ 153MB per sequence (outside the engine): within the compute-buffer approximation for one slot, over it for the server default 4 — so commands add -np 1', () => {
+    const { heads, headDim, convKernel } = log.kda;
+    const perLayer = (headDim * headDim * heads + 3 * (convKernel - 1) * heads * headDim) * 4;
+    const perSeq = perLayer * log.recurrent.kdaLayers;
+    // 로그: 1 시퀀스 × (1 + rs_seq 3) = 4 벌 — S·R 각각 맞는다
+    expect((log.recurrent.sMib * MIB) / log.recurrent.copies).toBe(headDim * headDim * heads * 4 * log.recurrent.kdaLayers);
+    expect((log.recurrent.rMib * MIB) / log.recurrent.copies).toBe(3 * (convKernel - 1) * heads * headDim * 4 * log.recurrent.kdaLayers);
+    expect(((log.recurrent.mib * MIB) / log.recurrent.copies)).toBe(perSeq);
+    expect(perSeq / 1e9).toBeCloseTo(0.1526, 4);
+    expect(perSeq / 1e9).toBeLessThan(computeBufferGB(8192));
+    expect((perSeq * log.serverDefaultSlots) / 1e9).toBeGreaterThan(computeBufferGB(8192));
+  });
+
+  it('weights: GPU split is the header measurement; 512GB Macs hold Q4_K_M on the GPU, 256GB do not (181.37 > 179.2), M2 Ultra 192GB is just short for Q2_K', () => {
+    expect(gpuResidentGBFor(GLM53_Q4K)).toBeCloseTo(180.69, 9);
+    expect(gpuResidentGBFor(GLM53_Q2K)).toBeCloseTo(133.12, 9);
+    // M3 Ultra(819 GB/s) — M2 Ultra 픽스처의 메모리만 바꾼다
+    const m3 = (ramGB: number): Hardware => ({ ...GLM53_M2_ULTRA, ramGB, memBandwidthGBs: 819, ramBandwidthGBs: 819 });
+    expect(fit(m3(512), GLM53_Q4K).mode).toBe('full-gpu');
+    expect(fit(m3(256), GLM53_Q4K).mode).toBe('cpu-only');
+    expect(fit(m3(256), GLM53_Q2K).mode).toBe('full-gpu');
+    expect(fit(GLM53_M2_ULTRA, GLM53_Q2K).mode).toBe('cpu-only');
+  });
+
+  it('reference (not fitted): every public current-build point is under the estimate and inside the theoretical band (measured ≥ est × 0.7) — M2 Ultra +24%, DGX Spark +8–12%, 6 × 3090 +24–26%', () => {
+    const refs = [
+      [GLM53_REFERENCE.m2Ultra, GLM53_M2_ULTRA, GLM53_Q2K],
+      [GLM53_REFERENCE.spark, GLM53_SPARK, GLM53_UD_IQ2XXS],
+      [GLM53_REFERENCE.rtx3090x6, GLM53_3090X6, GLM53_AVAR6_Q2Q3],
+    ] as const;
+    for (const [ref, hw, mq] of refs) {
+      expect(ref.source).toMatch(/^https:\/\//);
+      ref.points.forEach((p, i) => {
+        const est = tgAt(hw, mq, p.ctx);
+        expect(est / p.measuredTg - 1, `${ref.label} ctx ${p.ctx}`).toBeCloseTo(ref.recordedErr[i]!, 2);
+        expect(p.measuredTg, `${ref.label} ctx ${p.ctx}`).toBeGreaterThanOrEqual(est * 0.7);
+        expect(p.measuredTg, `${ref.label} ctx ${p.ctx}`).toBeLessThan(est);
+      });
+    }
+    // pp2048(-ub 2048) 는 rough ±40% 안
+    const s = GLM53_REFERENCE.spark;
+    const pp = ppEstimate({ effClass: 'dgx-spark', fp16Tflops: s.fp16Tflops }, GLM53_UD_IQ2XXS, { ubatch: s.ubatch })!;
+    expect(Math.abs(pp / s.measuredPp - 1)).toBeLessThan(0.4);
+  });
+
+  it('context decay is not under-estimated (unlike DeepSeek V4): the k-pool indexer keeps llama.cpp within a few points of the engine at 16k–64k', () => {
+    const s = GLM53_REFERENCE.spark;
+    const measured = s.points[2]!.measuredTg / s.points[0]!.measuredTg - 1;
+    const engine = tgAt(GLM53_SPARK, GLM53_UD_IQ2XXS, s.points[2]!.ctx) / tgAt(GLM53_SPARK, GLM53_UD_IQ2XXS, s.points[0]!.ctx) - 1;
+    expect(measured).toBeCloseTo(-0.098, 2);
+    expect(Math.abs(engine - measured)).toBeLessThan(0.05);
+    const g = GLM53_REFERENCE.rtx3090x6;
+    const m6 = g.points[2]!.measuredTg / g.points[0]!.measuredTg - 1;
+    const e6 = tgAt(GLM53_3090X6, GLM53_AVAR6_Q2Q3, g.points[2]!.ctx) / tgAt(GLM53_3090X6, GLM53_AVAR6_Q2Q3, g.points[0]!.ctx) - 1;
+    expect(Math.abs(e6 - m6)).toBeLessThan(0.02);
   });
 });

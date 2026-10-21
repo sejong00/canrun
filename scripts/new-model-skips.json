@@ -1,6 +1,5 @@
 [
   { "hfId": "Qwen/Qwen3.8-Flash-Next", "decision": "wait", "reason": "디스크에서 읽는 n-gram 임베딩 표(35GB) — 엔진 후속 ⑥ lazyGB 뒤 (PROGRESS §2 카탈로그 확장)", "decidedAt": "2026-10-04" },
-  { "hfId": "zai-org/GLM-5.3-Flash", "decision": "wait", "reason": "llama.cpp 본선 지원(PR #27773) 수정 진행 중·UD 만 — 엔진 후속 ⑧ + DSA 인덱서 뒤 (#32)", "decidedAt": "2026-10-04" },
   { "hfId": "XingChen-AGI/Xing4.0-29B-A4B", "decision": "wait", "reason": "llama.cpp 본선 미지원(PR #29012) — 머지되면 다시 확인 (#70)", "decidedAt": "2026-10-04" },
   { "hfId": "Motif-Technologies/Motif-3", "decision": "wait", "reason": "llama.cpp 본선 미지원(PR #26298 draft) — 머지되면 다시 확인 (#19)", "decidedAt": "2026-10-04" },
   { "hfId": "deepgrove/maple-preview", "decision": "skip", "reason": "3진 가중치, llama.cpp GPU 커널 미머지 (#22)", "decidedAt": "2026-10-04" },

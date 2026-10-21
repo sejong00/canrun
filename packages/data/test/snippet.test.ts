@@ -223,20 +223,64 @@ describe('compressed attention (DeepSeek V4, 10-22 D115 review): -np 1, because 
     expect(q8.llamaCpp?.command).toContain(' -c 32768 -np 1 -ngl all -fa on --cache-type-k q8_0 --cache-type-v q8_0');
   });
 
-  it('no other catalog model gets -np (their slots share one n_ctx pool, which is what the engine counts)', () => {
+  it('no other catalog model gets -np (their slots share one n_ctx pool, which is what the engine counts) — except the hyper-connection hybrid (GLM-5.3-Flash, per-slot state)', () => {
     const g = gpu('rtx-4090');
     const config = hardwareConfigs(g, seed.gpus, { ramGB: 256 })[0]!;
+    let state = 0;
     for (const m of seed.models) {
       const combo = assessCombo(seed, g, config, m);
       if (!combo.display.fits) continue;
       const plan = commandPlan(g, config, m, row(m.id, combo.display.quant), combo.display);
       if (m.arch.attnType === 'compressed') {
         expect(plan.llamaCpp?.command, m.id).toContain(' -np 1 ');
+        expect(plan.llamaCpp?.singleSlot, m.id).toBe(true);
+      } else if (m.arch.mhc === true) {
+        expect(plan.llamaCpp?.command, m.id).toContain(' -np 1 ');
+        expect(plan.llamaCpp?.singleSlot, m.id).toBe('state');
+        state += 1;
       } else {
         expect(plan.llamaCpp?.command, m.id).not.toMatch(/ -np /);
         expect(plan.llamaCpp, m.id).not.toHaveProperty('singleSlot');
       }
     }
+    expect(state).toBe(1);
+  });
+});
+
+describe('GLM-5.3-Flash (10-22 엔진 후속 ⑧-b): the Q4_K file name and -np 1 for the per-slot KDA state', () => {
+  const glm = 'glm-5.3-flash';
+  const ramConfig = (gpuId: string, ramGB: number, extra: Parameters<typeof hardwareConfigs>[2] = {}) =>
+    hardwareConfigs(gpu(gpuId), seed.gpus, { ramGB, ...extra })[0]!;
+  const planAt = (gpuId: string, config: HwConfig, quant: string, ctx = 8192) => {
+    const q = assessCombo(seed, gpu(gpuId), config, model(glm), { ctx }).perQuant.find((x) => x.quant === quant)!;
+    return commandPlan(gpu(gpuId), config, model(glm), row(glm, quant), q, { ctx });
+  };
+
+  it('the Q4_K_M row is the ggml-org "Q4_K" file: -hf takes the token written in the file name (llama.cpp looks for "<tag>[.-]"), Q2_K stays Q2_K', () => {
+    expect(row(glm, 'Q4_K_M').fileName).toBe('GLM-5.3-Flash-Q4_K-00001-of-00002.gguf');
+    expect(ggufTag(row(glm, 'Q4_K_M').fileName, 'Q4_K_M')).toBe('Q4_K');
+    expect(ggufTag(row(glm, 'Q2_K').fileName, 'Q2_K')).toBe('Q2_K');
+    const p = planAt('apple-m3-ultra', ramConfig('apple-m3-ultra', 512), 'Q4_K_M');
+    expect(p.file.tag).toBe('Q4_K');
+    expect(p.llamaCpp?.command).toBe('llama-server -hf ggml-org/GLM-5.3-Flash-GGUF:Q4_K -c 8192 -np 1 -ngl all -fa on');
+    // 2분할 파일 — Ollama 명령은 없다(분할 GGUF 미지원)
+    expect(p.ollama).toBeUndefined();
+    expect(p.ollamaOmitted).toBe('sharded');
+  });
+
+  it('every mode keeps -np 1 with the state reason: experts in RAM (--n-cpu-moe over the dense lead layers), CPU only, several cards (--fit)', () => {
+    const moe = planAt('rtx-5090', ramConfig('rtx-5090', 192), 'Q4_K_M');
+    expect(moe.mode).toBe('cpu-moe');
+    expect(moe.llamaCpp?.singleSlot).toBe('state');
+    expect(moe.llamaCpp?.command).toMatch(/^llama-server -hf ggml-org\/GLM-5\.3-Flash-GGUF:Q4_K -c 8192 -np 1 -ngl all --n-cpu-moe \d+ -fa on$/);
+    // 앞 3층은 dense — 블록 수 = 엔진 전문가 층 수 + 3
+    expect(moe.llamaCpp?.nCpuMoe).toBe(cpuMoeFlagLayers(model(glm), assessCombo(seed, gpu('rtx-5090'), ramConfig('rtx-5090', 192), model(glm)).perQuant.find((x) => x.quant === 'Q4_K_M')!.result.cpuMoeLayers));
+    const cpu = planAt('apple-m2-ultra', ramConfig('apple-m2-ultra', 192), 'Q2_K');
+    expect(cpu.mode).toBe('cpu-only');
+    expect(cpu.llamaCpp?.command).toContain(' -c 8192 -np 1 -ngl 0 ');
+    const multi = planAt('rtx-3090', ramConfig('rtx-3090', 128, { gpuCount: 4 }), 'Q2_K');
+    expect(multi.llamaCpp?.ngl).toBe('auto');
+    expect(multi.llamaCpp?.command).toBe('llama-server -hf ggml-org/GLM-5.3-Flash-GGUF:Q2_K -c 8192 -np 1 -fa on');
   });
 });
 

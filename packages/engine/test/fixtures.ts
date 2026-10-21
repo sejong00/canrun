@@ -1057,3 +1057,81 @@ export const DSV4_REFERENCE = {
     recordedErr: 0.334,
   },
 } as const;
+
+/**
+ * GLM-5.3-Flash (10-22 엔진 후속 ⑧-b) — KDA 선형 34층 + DSA(희소 MLA + 라이트닝 인덱서 k-pool) 11층 + 하이퍼 커넥션(mHC) + MoE 288 × top-8(앞 3층 dense 뒤 42층).
+ * ggml-org "Q4_K"(헤더 file_type 15 = Q4_K_M — 2분할) 헤더 실측: 전문가 171.23 · 비전문가 9.46GB(나머지 Q8_0), Q2_K 123.66 · 9.46GB.
+ * KV = DSA 층의 MLA 잠재 K + 인덱서 행 19,712 B/tok(데이터 계층 classifyArch — docs/02 §2.2). paramsB·activeParamsB 는 카드 값(320B·18B)
+ * https://huggingface.co/ggml-org/GLM-5.3-Flash-GGUF
+ */
+const GLM53: MoeBase = { paramsB: 320, activeParamsB: 18, quant: 'Q4_K_M', kvBytesPerToken: 19712, attnType: 'hybrid', activeExpertFrac: 8 / 288, moeLayers: 42, topK: 8, maxContext: 1048576 };
+export const GLM53_Q4K: ModelQuant = moeFile(GLM53, 181.37, 171.23, 9.46);
+export const GLM53_Q2K: ModelQuant = moeFile({ ...GLM53, quant: 'Q2_K' }, 133.81, 123.66, 9.46);
+
+/**
+ * llama.cpp 메모리 로그(PR #30499 댓글 — DGX Spark 2대 RPC, n_ctx 262,144·`-np 1`·f16 캐시, ggml-org Q4_K) — KV·순환 상태 대조용.
+ * MLA 캐시 262,144셀 × 11층 2,816 MiB(K 만 — V 0) · 인덱서 캐시 같은 셀 × 11층 2,112 MiB · 순환 상태 582.25 MiB(시퀀스 1 × (1 + rs_seq 3) 벌 —
+ * 투기적 디코딩 되돌리기용 사본 3벌, R 38.25 · S 544 MiB). 로그 줄은 모두 `1/1 seqs`
+ */
+export const GLM53_KV_LOG = {
+  source: 'https://github.com/ggml-org/llama.cpp/pull/30499#issuecomment-6234771665',
+  ctx: 262144,
+  mla: { cells: 262144, layers: 11, mib: 2816 },
+  indexer: { cells: 262144, layers: 11, mib: 2112 },
+  recurrent: { mib: 582.25, rMib: 38.25, sMib: 544, copies: 4, kdaLayers: 34 },
+  /** KDA 층 하나의 상태 원소(f32): S = head_dim² × 헤드, R(conv) = 3 × (kernel − 1) × 헤드 × head_dim (src/llama-hparams.cpp n_embd_s·n_embd_r) */
+  kda: { heads: 64, headDim: 128, convKernel: 4 },
+  seqs: 1,
+  /** llama-server 가 -np 없이 띄우는 슬롯 수(통합 KV) — 순환 상태는 슬롯마다 한 벌(recurrent_rs_size = n_seq_max) */
+  serverDefaultSlots: 4,
+} as const;
+
+/**
+ * 공개 실측 참고점(회귀에 맞춘 값이 아니다 — 10-22 ⑧-b). 카탈로그 기기·파일이 정확히 조인되는 지금 빌드 점은 없다:
+ * - M2 Ultra(ggerganov, #29958 본문 — 10-05 머지, 희소 어텐션 최적화 #29928(10-07) 전 빌드): 2.5k·16k 문맥 TG 24.4·23.9. 파일은 같은 본문의 재현 명령
+ *   (`-hf ggml-org/GLM-5.3-Flash-GGUF:Q2_K`)으로 본 가정, 192GB 의 기본 GPU 한도(70%)로는 카탈로그 콤보가 CPU 경로(필요 134.55 > 134.4)라 조인 안 됨
+ * - DGX Spark(am17an, #30640 — 10-21 머지, 지금 빌드): tg64 깊이 0·16,384·65,536 = 20.4·19.6·18.4, pp2048(-ub 2048) 548.8. 파일은 "IQ2_XXS" 뿐이라
+ *   unsloth UD-IQ2_XXS(101.84GB — 전문가 92.54·비전문가 6.15, MTP 2.79 포함)로 본 가정, 엔진 GPU 몫(89.6)에 안 들어가 콤보로는 조인 안 됨
+ * - RTX 3090 × 6(#29928 댓글 — PR 머지 빌드, 200W 전력 제한·-ts 9/7/7/7/7/9): avar6 Q2_K-Q3_K 128.26GB(전문가 110.19·비전문가 9.46·MTP 7.93) llama-bench
+ *   tg128 깊이 0·8,192·32,768 = 37.24·36.14·35.50 — 계산기 최대 4장이라 카탈로그 밖 구성
+ * 깊이 d 의 tgN 은 ctx d + N/2(위 관례), 깊이 0 은 ctx 512(tg64 — 위 MoE 회귀 관례)·64(tg128 평균)
+ */
+export const GLM53_M2_ULTRA: Hardware = unified(192, 800, 'apple-ultra');
+export const GLM53_SPARK: Hardware = { ...unified(128, 273, 'dgx-spark'), os: 'linux' };
+export const GLM53_3090X6: Hardware = multi(6, 24, 936, 'nvidia');
+export const GLM53_UD_IQ2XXS: ModelQuant = moeFile({ ...GLM53, quant: 'Q2_K' }, 101.84, 92.54, 6.15);
+export const GLM53_AVAR6_Q2Q3: ModelQuant = moeFile({ ...GLM53, quant: 'Q2_K' }, 128.26, 110.19, 9.46);
+export const GLM53_REFERENCE = {
+  m2Ultra: {
+    label: 'M2 Ultra #29958 (pre-#29928) batched TG',
+    source: PR(29958),
+    points: [
+      { ctx: 2532, measuredTg: 24.4 },
+      { ctx: 16400, measuredTg: 23.9 },
+    ],
+    recordedErr: [0.235, 0.238],
+  },
+  spark: {
+    label: 'DGX Spark #30640 tg64',
+    source: PR(30640),
+    points: [
+      { ctx: 512, measuredTg: 20.4 },
+      { ctx: 16448, measuredTg: 19.6 },
+      { ctx: 65600, measuredTg: 18.4 },
+    ],
+    recordedErr: [0.108, 0.116, 0.082],
+    measuredPp: 548.8,
+    ubatch: 2048,
+    fp16Tflops: 62.5,
+  },
+  rtx3090x6: {
+    label: '6 × RTX 3090 #29928 tg128',
+    source: PR(29928, '5983042076'),
+    points: [
+      { ctx: 64, measuredTg: 37.24 },
+      { ctx: 8256, measuredTg: 36.14 },
+      { ctx: 32832, measuredTg: 35.5 },
+    ],
+    recordedErr: [0.238, 0.261, 0.242],
+  },
+} as const;

@@ -112,6 +112,7 @@ export const MOE_ARCH: Readonly<Record<string, MoeArch>> = Object.freeze({
   'kolibri-1': { totalParamsB: 78.1, activeParamsB: 3.46, experts: 384, topK: 6 }, // add-model 2026-10-20 — Aleph-Alpha/Kolibri-1 config
   'k2-horizon-mova-36b-a4b': { totalParamsB: 37.44, activeParamsB: 4, experts: 100, topK: 8 }, // add-model 2026-10-21 — IFM/K2-Horizon-MoVA-36B-A4B config
   'deepseek-v4-flash-0731': { totalParamsB: 284.33, activeParamsB: 13.8, experts: 256, topK: 6 }, // add-model 2026-10-21 — deepseek-ai/DeepSeek-V4-Flash-0731 config
+  'glm-5.3-flash': { totalParamsB: 320, activeParamsB: 18, experts: 288, topK: 8 }, // add-model 2026-10-21 — zai-org/GLM-5.3-Flash config
 });
 
 /**
