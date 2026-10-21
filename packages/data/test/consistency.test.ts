@@ -253,6 +253,16 @@ describe('value-expert rows (MoVA valueExpertGB, 10-21 D113)', () => {
   });
 });
 
+describe('compressed attention (DeepSeek V4 — 10-22 D115)', () => {
+  it('a compressed-attention model needs attnOverrides (the KV formula and its llama.cpp sources)', () => {
+    const v4 = seed.models.find((m) => m.id === 'deepseek-v4-flash-0731')!;
+    expect(v4.attnOverrides?.sources.some((s) => s.includes('llama-kv-cache-dsv4.cpp'))).toBe(true);
+    const { attnOverrides: _drop, ...bare } = v4;
+    const broken = { ...seed, models: seed.models.map((m) => (m.id === v4.id ? bare : m)) };
+    expect(validateAll(broken).some((p) => p.includes(v4.id) && p.includes('compressed attention needs attnOverrides'))).toBe(true);
+  });
+});
+
 describe('seed scale (docs/06 P0-3)', () => {
   it('has the 42-strong core catalog (32 desktop dgpu + 10-class unified) plus extras', () => {
     const desktopDgpu = seed.gpus.filter((g) => g.kind === 'dgpu' && g.form === 'desktop');

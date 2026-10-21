@@ -935,3 +935,76 @@ describe('서로 다른 GPU 섞기 (docs/02 §6 베타, 10-03 D67)', () => {
     expect(pair.baseline.memory.gpuUsableGB).toBeCloseTo(35.4, 9);
   });
 });
+
+describe('DeepSeek V4 Flash 0731 — compressed attention, mHC, MXFP4 baseline (10-22 D115)', () => {
+  const V4 = 'deepseek-v4-flash-0731';
+  const at = (gpuId: string, ramGB: number, opts: { gpuCount?: number } = {}) => {
+    const g = gpu(gpuId);
+    const config = hardwareConfigs(g, seed.gpus, { ramGB, ...opts })[0]!;
+    return assessCombo(seed, g, config, model(V4));
+  };
+
+  it('record: compressed KV 6,880 B/tok, MoE 256 top-6, mHC, MXFP4 baseline (no Q4_K_M row), every row header-measured', () => {
+    const m = model(V4);
+    expect(m.arch).toMatchObject({ attnType: 'compressed', kvBytesPerTokenF16: 6880, experts: 256, topK: 6, mhc: true });
+    expect(m.attnOverrides?.kvBytesPerTokenF16).toBe(6880);
+    const rows = seed.modelQuants.filter((r) => r.modelId === V4);
+    expect(rows.map((r) => [r.quant, r.fileGB, r.expertGB, r.nonExpertGB])).toEqual([
+      ['MXFP4', 154.99, 147.17, 7.25],
+      ['Q2_K', 117.35, 109.66, 7.13],
+    ]);
+    expect(at('apple-m3-ultra', 256).baseline.quant).toBe('MXFP4');
+  });
+
+  it('isTheoretical: every GPU and mode (mHC / compressed attention), other MoE models unchanged', () => {
+    const m = model(V4);
+    for (const id of ['rtx-5090', 'rtx-4060', 'apple-m3-ultra', 'nvidia-dgx-spark', 'cpu-ddr5-5600-2ch']) {
+      for (const mode of ['full-gpu', 'cpu-moe', 'partial-offload', 'cpu-only'] as const) expect(isTheoretical(gpu(id), m, mode), `${id} ${mode}`).toBe(true);
+    }
+    expect(isTheoretical(gpu('apple-m3-ultra'), model('gpt-oss-120b'), 'full-gpu')).toBe(false);
+    // 플래그 하나만 있어도 이론 추정
+    expect(isTheoretical(gpu('apple-m3-ultra'), { ...model('gpt-oss-120b'), arch: { ...model('gpt-oss-120b').arch, mhc: true } }, 'full-gpu')).toBe(true);
+    expect(isTheoretical(gpu('apple-m3-ultra'), { ...model('gpt-oss-120b'), arch: { ...model('gpt-oss-120b').arch, attnType: 'compressed' } }, 'full-gpu')).toBe(true);
+  });
+
+  it('large-memory Macs hold MXFP4 on the GPU; M2 Ultra 192GB only past the 70% default (CPU path), its Q2_K on the GPU', () => {
+    for (const [id, ram] of [['apple-m3-ultra', 256], ['apple-m3-ultra', 512], ['apple-m5-ultra', 256]] as const) {
+      const c = at(id, ram);
+      expect(c.baseline.result, `${id} ${ram}`).toMatchObject({ verdict: 'S', mode: 'full-gpu', confidence: 'theoretical' });
+    }
+    const m2 = at('apple-m2-ultra', 192);
+    expect(m2.baseline.result).toMatchObject({ verdict: 'B', mode: 'cpu-only' });
+    expect(m2.perQuant.find((q) => q.quant === 'Q2_K')!.result).toMatchObject({ verdict: 'S', mode: 'full-gpu' });
+  });
+
+  it('128GB unified memory (DGX Spark, Strix Halo): MXFP4 does not fit, Q2_K only on the CPU path', () => {
+    for (const id of ['nvidia-dgx-spark', 'amd-strix-halo']) {
+      const c = at(id, 128);
+      expect(c.baseline.fits, id).toBe(false);
+      const q2 = c.perQuant.find((q) => q.quant === 'Q2_K')!;
+      expect(q2.result, id).toMatchObject({ verdict: 'B', mode: 'cpu-only' });
+      expect(c.display.quant, id).toBe('Q2_K');
+    }
+  });
+
+  it('dGPU + system RAM: experts in RAM from 192GB with an RTX 5090 or RTX 4090 (MXFP4), Q2_K from 128GB; RTX 4060 + 32GB does not fit', () => {
+    for (const id of ['rtx-5090', 'rtx-4090']) {
+      expect(at(id, 192).baseline.result, id).toMatchObject({ verdict: 'B', mode: 'cpu-moe', confidence: 'theoretical' });
+      expect(at(id, 128).baseline.fits, id).toBe(false);
+      expect(at(id, 128).perQuant.find((q) => q.quant === 'Q2_K')!.result, id).toMatchObject({ verdict: 'B', mode: 'cpu-moe' });
+    }
+    const small = at('rtx-4060', 32);
+    expect(small.perQuant.every((q) => !q.fits)).toBe(true);
+  });
+
+  it('the command keeps the MXFP4 shard tag (llama.cpp -hf skips dspark-* sidecars) and puts the first N blocks of experts in RAM', () => {
+    const g = gpu('rtx-5090');
+    const config = hardwareConfigs(g, seed.gpus, { ramGB: 192 })[0]!;
+    const c = assessCombo(seed, g, config, model(V4));
+    const row = seed.modelQuants.find((r) => r.modelId === V4 && r.quant === 'MXFP4')!;
+    const plan = commandPlan(g, config, model(V4), row, c.baseline);
+    expect(plan.llamaCpp?.command).toContain('-hf ggml-org/DeepSeek-V4-Flash-0731-GGUF:MXFP4');
+    expect(plan.llamaCpp?.nCpuMoe).toBe(c.baseline.result.cpuMoeLayers);
+    expect(plan.ollamaOmitted).toBe('sharded');
+  });
+});

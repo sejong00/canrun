@@ -262,6 +262,39 @@ describe('alternatives (docs/04 §4 ⑥, D4)', () => {
     expect(movaQualified).toBeGreaterThan(0);
   });
 
+  it('hyper-connection / compressed-attention models (DeepSeek V4 Flash) are not offered as model alternatives either — same temporary default (D115)', () => {
+    const full = loadSeed();
+    const v4Id = 'deepseek-v4-flash-0731';
+    const v4 = full.models.find((m) => m.id === v4Id)!;
+    expect(v4.arch).toMatchObject({ mhc: true, attnType: 'compressed' });
+    const withV4 = {
+      ...seed,
+      models: [...seed.models, v4],
+      modelQuants: [...seed.modelQuants, ...full.modelQuants.filter((r) => r.modelId === v4Id)],
+    };
+    const modelAlt = (a: Alternative) =>
+      a.kind === 'larger-model' || a.kind === 'smaller-model' || a.kind === 'faster-model' ? a.model.id : undefined;
+    let v4Qualified = 0;
+    for (const gpuId of ['apple-m3-ultra', 'apple-m5-ultra', 'apple-m2-ultra', 'rtx-5090']) {
+      const g = gpu(gpuId);
+      const hubWith = summarizeGpu(withV4, g);
+      const hubWithout = gpuHub(gpuId);
+      hubWith.configs.forEach((_, ci) => {
+        const v4Row = hubWith.rows.find((r) => r.model.id === v4Id)!;
+        if (verdictRank(v4Row.combos[ci]!.baseline.result.verdict) >= verdictRank('A')) v4Qualified++;
+        for (const r of hubWithout.rows) {
+          const args = { catalog: seed, gpu: g, configIndex: ci, modelHub: modelHub(r.model.id), model: r.model };
+          const withAlts = alternatives({ ...args, catalog: withV4, gpuHub: hubWith, combo: hubWith.rows.find((x) => x.model.id === r.model.id)!.combos[ci]! });
+          const withoutAlts = alternatives({ ...args, gpuHub: hubWithout, combo: r.combos[ci]! });
+          expect(withAlts.map(modelAlt), `${gpuId}#${ci}/${r.model.id}`).not.toContain(v4Id);
+          expect(withAlts.map(label), `${gpuId}#${ci}/${r.model.id}`).toEqual(withoutAlts.map(label));
+        }
+      });
+    }
+    // M3·M5 Ultra 256GB 이상에서 판정 A 이상이라 후보에서 빼지 않으면 '더 큰 모델'을 가져갈 구성이 실제로 있다(빈 검사가 아니다)
+    expect(v4Qualified).toBeGreaterThan(0);
+  });
+
   it('never exceeds 3 and never repeats a kind (whole catalog, primary config)', () => {
     for (const g of seed.gpus) {
       const hub = gpuHub(g.id);

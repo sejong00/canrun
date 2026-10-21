@@ -1,6 +1,5 @@
 [
   { "hfId": "Qwen/Qwen3.8-Flash-Next", "decision": "wait", "reason": "디스크에서 읽는 n-gram 임베딩 표(35GB) — 엔진 후속 ⑥ lazyGB 뒤 (PROGRESS §2 카탈로그 확장)", "decidedAt": "2026-10-04" },
-  { "hfId": "deepseek-ai/DeepSeek-V4-Flash-0731", "decision": "wait", "reason": "압축 어텐션, Q4_K_M 없이 MXFP4·UD 만 — 엔진 후속 ⑧ 뒤 (#8)", "decidedAt": "2026-10-04" },
   { "hfId": "zai-org/GLM-5.3-Flash", "decision": "wait", "reason": "llama.cpp 본선 지원(PR #27773) 수정 진행 중·UD 만 — 엔진 후속 ⑧ + DSA 인덱서 뒤 (#32)", "decidedAt": "2026-10-04" },
   { "hfId": "XingChen-AGI/Xing4.0-29B-A4B", "decision": "wait", "reason": "llama.cpp 본선 미지원(PR #29012) — 머지되면 다시 확인 (#70)", "decidedAt": "2026-10-04" },
   { "hfId": "Motif-Technologies/Motif-3", "decision": "wait", "reason": "llama.cpp 본선 미지원(PR #26298 draft) — 머지되면 다시 확인 (#19)", "decidedAt": "2026-10-04" },
@@ -24,7 +23,7 @@
   { "hfId": "ibm-granite/granite-switch-4.1-30b", "decision": "wait", "reason": "처음 보는 구조(model_type=granite_switch)라 add-model 이 보류(10-15 ① 런) — granite-switch-4.1-8b 와 같은 계열. llama.cpp 본선 지원·Q4_K_M GGUF 를 확인한 뒤 다시 확인", "decidedAt": "2026-10-16" },
   { "hfId": "tencent/Hy-Memory-30B-A3B", "decision": "wait", "reason": "처음 보는 구조(model_type=hy_v3 — 선례 없음)라 add-model 이 보류(10-16 ① 런, 30일 다운로드 0회) — 클라우드에서 HF 접근이 막혀 카드·구조는 직접 못 읽음. 분류기 층 지도에 hy_v3 를 넣고 llama.cpp 본선 지원·Q4_K_M GGUF·용도(이름상 메모리 특화일 수 있음)를 확인한 뒤 다시 확인", "decidedAt": "2026-10-17" },
   { "hfId": "nvidia/NVIDIA-Nemotron-Labs-Dory1.0-4B-BF16", "decision": "wait", "reason": "처음 보는 구조(model_type=dory — 선례 없음)라 add-model 이 보류(10-17 ① 런, 30일 다운로드 674회, NVIDIA Labs 실험 모델로 보임) — 클라우드에서 HF 접근이 막혀 카드·구조는 직접 못 읽음. 분류기 층 지도에 dory 를 넣고 llama.cpp 본선 지원·Q4_K_M GGUF 를 확인한 뒤 다시 확인", "decidedAt": "2026-10-18" },
-  { "hfId": "deepseek-ai/DeepSeek-V4.1-Flash-1017", "decision": "wait", "reason": "처음 보는 구조(model_type=deepseek_v41_text — 선례 없음, deepseek_v4 도 엔진 미지원)라 add-model 이 보류(10-17 ① 런, 30일 다운로드 0회) — 클라우드에서 HF 접근이 막혀 카드·구조는 직접 못 읽음. 분류기 층 지도·llama.cpp 본선 지원·Q4_K_M GGUF·생각 모드를 확인한 뒤 다시 확인", "decidedAt": "2026-10-18" },
+  { "hfId": "deepseek-ai/DeepSeek-V4.1-Flash-1017", "decision": "wait", "reason": "처음 보는 구조(model_type=deepseek_v41_text — 선례 없음)라 add-model 이 보류(10-17 ① 런, 30일 다운로드 0회). deepseek_v4(V4 Flash 0731)는 10-22 D115 로 계산하지만 V4.1 은 llama.cpp 본선 지원 PR(#28696·#30817)이 아직 열려 있다 — 머지 뒤 분류기·GGUF·생각 모드를 확인해 다시 확인", "decidedAt": "2026-10-18" },
   { "hfId": "XHToken/Spark-X2.6-4B-Base", "decision": "skip", "reason": "Base 모델 — 대화용이 아님(10-21 ① 런 '확인 필요'). 허용 목록 밖 제작사·30일 다운로드 0회", "decidedAt": "2026-10-21" },
   { "hfId": "XHToken/Spark-X2.6-4B", "decision": "wait", "reason": "add-model 이 MoE 로 넣었으나 pnpm test 실패(manual.test — 수동 추정 파일 크기와 GGUF 실측 오차가 MoE 상한 13% 초과, 10-21 ① 런) — 구조·GGUF 크기가 판정 가정과 맞지 않을 수 있음. 허용 목록 밖 제작사·30일 다운로드 0회이고 클라우드에서 HF 접근이 막혀 카드·config 는 직접 못 읽음. 다운로드가 늘고 구조를 확인한 뒤 다시 확인", "decidedAt": "2026-10-21" }
 ]
