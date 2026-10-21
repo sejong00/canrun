@@ -262,6 +262,8 @@ function thinkingFallback(templateNote: string, hfId: string, card: string | und
  *  - reasoning_effort(enable_thinking 없음): 생각 블록을 비우는 분기가 없으면 always(gpt-oss), 있으면 default-on
  *    (기본 단계가 medium·high·xhigh 로 적혀 있으면 확정 — Solar Open·Open2, 아니면 확인 필요).
  *  - 템플릿 변수 `thinking`(`{% if not thinking %}`): `set thinking = true|false` 가 기본값, 없으면 넘기지 않을 때 꺼짐 → default-off(DeepSeek-V3.1·Granite 3.3).
+ *    `thinking` 이 없을 때 enable_thinking 을 따르는 꼴(llama.cpp GGUF 의 DeepSeek V3.1·V3.2·V4 템플릿)은 위 enable_thinking 분기에서 default-on + 확인 필요 —
+ *    llama-server 는 생각을 지원하는 템플릿에 enable_thinking 을 켜서 넘긴다(docs/03 자동 추정 생각 모드 · 10-22 D115 리뷰).
  *  - `<think>`·`<thought>`·`[THINK]`·`/no_think` 표지만: 응답 시작에 생각 블록을 열어 두면 always(R1 Distill·LFM2.5·EXAONE Deep), 아니면 default-on + 확인 필요.
  *  - 표지 없음: 이름에 think·reason·R1 이 있으면 default-on + 확인 필요(HyperCLOVA X THINK 는 자체 표기). 아니면 모델 카드 —
  *    non-thinking 전용이라고 밝히면 없음, 생각 모드 표지가 있으면 default-on + 확인 필요, 둘 다 없으면 없음. 카드를 못 받으면 확인 필요.

@@ -551,6 +551,10 @@ export async function planAddition(
   }
   const warnings: string[] = [...splitWarnings];
   if (classifyLicense(license) === 'unknown') warnings.push(`라이선스 "${license}" 가 배지 맵(packages/data/src/license.ts)에 없음 — 분류 추가 필요`);
+  if (arch.offFileModules && opts.params === undefined) {
+    // 10-22 D115 리뷰 — safetensors 총계에 본 GGUF 에 없는 모듈 몫이 섞인다(계산기 불러오기는 헤더 원소 수를 자동으로 쓴다)
+    warnings.push(`config 의 ${arch.offFileModules.join('·')} 는 본 GGUF 에 없다 — paramsB ${paramsB} 는 그 몫이 섞인 safetensors 총계, 카드에 총 파라미터가 없으면 --params <GGUF 헤더 원소 수> 로 다시`);
+  }
   if (!opts.category) warnings.push('카테고리는 기본값 — 용도 필터용(리즈닝은 --category chat,reasoning)');
   if (!opts.thinking) warnings.push('생각 모드 미지정 — 모델 카드·채팅 템플릿에 thinking(enable_thinking·<think>·reasoning_effort)이 있으면 --thinking always|default-on|default-off|auto 로 다시 (판정 기준 1.5배, D59)');
   if (!opts.maxContext) warnings.push(`최대 컨텍스트 ${arch.maxContext} 는 config 값 — 모델 카드의 기본(네이티브) 길이와 다르면 --max-context 로 (예: Qwen3 은 카드 기준 32768, YaRN 확장 전)`);

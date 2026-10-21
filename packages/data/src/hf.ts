@@ -471,7 +471,7 @@ const optionOn = (v: unknown): boolean =>
  *   (DeepSeek-V4-Flash: 21 × 320 + 20 × 8 = 6,880 — #27680 로그의 CSA·HCA·인덱서 캐시 크기와 일치, docs/02 §2.2).
  *   raw SWA 캐시(전 층 × PAD(n_swa + n_ubatch, 256) 셀, K 만)와 압축기 상태는 컨텍스트와 무관한 상수라 슬라이딩 층 평탄 근사처럼 빼고 연산 버퍼 근사에 맡긴다
  *   (기본 ubatch 512 면 768셀 × 43층 × 1KB ≈ 34MB + 상태 ≈ 12MB — docs/02 §9)
- * - 결과: attnType compressed · override(KV 근거) · moe · mhc(hc_mult > 1) · refs
+ * - 결과: attnType compressed · override(KV 근거) · moe · mhc(hc_mult > 1) · offFileModules(본 GGUF 에 없는 MTP·DSpark — 10-22 D115 리뷰) · refs
  */
 function deepseekV4Arch(cfg: Record<string, unknown>, top: Record<string, unknown>, archs: readonly string[]): ArchResult {
   const no = (reason: string): ArchResult => ({ kind: 'unsupported', reason });
@@ -521,6 +521,11 @@ function deepseekV4Arch(cfg: Record<string, unknown>, top: Record<string, unknow
   const hcaPerToken = (headDim * kvHeads * 2) / 128;
   const kv = nCsa * csaPerToken + nHca * hcaPerToken;
   const hcMult = posInt(cfg['hc_mult']) ?? 1;
+  // config 에 켜져 있지만 본 GGUF 에 없는 모듈 — safetensors 총계에 섞여 있어 파라미터 수는 헤더 원소 수를 쓴다(buildHfModel, 10-22 D115 리뷰)
+  const offFile = [
+    ...(posInt(cfg['num_nextn_predict_layers']) ? (['MTP'] as const) : []),
+    ...(Object.keys(cfg).some((k) => k.startsWith('dspark_') && optionOn(cfg[k])) ? (['DSpark'] as const) : []),
+  ];
   const reason =
     `compressed — CSA(비율 4) ${nCsa}층 × (head_dim ${headDim} + indexer ${indexHeadDim}) × 2B / 4 + HCA(비율 128) ${nHca}층 × ${headDim} × 2B / 128` +
     ` (K 만, V 캐시 없음), raw SWA 창 ${String(cfg['sliding_window'])} 캐시(전 ${layers}층)·압축기 상태는 컨텍스트와 무관한 상수라 연산 버퍼 근사로 제외 (add-model)`;
@@ -532,6 +537,7 @@ function deepseekV4Arch(cfg: Record<string, unknown>, top: Record<string, unknow
     maxContext,
     moe,
     ...(hcMult > 1 ? { mhc: true as const } : {}),
+    ...(offFile.length > 0 ? { offFileModules: offFile } : {}),
     refs: DEEPSEEK_V4_REFS,
     arch: { layers, kvHeads, headDim, kvBytesPerTokenF16: kv },
     override: { kvBytesPerTokenF16: kv, reason, refs: DEEPSEEK_V4_KV_REFS },
@@ -548,6 +554,11 @@ export type ArchResult =
       attnType: 'full' | 'swa' | 'hybrid' | 'compressed';
       /** 하이퍼 커넥션(mHC — hc_mult > 1, deepseek_v4 — 10-22 D115) — 모델 `arch.mhc`, 추정은 이론 추정 */
       mhc?: true;
+      /**
+       * config 에 켜져 있지만 본 GGUF 파일에 없는 모듈(deepseek_v4 — MTP 는 변환기가 기본으로 빼고 DSpark 는 별도 dspark-*.gguf, 10-22 D115 리뷰).
+       * safetensors 총계에 그 몫이 섞여 있어 파라미터 수는 GGUF 헤더 원소 수를 쓴다(buildHfModel — 카탈로그 행은 add-model `--params`)
+       */
+      offFileModules?: readonly ('MTP' | 'DSpark')[];
       arch: { layers: number; kvHeads: number; headDim: number; kvBytesPerTokenF16: number };
       /** swa·hybrid — 전체 어텐션 층만 KV (선례와 같은 산식). refs = 산식 근거(llama.cpp 소스) — attnOverrides.sources 에 덧붙인다 */
       override?: { kvBytesPerTokenF16: number; reason: string; refs?: readonly string[] };
@@ -1015,7 +1026,7 @@ export type HfModelInput = {
 
 /**
  * 근사 표식 (UI 가 "추정" 안내를 붙인다):
- * - params-from-header: 파라미터 수를 safetensors 대신 GGUF 헤더 텐서 원소 수로
+ * - params-from-header: 파라미터 수를 safetensors 대신 GGUF 헤더 텐서 원소 수로(safetensors 가 없거나, 본 GGUF 에 없는 MTP·DSpark 몫이 섞인 deepseek_v4 — 10-22 D115 리뷰)
  * - active-from-name: MoE 활성 파라미터를 이름 표기(A3B)에서 — 반올림된 값
  * - active-from-header: MoE 활성 파라미터를 헤더(전문가 원소 수 × topK/experts)로 계산
  * - nonexpert-derived: 비전문가 크기를 실측 없이 bpw 균등 유도 (derive.ts — 과소 추정 경향)
@@ -1070,12 +1081,15 @@ export function buildHfModel(input: HfModelInput): HfModelResult {
 
   const notes: HfModelNote[] = [];
   const split = input.baseSplit;
-  const paramsB = input.info?.paramsB ?? split?.totalParamsB;
+  // 본 GGUF 에 없는 모듈(MTP·DSpark — deepseek_v4)이 config 에 켜져 있으면 safetensors 총계 대신 헤더 원소 수(llama.cpp 가 불러오는 파라미터 —
+  // 활성 파라미터도 헤더로 센다, 카탈로그 0731 과 같은 기준 — 10-22 D115 리뷰)
+  const headerFirst = arch.offFileModules !== undefined && split?.totalParamsB !== undefined;
+  const paramsB = headerFirst ? split.totalParamsB : (input.info?.paramsB ?? split?.totalParamsB);
   // 레코드에 실제로 들어가는 반올림 값으로 검증 (0.004B 는 0 이 되어 엔진이 NaN 을 낸다 — 10-01 리뷰)
   if (paramsB === undefined || !(round2(paramsB) > 0)) {
     return { kind: 'no-params', reason: 'parameter count unknown (no safetensors metadata, no GGUF header count)' };
   }
-  if (input.info?.paramsB === undefined) notes.push('params-from-header');
+  if (headerFirst || input.info?.paramsB === undefined) notes.push('params-from-header');
   if (arch.override) notes.push('kv-full-layers-only');
 
   const modelArch: ModelCore['arch'] = {

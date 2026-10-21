@@ -236,6 +236,11 @@ describe('estimateThinking — 채팅 템플릿 (카탈로그 43종으로 맞춤
     expect(estimateThinking(lfm, 'LiquidAI/LFM2.5-2.6B')).toMatchObject({ value: 'always', sure: true });
   });
 
+  it('`thinking` falling back to enable_thinking (llama.cpp GGUF templates of DeepSeek V3.1·V3.2·V4) → default-on, flagged — llama-server passes enable_thinking on (10-22 D115 review)', () => {
+    const t = `{%- if not thinking is defined -%}{%- if enable_thinking is defined -%}{%- set thinking = enable_thinking -%}{%- else -%}{%- set thinking = false -%}{%- endif -%}{%- endif -%}{%- if add_generation_prompt -%}{{- '<｜Assistant｜>' -}}{%- if thinking -%}{{- '<think>' -}}{%- else -%}{{- '</think>' -}}{%- endif -%}{%- endif -%}`;
+    expect(estimateThinking(t, 'ggml-org/DeepSeek-V4-Flash-0731-GGUF')).toMatchObject({ value: 'default-on', sure: false });
+  });
+
   it('no template markers → the model card decides; a missing card or template, or a Think name → flagged (10-06 리뷰)', () => {
     const plain = gen(`{{- '<|start_header_id|>assistant<|end_header_id|>\\n\\n' }}`);
     expect(estimateThinking(plain, 'meta-llama/Llama-3.2-3B-Instruct', '# Llama 3.2\nMultilingual dialogue model.')).toMatchObject({ sure: true });

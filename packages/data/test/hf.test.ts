@@ -1086,6 +1086,7 @@ describe('classifyArch — DeepSeek V4 compressed attention and hyper-connection
     expect(r.override?.reason).toContain('CSA(비율 4) 21층');
     expect(r.override?.reason).toContain('HCA(비율 128) 20층');
     expect(r.expertLayers).toBeUndefined(); // 43층 모두 MoE
+    expect(r.offFileModules).toEqual(['MTP', 'DSpark']); // 본 GGUF 에 없는 모듈(10-22 D115 리뷰)
     expect(r.refs).toEqual(DEEPSEEK_V4_REFS);
     for (const ref of [...(r.refs ?? []), ...(r.override?.refs ?? [])]) {
       expect(ref).toMatch(/^https:\/\/github\.com\/ggml-org\/llama\.cpp\/blob\/0a1ef309cdbb9f2024f58a38fb4c42352c5db569\//);
@@ -1142,18 +1143,41 @@ describe('classifyArch — DeepSeek V4 compressed attention and hyper-connection
       ggufRepo: 'someone/DeepSeek-V4-Flash-Finetune-GGUF',
       config: DSV4_CONFIG,
       tree,
-      info: { license: 'mit', paramsB: 284.33 },
+      // 실제 0731 API 의 safetensors 총계(MTP·DSpark 몫 포함) — 헤더 원소 수가 이긴다(10-22 D115 리뷰)
+      info: { license: 'mit', paramsB: 304.180418494 },
       baseSplit: { expertGB: 147.17, nonExpertGB: 7.25, totalParamsB: 284.334567511, expertParamsB: 277.025390592 },
     });
     expect(r.kind).toBe('ok');
     if (r.kind !== 'ok') return;
     expect(r.model.arch).toMatchObject({ attnType: 'compressed', kvBytesPerTokenF16: 6880, experts: 256, topK: 6, mhc: true });
+    expect(r.model.paramsB).toBe(284.33);
     expect(r.model.activeParamsB).toBe(13.8);
+    expect(r.notes).toContain('params-from-header');
     expect(r.rows.map((row) => [row.quant, row.fileGB, row.fileName])).toEqual([
       ['MXFP4', 154.99, 'DeepSeek-V4-Flash-0731-MXFP4-00001-of-00002.gguf'],
       ['Q2_K', 117.35, 'DeepSeek-V4-Flash-0731-Q2_K-00001-of-00002.gguf'],
     ]);
     expect(r.rows[0]).toMatchObject({ expertGB: 147.17, nonExpertGB: 7.25 });
     expect(r.notes).toContain('kv-full-layers-only');
+  });
+
+  it('paramsB: the header count only when the config has modules the main GGUF lacks and the header was read — otherwise safetensors as before', () => {
+    const f = (path: string, size: number): TreeEntry => ({ type: 'file', path, size });
+    const tree = [f('X-MXFP4-00001-of-00002.gguf', 5_250_752), f('X-MXFP4-00002-of-00002.gguf', 154_986_288_576)];
+    const split = { expertGB: 147.17, nonExpertGB: 7.25, totalParamsB: 284.334567511, expertParamsB: 277.025390592 };
+    const base = { hfId: 'someone/X', ggufRepo: 'someone/X-GGUF', tree, info: { license: 'mit', paramsB: 304.180418494 } };
+    // MTP·DSpark 가 꺼진 config — safetensors 총계 그대로
+    const bare = Object.fromEntries(Object.entries(DSV4_CONFIG).filter(([k]) => !k.startsWith('dspark_')));
+    const plain = { ...bare, num_nextn_predict_layers: 0 };
+    const cls = classifyArch(plain);
+    expect(cls.kind === 'ok' && cls.offFileModules).toBeFalsy();
+    const r1 = buildHfModel({ ...base, config: plain, baseSplit: split });
+    expect(r1.kind === 'ok' && r1.model.paramsB).toBe(304.18);
+    // MTP 만 켜져 있어도 헤더
+    const r2 = buildHfModel({ ...base, config: { ...bare, num_nextn_predict_layers: 1 }, baseSplit: split });
+    expect(r2.kind === 'ok' && r2.model.paramsB).toBe(284.33);
+    // 헤더를 못 읽으면 safetensors 로 돌아간다(활성 파라미터는 이름에서 못 읽어 no-params)
+    const r3 = buildHfModel({ ...base, config: DSV4_CONFIG });
+    expect(r3.kind).toBe('no-params');
   });
 });

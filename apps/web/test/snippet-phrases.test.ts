@@ -45,4 +45,20 @@ describe('llamaNotes', () => {
     const plain = commandPlan(gpu, config, { ...model, arch: { ...model.arch, loops: undefined } }, row, q, { ctx: 32768, kvQuant: 'f16' });
     expect(llamaNotes(tArgs as never, 'en', plain, 0)[0]!.text).toBe('nglN {"n":5,"layers":22}');
   });
+
+  it('a compressed-attention model (DeepSeek V4, 10-22 D115 review) explains -np 1 before flash attention; other models have no such note', () => {
+    const state = { ...defaultState(), hardware: { kind: 'catalog' as const, gpuId: 'apple-m3-ultra' }, ramGB: 256 };
+    const hw = resolveHardware(state, catalog)!;
+    const model = catalog.models.find((m) => m.id === 'deepseek-v4-flash-0731')!;
+    const row = catalog.modelQuants.find((r) => r.modelId === model.id && r.quant === 'MXFP4')!;
+    const q = { fits: true, result: { mode: 'full-gpu' as const } } as Parameters<typeof commandPlan>[4];
+    const plan = commandPlan(hw.gpu, hw.config, model, row, q, { ctx: 8192, kvQuant: 'f16' });
+    expect(plan.llamaCpp?.command).toContain(' -np 1 ');
+    const keys = llamaNotes(t, 'en', plan, 0).map((n) => n.key);
+    expect(keys).toEqual(['ngl', 'np', 'fa', 'kv']);
+    const other = catalog.models.find((m) => m.id === 'qwen3-14b')!;
+    const otherRow = catalog.modelQuants.find((r) => r.modelId === other.id && r.quant === 'Q4_K_M')!;
+    const otherPlan = commandPlan(hw.gpu, hw.config, other, otherRow, q, { ctx: 8192, kvQuant: 'f16' });
+    expect(llamaNotes(t, 'en', otherPlan, 0).map((n) => n.key)).not.toContain('np');
+  });
 });

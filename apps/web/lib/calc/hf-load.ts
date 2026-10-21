@@ -201,6 +201,7 @@ export async function loadHfModel(
 
     // MoE 는 기준 양자화 파일 헤더로 전문가·비전문가 크기를 잰다 (수 MB Range 읽기) — 실패하면 균등 bpw 유도로 대체
     let baseSplit: Parameters<typeof buildHfModel>[0]['baseSplit'];
+    // safetensors 총계. deepseek_v4 처럼 본 GGUF 에 없는 모듈(MTP·DSpark)이 config 에 켜져 있으면 buildHfModel 이 헤더 원소 수를 우선한다(10-22 D115 리뷰)
     const paramsB = baseInfo.safetensors?.total ? baseInfo.safetensors.total / 1e9 : undefined;
     const base = quantRowsFrom(tree, ggufRepo, 'probe')[0];
     if (base?.fileName && (arch.moe || paramsB === undefined)) {

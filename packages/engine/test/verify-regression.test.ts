@@ -24,7 +24,9 @@
  *     pp 는 rough ±40% 안(반복을 빼면 밖) — 라벨은 이론 추정(근거 1점·카탈로그 밖 기기, docs/02 §4 ⑨·§7·§9)
  * 14) DeepSeek V4 Flash(압축 어텐션·mHC — 10-22 D115, 엔진 산식 변화 없음): 압축 KV 6,880 B/tok 이 llama.cpp 로그(#27680)의 CSA·인덱서·HCA 캐시와
  *     ±1% 안(256 셀 패딩), raw SWA 창·압축기 상태는 컨텍스트와 무관한 상수(엔진은 연산 버퍼 근사에 맡긴다), 공개 실측 참고점 M2 Ultra(#28948 tg32)는
- *     추정이 +25% 높고(±30% 안 — 실측 ≥ 추정 × 0.7) 08-03 옛 빌드는 +33%, 문맥 감쇠는 실측 −19%·엔진 −1.6% — 라벨은 이론 추정(docs/02 §4 ⑩·§7·§9)
+ *     추정이 +25% 높고(±30% 안 — 실측 ≥ 추정 × 0.7) 08-03 옛 빌드는 +33%, 문맥 감쇠는 실측 −19%·엔진 −1.6% — 라벨은 이론 추정(docs/02 §4 ⑩·§7·§9).
+ *     로그는 슬롯 하나(-np 1 — 1/1 seqs)라 토큰당 KV 는 슬롯 하나 기준(스니펫이 -np 1 을 붙인다, 기본 4슬롯이면 4배), pp 는 30k 깊이에서 0.26배로
+ *     떨어지는데 엔진 pp 는 깊이와 무관 — 엔진 밖 한계로 고정(10-22 D115 리뷰)
  */
 import { describe, expect, it } from 'vitest';
 import { fit } from '../src/fit';
@@ -565,6 +567,16 @@ describe('14) DeepSeek V4 Flash — 압축 어텐션(CSA·HCA)·하이퍼 커넥
     expect((log.computeBufferMib[0] * MIB) / 1e9).toBeGreaterThan(2 * computeBufferGB(log.ctx));
   });
 
+  it('the log ran one request slot (-np 1: "1/1 seqs", streams = 1, n_slots = 1) — the per-token KV holds per slot, so the commands add -np 1 (the server default is 4)', () => {
+    // DSV4 캐시는 통합 KV 모드여도 시퀀스마다 따로 잡힌다 — 기본 4슬롯이면 압축 KV·raw SWA·상태가 모두 4배(엔진은 요청 하나로 센다, docs/02 §2.2)
+    expect(log.seqs).toBe(1);
+    expect(log.stateStreams).toBe(1);
+    expect(log.slots).toBe(1);
+    expect(log.serverDefaultSlots).toBe(4);
+    const compressed = ((log.csa.mib + log.indexer.mib + log.hca.mib) * MIB) / 1e9 / log.seqs;
+    expect(Math.abs(kvGB(DSV4_FLASH_MXFP4.kvBytesPerToken, log.ctx) / compressed - 1)).toBeLessThan(0.01);
+  });
+
   it('weights: experts in RAM / GPU split is the header measurement; nothing else changes (no engine formula for mHC)', () => {
     expect(gpuResidentGBFor(DSV4_FLASH_MXFP4)).toBeCloseTo(154.42, 9);
     expect(gpuResidentGBFor(DSV4_FLASH_Q2K)).toBeCloseTo(116.79, 9);
@@ -597,5 +609,19 @@ describe('14) DeepSeek V4 Flash — 압축 어텐션(CSA·HCA)·하이퍼 커넥
     expect(d30!.measuredTg).toBeLessThan(tg(d30!.ctx) * 0.7);
     const pp = ppEstimate({ effClass: 'apple-ultra', fp16Tflops: 27.2 }, DSV4_FLASH_MXFP4, { ubatch: o.ubatch })!;
     expect(Math.abs(pp / o.measuredPp - 1)).toBeLessThan(0.4);
+  });
+
+  it('limit outside the engine: pp drops to about a quarter by 30k (indexer and compressor work), while the engine pp does not depend on depth — the 30k point is far below the rough band', () => {
+    const o = DSV4_REFERENCE.oldBuild;
+    const pp0 = o.ppDepths[0]!;
+    const pp30 = o.ppDepths[3]!;
+    expect(pp0.measuredPp).toBe(o.measuredPp);
+    expect(pp30.depth).toBe(30000);
+    expect(pp30.measuredPp / pp0.measuredPp).toBeLessThan(0.3);
+    expect(pp30.measuredPp / pp0.measuredPp).toBeCloseTo(0.26, 2);
+    // 깊이마다 계속 떨어진다(10k 0.52 · 20k 0.35 · 30k 0.26)
+    for (let i = 1; i < o.ppDepths.length; i++) expect(o.ppDepths[i]!.measuredPp).toBeLessThan(o.ppDepths[i - 1]!.measuredPp);
+    const pp = ppEstimate({ effClass: 'apple-ultra', fp16Tflops: 27.2 }, DSV4_FLASH_MXFP4, { ubatch: o.ubatch })!;
+    expect(pp30.measuredPp).toBeLessThan(pp * 0.6);
   });
 });

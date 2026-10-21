@@ -1015,6 +1015,15 @@ export const DSV4_KV_LOG = {
   states: [1.31, 10.0, 0.33],
   /** 같은 로그의 CUDA0 연산 버퍼(MiB) — b10567 · b10568(회귀가 의심된 빌드) */
   computeBufferMib: [2366.28, 2570.28],
+  /**
+   * 슬롯 하나로 띄운 실행(명령에 `-np 1` — 로그 `1/1 seqs`·상태 `streams = 1`·`n_slots = 1`). DSV4 캐시는 통합 KV 여도 시퀀스마다 따로 잡혀
+   * (https://github.com/ggml-org/llama.cpp/blob/0a1ef309cdbb9f2024f58a38fb4c42352c5db569/src/llama-kv-cache-dsv4.cpp#L1247-L1248) llama-server 기본
+   * 4슬롯(https://github.com/ggml-org/llama.cpp/blob/0a1ef309cdbb9f2024f58a38fb4c42352c5db569/tools/server/server.cpp#L169-L173)이면 4배 — 스니펫이 `-np 1` 을 붙인다(10-22 D115 리뷰)
+   */
+  seqs: 1,
+  stateStreams: 1,
+  slots: 1,
+  serverDefaultSlots: 4,
 } as const;
 
 /**
@@ -1037,6 +1046,13 @@ export const DSV4_REFERENCE = {
       { ctx: 30064, measuredTg: 22.35 },
     ],
     measuredPp: 408.93,
+    /** pp2048 @ 깊이 d(같은 표) — 인덱서·압축 경로가 깊이에 비례해 30k 에서 0.26배(엔진 pp 는 깊이와 무관 — docs/02 §9 압축 어텐션 ②) */
+    ppDepths: [
+      { depth: 0, measuredPp: 408.93 },
+      { depth: 10000, measuredPp: 212.07 },
+      { depth: 20000, measuredPp: 142.17 },
+      { depth: 30000, measuredPp: 106.94 },
+    ],
     ubatch: 2048,
     recordedErr: 0.334,
   },

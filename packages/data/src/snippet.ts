@@ -26,6 +26,12 @@
  *    GPU 가 여러 장이면 반복 모델은 `-ngl` 을 빼고 `--fit` 에 맡긴다(10-22 D114 리뷰): 층 분할은 논리 층을 카드마다 나누는데 물리 가중치는 첫 반복 층을
  *    맡은 앞쪽 카드에 몰린다 — 2장이면 블록 전부가 1번 카드(논리 0~22층)에. 엔진은 합산 용량만 봐서 긴 컨텍스트(64k 이상)에서 그 카드가 넘칠 수 있고,
  *    `--fit` 은 후보 배치마다 장치별 할당량을 실제로 재서 나눈다(같은 커밋 common/fit.cpp#L588-L600 — `-c` 를 주면 컨텍스트는 줄이지 않는다)
+ *  - 압축 어텐션 모델(attnType `compressed` — DeepSeek V4, 10-22 D115 리뷰)은 `-np 1` 을 붙인다. llama-server 는 `-np` 를 주지 않으면 슬롯 4개에
+ *    통합 KV(kv_unified)로 뜨고(https://github.com/ggml-org/llama.cpp/blob/0a1ef309cdbb9f2024f58a38fb4c42352c5db569/tools/server/server.cpp#L169-L173 —
+ *    통합이면 슬롯마다 n_ctx_seq = n_ctx, src/llama-context.cpp#L379-L380), 다른 모델은 슬롯들이 n_ctx 셀 하나를 나눠 써서 엔진 KV(ctx 한 벌)와 같다.
+ *    DSV4 캐시는 통합 모드여도 raw SWA·CSA·HCA·인덱서·압축기 상태를 시퀀스마다 따로 잡아(src/llama-kv-cache-dsv4.cpp#L1247-L1248 · #L1291-L1333,
+ *    텐서 = kv_size × n_stream — src/llama-kv-cache.cpp#L84 · #L233) 기본 4슬롯이면 KV 가 엔진 값의 4배다. `-np 1` 이면 n_seq_max 1 — #27680 로그의
+ *    `1/1 seqs`·`streams = 1` 과 같은 조건이라 엔진 KV(요청 하나)와 맞는다
  *  - Ollama KV 캐시 양자화 = 서버 env `OLLAMA_KV_CACHE_TYPE`(f16|q8_0|q4_0, 전역), 플래시 어텐션 필요 —
  *    `OLLAMA_FLASH_ATTENTION=1` 로 강제 (https://docs.ollama.com/faq "How can I set the quantization type for the K/V cache?",
  *    "How can I enable Flash Attention?"). f16(기본)이면 env 를 붙이지 않는다
@@ -120,6 +126,8 @@ export type LlamaCppPlan = {
    * GPU 여러 장의 반복 층 모델(full-gpu·부분 오프로드 — 10-22 D114 리뷰, 헤더 주석)
    */
   ngl: 'all' | 'auto' | number;
+  /** `-np 1`(요청 슬롯 하나)을 붙였나 — 압축 어텐션 모델만(헤더 주석: 압축 캐시가 슬롯마다 따로 잡힌다, 10-22 D115 리뷰) */
+  singleSlot?: true;
   /**
    * cpu-moe: 전문가를 CPU 에 둘 층 수 = 엔진 fit 이 VRAM 여유로 정한 값(추정의 근거와 같은 배치, 10-01 D56).
    * 전체 층과 같으면 전문가 전부 RAM.
@@ -240,9 +248,12 @@ export function commandPlan(
       break;
   }
 
+  // 압축 어텐션(10-22 D115 리뷰): llama-server 기본 4슬롯이면 압축 KV·raw SWA·상태가 슬롯마다 붙는다 — 요청 하나로 띄워 엔진 KV 와 맞춘다(헤더 주석)
+  const singleSlot = model.arch.attnType === 'compressed';
   const flags = [
     `-hf ${file.repo}:${file.tag}`,
     `-c ${ctx}`,
+    ...(singleSlot ? ['-np 1'] : []),
     ...(ngl !== 'auto' ? [`-ngl ${ngl}`] : []),
     ...(nCpuMoe !== undefined ? [`--n-cpu-moe ${nCpuMoe}`] : []),
     '-fa on',
@@ -251,6 +262,7 @@ export function commandPlan(
   const llamaCpp: LlamaCppPlan = {
     command: `llama-server ${flags.join(' ')}`,
     ngl,
+    ...(singleSlot ? { singleSlot: true as const } : {}),
     ...(nCpuMoe !== undefined
       ? {
           nCpuMoe,

@@ -190,6 +190,56 @@ describe('looped layers (Nanbeige4.2, 10-22 D114): -ngl counts logical layers', 
   });
 });
 
+describe('compressed attention (DeepSeek V4, 10-22 D115 review): -np 1, because llama.cpp keeps the compressed caches per slot', () => {
+  const v4 = 'deepseek-v4-flash-0731';
+  const ramConfig = (gpuId: string, ramGB: number, extra: Parameters<typeof hardwareConfigs>[2] = {}) =>
+    hardwareConfigs(gpu(gpuId), seed.gpus, { ramGB, ...extra })[0]!;
+  const planAt = (gpuId: string, config: HwConfig, quant: string, ctx = 8192) => {
+    const q = assessCombo(seed, gpu(gpuId), config, model(v4), { ctx }).perQuant.find((x) => x.quant === quant)!;
+    return commandPlan(gpu(gpuId), config, model(v4), row(v4, quant), q, { ctx });
+  };
+
+  it('full GPU on an M3 Ultra 256GB: -np 1 right after -c (one request, the slot count the KV estimate and the #27680 log assume)', () => {
+    const p = planAt('apple-m3-ultra', ramConfig('apple-m3-ultra', 256), 'MXFP4');
+    expect(p.llamaCpp?.command).toBe('llama-server -hf ggml-org/DeepSeek-V4-Flash-0731-GGUF:MXFP4 -c 8192 -np 1 -ngl all -fa on');
+    expect(p.llamaCpp?.singleSlot).toBe(true);
+  });
+
+  it('every mode keeps -np 1: experts in RAM (--n-cpu-moe), CPU only, several cards (--fit), a q8_0 cache', () => {
+    const moe = planAt('rtx-5090', ramConfig('rtx-5090', 192), 'MXFP4');
+    expect(moe.mode).toBe('cpu-moe');
+    expect(moe.llamaCpp?.command).toMatch(/^llama-server -hf \S+ -c 8192 -np 1 -ngl all --n-cpu-moe \d+ -fa on$/);
+    const cpu = planAt('nvidia-dgx-spark', hardwareConfigs(gpu('nvidia-dgx-spark'), seed.gpus)[0]!, 'Q2_K');
+    expect(cpu.mode).toBe('cpu-only');
+    expect(cpu.llamaCpp?.command).toContain(' -c 8192 -np 1 -ngl 0 ');
+    const multi = planAt('rtx-5090', ramConfig('rtx-5090', 64, { gpuCount: 4 }), 'MXFP4');
+    expect(multi.llamaCpp?.ngl).toBe('auto');
+    expect(multi.llamaCpp?.command).toBe('llama-server -hf ggml-org/DeepSeek-V4-Flash-0731-GGUF:MXFP4 -c 8192 -np 1 -fa on');
+    const q8 = (() => {
+      const config = ramConfig('apple-m3-ultra', 256);
+      const q = assessCombo(seed, gpu('apple-m3-ultra'), config, model(v4), { ctx: 32768, kvQuant: 'q8_0' }).perQuant.find((x) => x.quant === 'MXFP4')!;
+      return commandPlan(gpu('apple-m3-ultra'), config, model(v4), row(v4, 'MXFP4'), q, { ctx: 32768, kvQuant: 'q8_0' });
+    })();
+    expect(q8.llamaCpp?.command).toContain(' -c 32768 -np 1 -ngl all -fa on --cache-type-k q8_0 --cache-type-v q8_0');
+  });
+
+  it('no other catalog model gets -np (their slots share one n_ctx pool, which is what the engine counts)', () => {
+    const g = gpu('rtx-4090');
+    const config = hardwareConfigs(g, seed.gpus, { ramGB: 256 })[0]!;
+    for (const m of seed.models) {
+      const combo = assessCombo(seed, g, config, m);
+      if (!combo.display.fits) continue;
+      const plan = commandPlan(g, config, m, row(m.id, combo.display.quant), combo.display);
+      if (m.arch.attnType === 'compressed') {
+        expect(plan.llamaCpp?.command, m.id).toContain(' -np 1 ');
+      } else {
+        expect(plan.llamaCpp?.command, m.id).not.toMatch(/ -np /);
+        expect(plan.llamaCpp, m.id).not.toHaveProperty('singleSlot');
+      }
+    }
+  });
+});
+
 describe('looped layers × several GPUs (10-22 D114 review): -ngl is left to --fit', () => {
   it('full-gpu and partial offload drop -ngl on 2 cards (the weights would pile onto the first card); one card keeps -ngl', () => {
     const m = model('nanbeige4.2-3b');
