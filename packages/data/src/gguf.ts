@@ -351,7 +351,7 @@ const EXPERT_RE = /_exps|_chexps/;
  * 값 전문가(MoVA — K2-Horizon `blk.N.attn_v_exps`, 10-21 D113): 이름에 `_exps` 가 있지만 FFN 전문가가 아니다. llama.cpp `--cpu-moe`·`--n-cpu-moe`
  * (LLM_FFN_EXPS_REGEX `\.ffn_(up|down|gate|gate_up)_(ch|)exps`)와 `--fit` 자동 배치가 CPU 로 옮기지 않아 늘 그래픽카드에 있으므로 비전문가로 센다
  * (https://github.com/ggml-org/llama.cpp/blob/4625240437c6821ee5c2da99e12d4817c6a8f07f/common/common.h#L1225 · common/fit.cpp#L618).
- * 토큰마다 일부만 읽지만 속도식은 비전문가를 전부 읽는다고 본다 — 보수 근사(docs/02 §9)
+ * 크기는 `valueExpertGB` 로 따로 보고한다 — 행의 valueExpertGB 로 엔진이 토큰마다 고른 몫(valueTopK/valueExperts)만 읽는다고 센다(docs/02 §3.1)
  */
 const GPU_EXPERT_RE = /\.attn_v_exps\./;
 const BLOCK_RE = /^blk\.(\d+)\./;

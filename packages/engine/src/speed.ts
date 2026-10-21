@@ -16,7 +16,17 @@ import {
   PP_UBATCH,
 } from './constants';
 import type { FitResult } from './fit';
-import { expertGBFor, gpuCountOf, gpuSharesOf, isUniformGpus, kvGB, nonExpertGBFor, weightsGB, withoutPleGB } from './memory';
+import {
+  expertGBFor,
+  gpuCountOf,
+  gpuSharesOf,
+  isUniformGpus,
+  kvGB,
+  nonExpertGBFor,
+  unreadValueExpertGB,
+  weightsGB,
+  withoutPleGB,
+} from './memory';
 import type { Hardware, KvQuant, ModelQuant } from './types';
 
 export type SpeedOptions = { ctx?: number; kvQuant?: KvQuant };
@@ -68,12 +78,17 @@ function activeSliceGB(mq: ModelQuant): number {
  * MoE 토큰당 가중치 읽기(§3.1·§3.3): 비전문가(어텐션·공유 전문가·라우터·출력층) + 라우팅 전문가 × topK/experts.
  * 비전문가·전문가 크기(행 실측 분할, 없으면 기준 양자화에서 유도한 값)와 전문가 비율이 있을 때. 하나라도 없으면
  * 활성 슬라이스를 비전문가와 나머지로 가른다.
+ * 값 전문가(MoVA `valueExpertGB` — 10-21 D113)는 비전문가 안에 있지만(그래픽카드 상주) 토큰마다 고른 몫만 읽으므로 나머지 몫
+ * valueExpertGB × (1 − valueExpertFrac)를 비전문가 읽기에서 뺀다 — llama.cpp 는 값 전문가 top-k 를 골라(ggml_argsort_top_k,
+ * https://github.com/ggml-org/llama.cpp/blob/4625240437c6821ee5c2da99e12d4817c6a8f07f/src/models/k2-horizon.cpp#L161) 그것만 곱한다
+ * (build_lora_mm_id(attn_v_exps, …, selected_experts) = ggml_mul_mat_id — 같은 파일 #L186 · src/llama-graph.cpp#L1588-L1593, 라우팅 FFN
+ * 전문가와 같은 연산). full-gpu·cpu-moe 의 GPU 몫·통합 메모리 cpu-only 의 GPU 상한이 모두 이 값을 쓴다. 값 전문가가 없는 모델은 0 을 뺀다
  */
 function moeActiveSplitGB(mq: ModelQuant): { nonExpert: number; routed: number } {
   const nonExpertGB = nonExpertGBFor(mq);
   const expertGB = expertGBFor(mq);
   if (mq.activeExpertFrac !== undefined && nonExpertGB !== undefined && expertGB !== undefined) {
-    return { nonExpert: nonExpertGB, routed: expertGB * mq.activeExpertFrac };
+    return { nonExpert: nonExpertGB - unreadValueExpertGB(mq, nonExpertGB), routed: expertGB * mq.activeExpertFrac };
   }
   const activeGB = activeSliceGB(mq);
   const nonExpert = Math.min(nonExpertGB ?? 0, activeGB);
@@ -82,7 +97,8 @@ function moeActiveSplitGB(mq: ModelQuant): { nonExpert: number; routed: number }
 
 /**
  * 토큰당 읽기 바이트 GB(GPU 경로): 가중치(dense 는 파일 − 층별 임베딩 표, MoE 는 비전문가 + 라우팅 전문가 몫) + kvRead(ctx) (§3.1).
- * 층별 임베딩 표(PLE, 10-21 D112)는 토큰마다 한 줄만 읽어(get_rows) 대역폭에서 뺀다 — `pleGB` 가 없는 모델은 파일 전체 그대로
+ * 층별 임베딩 표(PLE, 10-21 D112)는 토큰마다 한 줄만 읽어(get_rows) 대역폭에서 뺀다 — `pleGB` 가 없는 모델은 파일 전체 그대로.
+ * MoE 의 값 전문가(MoVA, 10-21 D113)는 고른 몫만 센다(`moeActiveSplitGB`) — `valueExpertGB` 가 없는 모델은 비전문가 전체 그대로
  */
 export function bytesPerTokenGB(mq: ModelQuant, ctx: number, kvQuant?: KvQuant): number {
   const kv = kvGB(mq.kvBytesPerToken, ctx, kvQuant);
@@ -129,7 +145,8 @@ function tgFullGpu(hw: Hardware, mq: ModelQuant, bytes: number): number {
 
 /**
  * cpu-only — RAM 대역폭 + cpu 클래스 계수 (§2.4-4 경로의 속도). MoE 바이트는 활성 슬라이스(cpu MoE 계수 0.43 이 이 바이트로
- * 정해졌다 — 10-16 D88 에도 그대로). 통합 메모리 칩은 같은 메모리를 GPU 로 읽는 full-gpu 추정을 넘지 않는다 — RAM 이 적어
+ * 정해졌다 — 10-16 D88 에도 그대로). 활성 슬라이스는 활성 파라미터 비율이라 값 전문가(MoVA, 10-21 D113)도 이미 고른 몫만 들어 있다
+ * (따로 빼지 않는다). 통합 메모리 칩은 같은 메모리를 GPU 로 읽는 full-gpu 추정을 넘지 않는다 — RAM 이 적어
  * CPU 로 떨어진 구성이 더 빠르게 나오는 역전 방지(데이터 레이어 `unifiedCpuBandwidth` 의 MoE 몫을 10-16 D88 에 여기로 옮겼다).
  */
 function tgCpuOnly(hw: Hardware, mq: ModelQuant, ctx: number, kvQuant: KvQuant | undefined, gpuBytes: number): number {
@@ -143,6 +160,7 @@ function tgCpuOnly(hw: Hardware, mq: ModelQuant, ctx: number, kvQuant: KvQuant |
 /**
  * cpu-moe(§3.3): 토큰 시간 = RAM 몫 + GPU 몫 + MoE 고정 시간(직렬). 10-01 개정(D56) — 전문가 일부 GPU 배치.
  * - 전문가 읽기량 routed = expertGB × topK/experts (실측 행). 없으면 활성 슬라이스 − 비전문가(09-30 식).
+ * - 비전문가 읽기량은 값 전문가(MoVA, 10-21 D113)의 고르지 않은 몫을 뺀 값(`moeActiveSplitGB`) — 값 전문가는 GPU 몫에 남는다
  * - CPU 에 둔 층 비율 f = cpuMoeLayers / moeLayers (fit 이 VRAM 여유로 정한 `--n-cpu-moe`). 정보가 없으면 f = 1(전부 RAM).
  * - RAM 몫: routed × f ÷ (CPU_MOE_RAM_EFF × RAM 대역폭)
  * - GPU 몫: (비전문가 + routed × (1 − f) + KV 읽기) ÷ (GPU 클래스 dense 계수 × VRAM 대역폭) — 카드가 여럿이면 `gpuThroughputGBs`(§6)

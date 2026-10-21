@@ -128,6 +128,17 @@ export type ModelQuant = {
    * https://github.com/ggml-org/llama.cpp/blob/9a3b91c6801e68f412fcf1b6f8e153aa562b8536/src/llama-model.cpp#L1684-L1686
    */
   pleGB?: number;
+  /**
+   * MoE: 값 전문가(MoVA — K2-Horizon `attn_v_exps`) 텐서 GB (GGUF 헤더 실측, 10-21 D113). `nonExpertGB` 안에 들어 있다 — llama.cpp
+   * `--n-cpu-moe`·`--fit` 은 FFN 전문가만 옮겨 값 전문가는 늘 그래픽카드에 있으므로 배치·VRAM 은 비전문가 그대로다(§2.4·§3.3).
+   * 토큰마다 고른 값 전문가만 곱해(top-k 선택 → mul_mat_id) 읽기 바이트에서는 `valueExpertFrac` 밖의 몫을 뺀다(§3.1).
+   * 출처: https://github.com/ggml-org/llama.cpp/blob/4625240437c6821ee5c2da99e12d4817c6a8f07f/src/models/k2-horizon.cpp#L161 ·
+   * https://github.com/ggml-org/llama.cpp/blob/4625240437c6821ee5c2da99e12d4817c6a8f07f/src/models/k2-horizon.cpp#L186 ·
+   * https://github.com/ggml-org/llama.cpp/blob/4625240437c6821ee5c2da99e12d4817c6a8f07f/src/llama-graph.cpp#L1588-L1593
+   */
+  valueExpertGB?: number;
+  /** MoE: 토큰당 쓰는 값 전문가 비율 valueTopK/valueExperts — 값 전문가 읽기량 = valueExpertGB × 이 값 (§3.1, 10-21 D113) */
+  valueExpertFrac?: number;
   maxContext: number;
 };
 

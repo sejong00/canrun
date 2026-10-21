@@ -187,6 +187,18 @@ export function withoutPleGB(mq: Pick<ModelQuant, 'pleGB'>, weights: number): nu
 }
 
 /**
+ * 값 전문가(MoVA, `valueExpertGB` — 10-21 D113) 중 토큰마다 읽지 않는 GB = valueExpertGB × (1 − valueExpertFrac).
+ * 값 전문가는 비전문가 안에 있어(그래픽카드 상주) 배치·VRAM 은 그대로 두고 MoE 읽기 바이트(§3.1)에서만 뺀다 — llama.cpp 는 토큰마다
+ * 값 전문가 valueTopK 개를 골라(ggml_argsort_top_k) 그것만 곱한다(build_lora_mm_id → ggml_mul_mat_id — 라우팅 FFN 전문가와 같은 연산).
+ * 둘 중 하나라도 없으면 0(값 전문가가 없는 모델은 바뀌지 않는다). [0, nonExpert] 로 묶는다(나쁜 데이터가 비전문가 읽기를 음수로 만들지 않게).
+ */
+export function unreadValueExpertGB(mq: Pick<ModelQuant, 'valueExpertGB' | 'valueExpertFrac'>, nonExpert: number): number {
+  if (mq.valueExpertGB === undefined || mq.valueExpertFrac === undefined) return 0;
+  const frac = Math.min(1, Math.max(0, mq.valueExpertFrac));
+  return Math.min(nonExpert, Math.max(0, mq.valueExpertGB * (1 - frac)));
+}
+
+/**
  * 라우팅 전문가 텐서 GB — 실측 행은 `expertGB`, 아니면 파일 − 비전문가(유도 경로: token_embd·MTP 가 전문가 쪽에 섞여
  * 층당 전문가 크기를 약간 크게 본다 = `--n-cpu-moe` 가 보수적).
  */

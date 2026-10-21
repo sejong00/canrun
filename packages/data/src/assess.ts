@@ -292,11 +292,11 @@ export function unifiedCpuBandwidth(gpu: Pick<Gpu, 'effClass' | 'memBandwidthGBs
 }
 
 /**
- * 엔진 입력으로 넘기는 quant 행 필드 — MoE 행은 GGUF 헤더 실측 분할(expertGB·nonExpertGB), dense 행은 헤더 실측
- * offGpuGB(그래픽카드에 안 올리는 몫, 10-03 D62)·pleGB(층별 임베딩 표, 10-21 D112)가 붙을 수 있다
+ * 엔진 입력으로 넘기는 quant 행 필드 — MoE 행은 GGUF 헤더 실측 분할(expertGB·nonExpertGB, 값 전문가 모델은 valueExpertGB — 10-21 D113),
+ * dense 행은 헤더 실측 offGpuGB(그래픽카드에 안 올리는 몫, 10-03 D62)·pleGB(층별 임베딩 표, 10-21 D112)가 붙을 수 있다
  */
 export type QuantRowInput = Pick<ModelQuantCore, 'quant' | 'fileGB'> &
-  Partial<Pick<ModelQuantCore, 'expertGB' | 'nonExpertGB' | 'offGpuGB' | 'pleGB'>>;
+  Partial<Pick<ModelQuantCore, 'expertGB' | 'nonExpertGB' | 'valueExpertGB' | 'offGpuGB' | 'pleGB'>>;
 
 /**
  * 카탈로그 모델 (+ 등록 quant 행) → 엔진 ModelQuant. 행이 없으면 bpw 폴백 경로.
@@ -304,11 +304,17 @@ export type QuantRowInput = Pick<ModelQuantCore, 'quant' | 'fileGB'> &
  * 전문가 층 수 = arch.expertLayers 길이(전문가가 일부 층에만 있을 때 — 10-03 D63) 또는 arch.layers — 엔진이 VRAM 여유만큼
  * 전문가 층을 GPU 에 둔다 (10-01 D56). 엔진의 cpuMoeLayers 는 이 단위라 명령 값은 `cpuMoeFlagLayers`(snippet.ts)로 바꾼다.
  * topK 는 MoE 토큰당 고정 시간(전문가 층 수 × topK × 클래스 값 — 10-16 D88)에 쓴다.
+ * 값 전문가(MoVA, 10-21 D113): 헤더 실측 행의 valueExpertGB 와 비율 valueTopK/valueExperts 를 넘긴다 — 엔진은 배치를 비전문가 그대로 두고
+ * 읽기 바이트에서만 고르지 않은 몫을 뺀다. 실측 분할이 없는 행이면 넘기지 않는다(validateAll 이 그런 행을 막는다).
  */
 export function toModelQuant(model: ModelCore, row?: QuantRowInput): ModelQuant {
   const measured = row?.expertGB !== undefined && row.nonExpertGB !== undefined;
   const moe = model.activeParamsB !== undefined;
-  const { experts, topK } = model.arch;
+  const { experts, topK, valueExperts, valueTopK } = model.arch;
+  const valueExpert =
+    moe && measured && row.valueExpertGB !== undefined && valueExperts !== undefined && valueTopK !== undefined
+      ? { valueExpertGB: row.valueExpertGB, valueExpertFrac: valueTopK / valueExperts }
+      : {};
   return {
     paramsB: model.paramsB,
     activeParamsB: model.activeParamsB,
@@ -319,6 +325,7 @@ export function toModelQuant(model: ModelCore, row?: QuantRowInput): ModelQuant 
     ...(moe && experts !== undefined && topK !== undefined ? { activeExpertFrac: topK / experts } : {}),
     ...(moe ? { moeLayers: model.arch.expertLayers?.length ?? model.arch.layers } : {}),
     ...(moe && topK !== undefined ? { topK } : {}),
+    ...valueExpert,
     maxContext: model.maxContext,
     quant: row?.quant ?? 'Q4_K_M',
     fileGB: row?.fileGB,
@@ -380,8 +387,8 @@ export function isTheoretical(gpu: GpuCore, model: ModelCore, mode: Mode): boole
   // 층별 임베딩 표(PLE — Gemma 4 E 계열, 10-21 D112): 엔진이 토큰당 고정 시간(백엔드별 상수)을 더해 공개 실측 10점 중 9점이 −10.9~+11.0%
   // 지만, 상수 근거가 카드 몇 장·백엔드 둘뿐이고 A770 은 +78%(intel-arc 계수)라 보정 추정(±20%)의 근거가 안 된다(docs/02 §4 ⑦·§7, PROGRESS §4 D112)
   if (model.arch.ple === true) return true;
-  // 값 전문가(MoVA — K2-Horizon, 10-21 D113): 값 전문가는 llama.cpp 가 늘 그래픽카드에 두므로 비전문가로 세는데, 토큰마다 일부만 읽는 것을 엔진은
-  // 전부 읽는다고 본다(보수 근사 — 대역폭이 병목인 경로일수록 낮게 본다). 공개 실측도 없어 보정 추정의 근거가 안 된다(docs/02 §4·§9, PROGRESS §4 D113)
+  // 값 전문가(MoVA — K2-Horizon, 10-21 D113): 엔진 0.11.0 이 고른 값 전문가 몫만 읽기 바이트에 넣지만, 값 전문가 라우팅·작은 행렬곱의 고정 시간은
+  // 따로 세지 않고(라우팅 FFN 전문가 고정 시간 꼴 — 근거 실측 없음) 공개 실측도 없어 보정 추정의 근거가 안 된다(docs/02 §4·§9, PROGRESS §4 D113)
   if (model.arch.valueExperts !== undefined) return true;
   // FP16 크리플 구형 GPU — 계수 도출 표본(RTX 30~50·RDNA3/4) 밖
   if (isFp16Crippled(gpu)) return true;
@@ -460,6 +467,8 @@ export type QuantAssessment = {
   offGpuGB?: number;
   /** dense 행의 층별 임베딩 표 (10-21 D112) — 위와 같은 이유로 실어 나른다 */
   pleGB?: number;
+  /** MoE 행의 값 전문가(MoVA, 10-21 D113) — 위와 같은 이유로 실어 나른다 */
+  valueExpertGB?: number;
   /** MTP 블록 GB (헤더 실측) — 분해 바의 "MTP 를 켜면" 안내 */
   mtpGB?: number;
   ggufRepo: string;
@@ -606,6 +615,7 @@ export function assessQuant(input: AssessQuantInput): QuantAssessment {
     fileGB: row.fileGB,
     ...(row.expertGB !== undefined ? { expertGB: row.expertGB } : {}),
     ...(row.nonExpertGB !== undefined ? { nonExpertGB: row.nonExpertGB } : {}),
+    ...(row.valueExpertGB !== undefined ? { valueExpertGB: row.valueExpertGB } : {}),
     ...(row.offGpuGB !== undefined ? { offGpuGB: row.offGpuGB } : {}),
     ...(row.pleGB !== undefined ? { pleGB: row.pleGB } : {}),
     ...(row.mtpGB !== undefined ? { mtpGB: row.mtpGB } : {}),

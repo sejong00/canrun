@@ -229,8 +229,9 @@ export const ModelSchema = z
       /**
        * MoE 전용(10-21 D113): 값 전문가(MoVA — K2-Horizon) 수 · 토큰당 고르는 수. MoE 층마다 V 투영을 값 전문가로 만든다(KV 캐시는 표준 GQA).
        * 출처 = config.json `mova_num_experts`·`mova_num_experts_per_tok`(GGUF `<arch>.attention.value_expert_count`·`value_expert_used_count`).
-       * 값 전문가 텐서(attn_v_exps)는 llama.cpp 가 늘 그래픽카드에 두어 헤더 분할이 비전문가로 센다 — 속도식은 토큰마다 전부 읽는다고 보는 보수 근사라
-       * 추정은 이론 추정(assess `isTheoretical`). 둘 다 있거나 둘 다 없거나, valueTopK < valueExperts(validateAll)
+       * 값 전문가 텐서(attn_v_exps)는 llama.cpp 가 늘 그래픽카드에 두어 헤더 분할이 비전문가로 세고, 행의 `valueExpertGB` 가 그 크기를 따로 둔다 —
+       * 엔진은 그중 valueTopK/valueExperts 몫만 토큰마다 읽는다고 본다(엔진 0.11.0). 공개 실측이 없고 값 전문가 라우팅 고정 시간을 따로 세지 않아
+       * 추정은 이론 추정(assess `isTheoretical`). 둘 다 있거나 둘 다 없거나, valueTopK < valueExperts, 행은 모두 헤더 분할·valueExpertGB 필수(validateAll)
        */
       valueExperts: z.number().int().positive().optional(),
       valueTopK: z.number().int().positive().optional(),
@@ -254,6 +255,8 @@ export const ModelSchema = z
     /**
      * MoE: attention+shared 텐서 GB — packages/data/src/derive.ts 유도값 (consistency 테스트로 고정).
      * bpw 균등 근사라 과소 추정 경향 — 행 단위 헤더 실측 `model-quants.nonExpertGB` 가 있으면 그쪽이 정확.
+     * 값 전문가 모델(`arch.valueExperts`, 10-21 D113)은 이 유도값이 값 전문가를 FFN 전문가처럼 나눠 그래픽카드 상주 비전문가를 크게 적게 본다
+     * (K2-Horizon MoVA Q4_K_M 유도 0.65 vs 실측 6.0) — 행 실측 없이 쓰지 않는다(그 모델 행은 분할 필수 — validateAll).
      */
     nonExpertGB: z.number().positive().optional(),
     category: z.array(z.enum(['chat', 'coding', 'reasoning', 'vision'])).min(1),
@@ -365,6 +368,14 @@ export const ModelQuantSchema = z
     expertGB: z.number().positive().optional(),
     nonExpertGB: z.number().positive().optional(),
     /**
+     * MoE 전용 — 값 전문가(MoVA — K2-Horizon `attn_v_exps`, 10-21 D113) GB (GGUF 헤더 실측, `classifySplit` 의 valueExpertGB).
+     * nonExpertGB 안에 들어 있다 — llama.cpp `--n-cpu-moe`·`--fit` 은 FFN 전문가만 옮겨 값 전문가는 늘 그래픽카드(배치·VRAM 은 비전문가 그대로).
+     * 엔진은 토큰마다 고른 몫(valueTopK/valueExperts)만 읽는다고 보고 나머지를 읽기 바이트에서 뺀다(docs/02 §3.1).
+     * 같은 헤더 측정의 expertGB·nonExpertGB 와 함께 · ≤ nonExpertGB(아래 refine). 모델 `arch.valueExperts` 인 모델의 행만이고,
+     * 그 모델의 행은 모두 분할과 이 값을 가져야 한다(validateAll — 없으면 모델 수준 유도 nonExpertGB 가 값 전문가를 빼고 VRAM 을 적게 센다)
+     */
+    valueExpertGB: z.number().positive().optional(),
+    /**
      * dense 전용 — 파일 중 llama.cpp 가 그래픽카드에 올리지 않는 GB (GGUF 헤더 실측, scripts/gguf-header.ts, 10-03 D62).
      * 입력 임베딩(token_embd — 입력층은 항상 CPU, 임베딩 공유 모델은 출력층 사본이 GPU 에 가서 ≈0)·기본 미적재 MTP/NextN
      * 블록·헤더 메타데이터. dGPU full-gpu 필요량은 fileGB − 이 값(docs/02 §2.4-1). MoE 행은 fileGB − expertGB − nonExpertGB 로
@@ -407,6 +418,15 @@ export const ModelQuantSchema = z
       ctx.addIssue({
         code: 'custom',
         message: `${mq.modelId}/${mq.quant}: pleGB needs offGpuGB from the same header measurement and must not exceed it`,
+      });
+    }
+    if (
+      mq.valueExpertGB !== undefined &&
+      (mq.expertGB === undefined || mq.nonExpertGB === undefined || mq.valueExpertGB > mq.nonExpertGB)
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `${mq.modelId}/${mq.quant}: valueExpertGB needs expertGB/nonExpertGB from the same header measurement and must not exceed nonExpertGB`,
       });
     }
   });

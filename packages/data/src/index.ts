@@ -143,6 +143,10 @@ export function validateAll(files: SeedFiles): string[] {
   const gpuIds = new Set(files.gpus.map((gpu) => gpu.id));
   // 층별 임베딩 표 모델(10-21 D112) — dense 만
   const pleModelIds = new Set(files.models.filter((model) => model.arch.ple === true).map((model) => model.id));
+  // 값 전문가 모델(MoVA, 10-21 D113) — MoE 만(아래 모델 검사)
+  const valueExpertModelIds = new Set(
+    files.models.filter((model) => model.arch.valueExperts !== undefined).map((model) => model.id),
+  );
   for (const model of files.models) {
     if (model.arch.ple === true && model.activeParamsB !== undefined) {
       problems.push(`models/${model.id}: arch.ple is for dense models only`);
@@ -196,6 +200,15 @@ export function validateAll(files: SeedFiles): string[] {
     }
     if (pleModelIds.has(mq.modelId) && mq.offGpuGB !== undefined && mq.pleGB === undefined) {
       problems.push(`${id}: header-measured row of a per-layer-embedding model needs pleGB`);
+    }
+    // 값 전문가(MoVA, 10-21 D113): arch.valueExperts 인 모델 행만 · 그 모델 행은 모두 헤더 분할과 valueExpertGB 를 갖는다
+    // (분할이 없으면 모델 수준 유도 nonExpertGB — 값 전문가를 FFN 전문가처럼 나눈 값, MoVA Q4_K_M 0.65 vs 실측 6.0 — 로 떨어져 늘 그래픽카드에
+    // 있는 값 전문가 몫(4.25GB)을 빼고 VRAM 을 적게 센다. valueExpertGB 가 없으면 속도식이 값 전문가를 전부 읽는다)
+    if (mq.valueExpertGB !== undefined && !valueExpertModelIds.has(mq.modelId)) {
+      problems.push(`${id}: valueExpertGB only for models with arch.valueExperts (MoVA value experts)`);
+    }
+    if (valueExpertModelIds.has(mq.modelId) && (!hasSplit || mq.valueExpertGB === undefined)) {
+      problems.push(`${id}: every row of a value-expert (MoVA) model needs the header-measured expertGB/nonExpertGB and valueExpertGB`);
     }
     // MTP 블록(10-03): 같은 헤더 측정이 있는 행만 · GPU 밖 몫(offGpuGB 또는 파일 − 분할) 안
     if (mq.mtpGB !== undefined) {

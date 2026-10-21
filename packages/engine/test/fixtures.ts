@@ -917,3 +917,28 @@ export const PLE_SPEED_CASES: readonly PleSpeedCase[] = [
   pleCase('Arc B580 SYCL Gemma 4 E4B Q4_0 tg128', ARC_B580, GEMMA4_E4B_Q40_UNSLOTH, 512, 82.3, 'https://github.com/ggml-org/llama.cpp/discussions/23313#discussioncomment-17291611', -0.033, { reference: true }),
   pleCase('Arc A770 Vulkan Gemma 4 E4B Q4_K_M tg128 (b10068)', ARC_A770, GEMMA4_E4B_Q4_BARTOWSKI, 512, 50.31, 'https://github.com/ggml-org/llama.cpp/discussions/26823', 0.781, { reference: true }),
 ];
+
+// ---------- 13) K2-Horizon MoVA 36B-A4B — 값 전문가(MoVA, 10-21 D113, docs/02 §3.1·§3.3) ----------
+/**
+ * 카탈로그 행과 같은 GGUF 헤더 실측: 파일 22.37 · FFN 전문가 15.99 · 비전문가 6.0(값 전문가 attn_v_exps 4.25 포함 — llama.cpp `--n-cpu-moe`·`--fit` 은
+ * FFN 전문가만 옮긴다) · FFN 100 × top-8 · MoE 45층(앞 dense 3층 뒤) · 값 전문가 64 × top-4 · KV 48 × 8 × 128 × 4 = 196,608 B/tok.
+ * 엔진 0.11.0 은 값 전문가 중 고른 4/64 몫만 읽는다(top-k 선택 → mul_mat_id —
+ * https://github.com/ggml-org/llama.cpp/blob/4625240437c6821ee5c2da99e12d4817c6a8f07f/src/models/k2-horizon.cpp#L161 · #L186)
+ */
+// source: https://huggingface.co/IFM/K2-Horizon-MoVA-36B-A4B-GGUF/resolve/main/K2-Horizon-MoVA-36B-A4B-Q4_K_M.gguf
+export const K2_MOVA_Q4: ModelQuant = {
+  paramsB: 37.44,
+  activeParamsB: 4,
+  fileGB: 22.37,
+  quant: 'Q4_K_M',
+  kvBytesPerToken: 196_608,
+  attnType: 'full',
+  nonExpertGB: 6.0,
+  expertGB: 15.99,
+  activeExpertFrac: 8 / 100,
+  moeLayers: 45,
+  topK: 8,
+  valueExpertGB: 4.25,
+  valueExpertFrac: 4 / 64,
+  maxContext: 524_288,
+};

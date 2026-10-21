@@ -801,9 +801,10 @@ export function buildHfModel(input: HfModelInput): HfModelResult {
   // 층별 임베딩 표(10-21 D112)는 양자화 행마다 헤더 실측(pleGB)이 있어야 그래픽카드 몫·읽기 바이트를 셀 수 있다 — 이 경로는 dense 헤더를
   // 읽지 않아 표를 그래픽카드 몫으로 세고 속도를 1.6배쯤 낮게 본다. 카탈로그에 넣을 때(add-model)만 계산한다
   if (arch.ple) return { kind: 'unsupported', reason: '층별 임베딩 표(PLE) — 양자화 행마다 GGUF 헤더 실측이 필요해 카탈로그 모델로만 계산' };
-  // 값 전문가(MoVA, 10-21 D113)는 헤더 분할이 비전문가(그래픽카드 상주)로 세어 속도식이 토큰마다 전부 읽는다고 본다(보수 근사) — 그 라벨(이론 추정)은
-  // 카탈로그 모델의 arch.valueExperts 로 붙는다. 이 경로는 활성 파라미터를 헤더로 셀 때 값 전문가를 전부 활성으로 세기도 해 카탈로그로만 계산한다
-  if (arch.mova) return { kind: 'unsupported', reason: '값 전문가(MoVA) — 보수 근사·이론 추정 라벨이 붙는 카탈로그 모델로만 계산' };
+  // 값 전문가(MoVA, 10-21 D113)는 행마다 헤더 실측 valueExpertGB 가 있어야 엔진이 고른 몫만 읽는다(엔진 0.11.0) — 이 경로의 행은 그 값을 싣지
+  // 않아 값 전문가를 전부 읽고, 활성 파라미터를 헤더로 셀 때 값 전문가를 전부 활성으로 센다. 라벨(이론 추정)도 카탈로그 모델의 arch.valueExperts 로
+  // 붙으므로 카탈로그에 넣을 때(add-model)만 계산한다
+  if (arch.mova) return { kind: 'unsupported', reason: '값 전문가(MoVA) — 양자화 행마다 GGUF 헤더 실측(valueExpertGB)이 필요해 카탈로그 모델로만 계산' };
 
   const modelId = `${HF_MODEL_ID_PREFIX}${slugFromHfId(input.hfId)}`;
   const records = quantRowsFrom(input.tree, input.ggufRepo, modelId);

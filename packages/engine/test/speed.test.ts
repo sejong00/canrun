@@ -15,7 +15,7 @@ import {
   PP_MOE,
   PP_REF_PARAMS_B,
 } from '../src/constants';
-import { GEMMA4_E4B_Q4, GPT_OSS_20B, LLAMA2_7B_Q4_0, LLAMA33_70B_Q4, QWEN3_8B_Q4, QWEN35_35B_A3B_Q4, QWEN36_35B_A3B_Q4_SPLIT, RTX_3060_12GB, RTX_4090 } from './fixtures';
+import { GEMMA4_E4B_Q4, GPT_OSS_20B, K2_MOVA_Q4, LLAMA2_7B_Q4_0, LLAMA33_70B_Q4, QWEN3_8B_Q4, QWEN35_35B_A3B_Q4, QWEN36_35B_A3B_Q4_SPLIT, RTX_3060_12GB, RTX_4090 } from './fixtures';
 
 describe('resolveEff (§3.2)', () => {
   it('uses class defaults — GPU classes have one (dense) value since 10-16 D88, MoE reads with it too', () => {
@@ -61,6 +61,17 @@ describe('bytesPerTokenGB (§3.1)', () => {
     const noSplit: ModelQuant = { ...GPT_OSS_20B, nonExpertGB: undefined, expertGB: undefined };
     const kvRead = (24 * 1024 * 2048) / 1e9;
     expect(bytesPerTokenGB(noSplit, 2048)).toBeCloseTo(12.11 * (3.6 / 20.9) + kvRead, 6);
+  });
+
+  it('MoE with value experts (MoVA): non-expert − value experts × (1 − valueTopK/valueExperts) + routed + kvRead (10-21 D113)', () => {
+    const kvRead = (196_608 * 8192) / 1e9;
+    const read = 6.0 - 4.25 * (1 - 4 / 64) + 15.99 * (8 / 100);
+    expect(bytesPerTokenGB(K2_MOVA_Q4, 8192)).toBeCloseTo(read + kvRead, 6);
+    // 값 전문가 크기나 비율이 없으면 비전문가를 전부 읽는다(값 전문가가 없는 모델과 같은 식)
+    expect(bytesPerTokenGB({ ...K2_MOVA_Q4, valueExpertGB: undefined }, 8192)).toBeCloseTo(6.0 + 15.99 * 0.08 + kvRead, 6);
+    expect(bytesPerTokenGB({ ...K2_MOVA_Q4, valueExpertFrac: undefined }, 8192)).toBeCloseTo(6.0 + 15.99 * 0.08 + kvRead, 6);
+    // 나쁜 데이터(값 전문가 > 비전문가)도 비전문가 읽기를 음수로 만들지 않는다
+    expect(bytesPerTokenGB({ ...K2_MOVA_Q4, valueExpertGB: 99 }, 8192)).toBeCloseTo(15.99 * 0.08 + kvRead, 6);
   });
 });
 
@@ -166,6 +177,60 @@ describe('tgEstimate (§3.1~3.4)', () => {
     const tg = tgEstimate(cpuHw, QWEN3_8B_Q4, { mode: 'cpu-only' }, { ctx: 512 });
     // 0.5 × 89.6 / (5.03 + 0.0755) ≈ 8.8
     expect(tg).toBeCloseTo((0.5 * 89.6) / (5.03 + (144 * 1024 * 512) / 1e9), 1);
+  });
+});
+
+describe('value experts (MoVA — K2-Horizon, 10-21 D113): placement keeps them on the GPU, reads count only the chosen share', () => {
+  const ctx = 8192;
+  const kv = (196_608 * ctx) / 1e9;
+  const nonExpertRead = 6.0 - 4.25 * (1 - 4 / 64);
+  const routed = 15.99 * (8 / 100);
+  const overhead = (hw: Pick<Hardware, 'effClass'>) => 45 * 8 * MOE_EXPERT_OVERHEAD_US[hw.effClass]! * 1e-6;
+  const allValueExperts: ModelQuant = { ...K2_MOVA_Q4, valueExpertGB: undefined, valueExpertFrac: undefined };
+
+  it('full-gpu: read time of the chosen share + the usual MoE fixed time (no extra value-expert fixed time)', () => {
+    const rtx5090: Hardware = { ...RTX_4090, vramGB: 32, memBandwidthGBs: 1792 };
+    const est = tgEstimate(rtx5090, K2_MOVA_Q4, { mode: 'full-gpu' }, { ctx });
+    expect(est).toBeCloseTo(1 / ((nonExpertRead + routed + kv) / (0.7 * 1792) + overhead(rtx5090)), 6);
+    // 값 전문가를 전부 읽던 0.10.0 식보다 빠르다
+    expect(est).toBeGreaterThan(tgEstimate(rtx5090, allValueExperts, { mode: 'full-gpu' }, { ctx }));
+  });
+
+  it('cpu-moe: the GPU share reads the chosen value experts, the RAM share is FFN experts only', () => {
+    const n = 37;
+    const f = n / 45;
+    const manual =
+      1 /
+      ((routed * f) / (CPU_MOE_RAM_EFF * RTX_3060_12GB.ramBandwidthGBs) +
+        (nonExpertRead + routed * (1 - f) + kv) / (resolveEff(RTX_3060_12GB, false) * RTX_3060_12GB.memBandwidthGBs) +
+        overhead(RTX_3060_12GB));
+    expect(tgEstimate(RTX_3060_12GB, K2_MOVA_Q4, { mode: 'cpu-moe', cpuMoeLayers: n }, { ctx })).toBeCloseTo(manual, 6);
+  });
+
+  it('fit is unchanged — value experts stay in the GPU-resident non-expert share (llama.cpp --n-cpu-moe moves FFN experts only)', () => {
+    // RAM 16GB 는 cpu-moe·cpu-only 가 모자라 bestQuant 사다리까지 간다(사다리는 valueExpertGB 를 비례 축소 — 배치에는 쓰지 않는다)
+    for (const vramGB of [8, 12, 16, 24, 32]) {
+      for (const ramGB of [16, 32]) {
+        const hw: Hardware = { ...RTX_3060_12GB, vramGB, ramGB };
+        expect(fit(hw, K2_MOVA_Q4, { ctx })).toEqual(fit(hw, allValueExperts, { ctx }));
+      }
+    }
+    expect(fit({ ...RTX_3060_12GB, vramGB: 8, ramGB: 16 }, K2_MOVA_Q4, { ctx }).fits).toBe(false);
+  });
+
+  it('desktop cpu-only keeps the active slice (card active params — value experts already counted at the chosen share)', () => {
+    const cpuHw: Hardware = { kind: 'cpu', os: 'linux', memBandwidthGBs: 89.6, ramGB: 64, ramBandwidthGBs: 89.6, effClass: 'cpu' };
+    const expected = (0.43 * 89.6) / (22.37 * (4 / 37.44) + kv);
+    expect(tgEstimate(cpuHw, K2_MOVA_Q4, { mode: 'cpu-only' }, { ctx })).toBeCloseTo(expected, 6);
+    expect(tgEstimate(cpuHw, allValueExperts, { mode: 'cpu-only' }, { ctx })).toBeCloseTo(expected, 6);
+  });
+
+  it('unified cpu-only stays capped by the full-gpu estimate of the same chip — with the chosen-share bytes', () => {
+    // RAM 대역폭이 GPU 경로보다 커 보이게 한 통합 메모리 칩 — 상한(full-gpu)이 걸린다
+    const chip: Hardware = { kind: 'unified', os: 'macos', memBandwidthGBs: 120, ramGB: 24, ramBandwidthGBs: 600, effClass: 'apple' };
+    const cap = tgEstimate(chip, K2_MOVA_Q4, { mode: 'full-gpu' }, { ctx });
+    expect(tgEstimate(chip, K2_MOVA_Q4, { mode: 'cpu-only' }, { ctx })).toBeCloseTo(cap, 6);
+    expect(cap).toBeCloseTo(1 / ((nonExpertRead + routed + kv) / (0.76 * 120) + overhead(chip)), 6);
   });
 });
 

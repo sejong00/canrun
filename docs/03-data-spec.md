@@ -42,8 +42,10 @@ Model { id, family, name, hfId, paramsB, activeParamsB?,   // moe ⇒ activePara
      // valueExperts·valueTopK (10-21 D113): MoE 전용·선택 — 값 전문가(MoVA, K2-Horizon) 수와 토큰당 고르는 수. 둘 다 있거나 둘 다 없음, valueTopK < valueExperts(validateAll).
      //   출처 config.json mova_num_experts·mova_num_experts_per_tok(GGUF attention.value_expert_count·value_expert_used_count) — classifyArch(k2_horizon)가 기록, 레코드 sources 에 llama.cpp 근거.
      //   MoE 층마다 V 투영을 값 전문가 중 몇 개로 만들어 그 합을 V 로 쓴다 — 토큰당 V 모양이 표준과 같아 KV 는 표준 GQA 식. 값 전문가 텐서(attn_v_exps)는
-     //   llama.cpp 가 --n-cpu-moe·--fit 에서도 그래픽카드에 둬 행의 nonExpertGB 에 들어 있다(아래 expertGB). 엔진은 이 필드를 읽지 않는다 — 속도식이 값 전문가를
-     //   토큰마다 전부 읽는다고 보는 보수 근사라 추정 라벨이 이론 추정이다(assess isTheoretical — docs/02 §4·§9). 계산기 HF 불러오기는 MoVA 모델을 받지 않는다
+     //   llama.cpp 가 --n-cpu-moe·--fit 에서도 그래픽카드에 둬 행의 nonExpertGB 에 들어 있고, 크기는 행 valueExpertGB 에 따로 둔다(아래). 데이터 계층(toModelQuant)이
+     //   valueTopK/valueExperts 를 엔진 valueExpertFrac 로 넘겨 읽기 바이트에서 고르지 않은 몫을 뺀다(엔진 0.11.0 — docs/02 §3.1). 값 전문가 라우팅 고정 시간은 세지 않고
+     //   공개 실측도 없어 추정 라벨은 이론 추정(assess isTheoretical — docs/02 §4 ⑧·§9). 이 모델의 행은 모두 헤더 분할·valueExpertGB 필수(validateAll — 없으면 모델 수준
+     //   유도 nonExpertGB 가 값 전문가를 FFN 전문가처럼 나눠 VRAM 을 적게 센다). 계산기 HF 불러오기는 MoVA 모델을 받지 않는다
      attnOverrides?:{kvBytesPerTokenF16, reason, sources[]},  // 비-full 전용, arch.kvBytesPerTokenF16과 일치(미러) — 존재 시 sync가 arch 자동 갱신 안 함 (§5.1)
      maxContext, license, moe:boolean, nonExpertGB?,   // MoE attention+shared GB (derive.ts 균등 bpw 유도) — 10-01 부터 행 실측(ModelQuant.nonExpertGB)이 우선, 이 값은 bpw 사다리 폴백
      category:('chat'|'coding'|'reasoning'|'vision')[] (min 1),
@@ -58,12 +60,16 @@ Model { id, family, name, hfId, paramsB, activeParamsB?,   // moe ⇒ activePara
      //   (hf.ts popularityFrom: 500만↑ 5 · 100만↑ 4 · 20만↑ 3 · 3만↑ 2 · 그 밖 1, `--popularity` 로 덮어쓰기), 사람이 조정한다 — 10-06 기준 43종 중 25종이
      //   다운로드 기준과 다르다(예: 한국어 모델 9종은 모두 높게, 한국어가 아닌 1~2B 급은 낮게, 널리 알려진 옛 모델은 높게). sync-models 는 바꾸지 않는다 — 최신 다운로드 그대로의 순서는 hfDownloads30d("다운로드 많은 순")가 따로 진다.
      //   쓰는 곳: 홈 인기 모델(4 이상), 계산기 인기순·추천순(같은 크기 구간 안에서). 화면 안내도 "다운로드 수만이 아니라 국내 사용도 함께 본 다섯 단계 점수"로 밝힌다
-ModelQuant { modelId, quant:QuantId, fileGB, expertGB?, nonExpertGB?, offGpuGB?, pleGB?, mtpGB?, ggufRepo, fileName?, sources[] }   // 실제 GGUF 크기 (decimal GB, 분할 합산)
+ModelQuant { modelId, quant:QuantId, fileGB, expertGB?, nonExpertGB?, valueExpertGB?, offGpuGB?, pleGB?, mtpGB?, ggufRepo, fileName?, sources[] }   // 실제 GGUF 크기 (decimal GB, 분할 합산)
      // expertGB·nonExpertGB (10-01 D56): GGUF 헤더 실측(scripts/gguf-header.ts), MoE 행 전용, 둘 다 있거나 둘 다 없음,
      //   0.75×fileGB ≤ expertGB + nonExpertGB ≤ fileGB + 0.02 (validateAll — 하한 10-03).
      //   expertGB = 트렁크 층의 `_exps`·`_chexps` 텐서 합(값 전문가 `attn_v_exps` 제외 — llama.cpp --n-cpu-moe 가 옮기는 FFN 전문가만, 10-21 D113). nonExpertGB = GPU 상주분(값 전문가 포함) — 입력층 제외(token_embd·per_layer_token_embd·position_embd·token_types,
      //   llama.cpp 는 입력층을 CPU 에 둔다, 출력층 없는 tied 모델은 token_embd 1회 포함), MTP·NextN 블록 제외(기본 로드 안 함). token_embd_norm 은 GPU.
      //   엔진 cpu-moe 배치·속도의 입력(docs/02 §3.3)이자 합이 full-gpu 의 그래픽카드 상주 가중치(docs/02 §2.4-1). sync-models 가 새 행·바뀐 파일만 다시 잰다(§5.1 ⑤)
+     // valueExpertGB (10-21 D113): 값 전문가(MoVA attn_v_exps) GB — 같은 헤더 측정(classifySplit valueExpertGB)의 nonExpertGB 안 몫, 분할과 함께 · ≤ nonExpertGB(zod refine).
+     //   모델 arch.valueExperts 인 모델의 행만, 그 모델 행은 모두 필수(validateAll). 배치는 비전문가 그대로, 엔진은 읽기 바이트에서만 valueExpertGB × (1 − valueTopK/valueExperts)
+     //   를 뺀다(docs/02 §3.1). sync-models 는 이 모델의 새 행을 헤더 실측과 함께만 넣고(실패하면 manual 로 보류), 값 전문가 텐서가 없는 헤더는 다른 파일로 보고 보류한다.
+     //   add-model 은 실측이 없는 행이 하나라도 있으면 쓰지 않는다. K2-Horizon MoVA Q4_K_M 4.25 / Q8_0 8.02
      // offGpuGB (10-03 D62): dense 행 전용 GGUF 헤더 실측 — 파일 바이트 − (전문가 + 비전문가) = 입력층·MTP 블록·헤더 메타데이터. dGPU full-gpu 필요량 = fileGB − offGpuGB.
      //   MoE 행은 fileGB − expertGB − nonExpertGB 로 같은 값을 유도하므로 두지 않는다(진실 원천 하나). 0 ≤ 값 ≤ 0.25×fileGB (validateAll, 카탈로그 최대 MiniCPM5-1B Q8_0 18%).
      //   절대값(gpuResidentGB) 대신 차분을 저장 — 파일이 다시 올라와 재측정이 실패해도 오차가 차분 크기로 묶인다. 없으면 파일 전체(보수 폴백). 임베딩 공유 모델은 ≈0.01(헤더만).

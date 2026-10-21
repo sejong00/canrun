@@ -2,6 +2,7 @@
  * 허브 판정 조립 (packages/data/src/assess.ts) — docs/01 §3 허브 판정 규칙의 회귀 고정.
  * 기대값은 P1-1 계획 검토의 전 카탈로그 시뮬레이션(2,378 구성) 수치와 일치한다.
  */
+import { MOE_EXPERT_OVERHEAD_US } from '@canrun/engine';
 import { describe, expect, it } from 'vitest';
 import {
   assessCombo,
@@ -22,6 +23,7 @@ import {
   sameSizeQuant,
   summarizeGpu,
   summarizeModel,
+  toModelQuant,
   unifiedCpuBandwidth,
   memBandwidthAt,
   verdictRank,
@@ -779,12 +781,42 @@ describe('K2-Horizon 7B·MoVA 36B-A4B (10-21 D113)', () => {
     expect(n).toBe(onCpu + 3);
   });
 
-  it('MoVA: 값 전문가를 토큰마다 전부 읽는 보수 근사라 GPU·모드와 무관하게 이론 추정', () => {
+  it('MoVA: 값 전문가 라우팅 고정 시간을 따로 세지 않고 공개 실측도 없어 GPU·모드와 무관하게 이론 추정', () => {
     for (const [gpuId, index] of [['rtx-5090', 0], ['rtx-3060-12gb', 0], ['rtx-4060', 0], ['apple-m4-pro', 2], ['cpu-ddr5-5600-2ch', 2]] as const) {
       const c = combo(gpuId, 'k2-horizon-mova-36b-a4b', index);
       expect(c.baseline.result.confidence, gpuId).toBe('theoretical');
     }
     expect(combo('rtx-5090', 'k2-horizon-mova-36b-a4b').baseline.result.mode).toBe('full-gpu');
+  });
+
+  it('MoVA: 엔진 입력에 행 실측 valueExpertGB 와 비율 valueTopK/valueExperts 가 실린다 — 분할 없는 행·다른 모델에는 없다', () => {
+    const m = model('k2-horizon-mova-36b-a4b');
+    const row = seed.modelQuants.find((q) => q.modelId === m.id && q.quant === 'Q8_0')!;
+    expect(toModelQuant(m, row)).toMatchObject({ nonExpertGB: 10.94, expertGB: 28.2, valueExpertGB: 8.02, valueExpertFrac: 4 / 64 });
+    const { expertGB: _e, nonExpertGB: _n, ...unsplit } = row;
+    expect(toModelQuant(m, unsplit).valueExpertGB).toBeUndefined();
+    const oss = model('gpt-oss-20b');
+    const ossRow = seed.modelQuants.find((q) => q.modelId === oss.id)!;
+    expect(toModelQuant(oss, ossRow)).not.toHaveProperty('valueExpertGB');
+    expect(toModelQuant(oss, ossRow)).not.toHaveProperty('valueExpertFrac');
+  });
+
+  it('MoVA: 읽기 바이트는 값 전문가 중 고른 4/64 몫만 — RTX 5090 Q4_K_M 8k 전량 탑재 추정 = 엔진 식, ctx 표(같은 행 재평가)도 같은 값', () => {
+    const g = gpu('rtx-5090');
+    const config = hardwareConfigs(g, seed.gpus)[0]!;
+    const m = model('k2-horizon-mova-36b-a4b');
+    const c = assessCombo(seed, g, config, m);
+    expect(c.baseline.valueExpertGB).toBe(4.25);
+    const read = 6.0 - 4.25 * (1 - 4 / 64) + 15.99 * (8 / 100) + (196_608 * 8192) / 1e9;
+    const overhead = 45 * 8 * MOE_EXPERT_OVERHEAD_US.nvidia! * 1e-6;
+    expect(c.baseline.result.tgTokS.est).toBeCloseTo(1 / (read / (0.7 * g.memBandwidthGBs) + overhead), 6);
+    expect(c.baseline.result).toMatchObject({ verdict: 'S', confidence: 'theoretical' });
+    // ctx 표는 QuantAssessment 를 행으로 다시 평가한다 — valueExpertGB 를 실어 나르지 않으면 8k·f16 칸이 헤드라인과 달라진다
+    const cell = ctxMatrix(g, config, m, c.baseline, { ctxs: [8192], kvQuants: ['f16'] }).rows[0]![0]!;
+    expect(cell.result.tgTokS.est).toBeCloseTo(c.baseline.result.tgTokS.est, 6);
+    const { valueExpertGB: _v, ...withoutValue } = c.baseline;
+    const stale = ctxMatrix(g, config, m, withoutValue, { ctxs: [8192], kvQuants: ['f16'] }).rows[0]![0]!;
+    expect(stale.result.tgTokS.est).toBeLessThan(c.baseline.result.tgTokS.est * 0.8);
   });
 });
 

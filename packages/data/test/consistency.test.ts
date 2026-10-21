@@ -156,13 +156,53 @@ describe('MoE arch.experts/topK (10-01)', () => {
   });
 
   it('value experts (MoVA, 10-21 D113): MoE only, set together, valueTopK < valueExperts', () => {
-    expect(validateAll(withModel('gpt-oss-20b', { valueExperts: 64, valueTopK: 4 }))).toEqual([]);
+    // 모델 필드 자체는 통과 — 그 모델 행에 값 전문가 실측(valueExpertGB)이 없다는 행 규칙만 남는다
+    expect(validateAll(withModel('gpt-oss-20b', { valueExperts: 64, valueTopK: 4 }))).toEqual([
+      expect.stringContaining('model-quants/gpt-oss-20b/MXFP4: every row of a value-expert (MoVA) model needs'),
+    ]);
     const dense = validateAll(withModel('llama-3.1-8b', { valueExperts: 64, valueTopK: 4 }));
     expect(dense.some((p) => p.includes('llama-3.1-8b') && p.includes('valueExperts/valueTopK only for MoE'))).toBe(true);
     const half = validateAll(withModel('gpt-oss-20b', { valueExperts: 64 }));
     expect(half.some((p) => p.includes('must be set together'))).toBe(true);
     const inverted = validateAll(withModel('gpt-oss-20b', { valueExperts: 4, valueTopK: 4 }));
     expect(inverted.some((p) => p.includes('arch.valueTopK 4 must be < arch.valueExperts 4'))).toBe(true);
+  });
+});
+
+describe('value-expert rows (MoVA valueExpertGB, 10-21 D113)', () => {
+  const MOVA = 'k2-horizon-mova-36b-a4b';
+  const movaQ4 = seed.modelQuants.find((mq) => mq.modelId === MOVA && mq.quant === 'Q4_K_M')!;
+  const withRow = (row: (typeof seed.modelQuants)[number]) => ({
+    ...seed,
+    modelQuants: seed.modelQuants.map((mq) => (mq.modelId === row.modelId && mq.quant === row.quant ? row : mq)),
+  });
+  const needs = (problems: string[]) => problems.some((p) => p.includes(MOVA) && p.includes('needs the header-measured expertGB/nonExpertGB and valueExpertGB'));
+
+  it('seed: both MoVA rows carry the header-measured value experts inside nonExpertGB (Q4_K_M 4.25 of 6.0, Q8_0 8.02 of 10.94)', () => {
+    const rows = seed.modelQuants.filter((mq) => mq.modelId === MOVA);
+    expect(rows.map((r) => [r.quant, r.nonExpertGB, r.valueExpertGB])).toEqual([
+      ['Q4_K_M', 6.0, 4.25],
+      ['Q8_0', 10.94, 8.02],
+    ]);
+  });
+
+  it('every row of a value-expert model needs the split and valueExpertGB — the model-level derived 0.65 would drop the GPU-resident value experts', () => {
+    const { expertGB: _e, nonExpertGB: _n, valueExpertGB: _v, ...noSplit } = movaQ4;
+    expect(needs(validateAll(withRow(noSplit)))).toBe(true);
+    const { valueExpertGB: _only, ...noValue } = movaQ4;
+    expect(needs(validateAll(withRow(noValue)))).toBe(true);
+  });
+
+  it('valueExpertGB only on arch.valueExperts models', () => {
+    const oss = seed.modelQuants.find((mq) => mq.modelId === 'gpt-oss-20b')!;
+    expect(validateAll(withRow({ ...oss, valueExpertGB: 0.5 })).some((p) => p.includes('gpt-oss-20b') && p.includes('valueExpertGB only for models with arch.valueExperts'))).toBe(true);
+  });
+
+  it('the row schema needs the split with valueExpertGB and valueExpertGB ≤ nonExpertGB', () => {
+    const { expertGB: _e, nonExpertGB: _n, ...bare } = movaQ4;
+    expect(ModelQuantSchema.safeParse(bare).success).toBe(false);
+    expect(ModelQuantSchema.safeParse({ ...movaQ4, valueExpertGB: 6.5 }).success).toBe(false);
+    expect(ModelQuantSchema.safeParse(movaQ4).success).toBe(true);
   });
 });
 

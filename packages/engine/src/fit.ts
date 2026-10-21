@@ -179,6 +179,8 @@ export function fit(hw: Hardware, mq: ModelQuant, opts?: FitOptions): FitResult 
         mq.nonExpertGB === undefined ? undefined : mq.nonExpertGB * (w / weightsGB(mq)),
       // 층별 임베딩 표(10-21 D112)는 구조라 어느 양자화에도 있다 — 크기만 같은 비율로 줄인다(gpuFrac 분모용, 상주량은 위처럼 파일 전체)
       pleGB: mq.pleGB === undefined ? undefined : mq.pleGB * (w / weightsGB(mq)),
+      // 값 전문가(MoVA, 10-21 D113)도 구조라 같은 비율로 줄여 남긴다 — 비전문가(배치) 안의 몫이라 fit 은 쓰지 않고 읽기 바이트(§3.1)만 쓴다
+      valueExpertGB: mq.valueExpertGB === undefined ? undefined : mq.valueExpertGB * (w / weightsGB(mq)),
     };
     if (fitOnce(hw, scaled, w, opts).fits) {
       return { ...result, bestQuant: quant };
