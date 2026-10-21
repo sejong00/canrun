@@ -2,6 +2,14 @@ CanRun changes often. New models arrive, the calculator gains features, and now 
 
 ## Changes to the site
 
+<Update id="sparse-linear-hybrid">
+
+### A hybrid of sparse and linear attention is now calculated
+
+CanRun now calculates <SiteLink to="/model/glm-5.3-flash">GLM-5.3 Flash</SiteLink>, which mixes linear-attention layers with sparse-attention layers and counts KV cache only for the sparse ones, so a long context adds little memory; that day at an 8k context its Q4_K_M file was calculated to fit fully on the GPU of an M3 Ultra with 512GB, and with 256GB only the Q2_K file fit on the GPU. Its GGUF files call the Q4_K_M quantization Q4_K, a short name the llama.cpp quantizer accepts for the same format, so a file without Q4_K_M in its name is read as the Q4_K_M row after its header confirms the format, and the commands use the tag written in the file name. The llama.cpp commands for this model add `-np 1`, because it keeps a separate linear-attention state for every request slot and the four slots llama-server opens by default would need more memory than the estimate counts. The speed formula does not count the extra work this model does in every layer, and public results from recent llama.cpp builds were slower than the estimate, so every combination for it carries the theoretical label.
+
+</Update>
+
 <Update id="compressed-attention">
 
 ### Models with compressed attention are now calculated

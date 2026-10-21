@@ -72,6 +72,10 @@ const LOADERS: Readonly<Record<ModelAboutId, Readonly<Record<ContentLocale, () =
     en: () => import('@/content/en/model-about/gemma-4-e4b.mdx') as Promise<AboutModule>,
     ko: () => import('@/content/ko/model-about/gemma-4-e4b.mdx') as Promise<AboutModule>,
   },
+  'glm-5.3-flash': {
+    en: () => import('@/content/en/model-about/glm-5.3-flash.mdx') as Promise<AboutModule>,
+    ko: () => import('@/content/ko/model-about/glm-5.3-flash.mdx') as Promise<AboutModule>,
+  },
   'gpt-oss-120b': {
     en: () => import('@/content/en/model-about/gpt-oss-120b.mdx') as Promise<AboutModule>,
     ko: () => import('@/content/ko/model-about/gpt-oss-120b.mdx') as Promise<AboutModule>,
