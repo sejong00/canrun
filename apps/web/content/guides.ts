@@ -349,7 +349,8 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
   },
   'thinking-models': {
     ...PUBLISHED_1015,
-    // 10-22 ⑧-b 리뷰: '늘 생각' 목록에 GLM-5.3 Flash 와 "among others"·"등"(카탈로그의 always 모델을 다 적지 않는다)
+    // 10-22 ⑧-b 리뷰: '늘 생각' 목록에 GLM-5.3 Flash 와 "among others"·"등"(카탈로그의 always 모델을 다 적지 않는다).
+    // `<think>` 강제 권고·건너뛰기 경고는 처음 나온 R1 distill 3종(Qwen 14B·32B·Llama 8B) 카드의 말 — 0528 Qwen3 8B 카드는 필요 없다고 한다
     dateModified: '2026-10-22',
     grids: {
       // 생각 모드 갈래별 모델 6(없음: phi-4·gemma-3-27b · 기본 켜짐: qwen3-14b·qwen3-32b · 기본 꺼짐: gemma-4-26b-a4b · 늘 켜짐: gpt-oss-20b)

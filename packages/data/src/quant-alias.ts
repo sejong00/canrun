@@ -30,8 +30,8 @@ export function quantTokenRe(token: string, ud = false): RegExp {
 }
 
 /**
- * 행의 파일이 별칭 토큰으로 잡힌 것인가 — 그렇다면 그 별칭(헤더 file_type 기대값 포함). add-model·sync-models 가 헤더 `general.file_type` 을 대조하고
- * (다르면 그 행을 쓰지 않는다), 스니펫 `-hf` 태그는 파일의 실제 토큰을 쓴다(llama.cpp `-hf repo:Q4_K_M` 은 `Q4_K_M[.-]` 를 찾아 이 파일을 못 고른다 —
+ * 행의 파일이 별칭 토큰으로 잡힌 것인가 — 그렇다면 그 별칭(헤더 file_type 기대값 포함). add-model·sync-models·계산기 HF 불러오기(hf-load.ts — 기준 행)가
+ * 헤더 `general.file_type` 을 대조하고(다르면 그 행을 쓰지 않는다 — 계산기는 그 파일을 빼고 기준 행을 다시 고른다), 스니펫 `-hf` 태그는 파일의 실제 토큰을 쓴다(llama.cpp `-hf repo:Q4_K_M` 은 `Q4_K_M[.-]` 를 찾아 이 파일을 못 고른다 —
  * https://github.com/ggml-org/llama.cpp/blob/a37cc46104eb50900d5ab4a9ba02a0abdac039db/common/download.cpp#L691-L713)
  */
 export function quantFileAlias(quant: string, fileName: string | undefined): { token: string; fileType: number } | undefined {

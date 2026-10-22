@@ -4,7 +4,7 @@
 
 요즘 오픈 모델은 답하기 전에 추론 과정을 먼저 쓰는 경우가 많습니다. 런타임은 이 부분을 답과 따로 보여 줍니다. Ollama 명령줄에서는 `Thinking...`과 `...done thinking.` 사이에 나옵니다. CanRun은 카탈로그의 모델마다 생각 모드가 있는지, 어떻게 켜고 끄는지를 기록해 둡니다. 근거는 모델 카드와 채팅 템플릿입니다. 채팅 템플릿은 대화를 모델이 읽는 프롬프트 형식으로 바꿔 주는 파일입니다. 모델은 다섯 갈래로 나뉩니다.
 
-- **늘 생각하도록 만든 모델**: gpt-oss-20b·gpt-oss-120b, DeepSeek R1 distill 모델들, LFM2.5 2.6B, GLM-5.3 Flash 등입니다. gpt-oss는 추론 강도를 low·medium·high 중에서 고를 수 있지만, 끄는 설정은 없습니다. 따로 정하지 않으면 채팅 템플릿이 medium을 씁니다. GLM-5.3 Flash도 reasoning_effort로 low·high·max 가운데 고를 수 있을 뿐 끌 수는 없습니다. DeepSeek R1 distill 모델 카드는 한발 더 나아가, 모든 답을 `<think>` 태그로 시작하게 하라고 권합니다. 모델이 생각을 건너뛰면 답이 나빠질 수 있기 때문입니다.
+- **늘 생각하도록 만든 모델**: gpt-oss-20b·gpt-oss-120b, DeepSeek R1 distill 모델들, LFM2.5 2.6B, GLM-5.3 Flash 등입니다. gpt-oss는 추론 강도를 low·medium·high 중에서 고를 수 있지만, 끄는 설정은 없습니다. 따로 정하지 않으면 채팅 템플릿이 medium을 씁니다. GLM-5.3 Flash도 reasoning_effort로 low·high·max 가운데 고를 수 있을 뿐 끌 수는 없습니다. 처음 나온 DeepSeek R1 distill 모델(Qwen 14B·Qwen 32B·Llama 8B)의 카드는 한발 더 나아가, 모든 답을 `<think>` 태그로 시작하게 하라고 권합니다. 모델이 생각을 건너뛰면 답이 나빠질 수 있기 때문입니다. 나중에 나온 R1 0528 Qwen3 8B 카드는 이제 그럴 필요가 없다고 설명합니다.
 - **기본으로 켜짐, 끌 수 있음**: Qwen3 8B·14B·32B, Qwen3.5·Qwen3.6·Qwen3.8 계열, EXAONE 4.5 33B 등입니다.
 - **기본으로 꺼짐, 켤 수 있음**: Gemma 4 계열과 EXAONE 4.0(32B·1.2B)입니다. Gemma 4는 시스템 프롬프트 맨 앞에 `<|think|>` 토큰이 있을 때 생각합니다. EXAONE 4.0은 템플릿에 `enable_thinking=True`가 들어가야 생각합니다.
 - **모델이 스스로 정함**: HyperCLOVA X SEED Think 14B입니다. 모델 카드에 따르면 기본 설정에서는 추론할지 바로 답할지를 모델이 정합니다. CanRun 카탈로그는 MiniCPM5 모델도 이 갈래로 분류합니다.
@@ -95,7 +95,7 @@ gpt-oss에는 `--reasoning-effort low`를 씁니다. 이 값은 채팅 템플릿
 - **EXAONE 4.0**: 템플릿에 `enable_thinking=True`가 들어가면 추론하고, 아니면 바로 답합니다.
 - **HyperCLOVA X SEED Think 14B**: 추론 여부는 템플릿 인자 `force_reasoning`이나 `skip_reasoning`으로 정할 수 있습니다. 메시지에 적어 넣는 대략적인 길이 제한도 모델 카드에 나옵니다.
 - **gpt-oss**: 시스템 프롬프트의 `Reasoning: low` 같은 줄에서 추론 강도를 읽습니다. Ollama와 llama.cpp는 위 옵션으로 이 줄을 대신 써 넣습니다.
-- **DeepSeek R1 distill 모델**: 자체 스위치가 없습니다. Ollama의 deepseek-r1 템플릿은 `--think=false`면 빈 생각 블록을 넣어 추론을 건너뛰게 합니다. 모델 카드는 이렇게 건너뛰면 답이 나빠질 수 있다고 경고합니다.
+- **DeepSeek R1 distill 모델**: 자체 스위치가 없습니다. Ollama의 deepseek-r1 템플릿은 `--think=false`면 빈 생각 블록을 넣어 추론을 건너뛰게 합니다. 처음 나온 distill 모델들의 카드는 이렇게 건너뛰면 답이 나빠질 수 있다고 경고합니다.
 
 ## 끄지 않고 빠르게 — KV 캐시·양자화·작은 모델·MoE
 
@@ -166,7 +166,7 @@ f16 KV 캐시로 32k를 쓰면 Qwen3 14B는 <Num kind="needGB" model="qwen3-14b"
 
 ### gpt-oss는 think를 false로 해도 왜 계속 생각하나요?
 
-gpt-oss에는 끄는 설정이 없습니다. 모델 카드가 제공하는 추론 강도는 low·medium·high이고, Ollama도 gpt-oss에는 이 세 값만 허용합니다. 대신 `--think=low`나 `"think": "low"`를 쓰세요. 다른 모델이라면 `--hidethinking`이 아니라 `--think=false`를 썼는지 확인하세요. `--hidethinking`은 추론을 숨기기만 합니다. 앱이 `/v1` 엔드포인트를 쓴다면 `think`는 무시되니 `reasoning_effort`를 `none`으로 보내세요. Qwen3.5·Qwen3.6은 Qwen3의 `/no_think` 태그를 지원하지 않으니 런타임 스위치를 쓰세요. Ollama의 DeepSeek R1은 `--think=false`면 생각을 멈추지만, 추론을 건너뛰는 방식이라 모델 카드는 답이 나빠질 수 있다고 경고합니다. 예전에 받은 Qwen3는 `--think=false`여도 계속 생각할 수 있습니다. Ollama 소스에 예전 Qwen3 템플릿은 늘 생각 블록을 연다고 적혀 있으니 모델을 다시 받으세요.
+gpt-oss에는 끄는 설정이 없습니다. 모델 카드가 제공하는 추론 강도는 low·medium·high이고, Ollama도 gpt-oss에는 이 세 값만 허용합니다. 대신 `--think=low`나 `"think": "low"`를 쓰세요. 다른 모델이라면 `--hidethinking`이 아니라 `--think=false`를 썼는지 확인하세요. `--hidethinking`은 추론을 숨기기만 합니다. 앱이 `/v1` 엔드포인트를 쓴다면 `think`는 무시되니 `reasoning_effort`를 `none`으로 보내세요. Qwen3.5·Qwen3.6은 Qwen3의 `/no_think` 태그를 지원하지 않으니 런타임 스위치를 쓰세요. Ollama의 DeepSeek R1은 `--think=false`면 생각을 멈추지만, 추론을 건너뛰는 방식입니다. 처음 나온 R1 distill 모델들의 카드는 이러면 답이 나빠질 수 있다고 경고합니다. 예전에 받은 Qwen3는 `--think=false`여도 계속 생각할 수 있습니다. Ollama 소스에 예전 Qwen3 템플릿은 늘 생각 블록을 연다고 적혀 있으니 모델을 다시 받으세요.
 
 ### 생각 모드를 꺼야 하나요?
 
@@ -194,7 +194,8 @@ gpt-oss에는 끄는 설정이 없습니다. 모델 카드가 제공하는 추�
 - [Qwen3.5-35B-A3B 모델 카드](https://huggingface.co/Qwen/Qwen3.5-35B-A3B)·[Qwen3.6-35B-A3B 모델 카드](https://huggingface.co/Qwen/Qwen3.6-35B-A3B): 기본으로 켜진 생각 모드, 태그 스위치 공식 미지원, `chat_template_kwargs`의 `enable_thinking`, Qwen3.5의 기록에서 추론 제외, Qwen3.6의 추론 보존 학습과 `preserve_thinking`, 출력 길이 32k와 최대 80k 권장
 - [Qwen3-30B-A3B-Instruct-2507 모델 카드](https://huggingface.co/Qwen/Qwen3-30B-A3B-Instruct-2507): 비생각 모드만 지원
 - [gpt-oss-20b 모델 카드](https://huggingface.co/openai/gpt-oss-20b)·[채팅 템플릿](https://huggingface.co/openai/gpt-oss-20b/blob/main/chat_template.jinja): 시스템 프롬프트로 정하는 low·medium·high 추론 강도, 지정하지 않으면 medium
-- [DeepSeek-R1-Distill-Qwen-32B 모델 카드](https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-32B): Qwen2.5 32B 기반, 생각을 건너뛰면 답이 나빠질 수 있어 `<think>`로 시작하게 하라는 권장, 평가 시 최대 생성 길이 32k
+- [DeepSeek-R1-Distill-Qwen-32B 모델 카드](https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-32B): Qwen2.5 32B 기반, 생각을 건너뛰면 답이 나빠질 수 있어 `<think>`로 시작하게 하라는 권장([Qwen 14B](https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-14B)·[Llama 8B](https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Llama-8B) distill 카드도 같은 권장), 평가 시 최대 생성 길이 32k
+- [DeepSeek-R1-0528-Qwen3-8B 모델 카드](https://huggingface.co/deepseek-ai/DeepSeek-R1-0528-Qwen3-8B): `<think>`로 시작하게 강제하지 않아도 된다는 설명
 - [Gemma 4 26B-A4B 모델 카드](https://huggingface.co/google/gemma-4-26B-A4B-it)·[채팅 템플릿](https://huggingface.co/google/gemma-4-26B-A4B-it/blob/main/chat_template.jinja): 시스템 프롬프트 맨 앞의 `<|think|>`로 켜는 생각 모드, 기본값이 꺼진 `enable_thinking`, 도구 호출 턴을 뺀 지난 추론 제거
 - [EXAONE 4.0 32B 모델 카드](https://huggingface.co/LGAI-EXAONE/EXAONE-4.0-32B): `enable_thinking=True`로 켜는 추론 모드
 - [HyperCLOVA X SEED Think 14B 모델 카드](https://huggingface.co/naver-hyperclovax/HyperCLOVAX-SEED-Think-14B): 기본 설정에서 모델이 스스로 정하는 추론 여부, `force_reasoning`·`skip_reasoning`, 대략적인 길이 제한을 거는 `Think for maximum N tokens` 줄

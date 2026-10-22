@@ -116,7 +116,7 @@ function matchToken(entries: readonly TreeEntry[], token: string, ud: 'fallback'
 
 /**
  * 정확한 토큰의 파일이 하나도 없으면 별칭 토큰(`QUANT_FILE_ALIASES` — `Q4_K` 를 Q4_K_M 으로, 10-22 엔진 후속 ⑧-b)의 플레인 파일을 받는다.
- * 별칭 행은 헤더 `general.file_type` 대조(aliasFileTypeProblem)를 add-model·sync-models 가 한다
+ * 별칭 행은 헤더 `general.file_type` 대조(aliasFileTypeProblem)를 add-model·sync-models·계산기 HF 불러오기(apps/web/lib/calc/hf-load.ts — 기준 행)가 한다
  */
 export function matchQuantFiles(entries: readonly TreeEntry[], quant: QuantId): TreeEntry[] {
   const exact = matchToken(entries, quant, quant.startsWith('UD-') ? 'as-is' : 'fallback');

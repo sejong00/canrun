@@ -328,8 +328,8 @@ export type SplitMeasure = {
   /** 헤더 `<arch>.num_loops`(반복 층 — llama.cpp nanbeige 가 읽는 키, 없으면 1회) — 없으면 생략 (10-22 D114) */
   numLoops?: number;
   /**
-   * 헤더 `general.file_type`(llama_ftype — 15 = Q4_K_M) — 없으면 생략. 파일 이름 별칭(`Q4_K` 를 Q4_K_M 행으로 — hf.ts QUANT_FILE_ALIASES, 10-22 ⑧-b)을
-   * 받은 행이 실제로 그 형식인지 add-model·sync-models 가 대조한다
+   * 헤더 `general.file_type`(llama_ftype — 15 = Q4_K_M) — 없으면 생략. 파일 이름 별칭(`Q4_K` 를 Q4_K_M 행으로 — quant-alias.ts QUANT_FILE_ALIASES, 10-22 ⑧-b)을
+   * 받은 행이 실제로 그 형식인지 add-model·sync-models·계산기 HF 불러오기(apps/web/lib/calc/hf-load.ts — 기준 행)가 대조한다
    */
   fileType?: number;
   /** 전 텐서 합 (분할 파일 합산) */
