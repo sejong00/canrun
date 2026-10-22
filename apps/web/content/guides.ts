@@ -349,6 +349,8 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
   },
   'thinking-models': {
     ...PUBLISHED_1015,
+    // 10-22 ⑧-b 리뷰: '늘 생각' 목록에 GLM-5.3 Flash 와 "among others"·"등"(카탈로그의 always 모델을 다 적지 않는다)
+    dateModified: '2026-10-22',
     grids: {
       // 생각 모드 갈래별 모델 6(없음: phi-4·gemma-3-27b · 기본 켜짐: qwen3-14b·qwen3-32b · 기본 꺼짐: gemma-4-26b-a4b · 늘 켜짐: gpt-oss-20b)
       // × NVIDIA 5장. 본문이 말하는 칸은 전부 <Expect> 로 고정
