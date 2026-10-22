@@ -250,9 +250,16 @@ export const ModelSchema = z
        * 하이퍼 커넥션(mHC — config `hc_mult` > 1, DeepSeek V4 — 10-22 D115): 층 사이 잔차 흐름을 hc_mult 갈래로 나눠 층마다 섞는다(sinkhorn 반복).
        * 가중치 크기는 헤더 실측에 이미 들어 있지만 층마다 더하는 연산(mHC 혼합·압축기·인덱서)을 속도식이 따로 세지 않는다 — 지금 빌드 공개 실측 1점이
        * 추정보다 25% 느려(docs/02 §7·§9) 추정은 이론 추정(assess `isTheoretical`). 출처 = config.json `hc_mult`, GGUF `<arch>.hyper_connection.count`.
-       * GLM-5.3-Flash(KDA + DSA 희소 MLA + mHC — 10-22 엔진 후속 ⑧-b)도 같은 표시(attnType hybrid) — 스니펫은 이 하이브리드에 `-np 1` 을 붙인다(KDA 상태가 슬롯마다)
+       * GLM-5.3-Flash(KDA + DSA 희소 MLA + mHC — 10-22 엔진 후속 ⑧-b)도 같은 표시(attnType hybrid)
        */
       mhc: z.literal(true).optional(),
+      /**
+       * 라이트닝 인덱서 k-pool(GLM-5.3-Flash glm5_next — 10-22 엔진 후속 ⑧-b 리뷰): 인덱서가 키를 이 수만큼 묶은 풀 단위로 고른다. KV(인덱서 캐시)는
+       * kvBytesPerTokenF16 에 이미 들어 있다. llama.cpp 는 k-pool 연산 그래프를 최악 크기(풀 수 = 셀 ÷ k-pool × n_seq_max)로 예약해 연산 버퍼가 슬롯 수에
+       * 비례해 커지므로(#29950) 스니펫이 `-np 1` 을 붙이고(`LlamaCppPlan.singleSlot` 'pool'), 모델 허브가 어텐션을 '선형 + 희소' 로 적는다.
+       * 출처 = config.json `index_kpool`, GGUF `<arch>.attention.indexer.kpool`
+       */
+      indexerKPool: z.number().int().min(2).optional(),
     }),
     /**
      * 비-full attention(swa/mla/hybrid) KV 수동 고정 — docs/03 §5.1 "수동 필드 우선".

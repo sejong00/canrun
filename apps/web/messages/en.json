@@ -479,6 +479,7 @@
     "capPartial": "Less than 90% on the GPU — a GPU/CPU split is capped at Runs slowly",
     "capCpuMoe": "Experts run from system RAM — Runs well needs {min} tok/s or more on this path",
     "capCpuOnly": "CPU inference — capped at Runs slowly",
+    "capOverestimate": "Public results for this model all ran slower than the estimate — the rating uses a speed {pct}% lower than shown",
     "tooSlow": "Fits, but too slow to use",
     "noFitDgpu": "Needs about {need} GB; {gpu} GB of VRAM and {ram} GB of RAM are free",
     "noFitUnified": "Needs about {need} GB; {ram} GB of memory is free ({gpu} GB usable by the GPU)",
@@ -536,6 +537,7 @@
     "swa": "Sliding-window attention",
     "mla": "Multi-head latent attention",
     "hybrid": "Hybrid attention (only some layers use full attention)",
+    "hybridSparse": "Hybrid attention (linear-attention layers plus sparse-attention layers)",
     "compressed": "Compressed attention (KV stored in blocks of several tokens)"
   },
   "Category": {
@@ -1023,7 +1025,7 @@
     "cpuMoeOomOne": "If loading fails with an out-of-memory error, raise the value to {next}.",
     "cpuMoeFit": "llama.cpp b7410 (December 2025) and later split the model in a similar way on their own if you leave out -ngl and --n-cpu-moe.",
     "np1": "-np 1 opens a single request slot. llama-server opens four by default, and this model keeps a separate compressed KV cache for each slot, so four slots would need four times the KV cache this estimate counts.",
-    "np1State": "-np 1 opens a single request slot. llama-server opens four by default, and this model keeps a separate linear-attention state of about 0.15 GB for each slot, so four slots would need about 0.5 GB more than this estimate counts.",
+    "np1Pool": "-np 1 opens a single request slot. llama-server opens four by default, and for this model llama.cpp reserves working memory for the sparse-attention indexer in proportion to the number of slots and keeps a linear-attention state of about 0.15 GB for each slot, so four slots would need more memory than this estimate counts, more so at long contexts.",
     "fa": "-fa on enables flash attention (needed for KV cache quantization).",
     "kv": "--cache-type-k q8_0 --cache-type-v q8_0 shrinks the KV cache to {kv} GB at {ctx} context.",
     "ctx": "Ollama defaults to 4k context on GPUs under 24 GB. Set OLLAMA_CONTEXT_LENGTH when starting the server, or /set parameter num_ctx inside the chat.",

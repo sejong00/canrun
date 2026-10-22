@@ -420,6 +420,33 @@ export function isFp16Crippled(gpu: Pick<Gpu, 'kind' | 'fp16Tflops'>): boolean {
   );
 }
 
+/**
+ * 판정 할인(10-22 엔진 후속 ⑧-b 리뷰) — 공개 실측 참고점이 **모두** 추정보다 느린(한쪽으로 치우친) 이론 추정 모델은 등급을 정할 때만 추정을
+ * (1 + 이 값)으로 나눈 속도를 쓴다. 표시 속도·범위·라벨은 엔진 값 그대로다(규칙 3 — 엔진 산식·상수는 건드리지 않는다). 값 = 참고점 가운데 가장 작은
+ * 과대 비율 min(추정 ÷ 공개 결과 − 1) — 모든 참고점이 적어도 이만큼은 느렸다. 실측이 조인된 결과(measured)는 할인하지 않는다.
+ * 지금은 GLM-5.3-Flash 만: 생각 모드라 쾌적 임계가 30 인데 M3 Ultra Q2_K 추정 30.5 가 같은 칩 계열·같은 파일 참고점(M2 Ultra +23.5%)으로 보면
+ * 원활 쪽이다. DeepSeek V4 Flash 0731(공개 결과 1점 +25%)은 이미 배포된 페이지라 사용자 결정 전까지 넣지 않는다(PROGRESS §2 큐 3·§4 D116)
+ */
+// source: https://github.com/ggml-org/llama.cpp/pull/30640 (DGX Spark tg64 깊이 65,536 = 18.4 — 추정 +8.2%, 참고점 8개 중 가장 작다) ·
+//   https://github.com/ggml-org/llama.cpp/pull/29958 (M2 Ultra +23.5·+23.8%) · https://github.com/ggml-org/llama.cpp/pull/29928#issuecomment-5983042076
+//   (6 × RTX 3090 +23.8~26.1%) — 엔진 회귀 15 fixture `GLM53_REFERENCE.recordedErr` 의 최솟값(packages/engine/test/fixtures.ts, docs/02 §5·§7·§9)
+export const VERDICT_OVERESTIMATE: Readonly<Record<string, number>> = Object.freeze({
+  'glm-5.3-flash': 0.082,
+});
+
+/** 판정 할인(`VERDICT_OVERESTIMATE`) — 대상 모델의 추정 결과면 판정만 할인한 속도로 다시 정한다(속도·범위·라벨·모드는 그대로) */
+function discountVerdict(model: ModelCore, result: Result, fitResult: FitResult, reasoning: boolean): Result {
+  const over = VERDICT_OVERESTIMATE[model.id];
+  if (over === undefined || !fitResult.fits || result.confidence === 'measured') return result;
+  const verdict = verdictOf({
+    mode: result.mode,
+    tgTokS: result.tgTokS.est / (1 + over),
+    ...(fitResult.gpuFrac !== undefined ? { gpuFrac: fitResult.gpuFrac } : {}),
+    reasoning,
+  });
+  return verdict === result.verdict ? result : { ...result, verdict };
+}
+
 // ---------------------------------------------------------------------------
 // quant 1개 평가
 // ---------------------------------------------------------------------------
@@ -434,6 +461,8 @@ export type FReason = 'no-fit' | 'too-slow';
  *  - cap-partial: B 상한 — 부분 오프로드 gpuFrac < 0.9 (§3.4 절벽)
  *  - cap-cpu-moe: B — cpu-moe 는 S 임계(20 tok/s, 리즈닝 30) 이상이어야 A (§5)
  *  - cap-cpu-only: B 상한 — CPU 추론 (§5)
+ *  - cap-overestimate: 판정 할인 — 공개 결과가 모두 추정보다 느린 모델이라 등급을 할인한 속도로 정했고, 그래서 한 단계 낮아졌다
+ *    (`VERDICT_OVERESTIMATE`, 10-22 ⑧-b 리뷰). 모드 규칙보다 먼저 붙는다 — 표시 속도로 보면 등급이 맞지 않는 이유가 이것이다
  */
 export type VerdictReason =
   | 'speed'
@@ -441,7 +470,8 @@ export type VerdictReason =
   | 'cap-full-gpu-only'
   | 'cap-partial'
   | 'cap-cpu-moe'
-  | 'cap-cpu-only';
+  | 'cap-cpu-only'
+  | 'cap-overestimate';
 
 export type MemoryNeed = {
   /** 가중치 + KV + 버퍼 (GB, OS 예약 제외) — 가중치는 `needWeightsGB`(dGPU 는 그래픽카드에 올라가는 몫) */
@@ -499,6 +529,8 @@ export type QuantAssessment = {
   verdictReason: VerdictReason;
   /** cap-cpu-moe: A 가 되려면 필요한 tok/s (리즈닝 임계 반영) */
   capMinTokS?: number;
+  /** cap-overestimate: 판정에 쓴 할인 — 추정 ÷ (1 + 이 값) 으로 등급을 정했다(`VERDICT_OVERESTIMATE`) */
+  overestimate?: number;
   measured?: MeasuredJoin;
   memory: MemoryNeed;
 };
@@ -588,7 +620,9 @@ export function assessQuant(input: AssessQuantInput): QuantAssessment {
 
   const fitResult = fit(config.hw, mq, { ctx, kvQuant });
   const theoretical = input.theoretical ?? isTheoretical(gpu, model, fitResult.mode);
-  const estimate = evaluate(config.hw, mq, { ctx, kvQuant, reasoning, theoretical });
+  const raw = evaluate(config.hw, mq, { ctx, kvQuant, reasoning, theoretical });
+  // 판정 할인(10-22 ⑧-b 리뷰) — 공개 결과가 모두 추정보다 느린 모델은 등급만 할인한 속도로(속도·범위는 그대로)
+  const estimate = discountVerdict(model, raw, fitResult, reasoning);
 
   const joinable =
     fitResult.fits &&
@@ -607,6 +641,8 @@ export function assessQuant(input: AssessQuantInput): QuantAssessment {
   let verdictReason: VerdictReason = 'speed';
   if (!fitResult.fits) {
     verdictReason = 'no-fit';
+  } else if (result === estimate && verdictRank(estimate.verdict) < verdictRank(raw.verdict)) {
+    verdictReason = 'cap-overestimate';
   } else {
     // 같은 속도를 full-gpu 로 냈다면 받을 등급과 비교 — 낮으면 모드 규칙에 걸린 것.
     // 어느 규칙인지는 실제 결과 등급으로 가른다 (A 에서 멈춤 = S 는 full-gpu 전용).
@@ -645,6 +681,7 @@ export function assessQuant(input: AssessQuantInput): QuantAssessment {
     ...(fReason ? { fReason } : {}),
     verdictReason,
     ...(capMinTokS !== undefined ? { capMinTokS } : {}),
+    ...(verdictReason === 'cap-overestimate' ? { overestimate: VERDICT_OVERESTIMATE[model.id]! } : {}),
     ...(values.length > 0 ? { measured: { values, points } } : {}),
     memory: memoryNeed(config, mq, result, fitResult.fits, ctx, kvQuant),
   };
@@ -677,13 +714,15 @@ export function estimateAt(
 ): { fit: FitResult; result: Result } {
   const mq = toModelQuant(model, row);
   const fitResult = fit(config.hw, mq, { ctx: opts.ctx, kvQuant: opts.kvQuant });
+  const reasoning = isReasoning(model);
   const result = evaluate(config.hw, mq, {
     ctx: opts.ctx,
     kvQuant: opts.kvQuant,
-    reasoning: isReasoning(model),
+    reasoning,
     theoretical: opts.theoretical ?? isTheoretical(gpu, model, fitResult.mode),
   });
-  return { fit: fitResult, result };
+  // 판정 할인 — assessQuant 와 같은 규칙(ctx 계단·행렬이 같은 등급을 그리도록)
+  return { fit: fitResult, result: discountVerdict(model, result, fitResult, reasoning) };
 }
 
 export type ComboAssessment = {

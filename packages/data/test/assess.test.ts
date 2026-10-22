@@ -27,6 +27,7 @@ import {
   toModelQuant,
   unifiedCpuBandwidth,
   memBandwidthAt,
+  VERDICT_OVERESTIMATE,
   verdictRank,
   vramBreakdown,
   type ComboAssessment,
@@ -1020,7 +1021,7 @@ describe('GLM-5.3-Flash — KDA + DSA hybrid, mHC, Q4_K file as the Q4_K_M basel
 
   it('record: hybrid KV 19,712 B/tok (DSA 11 layers), MoE 288 top-8 on 42 layers, mHC, always thinking, both rows header-measured', () => {
     const m = model(GLM);
-    expect(m.arch).toMatchObject({ attnType: 'hybrid', kvBytesPerTokenF16: 19712, experts: 288, topK: 8, mhc: true, layers: 45 });
+    expect(m.arch).toMatchObject({ attnType: 'hybrid', kvBytesPerTokenF16: 19712, experts: 288, topK: 8, mhc: true, indexerKPool: 4, layers: 45 });
     expect(m.arch.expertLayers).toHaveLength(42);
     expect(m.attnOverrides?.kvBytesPerTokenF16).toBe(19712);
     expect(m.thinking).toBe('always');
@@ -1040,13 +1041,17 @@ describe('GLM-5.3-Flash — KDA + DSA hybrid, mHC, Q4_K file as the Q4_K_M basel
   });
 
   it('Macs: Q4_K_M on the GPU only with 512GB (181.37GB > 179.2 on 256GB); Q2_K on the GPU from 256GB; M2 Ultra 192GB is 0.15GB short for Q2_K (CPU path)', () => {
+    // M5 Ultra 는 카탈로그 메모리 옵션이 96·256GB 뿐(512GB 구성은 계산기에서 고를 수 없다 — 10-22 ⑧-b 리뷰)
+    expect(gpu('apple-m5-ultra').ramOptionsGB).toEqual([96, 256]);
     expect(at('apple-m3-ultra', 512).baseline.result).toMatchObject({ verdict: 'A', mode: 'full-gpu', confidence: 'theoretical' });
-    expect(at('apple-m5-ultra', 512).baseline.result).toMatchObject({ verdict: 'S', mode: 'full-gpu' });
     for (const id of ['apple-m3-ultra', 'apple-m5-ultra']) {
       const c = at(id, 256);
       expect(c.baseline.result, id).toMatchObject({ verdict: 'B', mode: 'cpu-only' });
-      expect(q(c, 'Q2_K').result, id).toMatchObject({ verdict: 'S', mode: 'full-gpu' });
+      expect(q(c, 'Q2_K').result, id).toMatchObject({ mode: 'full-gpu' });
     }
+    // Q2_K 쾌적은 M5 Ultra 만 — M3 Ultra 는 판정 할인(아래 테스트)으로 원활
+    expect(q(at('apple-m5-ultra', 256), 'Q2_K').result.verdict).toBe('S');
+    expect(q(at('apple-m3-ultra', 256), 'Q2_K').result.verdict).toBe('A');
     const m2 = at('apple-m2-ultra', 192);
     expect(m2.baseline.result).toMatchObject({ verdict: 'B', mode: 'cpu-only' });
     expect(q(m2, 'Q2_K').result).toMatchObject({ verdict: 'B', mode: 'cpu-only' });
@@ -1069,5 +1074,50 @@ describe('GLM-5.3-Flash — KDA + DSA hybrid, mHC, Q4_K file as the Q4_K_M basel
     expect(small.baseline.fits).toBe(false);
     expect(q(small, 'Q2_K').result).toMatchObject({ verdict: 'B', mode: 'cpu-moe' });
     expect(at('rtx-3090', 128, { gpuCount: 4 }).baseline.result).toMatchObject({ verdict: 'B', mode: 'cpu-moe' });
+  });
+
+  it('verdict discount (10-22 ⑧-b 리뷰): every public reference ran ≥ 8.2% under the estimate, so the grade uses est ÷ 1.082 — speed, band and label stay the engine values', () => {
+    // GLM 만(DeepSeek V4 Flash 는 배포된 페이지라 사용자 결정 전까지 — PROGRESS §2 큐 3). 값 = 엔진 회귀 15 GLM53_REFERENCE.recordedErr 의 최솟값
+    expect(VERDICT_OVERESTIMATE).toEqual({ [GLM]: 0.082 });
+    expect(Math.min(0.235, 0.238, 0.108, 0.116, 0.082, 0.238, 0.261, 0.242)).toBe(VERDICT_OVERESTIMATE[GLM]);
+    for (const ram of [256, 512]) {
+      const c = at('apple-m3-ultra', ram);
+      const q2 = q(c, 'Q2_K');
+      // 표시 추정은 쾌적 임계(생각 모드 20 × 1.5 = 30)를 넘지만, 같은 칩 계열·같은 파일 참고점(M2 Ultra +23.5%)으로 보면 원활 쪽
+      expect(q2.result.tgTokS.est).toBeGreaterThan(30);
+      expect(q2.result.tgTokS.est / 1.082).toBeLessThan(30);
+      expect(q2.result).toMatchObject({ verdict: 'A', mode: 'full-gpu', confidence: 'theoretical' });
+      expect(q2.estimate.verdict).toBe('A');
+      expect(q2.verdictReason).toBe('cap-overestimate');
+      expect(q2.overestimate).toBe(0.082);
+      // 범위는 엔진 ±30% 그대로
+      expect(q2.result.tgTokS.low).toBeCloseTo(q2.result.tgTokS.est * 0.7, 9);
+      // ctx 계단·행렬(estimateAt)도 같은 등급
+      expect(ctxMatrix(gpu('apple-m3-ultra'), hardwareConfigs(gpu('apple-m3-ultra'), seed.gpus, { ramGB: ram })[0]!, model(GLM), q2).rows[1]![0]!.verdict).toBe('A');
+    }
+    // 512GB: Q2_K 가 기준(Q4_K_M 원활)과 같은 등급이 되어 최후 수단 힌트가 없어진다 · 256GB: 최후 수단 Q2_K 원활
+    expect(at('apple-m3-ultra', 512).lastResort).toBeUndefined();
+    expect(at('apple-m3-ultra', 256).lastResort?.result.verdict).toBe('A');
+    // 할인해도 등급이 같으면 사유는 그대로 — M5 Ultra Q2_K 42.6 ÷ 1.082 ≈ 39.4 쾌적(속도), RTX 5090 네 장 + 64GB Q2_K 49.9(MoE 전문가 RAM 배치 —
+    // 쾌적은 GPU 전량 탑재 전용)
+    const m5 = q(at('apple-m5-ultra', 256), 'Q2_K');
+    expect(m5.verdictReason).toBe('speed');
+    expect(m5).not.toHaveProperty('overestimate');
+    const four = q(at('rtx-5090', 64, { gpuCount: 4 }), 'Q2_K');
+    expect(four.result).toMatchObject({ verdict: 'A', mode: 'cpu-moe' });
+    expect(four.verdictReason).toBe('cap-full-gpu-only');
+  });
+
+  it('verdict discount touches no other catalog model (hub configurations)', () => {
+    for (const m of seed.models) {
+      if (m.id === GLM) continue;
+      for (const g of seed.gpus) {
+        for (const c of hardwareConfigs(g, seed.gpus)) {
+          for (const x of assessCombo(seed, g, c, m).perQuant) {
+            expect(x.verdictReason, `${m.id} ${g.id}`).not.toBe('cap-overestimate');
+          }
+        }
+      }
+    }
   });
 });

@@ -479,6 +479,7 @@
     "capPartial": "载入显卡不足 90%：由显卡和 CPU 分担运行时，最高只能判为“运行较慢”",
     "capCpuMoe": "专家在系统内存中运行：这种方式需要达到 {min} tok/s 及以上才算“运行良好”",
     "capCpuOnly": "CPU 推理：最高只能判为“运行较慢”",
+    "capOverestimate": "该模型的公开测试结果均慢于估算：评级按比显示值低 {pct}% 的速度计算",
     "tooSlow": "能装下，但速度太慢，难以实际使用",
     "noFitDgpu": "约需 {need} GB；可用显存 {gpu} GB，可用内存 {ram} GB",
     "noFitUnified": "约需 {need} GB；可用内存 {ram} GB（其中 GPU 可用 {gpu} GB）",
@@ -536,6 +537,7 @@
     "swa": "滑动窗口注意力",
     "mla": "多头潜在注意力",
     "hybrid": "混合注意力（仅部分层使用全注意力）",
+    "hybridSparse": "混合注意力（线性注意力层 + 稀疏注意力层）",
     "compressed": "压缩注意力（KV 按多个 token 合并压缩存储）"
   },
   "Category": {
@@ -1023,7 +1025,7 @@
     "cpuMoeOomOne": "如果加载时出现内存不足（out of memory）错误，把该值调高到 {next}。",
     "cpuMoeFit": "如果省略 -ngl 和 --n-cpu-moe，llama.cpp b7410（2025 年 12 月）及更新版本会自行以类似方式拆分模型。",
     "np1": "-np 1 只开启一个请求槽位。llama-server 默认开启 4 个槽位，而这个模型会为每个槽位单独分配压缩 KV 缓存，4 个槽位需要的 KV 缓存是本估算的 4 倍。",
-    "np1State": "-np 1 只开启一个请求槽位。llama-server 默认开启 4 个槽位，而这个模型会为每个槽位单独保存约 0.15 GB 的线性注意力状态，4 个槽位比本估算多需要约 0.5 GB 内存。",
+    "np1Pool": "-np 1 只开启一个请求槽位。llama-server 默认开启 4 个槽位，而这个模型会按槽位数成比例预留稀疏注意力索引器的计算内存，并为每个槽位单独保存约 0.15 GB 的线性注意力状态，因此 4 个槽位需要的内存多于本估算，上下文越长差距越大。",
     "fa": "-fa on 开启 Flash Attention（量化 KV 缓存时需要）。",
     "kv": "--cache-type-k q8_0 --cache-type-v q8_0 可将 {ctx} 上下文下的 KV 缓存缩小到 {kv} GB。",
     "ctx": "在显存低于 24 GB 的 GPU 上，Ollama 默认使用 4k 上下文。可在启动服务器时设置 OLLAMA_CONTEXT_LENGTH，或在对话中使用 /set parameter num_ctx。",

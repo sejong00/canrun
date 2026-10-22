@@ -11,6 +11,7 @@ vi.mock('@canrun/data/hf', async (importOriginal) => {
 });
 
 const { loadHfModel } = await import('@/lib/calc/hf-load');
+const hf = await import('@canrun/data/hf');
 
 type Routes = Record<string, unknown | ((url: URL) => unknown)>;
 
@@ -57,6 +58,48 @@ describe('loadHfModel', () => {
     expect(r.model.paramsB).toBeCloseTo(8.19, 2);
     expect(r.model.arch.kvBytesPerTokenF16).toBe(36 * 8 * 128 * 4);
     expect(r.rows.map((x) => x.quant)).toEqual(expect.arrayContaining(['Q4_K_M', 'Q8_0']));
+  });
+
+  it('a Q4_K file name taken as the Q4_K_M baseline (alias, 10-22 ⑧-b 리뷰) is checked against the header file_type even for a dense model', async () => {
+    const routes = (tree: unknown[]) =>
+      fakeFetch({
+        '/api/models/Qwen/Qwen3-8B': { id: 'Qwen/Qwen3-8B', siblings: [], safetensors: { total: 8.19e9 } },
+        '/api/models?filter=gguf': [{ id: 'Qwen/Qwen3-8B-GGUF' }],
+        '/api/models/Qwen/Qwen3-8B-GGUF/tree/main': tree,
+        '/Qwen/Qwen3-8B/resolve/main/config.json': QWEN3_8B,
+      });
+    const aliasTree = [
+      { type: 'file', path: 'Qwen3-8B-Q4_K.gguf', size: 5_027_783_488 },
+      { type: 'file', path: 'Qwen3-8B-MXFP4.gguf', size: 4_600_000_000 },
+      { type: 'file', path: 'Qwen3-8B-Q8_0.gguf', size: 8_709_518_624 },
+    ];
+    const measure = vi.mocked(hf.measureSplit);
+    // 헤더 file_type 15(LLAMA_FTYPE_MOSTLY_Q4_K_M) — Q4_K_M 행으로 받는다
+    measure.mockClear().mockResolvedValueOnce({ expertGB: 0, nonExpertGB: 5.03, fileType: 15 } as never);
+    const ok = await loadHfModel('Qwen/Qwen3-8B', routes(aliasTree));
+    expect(measure).toHaveBeenCalledTimes(1);
+    expect(ok.kind).toBe('ok');
+    if (ok.kind !== 'ok') return;
+    expect(ok.rows[0]).toMatchObject({ quant: 'Q4_K_M', fileName: 'Qwen3-8B-Q4_K.gguf' });
+    // dense 는 헤더 분할을 쓰지 않는다(파일 형식 대조만)
+    expect(ok.rows[0]).not.toHaveProperty('expertGB');
+    // 다른 형식(14 = Q4_K_S)이면 그 파일을 빼고 기준 행을 다시 고른다 — MXFP4 가 기준, Q4_K_M 행 없음
+    measure.mockClear().mockResolvedValueOnce({ expertGB: 0, nonExpertGB: 4.8, fileType: 14 } as never);
+    const wrong = await loadHfModel('Qwen/Qwen3-8B', routes(aliasTree));
+    expect(wrong.kind).toBe('ok');
+    if (wrong.kind !== 'ok') return;
+    expect(wrong.rows.map((x) => x.quant)).toEqual(['MXFP4', 'Q8_0']);
+    // 기준 후보가 별칭 파일뿐이면 기준 양자화가 없다
+    measure.mockClear().mockResolvedValueOnce({ expertGB: 0, nonExpertGB: 4.8, fileType: 14 } as never);
+    expect(await loadHfModel('Qwen/Qwen3-8B', routes([aliasTree[0], aliasTree[2]]))).toMatchObject({ kind: 'error', code: 'no-gguf' });
+    // 헤더를 못 읽으면 이름대로 둔다(add-model 과 같다)
+    measure.mockClear().mockRejectedValueOnce(new Error('HTTP 503'));
+    const unread = await loadHfModel('Qwen/Qwen3-8B', routes(aliasTree));
+    expect(unread.kind === 'ok' && unread.rows[0]?.quant).toBe('Q4_K_M');
+    // 정확한 Q4_K_M 파일이면 dense 는 헤더를 읽지 않는다(지금까지와 같다)
+    measure.mockClear();
+    await loadHfModel('Qwen/Qwen3-8B', routes(TREE_8B));
+    expect(measure).not.toHaveBeenCalled();
   });
 
   it('GGUF repo input → base_model config; gated base falls back to the unsloth mirror config', async () => {

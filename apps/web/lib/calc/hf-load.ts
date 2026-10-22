@@ -8,11 +8,14 @@
  */
 import type { ModelCore, ModelQuantCore } from '@canrun/data/client';
 import {
+  aliasFileTypeProblem,
   buildHfModel,
   classifyArch,
   KNOWN_MODEL_TYPES,
+  matchQuantFiles,
   measureSplit,
   parseHfInput,
+  quantFileAlias,
   quantRowsFrom,
   rankGgufRepos,
   type TreeEntry,
@@ -199,23 +202,37 @@ export async function loadHfModel(
       tree = found.tree;
     }
 
-    // MoE 는 기준 양자화 파일 헤더로 전문가·비전문가 크기를 잰다 (수 MB Range 읽기) — 실패하면 균등 bpw 유도로 대체
+    // MoE 는 기준 양자화 파일 헤더로 전문가·비전문가 크기를 잰다 (수 MB Range 읽기) — 실패하면 균등 bpw 유도로 대체.
+    // 파일 이름 별칭으로 잡힌 기준 행(`Q4_K` → Q4_K_M — quant-alias.ts, 10-22 ⑧-b 리뷰)은 dense 여도 헤더를 읽어 general.file_type 을 대조한다:
+    // 다르면(다른 양자화 파일) 그 파일들을 트리에서 빼고 기준 행을 다시 고른다 — add-model·sync-models 와 같은 대조. 헤더를 못 읽으면 이름대로 둔다(add-model 과 같다)
     let baseSplit: Parameters<typeof buildHfModel>[0]['baseSplit'];
     // safetensors 총계. deepseek_v4 처럼 본 GGUF 에 없는 모듈(MTP·DSpark)이 config 에 켜져 있으면 buildHfModel 이 헤더 원소 수를 우선한다(10-22 D115 리뷰)
     const paramsB = baseInfo.safetensors?.total ? baseInfo.safetensors.total / 1e9 : undefined;
-    const base = quantRowsFrom(tree, ggufRepo, 'probe')[0];
-    if (base?.fileName && (arch.moe || paramsB === undefined)) {
+    // 별칭 행을 빼면 다음 기준 행은 별칭이 아니다(별칭은 Q4_K_M 하나) — 많아야 두 번
+    for (let pass = 0; pass < 2; pass += 1) {
+      const base = quantRowsFrom(tree, ggufRepo, 'probe')[0];
+      const alias = base ? quantFileAlias(base.quant, base.fileName) : undefined;
+      if (!base?.fileName || !(arch.moe || paramsB === undefined || alias)) break;
+      let m: Awaited<ReturnType<typeof measureSplit>>;
       try {
-        const m = await measureSplit(ggufRepo, base.fileName, { fetch: f, ...BROWSER_HEADER_LIMITS });
+        m = await measureSplit(ggufRepo, base.fileName, { fetch: f, ...BROWSER_HEADER_LIMITS });
+      } catch {
+        break;
+      }
+      if (aliasFileTypeProblem(base.quant, base.fileName, m.fileType) !== undefined) {
+        const wrong = new Set(matchQuantFiles(tree, base.quant).map((e) => e.path));
+        tree = tree.filter((e) => !wrong.has(e.path));
+        continue;
+      }
+      if (arch.moe || paramsB === undefined) {
         baseSplit = {
           expertGB: m.expertGB,
           nonExpertGB: m.nonExpertGB,
           ...(m.totalParams !== undefined ? { totalParamsB: m.totalParams / 1e9 } : {}),
           ...(m.expertParams !== undefined ? { expertParamsB: m.expertParams / 1e9 } : {}),
         };
-      } catch {
-        baseSplit = undefined;
       }
+      break;
     }
 
     const built = buildHfModel({

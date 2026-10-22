@@ -324,7 +324,8 @@ describe('alternatives (docs/04 §4 ⑥, D4)', () => {
         }
       });
     }
-    // M3·M5 Ultra 512GB 에서 판정 A 이상 — 후보에서 빼지 않으면 '더 큰 모델'을 가져갈 구성이 실제로 있다(빈 검사가 아니다)
+    // M3 Ultra 512GB 에서 판정 A 이상(허브 구성 — M5 Ultra 는 96·256GB 뿐이라 CPU 전용 겨우 가능) — 후보에서 빼지 않으면 '더 큰 모델'을 가져갈 구성이
+    // 실제로 있다(빈 검사가 아니다)
     expect(glmQualified).toBeGreaterThan(0);
   });
 

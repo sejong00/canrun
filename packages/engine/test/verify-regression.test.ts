@@ -28,9 +28,11 @@
  *     로그는 슬롯 하나(-np 1 — 1/1 seqs)라 토큰당 KV 는 슬롯 하나 기준(스니펫이 -np 1 을 붙인다, 기본 4슬롯이면 4배), pp 는 30k 깊이에서 0.26배로
  *     떨어지는데 엔진 pp 는 깊이와 무관 — 엔진 밖 한계로 고정(10-22 D115 리뷰)
  * 15) GLM-5.3-Flash(KDA + DSA 희소 MLA·인덱서 + mHC — 10-22 엔진 후속 ⑧-b, 엔진 산식 변화 없음): KV 19,712 B/tok 이 llama.cpp 메모리 로그(#30499 댓글)의
- *     MLA·인덱서 캐시와 정확히 같고, KDA 순환 상태(시퀀스마다 ≈ 153MB — 로그와 일치)는 슬롯 하나면 연산 버퍼 근사 안·기본 4슬롯이면 밖(스니펫이 -np 1 을 붙인다).
+ *     MLA·인덱서 캐시와 정확히 같고, KDA 순환 상태(시퀀스마다 ≈ 153MB — 로그와 일치)는 다른 상수 상태 층 하이브리드처럼 미계상(슬롯마다 한 벌 — 스니펫의
+ *     -np 1 은 이 상태가 아니라 슬롯 수에 비례하는 인덱서 k-pool 연산 예약 #29950 때문이다, 10-22 ⑧-b 리뷰).
  *     공개 실측 참고점 3곳(M2 Ultra #29958 · DGX Spark #30640 · 6 × 3090 #29928 — 모두 파일 가정이나 카탈로그 밖 구성이라 조인 안 됨)은 추정이 8~26% 높고
- *     ±30% 표시 범위 안, 문맥 감쇠는 엔진과 같다(DeepSeek V4 와 다르다) — 라벨은 이론 추정(docs/02 §4 ⑩·§7·§9)
+ *     ±30% 표시 범위 안, 문맥 감쇠는 엔진과 같다(DeepSeek V4 와 다르다) — 라벨은 이론 추정(docs/02 §4 ⑩·§7·§9). 가장 작은 과대(+8.2%)는 데이터 계층 판정
+ *     할인(packages/data/src/assess.ts `VERDICT_OVERESTIMATE`)의 값이다 — 등급만 이만큼 낮춘 속도로 정한다(엔진 값은 그대로)
  */
 import { describe, expect, it } from 'vitest';
 import { fit } from '../src/fit';
@@ -654,7 +656,7 @@ describe('15) GLM-5.3-Flash — KDA + DSA(희소 MLA·인덱서)·하이퍼 커�
     expect(log.seqs).toBe(1);
   });
 
-  it('the KDA recurrent state is ≈ 153MB per sequence (outside the engine): within the compute-buffer approximation for one slot, over it for the server default 4 — so commands add -np 1', () => {
+  it('the KDA recurrent state is ≈ 153MB per sequence (outside the engine, one copy per slot like every constant-state hybrid — D63): within the compute-buffer approximation for one slot, over it for the server default 4', () => {
     const { heads, headDim, convKernel } = log.kda;
     const perLayer = (headDim * headDim * heads + 3 * (convKernel - 1) * heads * headDim) * 4;
     const perSeq = perLayer * log.recurrent.kdaLayers;
@@ -693,6 +695,8 @@ describe('15) GLM-5.3-Flash — KDA + DSA(희소 MLA·인덱서)·하이퍼 커�
         expect(p.measuredTg, `${ref.label} ctx ${p.ctx}`).toBeLessThan(est);
       });
     }
+    // 가장 작은 과대 = 데이터 계층 판정 할인 값(assess VERDICT_OVERESTIMATE 'glm-5.3-flash' 0.082 — 10-22 ⑧-b 리뷰). 엔진 패키지는 데이터 계층을 읽지 않으므로 값으로 고정
+    expect(Math.min(...refs.flatMap(([ref]) => [...ref.recordedErr]))).toBe(0.082);
     // pp2048(-ub 2048) 는 rough ±40% 안
     const s = GLM53_REFERENCE.spark;
     const pp = ppEstimate({ effClass: 'dgx-spark', fp16Tflops: s.fp16Tflops }, GLM53_UD_IQ2XXS, { ubatch: s.ubatch })!;

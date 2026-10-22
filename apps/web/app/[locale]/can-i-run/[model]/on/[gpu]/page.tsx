@@ -47,7 +47,7 @@ import { formatCtx, formatGB, formatInt } from '@/lib/format';
 import { calculatorHref, comboHref, localeHref, modelHref } from '@/lib/links';
 import { comboOgImage } from '@/lib/og-images';
 import { canLinkCombo } from '@/lib/publish';
-import { gpuName, modeKey, ppPhrase, shortGpuName, speedPhrase, type Translate } from '@/lib/phrases';
+import { capOverestimateText, gpuName, modeKey, ppPhrase, shortGpuName, speedPhrase, type Translate } from '@/lib/phrases';
 import { buildPageMetadata } from '@/lib/seo';
 import { absoluteUrl } from '@/lib/site';
 
@@ -326,6 +326,8 @@ export default async function ComboPage({ params }: Props) {
         return tReason('capCpuMoe', { min: formatInt(locale, x.capMinTokS ?? 0) });
       case 'cap-cpu-only':
         return tReason('capCpuOnly');
+      case 'cap-overestimate':
+        return capOverestimateText(tReason, locale, x);
       default:
         return undefined;
     }

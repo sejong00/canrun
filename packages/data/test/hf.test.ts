@@ -1227,13 +1227,15 @@ describe('classifyArch — GLM-5.3-Flash KDA + DSA and hyper-connections (glm5_n
     expect(GLM_KDA).toHaveLength(34);
   });
 
-  it('GLM-5.3-Flash: hybrid, KV = 11 × (512 × 2 + 128 × 3 × 2) = 19,712 B/tok, MoE 288 top-8 on layers 3–44, mHC, vision (mmproj), MTP off the main file', () => {
+  it('GLM-5.3-Flash: hybrid, KV = 11 × (512 × 2 + 128 × 3 × 2) = 19,712 B/tok, MoE 288 top-8 on layers 3–44, mHC, indexer k-pool 4, vision (mmproj), MTP off the main file', () => {
     const r = classifyArch(glmConfig());
     expect(r).toMatchObject({
       kind: 'ok',
       modelType: 'glm5_next_text',
       attnType: 'hybrid',
       mhc: true,
+      // 인덱서 k-pool(config index_kpool) — 스니펫 -np 1(k-pool 연산 예약이 슬롯 수에 비례 — #29950)·모델 허브 '선형 + 희소' 표시(10-22 ⑧-b 리뷰)
+      indexerKPool: 4,
       vision: true,
       maxContext: 1048576,
       moe: { experts: 288, topK: 8 },
@@ -1353,7 +1355,7 @@ describe('file name alias Q4_K → Q4_K_M (10-22 엔진 후속 ⑧-b — ggml-or
     expect(classifySplit([h({ 'general.architecture': 'x', 'x.block_count': 1 })])).not.toHaveProperty('fileType');
   });
 
-  it('buildHfModel (calculator import) builds a glm5_next model from the Q4_K tree: header paramsB (MTP is in the config, not in the main file), mhc, vision', () => {
+  it('buildHfModel (calculator import) builds a glm5_next model from the Q4_K tree: header paramsB (MTP is in the config, not in the main file), mhc, indexer k-pool, vision', () => {
     const r = buildHfModel({
       hfId: 'someone/GLM-5.3-Flash-Finetune',
       ggufRepo: 'someone/GLM-5.3-Flash-Finetune-GGUF',
@@ -1364,7 +1366,7 @@ describe('file name alias Q4_K → Q4_K_M (10-22 엔진 후속 ⑧-b — ggml-or
     });
     expect(r.kind).toBe('ok');
     if (r.kind !== 'ok') return;
-    expect(r.model.arch).toMatchObject({ attnType: 'hybrid', kvBytesPerTokenF16: 19712, experts: 288, topK: 8, mhc: true });
+    expect(r.model.arch).toMatchObject({ attnType: 'hybrid', kvBytesPerTokenF16: 19712, experts: 288, topK: 8, mhc: true, indexerKPool: 4 });
     expect(r.model.paramsB).toBe(313.33);
     expect(r.model.activeParamsB).toBe(17.38);
     expect(r.notes).toContain('params-from-header');

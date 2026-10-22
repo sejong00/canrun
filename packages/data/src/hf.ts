@@ -646,8 +646,9 @@ const GLM5_NEXT_LINEAR_KEYS: ReadonlySet<string> = new Set([
  * - KV(f16, B/tok): DSA 층마다 MLA 잠재 K(kv_lora_rank + qk_rope_head_dim) × 2B + indexer full 인 DSA 층마다 index_head_dim × 3(key | gate | pooled — 구현값
  *   `GLM5_NEXT_INDEXER_ROW_SLOTS`) × 2B, V 캐시 없음 — GLM-5.3-Flash 11 × (512 × 2 + 128 × 3 × 2) = 19,712(#30499 로그의 KV 2,816 MiB + 인덱서 2,112 MiB @ 262,144셀과 일치)
  * - KDA 순환 상태(층마다 head_dim² × 헤드 f32 + conv 3 × (kernel − 1) × 폭 f32 — 34층 ≈ 153MB)는 컨텍스트와 무관하고 시퀀스(슬롯)마다 한 벌이라
- *   다른 상수 상태 층 하이브리드(D63)처럼 미계상 — 스니펫은 `-np 1` 로 한 벌만 잡게 한다(docs/02 §2.2·§9)
- * - 결과: attnType hybrid · override(KV 근거) · moe · expertLayers(앞 dense 층 뒤) · mhc · vision(비전 인코더는 별도 mmproj) · offFileModules(MTP) · refs
+ *   다른 상수 상태 층 하이브리드(D63)처럼 미계상(docs/02 §2.2·§9)
+ * - 결과: attnType hybrid · override(KV 근거) · moe · expertLayers(앞 dense 층 뒤) · mhc · indexerKPool(k-pool 연산 예약이 슬롯 수에 비례 — #29950,
+ *   스니펫 `-np 1`) · vision(비전 인코더는 별도 mmproj — llama-server `-hf` 는 받아서 함께 올린다, 미계상) · offFileModules(MTP) · refs
  */
 function glm5NextArch(cfg: Record<string, unknown>, top: Record<string, unknown>, archs: readonly string[]): ArchResult {
   const no = (reason: string): ArchResult => ({ kind: 'unsupported', reason });
@@ -741,6 +742,8 @@ function glm5NextArch(cfg: Record<string, unknown>, top: Record<string, unknown>
     moe,
     ...(firstDense > 0 ? { expertLayers: Array.from({ length: layers - firstDense }, (_, i) => firstDense + i) } : {}),
     mhc: true,
+    // 인덱서 k-pool(10-22 ⑧-b 리뷰) — llama.cpp 가 k-pool 연산 그래프를 슬롯 수에 비례해 최악 크기로 예약한다(#29950 — 스니펫 -np 1)
+    indexerKPool: kpool,
     ...(nextn ? { offFileModules: ['MTP'] as const } : {}),
     refs: GLM5_NEXT_REFS,
     // KV 헤드 1 × 잠재 폭 — GGUF head_count_kv(DSA 층 1)·key_length(kv_lora_rank + rope)와 같은 표기
@@ -759,6 +762,11 @@ export type ArchResult =
       attnType: 'full' | 'swa' | 'hybrid' | 'compressed';
       /** 하이퍼 커넥션(mHC — hc_mult > 1, deepseek_v4 — 10-22 D115) — 모델 `arch.mhc`, 추정은 이론 추정 */
       mhc?: true;
+      /**
+       * 라이트닝 인덱서 k-pool(config `index_kpool` — glm5_next_text, 10-22 엔진 후속 ⑧-b 리뷰) — 모델 `arch.indexerKPool`. llama.cpp 가 k-pool 연산 그래프를
+       * 최악 크기(풀 수 = 셀 ÷ k-pool × n_seq_max)로 예약해 슬롯 수에 비례해 커진다 — 스니펫이 `-np 1` 을 붙인다
+       */
+      indexerKPool?: number;
       /**
        * config 에 켜져 있지만 본 GGUF 파일에 없는 모듈(deepseek_v4 — MTP 는 변환기가 기본으로 빼고 DSpark 는 별도 dspark-*.gguf, 10-22 D115 리뷰).
        * safetensors 총계에 그 몫이 섞여 있어 파라미터 수는 GGUF 헤더 원소 수를 쓴다(buildHfModel — 카탈로그 행은 add-model `--params`)
@@ -1310,6 +1318,8 @@ export function buildHfModel(input: HfModelInput): HfModelResult {
     ...(arch.expertLayers ? { expertLayers: arch.expertLayers } : {}),
     // 하이퍼 커넥션(10-22 D115) — 카탈로그 모델과 같은 표시(이 경로는 어차피 이론 추정으로 고정된다)
     ...(arch.mhc ? { mhc: true as const } : {}),
+    // 인덱서 k-pool(10-22 ⑧-b 리뷰) — 카탈로그 모델과 같은 명령(-np 1)·어텐션 표시
+    ...(arch.indexerKPool !== undefined ? { indexerKPool: arch.indexerKPool } : {}),
   };
   // 기준 행만 헤더 실측 분할을 갖는다. 엔진은 분할이 있으면 그래픽카드 상주량(전문가 + 비전문가)으로 full-gpu 를 판정하는데
   // (10-03 D62), 다른 행은 파일 전체라 큰 양자화만 전량 탑재되는 사다리 역전이 생길 수 있다 — offGpuGB 0(파일 전체를 셈)으로 막는다

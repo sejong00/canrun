@@ -298,7 +298,10 @@ export default async function ModelHubPage({ params }: Props) {
             </div>
             <div>
               <dt className="text-muted-foreground">{t.hub('factAttention')}</dt>
-              <dd className="font-medium">{tAttention(model.arch.attnType)}</dd>
+              {/* 라이트닝 인덱서 k-pool 하이브리드(GLM-5.3-Flash — 10-22 ⑧-b 리뷰)는 선형 층이 아닌 층이 희소 어텐션이라 따로 적는다(다른 하이브리드 표시는 그대로) */}
+              <dd className="font-medium">
+                {tAttention(model.arch.attnType === 'hybrid' && model.arch.indexerKPool !== undefined ? 'hybridSparse' : model.arch.attnType)}
+              </dd>
             </div>
             <div>
               <dt className="text-muted-foreground">{t.hub('factContext')}</dt>

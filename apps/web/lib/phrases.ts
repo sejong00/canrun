@@ -151,6 +151,15 @@ export function noFitText(
   return tReason('noFitCpu', { need, ram: formatGB(locale, m.ramUsableGB) });
 }
 
+/**
+ * 판정 할인 사유 문장(cap-overestimate — 10-22 ⑧-b 리뷰): 등급은 추정 ÷ (1 + 할인)으로 정했다 — "표시된 추정보다 {pct}% 낮은 속도"
+ * (할인 0.082 → 7.6% → 8). 허브 표 Notes·계산기 카드·콤보 페이지 양자화 표 공용
+ */
+export function capOverestimateText(tReason: Translate, locale: string, q: Pick<QuantAssessment, 'overestimate'>): string {
+  const over = q.overestimate ?? 0;
+  return tReason('capOverestimate', { pct: formatInt(locale, (1 - 1 / (1 + over)) * 100) });
+}
+
 export type NoteTranslators = {
   reason: Translate;
   hint: Translate;
@@ -181,6 +190,8 @@ export function noteLines(
     lines.push(t.reason('capCpuMoe', { min: formatInt(locale, q.capMinTokS ?? 0) }));
   } else if (q.verdictReason === 'cap-cpu-only') {
     lines.push(t.reason('capCpuOnly'));
+  } else if (q.verdictReason === 'cap-overestimate') {
+    lines.push(capOverestimateText(t.reason, locale, q));
   }
   if (combo.recommended && combo.recommended.quant !== q.quant) {
     lines.push(

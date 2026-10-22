@@ -505,6 +505,8 @@ export async function planAddition(
       ...(arch.loops !== undefined ? { loops: arch.loops } : {}),
       // 하이퍼 커넥션(mHC — 10-22 D115): 층마다 더하는 연산을 속도식이 세지 않아 추정은 이론 추정
       ...(arch.mhc ? { mhc: true } : {}),
+      // 라이트닝 인덱서 k-pool(10-22 ⑧-b 리뷰): k-pool 연산 예약이 슬롯 수에 비례 — 스니펫이 -np 1 을 붙인다
+      ...(arch.indexerKPool !== undefined ? { indexerKPool: arch.indexerKPool } : {}),
     },
     // 산식 근거(llama.cpp 가 KV 를 두는 층 — D63)가 있으면 config 출처 뒤에 덧붙인다
     ...(arch.override
