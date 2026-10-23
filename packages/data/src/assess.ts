@@ -1192,7 +1192,7 @@ export type ModelHubData = {
   baselineQuant: QuantId;
   quants: Array<{ row: ModelQuantRecord; tier: QuantTier; publisher: GgufPublisher }>;
   matrix: MemoryMatrix;
-  /** 전 GPU (CPU 프로필 포함) — 통합·CPU 는 최고 기준 판정을 내는 최소 RAM 구성 1행 */
+  /** 전 GPU (CPU 프로필 포함) — 통합·CPU 는 최고 기준 판정을 내는 최소 RAM 구성 1행(대표 구성 `primaryRamGB` 가 있으면 그 구성 — 10-23 D120) */
   gpuRows: ModelGpuRow[];
   /**
    * dGPU 실거래가(priceAsOf 동반)만 순위. great = 쾌적(S) 최저가, well = 그보다 싼 원활(A) 최저가
@@ -1226,8 +1226,18 @@ export function sameSizeQuant(
   return undefined;
 }
 
-/** 통합·CPU: 최고 기준 판정의 최소 RAM 구성, 전부 F 면 최대 RAM (결정 D4). */
-export function pickConfigCombo(combos: readonly ComboAssessment[]): ComboAssessment {
+/**
+ * 통합·CPU: 최고 기준 판정의 최소 RAM 구성, 전부 F 면 최대 RAM (결정 D4). 레코드에 대표 구성(`primaryRamGB` — 10-23 D120, DGX Spark 128GB)이 있으면
+ * 판정과 관계없이 그 구성(1대). combos 는 이 기기의 1대 구성(`hardwareConfigs`) 평가 — 모델 허브 행·콤보 페이지·계산기 '상세'·공유 카드가 같은 함수를 쓴다
+ */
+export function pickConfigCombo(
+  combos: readonly ComboAssessment[],
+  gpu: Pick<GpuCore, 'primaryRamGB'>,
+): ComboAssessment {
+  if (gpu.primaryRamGB !== undefined) {
+    const primary = combos.find((c) => c.ramGB === gpu.primaryRamGB && c.nodes === undefined);
+    if (primary) return primary;
+  }
   const best = Math.max(...combos.map((c) => verdictRank(c.baseline.result.verdict)));
   if (best === 0) return combos[combos.length - 1]!;
   return combos.find((c) => verdictRank(c.baseline.result.verdict) === best)!;
@@ -1260,7 +1270,7 @@ export function modelGpuRows<G extends GpuCore>(
     const combos = hardwareConfigs(gpu, catalog.gpus).map((config) =>
       assessCombo(catalog, gpu, config, model, opts),
     );
-    return { gpu, combo: pickConfigCombo(combos) };
+    return { gpu, combo: pickConfigCombo(combos, gpu) };
   });
   return rows.sort((a, b) => compareCombos(a.combo, b.combo) || a.gpu.id.localeCompare(b.gpu.id));
 }

@@ -290,6 +290,8 @@ export function twinGpus<G extends GpuCore>(gpu: G, gpus: readonly G[]): G[] {
       (g.usableGBByRam ?? []).map((u) => `${u.ramGB}:${u.usableGB}`).join('/'),
       // 여러 대 연결(10-23 D118 — DGX Spark)도 같아야 한다 — 허브·콤보의 2대·4대 행이 같게
       g.cluster?.maxNodes ?? '',
+      // 대표 메모리 구성(10-23 D120 — DGX Spark 128GB)도 같아야 한다 — 콤보·모델 허브 행이 같은 구성이게
+      g.primaryRamGB ?? '',
       g.effClass,
     ].join('|');
   const mine = key(gpu);

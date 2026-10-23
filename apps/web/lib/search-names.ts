@@ -40,6 +40,10 @@ const CAPITALIZED = new Set([
   'lenovo',
   'acer',
   'veriton',
+  // NVIDIA RTX PRO 6000 Blackwell 제품 이름 (10-23 D120)
+  'blackwell',
+  'workstation',
+  'edition',
 ]);
 
 /** 대소문자가 섞인 제품 표기 — 첫 글자 대문자·전부 대문자 규칙에 맞지 않는 단어 (10-23 D117 — DGX Spark OEM 판) */
@@ -48,16 +52,20 @@ const MIXED_CASE: Readonly<Record<string, string>> = {
   thinkstation: 'ThinkStation',
   edgexpert: 'EdgeXpert',
   g1n: 'G1n',
+  // RTX PRO 6000 Blackwell Max-Q Workstation Edition (10-23 D120)
+  'max-q': 'Max-Q',
 };
 
 /** 소문자 별칭 하나 → 표기 ("5070ti" → "5070Ti", "4070tis" → "4070TiS", "ryzen ai max 395" → "Ryzen AI Max 395", "lenovo thinkstation pgx" → "Lenovo ThinkStation PGX") */
 export function aliasLabel(alias: string): string {
   return alias
     .split(' ')
-    .map(
-      (word) =>
-        MIXED_CASE[word] ??
-        (CAPITALIZED.has(word) ? word.charAt(0).toUpperCase() + word.slice(1) : word.toUpperCase().replace(/(\d)TI(S?)$/, '$1Ti$2')),
+    .map((word, i, words) =>
+      // NVIDIA 전문가용 'RTX PRO' 는 전부 대문자 (10-23 D120) — 다른 자리의 pro 는 Apple 'M4 Pro' 처럼 첫 글자만
+      word === 'pro' && words[i - 1] === 'rtx'
+        ? 'PRO'
+        : (MIXED_CASE[word] ??
+          (CAPITALIZED.has(word) ? word.charAt(0).toUpperCase() + word.slice(1) : word.toUpperCase().replace(/(\d)TI(S?)$/, '$1Ti$2'))),
     )
     .join(' ');
 }

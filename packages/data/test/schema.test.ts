@@ -173,6 +173,25 @@ describe('structural refinements', () => {
     expect(GpuSchema.safeParse({ ...validGpu, sources: [...validGpu.sources, doc], cluster }).success).toBe(false);
   });
 
+  it('representative memory size (10-23 D120 — DGX Spark 128GB): unified only, one of ramOptionsGB', () => {
+    const spark = {
+      ...validGpu,
+      id: 'spark-test',
+      vendor: 'nvidia-dgx',
+      kind: 'unified',
+      vramGB: undefined,
+      ramOptionsGB: [64, 128],
+      memBandwidthGBs: 273,
+      effClass: 'dgx-spark',
+    };
+    expect(GpuSchema.safeParse({ ...spark, primaryRamGB: 128 }).success).toBe(true);
+    expect(GpuSchema.safeParse({ ...spark, primaryRamGB: 64 }).success).toBe(true);
+    expect(GpuSchema.safeParse({ ...spark, primaryRamGB: 96 }).success).toBe(false);
+    expect(GpuSchema.safeParse({ ...validGpu, primaryRamGB: 32 }).success).toBe(false);
+    // 시드에서는 DGX Spark 만 (사용자 결정 — 맥·Strix Halo 는 최고 판정의 최소 구성 규칙 그대로)
+    expect(loadSeed().gpus.filter((g) => g.primaryRamGB !== undefined).map((g) => [g.id, g.primaryRamGB])).toEqual([['nvidia-dgx-spark', 128]]);
+  });
+
   it('every Apple chip in the seed names at least one Mac', () => {
     const apple = loadSeed().gpus.filter((g) => g.vendor === 'apple');
     expect(apple.length).toBeGreaterThan(0);

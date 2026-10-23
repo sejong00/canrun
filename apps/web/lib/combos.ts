@@ -89,7 +89,7 @@ export function getCombo(modelId: string, gpuId: string): ComboPage | undefined 
   const configCombos = row.combos;
   const clusterCombos = row.clusterCombos ?? [];
   // 대표 구성은 1대 구성 가운데서만 (row.combos 는 1대 구성뿐 — 2대·4대는 clusterCombos)
-  const combo = pickConfigCombo(configCombos);
+  const combo = pickConfigCombo(configCombos, gpu);
   const configIndex = configCombos.indexOf(combo);
   const config = gpuHub.configs[configIndex]!;
 

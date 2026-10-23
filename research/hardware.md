@@ -6,6 +6,7 @@
 
 | GPU | VRAM | BW GB/s | FP16 | MSRP | Street 26-08 |
 |---|---|---|---|---|---|
+| RTX PRO 6000 Blackwell (10-23 D120 — Workstation Edition, Max-Q 는 별칭) | 96 GDDR7 ECC | 1,792 | 126 (NVIDIA 데이터시트 FP32, 제품 페이지 125 · Max-Q 110) | 미공개 | — |
 | RTX 5090 | 32 GDDR7 | 1,792 | 104.8 | $1,999 | $4,200~4,288 |
 | RTX 5080 | 16 GDDR7 | 960 | 56.3 | $999 | ~$1,256 |
 | RTX 5070 Ti | 16 GDDR7 | 896 | 44.1 | $749 | ~$949 |

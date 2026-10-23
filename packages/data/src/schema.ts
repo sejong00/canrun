@@ -129,6 +129,12 @@ export const GpuSchema = z
       })
       .strict()
       .optional(),
+    /**
+     * 통합 메모리 기기의 대표 메모리 구성 (10-23 D120 — 사용자 결정 '기준은 128로': DGX Spark 는 NVIDIA 가 직접 파는 128GB 판, 64GB 는 협력 제조사 판만 있다).
+     * 있으면 모델 허브 GPU 표의 행·콤보 페이지·계산기 '상세' 링크·공유 카드가 판정과 관계없이 이 구성을 쓴다(`pickConfigCombo`). 없으면 지금 규칙(최고 판정의
+     * 최소 구성 — D4). GPU 허브 요약·비교는 원래 가장 큰 구성(`primaryIndex`)이라 영향 없다. ramOptionsGB 안의 값만 — 사유·출처는 레코드 note·sources
+     */
+    primaryRamGB: z.number().positive().optional(),
     /** GTX 10 시리즈처럼 FP16 크리플이면 실효값(예: 0.18). Apple 은 위키백과 Apple silicon 표의 FP32 이론값 — 애플 미공개, 애플 GPU 는 FP16 이 FP32 와 같은 속도(10-16 D87) */
     fp16Tflops: z.number().positive().optional(),
     /**
@@ -213,6 +219,11 @@ export const GpuSchema = z
       for (const url of gpu.cluster.sources) {
         if (!gpu.sources.includes(url)) ctx.addIssue({ code: 'custom', message: `${where}: source ${url} missing from sources` });
       }
+    }
+    if (gpu.primaryRamGB !== undefined) {
+      const where = `${gpu.id} primaryRamGB ${gpu.primaryRamGB} GB`;
+      if (gpu.kind !== 'unified') ctx.addIssue({ code: 'custom', message: `${where}: for unified memory devices only (D120)` });
+      if (!(gpu.ramOptionsGB ?? []).includes(gpu.primaryRamGB)) ctx.addIssue({ code: 'custom', message: `${where}: not in ramOptionsGB` });
     }
     if ((gpu.vendor === 'apple') !== (gpu.products !== undefined)) {
       ctx.addIssue({

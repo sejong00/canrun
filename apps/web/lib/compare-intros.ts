@@ -75,6 +75,14 @@ const LOADERS: Readonly<Record<CompareIntroSlug, Loader>> = {
     en: () => import('@/content/en/compare/nvidia-dgx-spark-vs-rtx-5090.mdx') as Promise<IntroModule>,
     ko: () => import('@/content/ko/compare/nvidia-dgx-spark-vs-rtx-5090.mdx') as Promise<IntroModule>,
   },
+  'nvidia-dgx-spark-vs-rtx-pro-6000-blackwell': {
+    en: () => import('@/content/en/compare/nvidia-dgx-spark-vs-rtx-pro-6000-blackwell.mdx') as Promise<IntroModule>,
+    ko: () => import('@/content/ko/compare/nvidia-dgx-spark-vs-rtx-pro-6000-blackwell.mdx') as Promise<IntroModule>,
+  },
+  'nvidia-dgx-spark-vs-apple-m5-ultra': {
+    en: () => import('@/content/en/compare/nvidia-dgx-spark-vs-apple-m5-ultra.mdx') as Promise<IntroModule>,
+    ko: () => import('@/content/ko/compare/nvidia-dgx-spark-vs-apple-m5-ultra.mdx') as Promise<IntroModule>,
+  },
 };
 
 /** 소개글은 장문이라 장문 로캘(en·ko)에만 — zh 비교 페이지는 소개 없이 그린다(D109, CLAUDE.md 규칙 4) */

@@ -22,6 +22,7 @@ import {
   isMixableGpu,
   memoryMatrix,
   modelGpuRows,
+  pickConfigCombo,
   rankableStreet,
   sameSizeQuant,
   summarizeGpu,
@@ -627,6 +628,30 @@ describe('summaries', () => {
     expect(m4max.combo.ramGB).toBe(firstBest.ramGB);
   });
 
+  it('대표 구성 primaryRamGB(10-23 D120 — DGX Spark 128GB): 판정과 관계없이 그 구성, 없으면 최고 판정의 최소 구성', () => {
+    const spark = gpu('nvidia-dgx-spark');
+    expect(spark.primaryRamGB).toBe(128);
+    let ties = 0;
+    for (const m of seed.models) {
+      const all = hardwareConfigs(spark, seed.gpus).map((config) => assessCombo(seed, spark, config, m));
+      // 64GB 판정이 128GB 와 같은 모델도 128GB (D117 의 기본 규칙이면 64GB 였다)
+      if (all[0]!.baseline.result.verdict === all[1]!.baseline.result.verdict) ties += 1;
+      expect(pickConfigCombo(all, spark).ramGB, m.id).toBe(128);
+      expect(pickConfigCombo(all, spark).nodes, m.id).toBeUndefined();
+      // 레코드 값이 없으면 D4 그대로 — 최고 판정의 최소 구성, 전부 불가면 가장 큰 구성
+      const ranks = all.map((c) => verdictRank(c.baseline.result.verdict));
+      const best = Math.max(...ranks);
+      const d4 = best === 0 ? all.at(-1)! : all[ranks.indexOf(best)]!;
+      expect(pickConfigCombo(all, { ...spark, primaryRamGB: undefined }), m.id).toBe(d4);
+    }
+    expect(ties).toBeGreaterThan(0);
+    // 모델 허브 GPU 표의 DGX Spark 행도 128GB
+    for (const m of seed.models) expect(summarizeModel(seed, m).gpuRows.find((r) => r.gpu.id === spark.id)!.combo.ramGB, m.id).toBe(128);
+    // 구성 목록에 그 구성이 없으면(계산기 사용자 RAM 등) 기본 규칙으로
+    const only64 = hardwareConfigs(spark, seed.gpus, { ramGB: 64 }).map((config) => assessCombo(seed, spark, config, model('gpt-oss-20b')));
+    expect(pickConfigCombo(only64, spark).ramGB).toBe(64);
+  });
+
   it('손실이 더 큰 파일이 더 나은 파일과 크기가 거의 같으면 더 나은 쪽을 안내 (10-03 D63 후속)', () => {
     // Nemotron 3.5 Lightning: K-quant 폴백으로 Q2_K 18.91GB ≈ IQ4_XS 18.92GB
     expect(summarizeModel(seed, model('nemotron-3.5-lightning-30b-a3b')).sameSizeQuant).toEqual({
@@ -1015,8 +1040,9 @@ describe('서로 다른 GPU 섞기 (docs/02 §6 베타, 10-03 D67)', () => {
     expect(canMixWith(gpu('arc-b580'), gpu('arc-b580'))).toBe(false);
     expect(canMixWith(gpu('apple-m4'), gpu('rtx-3060-12gb'))).toBe(false);
     expect(canMixWith(gpu('cpu-ddr5-5600-2ch'), gpu('rtx-3060-12gb'))).toBe(false);
-    // 섞을 수 있는 카드 = NVIDIA 데스크톱 24 + AMD 6 (GTX 1080 Ti 제외)
-    expect(seed.gpus.filter(isMixableGpu).map((g) => g.effClass).sort()).toEqual([...Array(6).fill('amd'), ...Array(24).fill('nvidia')]);
+    // 섞을 수 있는 카드 = NVIDIA 데스크톱 25(10-23 D120 RTX PRO 6000 Blackwell 포함) + AMD 6 (GTX 1080 Ti 제외)
+    expect(seed.gpus.filter(isMixableGpu).map((g) => g.effClass).sort()).toEqual([...Array(6).fill('amd'), ...Array(25).fill('nvidia')]);
+    expect(canMixWith(gpu('rtx-pro-6000-blackwell'), gpu('rtx-5090'))).toBe(true);
   });
 
   const mixed = (ramGB: number) => hardwareConfigs(gpu('rtx-3090'), seed.gpus, { ramGB, extraGpus: [gpu('rtx-3060-12gb')] })[0]!;

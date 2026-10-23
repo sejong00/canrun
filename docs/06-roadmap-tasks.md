@@ -53,7 +53,7 @@ P2-1 Workers+D1+제출 API+파서(AC: llama-bench 실출력 5종 파싱 통과) 
 게이트: 월 제출 30건+ & 스팸 비율 통제 확인 후 리더보드.
 
 ## Phase 3 — 수익 고도화 (5~6개월차) — ref: `07`
-Build Advisor(신품/중고/클라우드 3열) → RunPod·Amazon·쿠팡 링크 전면 적용 → 비교 페이지(10-19 엄선 12쌍 앞당김 — PROGRESS §4 D106, 10-23 DGX Spark 초안 2쌍으로 상한 14쌍 — D119)·임베드 배지 → (검토) 공개 API·Danawa 연동.
+Build Advisor(신품/중고/클라우드 3열) → RunPod·Amazon·쿠팡 링크 전면 적용 → 비교 페이지(10-19 엄선 12쌍 앞당김 — PROGRESS §4 D106, 10-23 DGX Spark 초안 2쌍으로 상한 14쌍 — D119, 같은 날 초안 2쌍 더 상한 16쌍 — D120)·임베드 배지 → (검토) 공개 API·Danawa 연동.
 
 ## 마일스톤 게이트 요약
 | 게이트 | 조건 | 실패 시 |

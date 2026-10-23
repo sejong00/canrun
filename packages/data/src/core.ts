@@ -25,6 +25,8 @@ export const GPU_CORE_KEYS = [
   'usableGBByRam',
   // 여러 대 연결(10-23 D118 — DGX Spark) — 계산기의 대수 선택. lite 에는 문서용 sources 를 빼고 보낸다(`toCatalogLite`)
   'cluster',
+  // 대표 메모리 구성(10-23 D120 — DGX Spark 128GB) — 계산기 '상세' 링크·모델 모드 목록이 콤보 페이지와 같은 구성을 고른다(`pickConfigCombo`)
+  'primaryRamGB',
   'fp16Tflops',
   // pp 추정의 행렬 FP16(10-16 D91 — AMD)
   'fp16MatrixTflops',

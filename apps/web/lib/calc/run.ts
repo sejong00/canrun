@@ -176,7 +176,7 @@ export function assembleResults(catalog: CatalogLite, rawState: CalcState, extra
     if (hubConfigs.length === 1) hubConfig = { ramGB: hubConfigs[0]!.ramGB, os: hubConfigs[0]!.hw.os };
     else if (hubConfigs.length > 1) {
       const combos = hubConfigs.map((c) => assessCombo(catalog, gpu, c, model));
-      const picked = hubConfigs[combos.indexOf(pickConfigCombo(combos))]!;
+      const picked = hubConfigs[combos.indexOf(pickConfigCombo(combos, gpu))]!;
       hubConfig = { ramGB: picked.ramGB, os: picked.hw.os };
     }
     // GPU 여러 장: 콤보 페이지 명령은 1장 기준이라 이 구성의 명령을 카드에 직접 단다(D67 — cpu-moe 와 반복 층 모델은 --fit 자동 배치, 10-22 D114 리뷰)

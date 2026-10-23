@@ -61,8 +61,8 @@ describe('compare registry (content/compares.ts)', () => {
     expect(Object.keys(COMPARES).sort()).toEqual([...COMPARE_SLUGS].sort());
     expect(new Set(COMPARE_SLUGS).size).toBe(COMPARE_SLUGS.length);
     expect(COMPARE_SLUGS.length).toBeLessThanOrEqual(COMPARE_MAX);
-    // 상한은 정책 값(docs/04 §11) — 올리려면 사용자 승인 계획과 함께 여기·docs/04 §11 을 같이 고친다(10-23 D119: 12 → 14)
-    expect(COMPARE_MAX).toBe(14);
+    // 상한은 정책 값(docs/04 §11) — 올리려면 사용자 승인 계획과 함께 여기·docs/04 §11 을 같이 고친다(10-23 D119: 12 → 14, D120: 14 → 16 — 사용자 결정)
+    expect(COMPARE_MAX).toBe(16);
     for (const slug of COMPARE_SLUGS) {
       const { a, b } = COMPARES[slug];
       expect(slug).toBe(compareSlugOf(a, b));

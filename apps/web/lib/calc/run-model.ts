@@ -96,7 +96,7 @@ export function assembleModelRows(
     if (!atReference && !external && gpu.kind !== 'dgpu') {
       const configs = hardwareConfigs(gpu, catalog.gpus);
       const combos = configs.map((config) => assessCombo(catalog, gpu, config, model));
-      const picked = configs[combos.indexOf(pickConfigCombo(combos))]!;
+      const picked = configs[combos.indexOf(pickConfigCombo(combos, gpu))]!;
       if (picked.ramGB !== combo.ramGB) hubConfig = { ramGB: picked.ramGB, os: picked.hw.os };
     }
     const street = rankableStreet(gpu);

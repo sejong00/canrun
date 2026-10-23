@@ -264,10 +264,10 @@ describe('compressed attention (DeepSeek V4 — 10-22 D115)', () => {
 });
 
 describe('seed scale (docs/06 P0-3)', () => {
-  it('has the 42-strong core catalog (32 desktop dgpu + 10-class unified) plus extras', () => {
+  it('has the core catalog (33 desktop dgpu — 10-23 D120 RTX PRO 6000 Blackwell — + 10-class unified) plus extras', () => {
     const desktopDgpu = seed.gpus.filter((g) => g.kind === 'dgpu' && g.form === 'desktop');
     const unified = seed.gpus.filter((g) => g.kind === 'unified');
-    expect(desktopDgpu.length).toBe(32);
+    expect(desktopDgpu.length).toBe(33);
     expect(unified.length).toBeGreaterThanOrEqual(10);
   });
 

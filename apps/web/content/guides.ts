@@ -680,8 +680,8 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
           'Which local LLMs run on a 64GB or 128GB DGX Spark, how much memory its GPU can use, and what linking two or four units with llama.cpp or vLLM changes.',
       },
       ko: {
-        // 자동완성 'dgx spark llm 성능'·'dgx spark 2대 연결'·'dgx spark 64gb' — '추천'은 RECOMMEND_TITLE_APPROVED 승인 전이라 넣지 않는다
-        title: 'DGX Spark LLM 성능 — 64GB·128GB에서 돌아가는 모델과 2대 연결·4대 연결',
+        // 자동완성 'dgx spark llm 추천'·'dgx spark 2대 연결'·'dgx spark 64gb' — '추천'은 10-23 사용자 승인(RECOMMEND_TITLE_APPROVED, D120). 본문은 메모리 기준만
+        title: 'DGX Spark LLM 추천 — 64GB·128GB에서 돌아가는 모델과 2대·4대 연결',
         description:
           'DGX Spark 64GB·128GB 한 대에서 돌아가는 로컬 LLM과 GPU가 쓸 수 있는 메모리를 정리했습니다. 두 대·네 대를 이으면 llama.cpp와 vLLM에서 무엇이 달라지는지도 다룹니다.',
       },

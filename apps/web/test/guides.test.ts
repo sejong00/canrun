@@ -92,7 +92,11 @@ describe('guide registry ↔ MDX files ↔ loader map', () => {
 
   it('titles and descriptions: no prose bans or "best"; "추천"/"Recommended" only in user-approved titles (AUTHORING §2, 10-15 D75)', () => {
     // 제목 예외는 사용자가 채팅으로 승인한 슬러그만 — 늘리려면 승인 기록(PROGRESS §4)과 함께 여기에 더한다
-    const RECOMMEND_TITLE_APPROVED: readonly string[] = ['gpu-by-budget', 'ollama-lm-studio-requirements']; // 10-19 사용자 승인
+    const RECOMMEND_TITLE_APPROVED: readonly string[] = [
+      'gpu-by-budget',
+      'ollama-lm-studio-requirements', // 10-19 사용자 승인
+      'dgx-spark-llm', // 10-23 사용자 승인(D120 — ko 제목 'DGX Spark LLM 추천', 검색어 'dgx spark llm 추천')
+    ];
     const problems: string[] = [];
     for (const slug of GUIDE_SLUGS) {
       for (const locale of LOCALES) {

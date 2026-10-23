@@ -2,6 +2,14 @@ CanRun changes often. New models arrive, the calculator gains features, and now 
 
 ## Changes to the site
 
+<Update id="dgx-spark-128gb-rtx-pro-6000">
+
+### DGX Spark pages use the 128GB model, and the RTX PRO 6000 Blackwell joins the catalog
+
+Each model's <SiteLink to="/gpu/nvidia-dgx-spark">DGX Spark</SiteLink> page and the DGX Spark row in each model's table now use NVIDIA's own 128GB model, even where the 64GB configuration gets the same verdict, and the 64GB verdicts stay in the "Verdict by memory size" list. That day no verdict changed, but on those pages the memory bar, the longest context that keeps the same verdict and the larger-model suggestion switched to the 128GB figures. The <SiteLink to="/gpu/rtx-pro-6000-blackwell">RTX PRO 6000 Blackwell</SiteLink>, NVIDIA's workstation graphics card with 96GB of VRAM, is now in the catalog. Its Max-Q Workstation Edition has the same memory and bandwidth, so it is calculated with the same figures, and the calculator search finds it under either name.
+
+</Update>
+
 <Update id="dgx-spark-cluster">
 
 ### DGX Spark: two and four linked units
@@ -14,7 +22,7 @@ The <SiteLink to="/gpu/nvidia-dgx-spark">DGX Spark</SiteLink> page and each mode
 
 ### DGX Spark: a 64GB configuration, partner models and the memory its GPU can use
 
-The <SiteLink to="/gpu/nvidia-dgx-spark">DGX Spark</SiteLink> is now calculated in two configurations, 64GB and 128GB, and typing a partner maker's name for the same GB10 machine, such as the ASUS Ascent GX10 or the Lenovo ThinkStation PGX, now finds it in the calculator search. Instead of the 70% CanRun counts for Macs and the Strix Halo, its GPU share is now what Linux and the desktop leave free, starting from the lowest figure in owners' public boot logs, and the same limit applies when a model falls back to the CPU. That day at an 8k context, the Q2_K file of Solar Open 2 250B on the 128GB model moved from Runs slowly on the CPU to Runs well on the GPU, while the Q2_K file of DeepSeek V4 Flash 0731 went from Runs slowly on the CPU to not fitting at all. On the 64GB model, Llama 3.3 70B at Q4_K_M was calculated to fit fully on the GPU at an 8k context. Where the 64GB configuration gets the same verdict as the 128GB one, the model pages and each model's DGX Spark page now use 64GB.
+The <SiteLink to="/gpu/nvidia-dgx-spark">DGX Spark</SiteLink> is now calculated in two configurations, 64GB and 128GB, and typing a partner maker's name for the same GB10 machine, such as the ASUS Ascent GX10 or the Lenovo ThinkStation PGX, now finds it in the calculator search. Instead of the 70% CanRun counts for Macs and the Strix Halo, its GPU share is now what Linux and the desktop leave free, starting from the lowest figure in owners' public boot logs, and the same limit applies when a model falls back to the CPU. That day at an 8k context, the Q2_K file of Solar Open 2 250B on the 128GB model moved from Runs slowly on the CPU to Runs well on the GPU, while the Q2_K file of DeepSeek V4 Flash 0731 went from Runs slowly on the CPU to not fitting at all. On the 64GB model, Llama 3.3 70B at Q4_K_M was calculated to fit fully on the GPU at an 8k context.
 
 </Update>
 

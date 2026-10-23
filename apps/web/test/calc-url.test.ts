@@ -245,8 +245,8 @@ describe('plus= (서로 다른 GPU, 10-03 D67)', () => {
     expect(serializeCalcQuery(s, catalog)).toBe('?gpu=rtx-4090&gpus=2&plus=rtx-3060-12gb%2Crtx-3090');
   });
 
-  it('round-trips every pair of mixable cards (NVIDIA desktop 24×24 + AMD 6×6); the same card folds into gpus', () => {
-    expect(mixable).toHaveLength(30);
+  it('round-trips every pair of mixable cards (NVIDIA desktop 25×25 — 10-23 D120 RTX PRO 6000 Blackwell — + AMD 6×6); the same card folds into gpus', () => {
+    expect(mixable).toHaveLength(31);
     let n = 0;
     for (const a of mixable) {
       for (const b of mixable.filter((g) => g.effClass === a.effClass)) {
@@ -259,7 +259,7 @@ describe('plus= (서로 다른 GPU, 10-03 D67)', () => {
         n += 1;
       }
     }
-    expect(n).toBe(24 * 24 + 6 * 6);
+    expect(n).toBe(25 * 25 + 6 * 6);
   });
 
   it('folds, filters and caps: same card → gpus, other maker / laptop / GTX 10 / unknown dropped, 4 cards at most (trimmed from the end)', () => {

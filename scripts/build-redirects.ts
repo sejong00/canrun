@@ -83,7 +83,7 @@ export function buildRedirects(aliases: readonly AliasRecord[]): string {
 
 /**
  * GPU 비교 뒤집은 순서 → 정순 301 (10-19 D106) — 라우팅 전 로캘(en·ko·zh — zh 는 10-19 D109). 레지스트리 전 쌍(초안 포함 — 게시해도 URL 규칙이 바뀌지 않게).
- * 쌍 최대 14개(COMPARE_MAX — 10-23 D119) × 3 로캘 = 42줄 — 한도(2,000)에 비해 작다. 순서: 쌍마다 en → ko → zh
+ * 쌍 최대 16개(COMPARE_MAX — 10-23 D120) × 3 로캘 = 48줄 — 한도(2,000)에 비해 작다. 순서: 쌍마다 en → ko → zh
  */
 export function compareRedirects(): AliasRecord[] {
   const prefix = (locale: string) => (locale === DEFAULT_LOCALE ? '' : `/${locale}`);

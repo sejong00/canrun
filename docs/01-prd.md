@@ -53,7 +53,7 @@
 - 등급 산출 기본값: Q4_K_M 기준. 카드에는 "이 quant면 가능" 최적 quant를 병기.
 
 ### 허브 판정 규칙 (P1-1 — 정본 `packages/data/src/assess.ts`, 결정 기록 `docs/PROGRESS.md` §4 09-29)
-- **가정 하드웨어**: dGPU = 시스템 RAM 32GB DDR5-5600 듀얼채널(대역폭은 `gpus.json` `cpu-ddr5-5600-2ch`에서 조회) · Windows에서 화면 출력 담당(OS 예약 0.6GB) · ctx 8k · KV f16. 통합 메모리·CPU 프로필은 `ramOptionsGB` 구성마다 평가. 가정은 페이지에 명시한다. 통합 메모리 칩의 CPU 경로(wired limit 초과 → cpu-only) 대역폭은 `통합 대역폭 × min(1, 클래스 계수/CPU 계수)`(dense·MoE 각각, 엔진 상수에서 유도 — 새 상수 없음)로 깎는다: CPU 경로가 같은 칩의 GPU 경로보다 빠르게 추정되는 역전 방지(P1-1 리뷰, `unifiedCpuBandwidth`).
+- **가정 하드웨어**: dGPU = 시스템 RAM 32GB DDR5-5600 듀얼채널(대역폭은 `gpus.json` `cpu-ddr5-5600-2ch`에서 조회) · Windows에서 화면 출력 담당(OS 예약 0.6GB) · ctx 8k · KV f16. 통합 메모리·CPU 프로필은 `ramOptionsGB` 구성마다 평가하고, 모델 허브 행·콤보 페이지는 최고 판정이 나는 가장 작은 구성(D4 — 레코드에 대표 구성 `primaryRamGB` 가 있으면 판정과 관계없이 그 구성: DGX Spark 128GB, 10-23 D120 사용자 결정)을 쓴다. 가정은 페이지에 명시한다. 통합 메모리 칩의 CPU 경로(wired limit 초과 → cpu-only) 대역폭은 `통합 대역폭 × min(1, 클래스 계수/CPU 계수)`(dense·MoE 각각, 엔진 상수에서 유도 — 새 상수 없음)로 깎는다: CPU 경로가 같은 칩의 GPU 경로보다 빠르게 추정되는 역전 방지(P1-1 리뷰, `unifiedCpuBandwidth`).
 - **기준 quant**: Q4_K_M → 없으면 MXFP4(네이티브) → 없으면 Q4_K_M bpw에 가장 가까운 등록 quant. 판정 배지·등급 카운트·정렬은 기준 판정.
 - **추천 quant("이 quant면 가능")**: 기준이 비-desperate quant의 최고 판정에 이미 도달하면 기준 그대로 / 아니면 그 판정의 비-desperate quant 중 파일이 가장 큰 것 / desperate 티어는 비-desperate가 전부 F일 때만 / 전부 F면 추천 없음. 같은 판정 안에서 더 큰 quant로 올리는 "품질 상향 추천"은 하지 않는다(속도·컨텍스트를 잃는다).
 - **최후 수단**: desperate quant가 추천보다 높은 판정을 내면 "품질 손실 큼" 힌트로 따로 표시.
@@ -89,7 +89,7 @@
 
 ### Phase 3 — 수익 고도화·확장
 - Build Advisor(목표: 모델+tok/s → 최저 비용 하드웨어 조합, 신품/중고/클라우드 3열 비교) — `07-monetization.md`
-- 비교 페이지(`/compare/{gpu}-vs-{gpu}` LLM 관점 — 10-19 엄선 12쌍으로 앞당김, 10-23 DGX Spark 초안 2쌍 더해 상한 14쌍 — D119, 초안 게이트: PROGRESS §4 D106), 임베드 배지/위젯(백링크 엔진), 공개 API(rate-limited), Danawa/쿠팡 가격 연동(ko)
+- 비교 페이지(`/compare/{gpu}-vs-{gpu}` LLM 관점 — 10-19 엄선 12쌍으로 앞당김, 10-23 DGX Spark 초안 2쌍 더해 상한 14쌍 — D119, 같은 날 초안 2쌍(RTX PRO 6000 Blackwell·M5 Ultra) 더해 상한 16쌍 — D120, 초안 게이트: PROGRESS §4 D106), 임베드 배지/위젯(백링크 엔진), 공개 API(rate-limited), Danawa/쿠팡 가격 연동(ko)
 
 ## 5. 페이지 인벤토리와 콘텐츠 소스
 

@@ -236,7 +236,7 @@ describe('assembleResults — options', () => {
     const configs = hardwareConfigs(gpu, catalog.gpus);
     for (const card of m4pro.all) {
       const combos = configs.map((c) => assessCombo(catalog, gpu, c, card.model));
-      expect(card.hubConfig!.ramGB).toBe(configs[combos.indexOf(pickConfigCombo(combos))]!.ramGB);
+      expect(card.hubConfig!.ramGB).toBe(configs[combos.indexOf(pickConfigCombo(combos, gpu))]!.ramGB);
     }
     // CPU 프로필: 사용자가 Windows 를 골라도 콤보 페이지는 linux 최대 RAM 구성
     const cpu = assembleResults(catalog, withGpu('cpu-ddr5-5600-2ch', { os: 'windows', ramGB: 16 }))!;
@@ -419,9 +419,10 @@ describe('linked DGX Spark units (10-23 D118): llama.cpp RPC, theoretical, the R
       } else {
         expect(card.rpcServers, card.model.id).toBeUndefined();
       }
-      // 콤보 페이지(상세)는 1대 구성 — 1대 구성 가운데 고른 RAM(허브와 같은 pickConfigCombo)
+      // 콤보 페이지(상세)는 1대 구성 — 1대 구성 가운데 고른 RAM(허브와 같은 pickConfigCombo). DGX Spark 는 대표 구성 128GB(10-23 D120)
       const combos = hardwareConfigs(seed.gpus.find((g) => g.id === 'nvidia-dgx-spark')!, catalog.gpus).map((c) => assessCombo(catalog, run.hardware.gpu, c, card.model));
-      expect(card.hubConfig, card.model.id).toEqual({ ramGB: pickConfigCombo(combos).ramGB, os: 'linux' });
+      expect(card.hubConfig, card.model.id).toEqual({ ramGB: pickConfigCombo(combos, run.hardware.gpu).ramGB, os: 'linux' });
+      expect(card.hubConfig!.ramGB, card.model.id).toBe(128);
     }
     const oss = run.all.find((c) => c.model.id === 'gpt-oss-120b')!;
     const one = assembleResults(catalog, withGpu('nvidia-dgx-spark', { ramGB: 128 }))!.all.find((c) => c.model.id === 'gpt-oss-120b')!;

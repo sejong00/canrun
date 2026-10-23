@@ -185,7 +185,7 @@ export function comboCardText(hub: GpuHubData, modelId: string, t: OgTranslators
   const { gpu } = hub;
   const row = hub.rows.find((r) => r.model.id === modelId);
   if (!row) throw new Error(`og card: model ${modelId} is not on the ${gpu.id} hub`);
-  const combo = pickConfigCombo(row.combos);
+  const combo = pickConfigCombo(row.combos, gpu);
   const config = hub.configs[row.combos.indexOf(combo)]!;
   const tv = titleVerdict(combo);
   // 수치는 제목 판정이 가리키는 양자화 — 기준, 추천(기준이 불가), RAM 힌트 구성

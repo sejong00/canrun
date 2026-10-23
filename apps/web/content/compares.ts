@@ -32,9 +32,12 @@ export type CompareEntry = CompareStatus & {
   dateModified: string;
 };
 
-/** 비교 페이지 상한 — 고른 소수 쌍만 (프로그래매틱 대량 노출 금지). 10-23 D119: DGX Spark 초안 2쌍으로 12 → 14(승인된 계획 C 절) */
+/**
+ * 비교 페이지 상한 — 고른 소수 쌍만 (프로그래매틱 대량 노출 금지). 10-23 D119: DGX Spark 초안 2쌍으로 12 → 14(승인된 계획 C 절).
+ * 10-23 D120: 사용자 결정('다 해줘')으로 DGX Spark 초안 2쌍(RTX PRO 6000 Blackwell·M5 Ultra)을 더해 14 → 16
+ */
 // source: docs/04 §11 (policy)
-export const COMPARE_MAX = 14;
+export const COMPARE_MAX = 16;
 
 export const COMPARE_SLUGS = [
   'rtx-5060-ti-16gb-vs-rtx-5070',
@@ -52,6 +55,9 @@ export const COMPARE_SLUGS = [
   // 10-23 D119: DGX Spark 초안 2쌍 — 게시는 사용자 승인 뒤(D106)
   'nvidia-dgx-spark-vs-apple-m5-max-40c',
   'nvidia-dgx-spark-vs-rtx-5090',
+  // 10-23 D120: DGX Spark 초안 2쌍 더 — 게시는 사용자 승인 뒤(D106)
+  'nvidia-dgx-spark-vs-rtx-pro-6000-blackwell',
+  'nvidia-dgx-spark-vs-apple-m5-ultra',
 ] as const;
 
 export type CompareSlug = (typeof COMPARE_SLUGS)[number];
@@ -148,7 +154,7 @@ export const COMPARES: Readonly<Record<CompareSlug, CompareEntry>> = {
   },
   // 10-23 D119 초안(게시는 사용자 승인 뒤). 맥 스튜디오 쪽 칩은 지금 파는 맥 스튜디오(2026, M5 Max·M5 Ultra) 가운데 같은 128GB 구성이 있는 M5 Max 40코어 —
   // 메모리가 같아 GPU 몫·대역폭 차이가 그대로 드러나고, 카탈로그 공개 벤치마크도 M4 Max 40코어(1)보다 많다(5). M5 Ultra 256GB('vs mac studio m5 ultra' 자동완성)는
-  // 계획의 상한(14) 안에 두려고 넣지 않았다 — 필요하면 사용자 결정(PROGRESS §2 큐 4)
+  // 이때 계획의 상한(14) 안에 두려고 넣지 않았다가 10-23 D120 사용자 결정으로 따로 더했다(아래)
   'nvidia-dgx-spark-vs-apple-m5-max-40c': {
     status: 'draft',
     a: 'nvidia-dgx-spark',
@@ -163,6 +169,24 @@ export const COMPARES: Readonly<Record<CompareSlug, CompareEntry>> = {
     b: 'rtx-5090',
     group: 'cross-platform',
     demand: "Google ko 'dgx spark vs 5090' (autocomplete 10-23)",
+    dateModified: '2026-10-23',
+  },
+  // 10-23 D120 초안(게시는 사용자 승인 뒤). RTX PRO 6000 Blackwell 은 같은 날 카탈로그에 넣은 레코드(Workstation Edition — Max-Q 는 별칭)
+  'nvidia-dgx-spark-vs-rtx-pro-6000-blackwell': {
+    status: 'draft',
+    a: 'nvidia-dgx-spark',
+    b: 'rtx-pro-6000-blackwell',
+    group: 'cross-platform',
+    demand: "Google ko 'dgx spark vs rtx pro 6000' (autocomplete 10-23)",
+    dateModified: '2026-10-23',
+  },
+  // 10-23 D120 초안. M5 Ultra 는 맥 스튜디오(2026) 칩 — 비교 페이지는 허브 요약 구성(가장 큰 메모리 256GB)만 다룬다(`compareGpus` primaryIndex)
+  'nvidia-dgx-spark-vs-apple-m5-ultra': {
+    status: 'draft',
+    a: 'nvidia-dgx-spark',
+    b: 'apple-m5-ultra',
+    group: 'cross-platform',
+    demand: "Google 'dgx spark vs mac studio m5 ultra' (autocomplete 10-23 — suggested with 'dgx spark vs mac studio')",
     dateModified: '2026-10-23',
   },
 };
@@ -186,6 +210,8 @@ export const COMPARE_INTRO_SLUGS = [
   'apple-m4-pro-vs-rtx-5060-ti-16gb',
   'nvidia-dgx-spark-vs-apple-m5-max-40c',
   'nvidia-dgx-spark-vs-rtx-5090',
+  'nvidia-dgx-spark-vs-rtx-pro-6000-blackwell',
+  'nvidia-dgx-spark-vs-apple-m5-ultra',
 ] as const satisfies readonly CompareSlug[];
 
 export type CompareIntroSlug = (typeof COMPARE_INTRO_SLUGS)[number];
