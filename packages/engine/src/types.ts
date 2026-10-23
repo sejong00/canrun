@@ -172,7 +172,8 @@ export type ModelQuant = {
   loopGB?: number;
   /**
    * 트렁크 층 수(config `num_hidden_layers` — 데이터 계층은 늘 채운다, 10-23 D118). 통합 메모리 여러 대(§6.2 — `Hardware.nodes` ≥ 2)에서 가장 많이 맡는 대의
-   * 몫(층 + 출력층 칸을 대수로 나눈 올림 — `clusterShareOf`)에만 쓴다. 한 대·dGPU 산식은 읽지 않는다. 없으면 고르게(1/대수) 나눈다고 본다
+   * 몫(층 + 출력층 칸을 대수로 나눈 올림 — `clusterShareOf`, 첫 기기가 아닌 대는 내림 + 1 — `clusterRemoteShareOf`)에만 쓴다. 한 대·dGPU 산식은 읽지 않는다.
+   * 없으면 고르게(1/대수) 나눈다고 본다
    */
   layers?: number;
   /**

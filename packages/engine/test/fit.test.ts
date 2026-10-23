@@ -5,7 +5,9 @@ import { fit } from '../src/fit';
 import { evaluate } from '../src/index';
 import {
   clusterMaxMoeLayersOf,
+  clusterMaxRemoteMoeLayersOf,
   clusterNodeLoadGB,
+  clusterRemoteShareOf,
   clusterShareOf,
   computeBufferGB,
   gpuUnitsOf,
@@ -380,7 +382,7 @@ describe('§6.2 unified-memory cluster (10-23 D118): DGX Spark × N over llama.c
     expect(clusterHopSeconds(SPARK_128_USABLE)).toBe(0);
   });
 
-  it('busiest unit = ceil((layers + 1) / N) / layers of the device weights and KV + the first unit’s off-device bytes + one compute buffer', () => {
+  it('busiest unit (first unit) = ceil((layers + 1) / N) / layers of the device weights and KV + the first unit’s off-device bytes + one compute buffer', () => {
     expect(clusterShareOf({ layers: 36 }, 2)).toBeCloseTo(19 / 36, 12);
     expect(clusterShareOf({ layers: 36 }, 4)).toBeCloseTo(10 / 36, 12);
     expect(clusterShareOf({ layers: 80 }, 3)).toBeCloseTo(27 / 80, 12);
@@ -403,6 +405,29 @@ describe('§6.2 unified-memory cluster (10-23 D118): DGX Spark × N over llama.c
     expect(clusterNodeLoadGB(SPARK_128_USABLE, OSS120, 10, 2)).toEqual({ weights: 10, kv: 2 });
   });
 
+  it('a unit other than the first takes floor((layers + 1) / N) + 1 cells — one more than the ceiling when the cells divide by N (first unit with slightly less free memory, D118 review 2)', () => {
+    // 37칸(36층 + 출력층)은 2·3·4대로 나누어떨어지지 않는다 — 올림과 같다
+    for (const n of [2, 3, 4]) expect(clusterRemoteShareOf({ layers: 36 }, n)).toBe(clusterShareOf({ layers: 36 }, n));
+    // 44칸(43층): 2대 22 → 23, 4대 11 → 12, 3대(나누어떨어지지 않는다) 15 그대로
+    expect(clusterRemoteShareOf({ layers: 43 }, 2)).toBeCloseTo(23 / 43, 12);
+    expect(clusterRemoteShareOf({ layers: 43 }, 4)).toBeCloseTo(12 / 43, 12);
+    expect(clusterRemoteShareOf({ layers: 43 }, 3)).toBe(clusterShareOf({ layers: 43 }, 3));
+    expect(clusterRemoteShareOf({}, 4)).toBe(0.25);
+    expect(clusterRemoteShareOf({ layers: 1 }, 2)).toBe(1);
+    expect(clusterRemoteShareOf({ layers: 43 }, 1)).toBe(1);
+    // 크기가 고른 43층(DeepSeek V4 Flash 꼴 — 상주 154.42 · 장치 밖 0.57GB): 2대는 원격 한 대(23칸)가 첫 기기(22칸 + 장치 밖 몫)보다 크다 — 그 대의 가중치·KV
+    const dsv4 = { ...GPT_OSS_120B, fileGB: 154.99, expertGB: 147.17, nonExpertGB: 7.25, layers: 43 };
+    const resident = 147.17 + 7.25;
+    const load = clusterNodeLoadGB(x2, dsv4, 154.99, 2);
+    expect(load.weights).toBeCloseTo((resident * 23) / 43, 9);
+    expect(load.kv).toBeCloseTo((2 * 23) / 43, 12);
+    expect(fit(x2, dsv4, { ctx: 8192 }).vram.weights).toBeCloseTo((resident * 23) / 43, 9);
+    // 3대는 나누어떨어지지 않아 첫 기기 몫 그대로(올림 15칸 + 장치 밖 몫)
+    const three = clusterNodeLoadGB({ ...SPARK_128_USABLE, nodes: 3 }, dsv4, 154.99, 2);
+    expect(three.weights).toBeCloseTo((resident * 15) / 43 + (154.99 - resident), 9);
+    expect(three.kv).toBeCloseTo((2 * 15) / 43, 12);
+  });
+
   it('MoE with leading dense layers: the expert tensors count on the units their layers land on (floor(layer × N / (layers + 1))), the rest by the cell share (D118 review)', () => {
     const idx = GLM53_Q4K_CLUSTER.moeLayerIdx!;
     // 45층 + 출력층 = 46칸: 2대 0~22 | 23~45, 3대 0~15 | 16~30 | 31~45, 4대 0~11 | 12~22 | 23~34 | 35~45 — 앞 3층(0·1·2)은 dense
@@ -411,6 +436,13 @@ describe('§6.2 unified-memory cluster (10-23 D118): DGX Spark × N over llama.c
     expect(clusterMaxMoeLayersOf(idx, 45, 4)).toBe(12);
     expect(clusterMaxMoeLayersOf([0, 1, 2, 3], 4, 2)).toBe(3); // 5칸: il/5 < 0.5 인 0·1·2 가 첫 장치
     expect(clusterMaxMoeLayersOf([-1, 99], 4, 2)).toBe(1); // 범위 밖 번호는 양 끝 대로
+    // 첫 기기가 아닌 대 — 닫힌 구간 [k(층+1)/N, (k+1)(층+1)/N] (첫 기기의 남은 메모리가 조금 작으면 위 끝 경계 칸도 그 대로, D118 리뷰 2차)
+    // 46칸: 2대 원격 0~23(전문가 3~23 = 21) · 3대 원격 0~15 | 16~30(15 — 46/3 은 정수 경계가 없다) · 4대 원격 0~11 | 12~23 | 23~34(12)
+    expect(clusterMaxRemoteMoeLayersOf(idx, 45, 2)).toBe(21);
+    expect(clusterMaxRemoteMoeLayersOf(idx, 45, 3)).toBe(15);
+    expect(clusterMaxRemoteMoeLayersOf(idx, 45, 4)).toBe(12);
+    expect(clusterMaxRemoteMoeLayersOf([0, 1, 2, 3], 3, 2)).toBe(3); // 4칸 · 2대: 원격은 0·1·2(경계 칸 2 포함)
+    expect(clusterMaxRemoteMoeLayersOf([-1, 99], 4, 2)).toBe(1); // 범위 밖 번호는 양 끝으로 — 첫 기기 쪽은 세지 않는다
     const x4 = { ...SPARK_128_USABLE, nodes: 4 };
     const { expertGB, nonExpertGB, fileGB } = GLM53_Q4K_CLUSTER;
     const share = 12 / 45;

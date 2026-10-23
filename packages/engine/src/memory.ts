@@ -137,20 +137,35 @@ export function nodeCountOf(hw: Pick<Hardware, 'kind' | 'nodes'>): number {
 }
 
 /**
- * 통합 메모리 여러 대(§6.2, 10-23 D118)에서 가장 많이 맡는 대의 층 몫 — llama.cpp 기본 층 분할은 장치마다 남은 메모리 비율로 나누고(같은 기기면 고르게),
- * 출력층도 한 칸으로 세어 (층 + 1) 칸을 나눈다(https://github.com/ggml-org/llama.cpp/blob/184f6536024668e8908ab8c86033d56708e62b40/src/llama-model.cpp#L1641-L1699 —
- * 칸 il 의 장치 = upper_bound(splits, il / (층 + 1)), 출력층 = 칸 n_layer). 한 장치가 받는 칸은 많아야 올림((층 + 1) / 대수) 개이므로 그 수를 층 수로 나눈 몫을
- * 가중치·KV 에 쓴다 — 층마다 크기가 같다고 보는 **근사**다(상한이 아니다 — D118 리뷰). 카탈로그 큰 행(파일 40GB 이상 24행)의 GGUF 헤더로 llama.cpp 분할을
- * 그대로 따라 해 보면 대부분 실제보다 조금 크지만(+0.1~3.9GB — 출력층이 트렁크 층보다 작다), 층마다 양자화가 다른 파일은 작게 나온다(Kolibri-1 Q4_K_M — 블록
- * 0.89~1.65GB — 2·3·4대 −0.81·−1.66·−2.04GB, Llama 3.3 70B Q4_K_M 3대 −0.23GB). KV 도 층마다 같다고 보므로 KV 층이 띄엄띄엄인 하이브리드는 KV 층이 몰린 대를
- * 아주 긴 문맥에서 작게 본다(Solar Open2 Q2_K 1M f16 4대 약 3.1GB — docs/02 §6.2·§9). 앞쪽 dense 층이 있는 MoE 의 전문가 몫은 `clusterNodeLoadGB` 가 층 위치로 센다.
- * 층 수가 없는 입력은 1/대수, 대수 1 이면 1. [0, 1] 로 묶는다
+ * 통합 메모리 여러 대(§6.2, 10-23 D118)에서 첫 기기(llama-server 를 띄운 대 — 장치 목록 맨 뒤)가 받는 층 몫 — llama.cpp 기본 층 분할은 장치마다 남은 메모리
+ * 비율로 나누고(같은 기기면 고르게), 출력층도 한 칸으로 세어 (층 + 1) 칸을 나눈다(https://github.com/ggml-org/llama.cpp/blob/184f6536024668e8908ab8c86033d56708e62b40/src/llama-model.cpp#L1641-L1699 —
+ * 칸 il 의 장치 = upper_bound(splits, il / (층 + 1)), 출력층 = 칸 n_layer). 남은 메모리가 같으면 한 장치가 받는 칸은 많아야 올림((층 + 1) / 대수) 개이므로 그 수를
+ * 층 수로 나눈 몫을 가중치·KV 에 쓴다. 첫 기기가 아닌 대의 몫은 `clusterRemoteShareOf`(남은 메모리가 조금만 달라도 한 칸 더 받을 수 있다 — 엔진 0.14.2).
+ * 층마다 크기가 같다고 보는 **근사**다(상한이 아니다 — D118 리뷰): 카탈로그 큰 행(파일 40GB 이상 24행)의 GGUF 헤더로 llama.cpp 분할을 그대로 따라 해 보면
+ * 대부분 실제보다 조금 크지만(출력층이 트렁크 층보다 작다), 층마다 양자화가 다른 파일은 작게 나온다(Kolibri-1 Q4_K_M — 블록 0.89~1.65GB — 최대 4대 −2.04GB).
+ * KV 도 층마다 같다고 보므로 KV 층이 띄엄띄엄인 하이브리드는 KV 층이 몰린 대를 아주 긴 문맥에서 작게 본다(Solar Open2 Q2_K 1M f16 4대 약 3.1GB — docs/02 §6.2·§9).
+ * 앞쪽 dense 층이 있는 MoE 의 전문가 몫은 `clusterNodeLoadGB` 가 층 위치로 센다. 층 수가 없는 입력은 1/대수, 대수 1 이면 1. [0, 1] 로 묶는다
  */
 export function clusterShareOf(mq: Pick<ModelQuant, 'layers'>, nodes: number): number {
   if (nodes <= 1) return 1;
   const layers = mq.layers;
   if (layers === undefined || layers < 1) return 1 / nodes;
   return Math.min(1, Math.ceil((layers + 1) / nodes) / layers);
+}
+
+/**
+ * 통합 메모리 여러 대(§6.2, D118 리뷰 2차 · 엔진 0.14.2)에서 첫 기기가 아닌 대(`--rpc` 로 붙인 RPC 서버 — 장치 목록 앞)가 받는 층 몫 = 내림((층 + 1) / 대수) + 1 칸 ÷ 층 수.
+ * llama.cpp 는 남은 메모리 비율로 경계를 정하므로 첫 기기의 남은 메모리가 조금만 작아도(llama-server 프로세스·데스크톱 — 같은 설정이면 그러기 쉽다, 실측 확인은 없다) 경계가 앞 장치 쪽으로
+ * 밀려, (층 + 1) 칸이 대수로 나누어떨어지는 구성에서는 원격 한 대가 올림보다 한 칸 더 받는다(DeepSeek V4 Flash 44칸: 2대 22 → 23, 4대 11 → 12). 원격 장치 k 가 받을 수
+ * 있는 칸은 닫힌 구간 [k(층 + 1)/대수, (k + 1)(층 + 1)/대수] 의 정수이고 그 수의 최댓값이 이 값이다(첫 RPC 장치 — 칸 0 ~ 내림((층 + 1)/대수)). 나누어떨어지지 않으면
+ * 올림과 같다(`clusterShareOf` 와 같은 값). 남은 메모리 차이가 커서 경계가 두 칸 이상 밀리면 더 받을 수 있다 — 근사의 한계(docs/02 §6.2).
+ * 층 수가 없는 입력은 1/대수, 대수 1 이면 1. [0, 1] 로 묶는다
+ */
+export function clusterRemoteShareOf(mq: Pick<ModelQuant, 'layers'>, nodes: number): number {
+  if (nodes <= 1) return 1;
+  const layers = mq.layers;
+  if (layers === undefined || layers < 1) return 1 / nodes;
+  return Math.min(1, (Math.floor((layers + 1) / nodes) + 1) / layers);
 }
 
 /**
@@ -168,13 +183,35 @@ export function clusterMaxMoeLayersOf(moeLayerIdx: readonly number[], layers: nu
 }
 
 /**
- * 통합 메모리 여러 대(§6.2, 10-23 D118)에서 가장 많이 맡는 대의 가중치·KV GB. 장치에 올라가는 가중치(층·출력층 — `gpuResidentGBFor`)와 KV 는 `clusterShareOf` 몫,
- * 장치 밖 몫(입력 임베딩 — llama.cpp 는 늘 첫 기기의 CPU 에 둔다, 같은 통합 메모리 · 기본 미적재 MTP 블록도 보수로 센다)은 첫 기기에 더한다 — 첫 기기의 칸 수가
- * 다른 대보다 적을 수 있어도 가장 많은 칸 + 장치 밖 몫으로 묶는다(https://github.com/ggml-org/llama.cpp/blob/184f6536024668e8908ab8c86033d56708e62b40/src/llama.cpp#L275-L276 —
- * RPC 장치가 목록 앞, 첫 기기의 GPU 가 맨 뒤라 마지막 층들과 출력층을 맡는다 · 입력층은 CPU, 같은 커밋 src/llama-model.cpp#L1688-L1690).
+ * 통합 메모리 여러 대(§6.2, D118 리뷰 2차 · 엔진 0.14.2)에서 첫 기기가 아닌 대 하나가 맡을 수 있는 전문가 층 수의 최댓값 — 원격 장치 k(0 ~ 대수 − 2)가 받을 수 있는
+ * 칸은 닫힌 구간 k(층 + 1) ≤ il × 대수 ≤ (k + 1)(층 + 1)(정수 산식 — 같은 기기면 아래 끝만, 첫 기기의 남은 메모리가 조금 작으면 위 끝 경계 칸도 이 대로 온다 —
+ * `clusterRemoteShareOf` 와 같은 이유)이고, 그 안의 전문가 층 번호 수 가운데 가장 큰 값을 센다. 범위 밖 번호는 양 끝 대로 묶는다(첫 기기 쪽은 세지 않는다)
+ */
+export function clusterMaxRemoteMoeLayersOf(moeLayerIdx: readonly number[], layers: number, nodes: number): number {
+  const cells = layers + 1;
+  let max = 0;
+  for (let k = 0; k < nodes - 1; k++) {
+    let n = 0;
+    for (const raw of moeLayerIdx) {
+      const il = Math.min(layers, Math.max(0, raw));
+      if (il * nodes >= k * cells && il * nodes <= (k + 1) * cells) n++;
+    }
+    max = Math.max(max, n);
+  }
+  return max;
+}
+
+/**
+ * 통합 메모리 여러 대(§6.2, 10-23 D118)에서 가장 많이 맡는 대의 가중치·KV GB — 첫 기기와 첫 기기가 아닌 대 가운데 (가중치 + KV)가 큰 쪽.
+ * 첫 기기: 장치에 올라가는 가중치(층·출력층 — `gpuResidentGBFor`)와 KV 는 `clusterShareOf` 몫, 장치 밖 몫(입력 임베딩 — llama.cpp 는 늘 첫 기기의 CPU 에 둔다,
+ * 같은 통합 메모리 · 기본 미적재 MTP 블록도 보수로 센다)은 첫 기기에 더한다 — 첫 기기의 칸 수가 다른 대보다 적을 수 있어도 가장 많은 칸 + 장치 밖 몫으로 묶는다
+ * (https://github.com/ggml-org/llama.cpp/blob/184f6536024668e8908ab8c86033d56708e62b40/src/llama.cpp#L275-L276 — RPC 장치가 목록 앞, 첫 기기의 GPU 가 맨 뒤라 마지막 층들과
+ * 출력층을 맡는다 · 입력층은 CPU, 같은 커밋 src/llama-model.cpp#L1688-L1690).
+ * 첫 기기가 아닌 대(D118 리뷰 2차 · 엔진 0.14.2): 상주 가중치·KV 를 `clusterRemoteShareOf` 몫으로(장치 밖 몫 없음) — 첫 기기의 남은 메모리가 조금 작으면 원격 한 대가
+ * 한 칸 더 받는다. 칸 수가 대수로 나누어떨어지지 않으면 이쪽이 첫 기기보다 크지 않아 0.14.1 과 같은 값이다.
  * 일부 층에만 전문가가 있는 MoE(`moeLayerIdx` — 앞쪽 dense 층, GLM-5.3-Flash·Ling·K2-Horizon·Nemotron · 헤더 실측 분할 행, D118 리뷰)는 전문가 텐서(`expertGB`)를
- * 전문가 층에만 나눠 `clusterMaxMoeLayersOf` 대의 몫으로, 나머지 상주 몫(비전문가)만 `clusterShareOf` 몫으로 센다 — 층마다 같다고 보면 dense 층이 작은 만큼
- * 전문가 층 대를 작게 본다(GLM-5.3-Flash Q4_K_M 4대: 헤더 시뮬레이션 51.16GB 를 48.86 으로 보던 것이 이 식으로 52.13 — 2·3대 95.21·65.20 vs 95.15·63.95).
+ * 전문가 층에만 나눠 첫 기기는 `clusterMaxMoeLayersOf`, 첫 기기가 아닌 대는 `clusterMaxRemoteMoeLayersOf` 대의 몫으로, 나머지 상주 몫(비전문가)만 칸 몫으로 센다
+ * — 층마다 같다고 보면 dense 층이 작은 만큼 전문가 층 대를 작게 본다(GLM-5.3-Flash Q4_K_M 4대: 헤더 시뮬레이션 51.16GB 를 48.86 으로 보던 것이 이 식으로 52.13).
  * 반복 층 모델(`loops` — 10-22 D114)은 물리 가중치가 첫 반복을 맡은 앞쪽 대에 몰리므로 가중치 몫을 나누지 않는다(보수). 한 대면 { weights, kv } 그대로
  */
 export function clusterNodeLoadGB(
@@ -186,15 +223,25 @@ export function clusterNodeLoadGB(
   const nodes = nodeCountOf(hw);
   if (nodes <= 1) return { weights, kv };
   const share = clusterShareOf(mq, nodes);
+  const remoteShare = clusterRemoteShareOf(mq, nodes);
   const resident = gpuResidentGBFor(mq, weights);
   const idx = mq.moeLayerIdx;
-  let onDevices: number;
-  if (mq.loops !== undefined && mq.loops > 1) onDevices = resident;
-  else if (idx !== undefined && idx.length > 0 && mq.layers !== undefined && mq.layers >= 1 && mq.expertGB !== undefined) {
+  let onFirst: number;
+  let onRemote: number;
+  if (mq.loops !== undefined && mq.loops > 1) {
+    onFirst = resident;
+    onRemote = resident;
+  } else if (idx !== undefined && idx.length > 0 && mq.layers !== undefined && mq.layers >= 1 && mq.expertGB !== undefined) {
     const expert = Math.min(resident, Math.max(0, mq.expertGB));
-    onDevices = (expert * clusterMaxMoeLayersOf(idx, mq.layers, nodes)) / idx.length + (resident - expert) * share;
-  } else onDevices = resident * share;
-  return { weights: Math.min(weights, onDevices + (weights - resident)), kv: kv * share };
+    onFirst = (expert * clusterMaxMoeLayersOf(idx, mq.layers, nodes)) / idx.length + (resident - expert) * share;
+    onRemote = (expert * clusterMaxRemoteMoeLayersOf(idx, mq.layers, nodes)) / idx.length + (resident - expert) * remoteShare;
+  } else {
+    onFirst = resident * share;
+    onRemote = resident * remoteShare;
+  }
+  const first = { weights: Math.min(weights, onFirst + (weights - resident)), kv: kv * share };
+  const remote = { weights: Math.min(weights, onRemote), kv: kv * remoteShare };
+  return remote.weights + remote.kv > first.weights + first.kv ? remote : first;
 }
 
 /** 모드별 사용 가능 메모리 GB (§2.3). 통합 메모리 여러 대(§6.2)도 **한 대** 값 — 판정은 가장 많이 맡는 대가 이 값에 들어가는지로 한다 */

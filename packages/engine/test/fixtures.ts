@@ -1266,48 +1266,83 @@ export const KOLIBRI1_Q4K: ModelQuant = moeFile(
   2.57,
 );
 
+/** DeepSeek V4 Flash 0731 행 + 트렁크 층 수(데이터 arch.layers 43 — 44칸이라 2·4대에서 나누어떨어진다, D118 리뷰 2차) */
+export const DSV4_FLASH_MXFP4_CLUSTER: ModelQuant = { ...DSV4_FLASH_MXFP4, layers: 43 };
+export const DSV4_FLASH_Q2K_CLUSTER: ModelQuant = { ...DSV4_FLASH_Q2K, layers: 43 };
+
 /**
- * 가장 많이 맡는 대 — GGUF 헤더로 따라 한 llama.cpp 기본 층 분할(D118 리뷰 — 헤더는 10-23 에 HF 에서 받았다). 같은 기기(남은 메모리가 같다)면 칸 il(0 ~ 블록 수)의 장치 =
- * 내림(il × 대수 / (블록 수 + 1)), RPC 장치가 앞·첫 기기 GPU 가 맨 뒤라 출력층(마지막 칸)은 첫 기기, 입력 임베딩은 첫 기기 CPU(같은 통합 메모리), MTP 블록은 기본
- * 미적재(https://github.com/ggml-org/llama.cpp/blob/184f6536024668e8908ab8c86033d56708e62b40/src/llama-model.cpp#L1641-L1699 ·
+ * 가장 많이 맡는 대 — GGUF 헤더로 따라 한 llama.cpp 기본 층 분할(D118 리뷰 — 헤더는 10-23 에 HF 에서 받았다). 칸 il(0 ~ 블록 수)의 장치 = upper_bound(splits, il / (블록 수 + 1))
+ * (splits = 장치별 남은 메모리의 누적 비율, float), RPC 장치가 앞·첫 기기 GPU 가 맨 뒤라 출력층(마지막 칸)은 첫 기기, 입력 임베딩은 첫 기기 CPU(같은 통합 메모리), MTP 블록은
+ * 기본 미적재(https://github.com/ggml-org/llama.cpp/blob/184f6536024668e8908ab8c86033d56708e62b40/src/llama-model.cpp#L1641-L1699 ·
  * https://github.com/ggml-org/llama.cpp/blob/184f6536024668e8908ab8c86033d56708e62b40/src/llama.cpp#L275-L276). 값은 대마다 블록 텐서 바이트 합(+ 출력층·입력 임베딩)의
- * 최댓값 GB(2·3·4대)이고, `engineGB` 는 이 엔진의 가장 많이 맡는 대 가중치(`clusterNodeLoadGB`), `layerUniformGB` 는 층마다 같다고 본 0.14.0 의 값이다.
- * - GLM-5.3-Flash: 앞 3블록이 dense(0.313GB), MoE 블록은 4.27GB(Q4_K) — 층마다 같다고 보면 2·4대가 실제보다 작았다(−2.12·−2.30GB). 전문가를 그 층의 대로
- *   세면(0.14.1) 실제 이상(+0.06 ~ +1.26GB). 64GB × 4대·1M·KV q4_0 의 Q2_K 는 0.14.0 이 '들어간다'(47.86 ≤ 48.2)로 봤지만 이 분할로는 가장 많이 맡는 대가
- *   49.28GB 다(가중치 37.57 + KV 3/11 + 버퍼 10.1) — 지금은 '안 들어간다'(50.22)
+ * 최댓값 GB(2·3·4대) — `busiestGB` 는 남은 메모리가 같을 때(칸 il 의 장치 = 내림(il × 대수 / (블록 수 + 1))), `busiestFirstSmallerGB` 는 첫 기기의 남은 메모리만 0.1% 작을 때
+ * (D118 리뷰 2차 — 경계가 앞 장치 쪽으로 밀려 칸 수가 대수로 나누어떨어지면 첫 RPC 장치가 한 칸 더 받는다: DeepSeek V4 Flash 44칸 2대 22·22 → 23·21, 4대 11·11·11·11 →
+ * 12·11·11·10). `engineGB` 는 이 엔진의 가장 많이 맡는 대 가중치(`clusterNodeLoadGB` — 0.14.2 는 첫 기기와 원격 한 대 중 큰 쪽), `layerUniformGB` 는 전문가 층 위치를
+ * 쓰지 않고 층마다 같다고 본 이 엔진의 값, `knownUnder` 는 엔진이 작게 보는 알려진 한계 행이다.
+ * - GLM-5.3-Flash: 앞 3블록이 dense(0.313GB), MoE 블록은 4.27GB(Q4_K) — 층마다 같다고 본 0.14.0(첫 기기 몫만 — 93.033·64.925·48.864)은 2·4대가 실제보다
+ *   작았다(−2.12·−2.30GB). 전문가를 그 층의 대로 세면(0.14.1) 두 경우 모두 실제 이상(+0.06 ~ +1.26GB). 64GB × 4대·1M·KV q4_0 의 Q2_K 는 0.14.0 이 '들어간다'
+ *   (47.86 ≤ 48.2)로 봤지만 이 분할로는 가장 많이 맡는 대가 49.28GB 다(가중치 37.57 + KV 3/11 + 버퍼 10.1) — 지금은 '안 들어간다'(50.22)
+ * - DeepSeek V4 Flash 0731(ggml-org): 블록 크기가 고르다 — 0.14.1(첫 기기 몫만)은 남은 메모리가 같으면 실제 이상(+0.66~+0.87GB)이지만 첫 기기가 0.1% 작으면
+ *   2·4대 MXFP4 −2.72·−2.85GB(Q2_K −1.92·−2.02) 작았고, 64GB × 4대 · 524,288 · KV f16·q8_0·q4_0 이 '들어간다'(46.30·45.87·45.64 ≤ 48.2 — 분할로는 49.23·48.76·48.51)로
+ *   뒤집혀 있었다. 0.14.2(원격 한 대 = 내림((층 + 1)/대수) + 1 칸)는 두 경우의 큰 쪽보다 +0.14 ~ +0.77GB 크다(남은 메모리가 같으면 2·4대는 한 칸만큼 더 커
+ *   +2.82 ~ +3.89GB — 보수 쪽)
  * - Kolibri-1 Q4_K_M: 블록마다 양자화가 달라 0.894~1.649GB(앞쪽이 무겁고 가장 무거운 대가 첫 RPC 장치) — 엔진은 층마다 같다고 보는 근사라 2·3·4대
- *   −0.81·−1.66·−2.04GB 작다(카탈로그 큰 행 24개 중 가장 큰 과소 — docs/02 §6.2·§9 에 밝힌 한계, 값 고정)
+ *   −0.81·−1.92·−2.04GB(3대는 첫 기기가 0.1% 작을 때 — 같을 때 −1.02) 작다(카탈로그 큰 행 24개 중 가장 큰 과소 — docs/02 §6.2·§9 에 밝힌 한계, 값 고정)
  */
 export const CLUSTER_SPLIT_SIM: ReadonlyArray<{
   label: string;
   mq: ModelQuant;
   busiestGB: readonly [number, number, number];
+  busiestFirstSmallerGB: readonly [number, number, number];
   engineGB: readonly [number, number, number];
   layerUniformGB: readonly [number, number, number];
+  knownUnder?: true;
   source: string;
 }> = [
   {
     label: 'GLM-5.3-Flash Q4_K_M (ggml-org Q4_K 2 shards)',
     mq: GLM53_Q4K_CLUSTER,
     busiestGB: [95.151, 63.947, 51.163],
+    busiestFirstSmallerGB: [90.881, 63.947, 51.163],
     engineGB: [95.207, 65.197, 52.126],
-    layerUniformGB: [93.033, 64.925, 48.864],
+    layerUniformGB: [96.368, 64.925, 48.864],
     source: 'https://huggingface.co/ggml-org/GLM-5.3-Flash-GGUF/blob/main/GLM-5.3-Flash-Q4_K-00001-of-00002.gguf',
   },
   {
     label: 'GLM-5.3-Flash Q2_K (ggml-org 2 shards)',
     mq: GLM53_Q2K_CLUSTER,
     busiestGB: [70.237, 46.96, 37.573],
+    busiestFirstSmallerGB: [67.099, 46.96, 37.573],
     engineGB: [70.299, 48.218, 38.544],
-    layerUniformGB: [68.729, 48.022, 36.189],
+    layerUniformGB: [70.997, 48.022, 36.189],
     source: 'https://huggingface.co/ggml-org/GLM-5.3-Flash-GGUF/blob/main/GLM-5.3-Flash-Q2_K-00001-of-00002.gguf',
+  },
+  {
+    label: 'DeepSeek V4 Flash 0731 MXFP4 (ggml-org 2 shards)',
+    mq: DSV4_FLASH_MXFP4_CLUSTER,
+    busiestGB: [78.708, 53.667, 39.37],
+    busiestFirstSmallerGB: [82.294, 53.667, 42.924],
+    engineGB: [82.597, 54.437, 43.094],
+    layerUniformGB: [82.597, 54.437, 43.094],
+    source: 'https://huggingface.co/ggml-org/DeepSeek-V4-Flash-0731-GGUF/blob/main/DeepSeek-V4-Flash-0731-MXFP4-00001-of-00002.gguf',
+  },
+  {
+    label: 'DeepSeek V4 Flash 0731 Q2_K (ggml-org 2 shards)',
+    mq: DSV4_FLASH_Q2K_CLUSTER,
+    busiestGB: [59.515, 40.581, 29.773],
+    busiestFirstSmallerGB: [62.229, 40.581, 32.456],
+    engineGB: [62.469, 41.301, 32.593],
+    layerUniformGB: [62.469, 41.301, 32.593],
+    source: 'https://huggingface.co/ggml-org/DeepSeek-V4-Flash-0731-GGUF/blob/main/DeepSeek-V4-Flash-0731-Q2_K-00001-of-00002.gguf',
   },
   {
     label: 'Kolibri-1 Q4_K_M (bartowski)',
     mq: KOLIBRI1_Q4K,
     busiestGB: [26.854, 18.811, 15.236],
-    engineGB: [26.043, 17.149, 13.197],
-    layerUniformGB: [26.043, 17.149, 13.197],
+    busiestFirstSmallerGB: [26.854, 19.704, 15.236],
+    engineGB: [26.043, 17.788, 13.197],
+    layerUniformGB: [26.043, 17.788, 13.197],
+    knownUnder: true,
     source: 'https://huggingface.co/bartowski/Kolibri-1-GGUF/blob/main/Kolibri-1-Q4_K_M.gguf',
   },
 ];

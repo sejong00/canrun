@@ -36,11 +36,12 @@
  * 16) DGX Spark 가 GPU 에 올릴 수 있는 메모리(10-23 D117, 엔진 0.13.0 `Hardware.unifiedUsableGB`): 1대 공개 실측 4점의 들어감·안 들어감이 기기 근거 값
  *     116.9GB(DGX OS 7.5.0 부팅 가용 − 데스크톱 기본 사용량)와 모두 맞고, 옛 규칙(× 0.70 = 89.6GB)으로는 1대에서 돈 셋이 GPU 에 안 들어간다. CPU 경로 한도도
  *     그 값을 넘지 않는다(같은 메모리). 값이 없는 통합 메모리 기기(맥·Strix Halo)는 산식 그대로(docs/02 §2.3·§7)
- * 17) DGX Spark 여러 대 llama.cpp RPC 층 분할(10-23 D118, 엔진 0.14.0·0.14.1 `Hardware.nodes`·`RPC_HOP_TG_MS`): 같은 사람 1대/2대 공개 쌍 14점 — 조건이 같은 9점의
+ * 17) DGX Spark 여러 대 llama.cpp RPC 층 분할(10-23 D118, 엔진 0.14.0·0.14.1·0.14.2 `Hardware.nodes`·`RPC_HOP_TG_MS`): 같은 사람 1대/2대 공개 쌍 14점 — 조건이 같은 9점의
  *     토큰당 추가 시간 역산(TCP 기본 3.6~7.95ms · RDMA 1.0~1.4ms — Classmethod 쌍은 루프백 RPC 장치 몫 포함)과, 2대만 CPU 유휴 상태를 끈 5점(1대는 기본 설정 —
  *     조건이 다른 쌍이라 이동 시간 근거에서 뺀다, D118 리뷰)까지 14점 모두의 5ms 2대 예측 오차(전부 ±17% 안, 과대는 TCP 32k +10.3% 뿐, 깊이 8k 이하 TCP 기본
  *     점은 모두 실측 이하)를 고정하고, 2대에서만 돈 공개 실측 2점이 1대에는 안 들어가고 2대에는 들어감을 본다. 가장 많이 맡는 대는 GGUF 헤더로 따라 한 llama.cpp
- *     분할과 견준다 — 앞쪽 dense MoE(GLM-5.3-Flash)는 그 이상, 층마다 양자화가 다른 Kolibri-1 Q4_K_M 은 알려진 과소(최대 −2.04GB)를 값으로 고정(D118 리뷰).
+ *     분할과 견준다(남은 메모리가 같을 때와 첫 기기가 0.1% 작을 때 — 원격 한 대가 한 칸 더 받는다, D118 리뷰 2차) — 앞쪽 dense MoE(GLM-5.3-Flash)·크기가 고른
+ *     층(DeepSeek V4 Flash 0731)은 두 경우 모두 그 이상, 층마다 양자화가 다른 Kolibri-1 Q4_K_M 은 알려진 과소(최대 −2.04GB)를 값으로 고정(D118 리뷰).
  *     3·4대는 이동 횟수(대수 − 1)로 늘린 이론값(4대 RPC 공개 실측 없음) — 라벨은 이론 추정(docs/02 §6.2·§7)
  */
 import { describe, expect, it } from 'vitest';
@@ -57,6 +58,7 @@ import {
   CPU_MOE_CASES,
   DSV4_FLASH_MXFP4,
   DSV4_FLASH_Q2K,
+  DSV4_FLASH_MXFP4_CLUSTER,
   DSV4_KV_LOG,
   DSV4_M2_ULTRA,
   DSV4_REFERENCE,
@@ -829,29 +831,31 @@ describe('17) DGX Spark cluster — llama.cpp RPC layer split (10-23 D118, docs/
     }
   });
 
-  it('busiest unit vs the llama.cpp split simulated from GGUF headers (D118 review): leading-dense MoE at or above it, the per-layer quant mix gap pinned', () => {
+  it('busiest unit vs the llama.cpp split simulated from GGUF headers (D118 review): at or above it with equal free memory and with the first unit 0.1% smaller, the per-layer quant mix gap pinned', () => {
     for (const c of CLUSTER_SPLIT_SIM) {
       expect(c.source, c.label).toMatch(/^https:\/\//);
       [2, 3, 4].forEach((nodes, i) => {
         const got = clusterNodeLoadGB({ ...SPARK_128_USABLE, nodes }, c.mq, c.mq.fileGB!, 0).weights;
         expect(got, `${c.label} × ${nodes}`).toBeCloseTo(c.engineGB[i]!, 2);
-        // 층마다 같다고 본 값(0.14.0) — 앞쪽 dense 가 없는 모델은 그대로
+        // 전문가 층 위치를 쓰지 않고 층마다 같다고 본 값 — 앞쪽 dense 가 없는 모델은 그대로
         const uniform = clusterNodeLoadGB({ ...SPARK_128_USABLE, nodes }, { ...c.mq, moeLayerIdx: undefined }, c.mq.fileGB!, 0).weights;
         expect(uniform, `${c.label} × ${nodes} layer-uniform`).toBeCloseTo(c.layerUniformGB[i]!, 2);
-        if (c.mq.moeLayerIdx !== undefined) {
-          expect(got - c.busiestGB[i]!, `${c.label} × ${nodes} at or above the split`).toBeGreaterThanOrEqual(0);
-          expect(got - c.busiestGB[i]!).toBeLessThan(1.3);
+        // 남은 메모리가 같을 때와 첫 기기가 0.1% 작을 때(원격 한 대가 한 칸 더 — D118 리뷰 2차) 가운데 큰 쪽
+        const split = Math.max(c.busiestGB[i]!, c.busiestFirstSmallerGB[i]!);
+        if (c.knownUnder === undefined) {
+          expect(got - split, `${c.label} × ${nodes} at or above the split`).toBeGreaterThanOrEqual(0);
+          expect(got - split).toBeLessThan(1.3);
         } else {
           // 알려진 한계 — 층마다 양자화가 다른 파일은 층마다 같다고 보는 근사가 작게 본다(docs/02 §6.2·§9)
-          expect(c.busiestGB[i]! - got).toBeGreaterThan(0);
-          expect(c.busiestGB[i]! - got).toBeLessThan(2.1);
+          expect(split - got).toBeGreaterThan(0);
+          expect(split - got).toBeLessThan(2.1);
         }
       });
     }
-    // 2·4대는 층마다 같다고 보면 실제 분할보다 작았다(GLM-5.3-Flash Q4_K_M −2.12·−2.30GB)
+    // 0.14.0(층마다 같다고 본 첫 기기 몫 — 93.033·48.864GB)은 2·4대가 실제 분할보다 작았다(GLM-5.3-Flash Q4_K_M −2.12·−2.30GB)
     const glm = CLUSTER_SPLIT_SIM[0]!;
-    expect(glm.busiestGB[0] - glm.layerUniformGB[0]).toBeCloseTo(2.12, 2);
-    expect(glm.busiestGB[2] - glm.layerUniformGB[2]).toBeCloseTo(2.3, 2);
+    expect(glm.busiestGB[0] - 93.033).toBeCloseTo(2.12, 2);
+    expect(glm.busiestGB[2] - 48.864).toBeCloseTo(2.3, 2);
     // 그 차이로 '들어간다'가 되던 칸(64GB × 4대 · 1M · KV q4_0 — 헤더 분할로는 가장 많이 맡는 대 49.28GB)은 이제 '안 들어간다'
     const ctx = 1048576;
     const sim = 37.573 + (kvGB(GLM53_Q2K_CLUSTER.kvBytesPerToken, ctx, 'q4_0') * 3) / 11 + computeBufferGB(ctx);
@@ -865,5 +869,32 @@ describe('17) DGX Spark cluster — llama.cpp RPC layer split (10-23 D118, docs/
       clusterNodeLoadGB({ ...SPARK_64_USABLE, nodes: 4 }, { ...GLM53_Q2K_CLUSTER, moeLayerIdx: undefined }, GLM53_Q2K_CLUSTER.fileGB!, kvGB(GLM53_Q2K_CLUSTER.kvBytesPerToken, ctx, 'q4_0'))
         .weights,
     ).toBeCloseTo(36.189, 2);
+  });
+
+  it('first unit with slightly less free memory (D118 review 2): a remote unit takes one cell more when (layers + 1) divides by N — DeepSeek V4 Flash 64GB × 4 · 524,288 no longer fits', () => {
+    // 44칸 · 4대: 같으면 11·11·11·11, 첫 기기가 0.1% 작으면 12·11·11·10 — 첫 RPC 장치가 트렁크 12층(KV 도 12/43)
+    const dsv4 = CLUSTER_SPLIT_SIM.find((c) => c.mq === DSV4_FLASH_MXFP4_CLUSTER)!;
+    const ctx = 524288;
+    const hw = { ...SPARK_64_USABLE, nodes: 4 };
+    for (const [kvQuant, split, v0141] of [['f16', 49.231, 46.296], ['q8_0', 48.763, 45.866], ['q4_0', 48.511, 45.636]] as const) {
+      const kv = kvGB(DSV4_FLASH_MXFP4_CLUSTER.kvBytesPerToken, ctx, kvQuant);
+      const sim = dsv4.busiestFirstSmallerGB[2] + (kv * 12) / 43 + computeBufferGB(ctx);
+      expect(sim, kvQuant).toBeCloseTo(split, 2);
+      expect(sim).toBeGreaterThan(usableGB(SPARK_64_USABLE));
+      // 0.14.1(첫 기기 몫만 — 11칸 + 장치 밖 몫)은 '들어간다'로 봤다
+      const first = (gpuResidentGBFor(DSV4_FLASH_MXFP4_CLUSTER) * 11) / 43 + (DSV4_FLASH_MXFP4_CLUSTER.fileGB! - gpuResidentGBFor(DSV4_FLASH_MXFP4_CLUSTER)) + (kv * 11) / 43 + computeBufferGB(ctx);
+      expect(first).toBeCloseTo(v0141, 2);
+      expect(first).toBeLessThanOrEqual(usableGB(SPARK_64_USABLE));
+      const r = fit(hw, DSV4_FLASH_MXFP4_CLUSTER, { ctx, kvQuant });
+      expect(r.fits, kvQuant).toBe(false);
+      const need = clusterNodeLoadGB(hw, DSV4_FLASH_MXFP4_CLUSTER, DSV4_FLASH_MXFP4_CLUSTER.fileGB!, kv);
+      expect(need.weights + need.kv + computeBufferGB(ctx)).toBeGreaterThanOrEqual(sim);
+    }
+    // 칸 수가 나누어떨어지지 않는 3대(44 / 3)는 원격 한 대가 더 받지 않는다 — 첫 기기 몫(올림 15칸 + 장치 밖 몫) 그대로
+    expect(dsv4.busiestFirstSmallerGB[1]).toBe(dsv4.busiestGB[1]);
+    expect(clusterNodeLoadGB({ ...SPARK_128_USABLE, nodes: 3 }, DSV4_FLASH_MXFP4_CLUSTER, DSV4_FLASH_MXFP4_CLUSTER.fileGB!, 0).weights).toBeCloseTo(
+      (gpuResidentGBFor(DSV4_FLASH_MXFP4_CLUSTER) * clusterShareOf(DSV4_FLASH_MXFP4_CLUSTER, 3)) + (DSV4_FLASH_MXFP4_CLUSTER.fileGB! - gpuResidentGBFor(DSV4_FLASH_MXFP4_CLUSTER)),
+      9,
+    );
   });
 });
