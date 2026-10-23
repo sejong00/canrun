@@ -102,7 +102,10 @@ export function ComboGrid({ grid }: { grid: string }) {
   const tHub = useTranslations('GpuHub');
   const names = useNames();
   const { models, rows } = resolveGuideGrid(grid);
-  const anyTheoretical = rows.some((r) => r.cells.some((c) => c.combo.display.result.confidence === 'theoretical' && c.combo.display.fReason !== 'no-fit'));
+  // 여러 대 행의 이론 추정은 아래 허브 안내 문장(clusterNote)이 설명한다 — MoE 전문가 RAM 배치 안내는 한 대 행만 센다(D119 리뷰)
+  const anyTheoretical = rows.some(
+    (r) => (r.config?.nodes ?? 1) === 1 && r.cells.some((c) => c.combo.display.result.confidence === 'theoretical' && c.combo.display.fReason !== 'no-fit'),
+  );
   const anyConfig = rows.some((r) => r.config !== undefined);
   const anyCluster = rows.some((r) => (r.config?.nodes ?? 1) > 1);
   const caption = t(anyConfig ? 'gridCaptionRows' : 'gridCaption');

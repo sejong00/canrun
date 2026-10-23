@@ -640,7 +640,7 @@
     "matrixCaption": "Q4_K_M verdict for each memory configuration — open the model page for speeds",
     "ramOption": "{ram} GB",
     "clusterOption": "{ram} GB × {nodes}",
-    "clusterNote": "Rows marked “× 2” or “× 4” link two or four units over the built-in ConnectX-7 networking and run llama.cpp RPC, which splits the layers across the units. Memory adds up, but each token still passes through every unit, and every hop between units adds time to each token. So these rows are never faster than one unit, and fast (smaller) models slow down the most: in public runs, gpt-oss-120b ran about 20% slower on two units than on one. These rows are theoretical estimates (±30%). vLLM tensor parallelism, which NVIDIA’s official playbooks use, can be faster. Three units can be checked in the calculator.",
+    "clusterNote": "Rows marked “× 2” or “× 4” link two or four units over the built-in ConnectX-7 networking and run llama.cpp RPC, which splits the layers across the units. Memory adds up, but each token still passes through every unit, and every hop between units adds time to each token. So these rows are never faster than CanRun’s one-unit estimate, and fast (smaller) models slow down the most: in public runs, gpt-oss-120b ran about 20% slower on two units than on one. These rows are theoretical estimates (±30%). vLLM tensor parallelism, which NVIDIA’s official playbooks use, can be faster. Three units can be checked in the calculator.",
     "partialWarning": "Dense models split between GPU and CPU slow down sharply — the CPU side sets the pace. MoE models that keep only their experts in system RAM degrade far more gently.",
     "benchTitle": "Measured results on the {gpu}",
     "benchEmpty": "No public measurements for this device yet.",
