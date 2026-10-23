@@ -482,14 +482,19 @@ export function isFp16Crippled(gpu: Pick<Gpu, 'kind' | 'fp16Tflops'>): boolean {
  * 판정 할인(10-22 엔진 후속 ⑧-b 리뷰) — 공개 실측 참고점이 **모두** 추정보다 느린(한쪽으로 치우친) 이론 추정 모델은 등급을 정할 때만 추정을
  * (1 + 이 값)으로 나눈 속도를 쓴다. 표시 속도·범위·라벨은 엔진 값 그대로다(규칙 3 — 엔진 산식·상수는 건드리지 않는다). 값 = 참고점 가운데 가장 작은
  * 과대 비율 min(추정 ÷ 공개 결과 − 1) — 모든 참고점이 적어도 이만큼은 느렸다. 실측이 조인된 결과(measured)는 할인하지 않는다.
- * 지금은 GLM-5.3-Flash 만: 생각 모드라 쾌적 임계가 30 인데 M3 Ultra Q2_K 추정 30.5 가 같은 칩 계열·같은 파일 참고점(M2 Ultra +23.5%)으로 보면
- * 원활 쪽이다. DeepSeek V4 Flash 0731(공개 결과 1점 +25%)은 이미 배포된 페이지라 사용자 결정 전까지 넣지 않는다(PROGRESS §2 큐 3·§4 D116)
+ * GLM-5.3-Flash(10-22 ⑧-b 리뷰): 생각 모드라 쾌적 임계가 30 인데 M3 Ultra Q2_K 추정 30.5 가 같은 칩 계열·같은 파일 참고점(M2 Ultra +23.5%)으로 보면
+ * 원활 쪽이다. DeepSeek V4 Flash 0731(10-23 D121 — 사용자 결정 'GLM 과 같은 방식 적용'): 지금 빌드 공개 결과(M2 Ultra #28948)가 +25.0%·+26.1% 라
+ * M3 Ultra 256·512GB MXFP4 8k 추정 37.4 가 할인하면 29.9 로 쾌적 임계 30 아래다. 08-03 옛 빌드(#25893 브랜치 — 머지 전)는 그 뒤 llama.cpp 가 빨라져
+ * 참고점에서 뺐다(넣어도 +33% 이상이라 최솟값은 그대로 — 엔진 회귀 14 가 함께 고정)
  */
-// source: https://github.com/ggml-org/llama.cpp/pull/30640 (DGX Spark tg64 깊이 65,536 = 18.4 — 추정 +8.2%, 참고점 8개 중 가장 작다) ·
-//   https://github.com/ggml-org/llama.cpp/pull/29958 (M2 Ultra +23.5·+23.8%) · https://github.com/ggml-org/llama.cpp/pull/29928#issuecomment-5983042076
-//   (6 × RTX 3090 +23.8~26.1%) — 엔진 회귀 15 fixture `GLM53_REFERENCE.recordedErr` 의 최솟값(packages/engine/test/fixtures.ts, docs/02 §5·§7·§9)
+// source: https://github.com/ggml-org/llama.cpp/pull/30640 (GLM — DGX Spark tg64 깊이 65,536 = 18.4 — 추정 +8.2%, 참고점 8개 중 가장 작다) ·
+//   https://github.com/ggml-org/llama.cpp/pull/29958 (GLM — M2 Ultra +23.5·+23.8%) · https://github.com/ggml-org/llama.cpp/pull/29928#issuecomment-5983042076
+//   (GLM — 6 × RTX 3090 +23.8~26.1%) — 엔진 회귀 15 fixture `GLM53_REFERENCE.recordedErr` 의 최솟값(packages/engine/test/fixtures.ts, docs/02 §5·§7·§9) ·
+//   https://github.com/ggml-org/llama.cpp/pull/28948 (DeepSeek V4 Flash — M2 Ultra tg32, PR 열 29.45 = 추정 +25.0% · b10809 열 29.20 = +26.1%, 지금 빌드 참고점 2개 중
+//   작은 쪽) — 엔진 회귀 14 fixture `DSV4_REFERENCE.current` 의 최솟값
 export const VERDICT_OVERESTIMATE: Readonly<Record<string, number>> = Object.freeze({
   'glm-5.3-flash': 0.082,
+  'deepseek-v4-flash-0731': 0.25,
 });
 
 /** 판정 할인(`VERDICT_OVERESTIMATE`) — 대상 모델의 추정 결과면 판정만 할인한 속도로 다시 정한다(속도·범위·라벨·모드는 그대로) */
@@ -1019,6 +1024,9 @@ export type VerdictCounts = Record<Verdict, number> & {
   otherQuant: number;
 };
 
+/** 여러 대 연결 구성의 판정 수 — 판정 수는 연결이 필요한 모델만, `oneUnit` = 같은 메모리 1대로 충분한 모델 수 (10-23 D121) */
+export type ClusterVerdictCounts = VerdictCounts & { oneUnit: number };
+
 function countVerdicts(combos: readonly ComboAssessment[]): VerdictCounts {
   const counts: VerdictCounts = { S: 0, A: 0, B: 0, F: 0, otherQuant: 0 };
   for (const combo of combos) {
@@ -1043,7 +1051,32 @@ export type GpuHubRow = {
   combos: ComboAssessment[];
   /** 여러 대 연결 기기(10-23 D118)만 — clusterConfigs 와 같은 순서 */
   clusterCombos?: ComboAssessment[];
+  /**
+   * 여러 대 연결 기기만 — clusterConfigs 와 같은 순서: 같은 메모리 1대에 이미 들어가 그 칸이 판정·속도 대신 '1대로 충분'을 보이는가
+   * (`oneUnitEnough` — 10-23 D121 사용자 결정 '1대로 충분 표시')
+   */
+  clusterOneUnit?: boolean[];
 };
+
+/**
+ * 여러 대 연결 칸에 '1대로 충분'을 보이는가 (10-23 D121 — 사용자 결정 '1대로 충분 표시'). 같은 메모리 구성 **1대** 조합의 기준 양자화가 GPU 에 전부
+ * 올라가면(full-gpu) 그 모델은 이을 이유가 없다 — llama.cpp RPC 로 이으면 메모리만 합쳐지고 토큰마다 대 사이 이동 시간이 더해져 한 대보다 빨라지지 않는다
+ * (docs/02 §6.2). 그래서 허브·콤보·가이드 그리드의 2대·4대 칸은 한 대에 안 들어가 연결이 필요한 모델(1대 기준 양자화가 안 들어가거나 CPU 경로로만
+ * 들어가는 모델 — 여러 대는 GPU 경로만 계산한다)만 판정·속도를 보인다. 계산기에서 대수를 직접 고르면 지금처럼 계산 결과를 보인다.
+ * `single` 은 같은 기기·같은 메모리의 1대 조합(허브 `combos`·콤보 `configCombos` 의 같은 RAM 칸)
+ */
+export function oneUnitEnough(single: Pick<ComboAssessment, 'baseline'>): boolean {
+  return single.baseline.fits && single.baseline.result.mode === 'full-gpu';
+}
+
+/** 여러 대 연결 칸(`cluster`)과 같은 메모리의 1대 조합을 1대 목록에서 찾아 `oneUnitEnough` 를 본다 — 같은 메모리 1대 조합이 없으면 false */
+export function clusterOneUnitEnough(
+  singles: readonly Pick<ComboAssessment, 'baseline' | 'ramGB' | 'nodes'>[],
+  cluster: Pick<ComboAssessment, 'ramGB'>,
+): boolean {
+  const single = singles.find((c) => c.ramGB === cluster.ramGB && c.nodes === undefined);
+  return single !== undefined && oneUnitEnough(single);
+}
 
 export type GpuHubData = {
   gpu: Gpu;
@@ -1058,7 +1091,11 @@ export type GpuHubData = {
    * 정렬·대표 구성(primaryIndex)·FAQ 는 위 1대 구성 그대로다
    */
   clusterConfigs?: HwConfig[];
-  clusterCounts?: VerdictCounts[];
+  /**
+   * 여러 대 연결 구성의 판정 수 (10-23 D121): S·A·B·F·otherQuant 는 연결이 필요한 모델(같은 메모리 1대에 안 들어가는 모델)만 세고,
+   * 1대로 충분한 모델은 `oneUnit` 에 따로 센다 — 행마다 합이 모델 수다
+   */
+  clusterCounts?: ClusterVerdictCounts[];
   benchmarks: BenchPoint[];
   faq: {
     /** primary 구성에서 full-gpu 로 도는 가장 큰 모델 (paramsB 기준) + 그 quant */
@@ -1093,15 +1130,20 @@ export function summarizeGpu(catalog: SeedCatalog, gpu: Gpu): GpuHubData {
   const primaryIndex = configs.length - 1;
   // 2대·4대 연결 구성(10-23 D118) — 있는 기기만 행에 덧붙인다(없는 기기는 키도 없다 — 기존 허브 데이터 그대로)
   const clusters = clusterConfigs(gpu, catalog.gpus);
-  const rows: GpuHubRow[] = catalog.models.map((model) => ({
-    model,
-    combos: configs.map((config) => assessCombo(catalog, gpu, config, model)),
-    ...(clusters.length > 0 ? { clusterCombos: clusters.map((config) => assessCombo(catalog, gpu, config, model)) } : {}),
-  }));
+  const rows: GpuHubRow[] = catalog.models.map((model) => {
+    const combos = configs.map((config) => assessCombo(catalog, gpu, config, model));
+    if (clusters.length === 0) return { model, combos };
+    const clusterCombos = clusters.map((config) => assessCombo(catalog, gpu, config, model));
+    return { model, combos, clusterCombos, clusterOneUnit: clusterCombos.map((c) => clusterOneUnitEnough(combos, c)) };
+  });
   rows.sort((a, b) => compareCombos(a.combos[primaryIndex]!, b.combos[primaryIndex]!));
 
   const counts = configs.map((_, i) => countVerdicts(rows.map((row) => row.combos[i]!)));
-  const clusterCounts = clusters.map((_, i) => countVerdicts(rows.map((row) => row.clusterCombos![i]!)));
+  // 여러 대 연결 구성(10-23 D121): 1대로 충분한 모델은 판정 수에서 빼 따로 센다
+  const clusterCounts = clusters.map((_, i): ClusterVerdictCounts => ({
+    ...countVerdicts(rows.filter((row) => !row.clusterOneUnit![i]).map((row) => row.clusterCombos![i]!)),
+    oneUnit: rows.filter((row) => row.clusterOneUnit![i]).length,
+  }));
 
   const primary = rows.map((row) => row.combos[primaryIndex]!);
   const paramsOf = (combo: ComboAssessment) =>

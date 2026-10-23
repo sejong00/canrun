@@ -172,6 +172,15 @@ export function ResultCard({
           })}
         </p>
       )}
+      {/* 여러 대 연결(10-23 D121): 표시 양자화가 같은 메모리 1대에 다 들어가면 '1대로 충분' — 허브·콤보의 여러 대 칸과 같은 뜻. 판정·속도는 고른 대수 그대로 */}
+      {card.oneUnit && (
+        <p data-one-unit-hint className="text-xs text-muted-foreground">
+          {t.calc('oneUnitHint', {
+            quant: card.oneUnit.q.quant,
+            speed: speedPhrase(t.common, t.confidence, locale, card.oneUnit.q),
+          })}
+        </p>
+      )}
       {combo.perQuant.length > 1 && (
         <details>
           <summary className="cursor-pointer text-xs text-muted-foreground">{t.calc('cardAllQuants', { count: combo.perQuant.length })}</summary>

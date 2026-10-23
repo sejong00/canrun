@@ -151,6 +151,8 @@ switch (cmd) {
                     gpu: row.gpu.id,
                     ramGB: row.config.ramGB,
                     ...(row.config.nodes !== undefined ? { nodes: row.config.nodes } : {}),
+                    // 여러 대 칸이 '1대로 충분'을 보이는가(10-23 D121 — 그 칸에는 판정·속도가 보이지 않는다)
+                    ...(cell.oneUnit !== undefined ? { oneUnit: cell.oneUnit } : {}),
                     baseline: { quant: cell.combo.baseline.quant, verdict: cell.combo.baseline.result.verdict, reason: cell.combo.baseline.verdictReason },
                     display: { quant: cell.combo.display.quant, tier: cell.combo.display.tier, ...speed(cell.combo.display) },
                   },

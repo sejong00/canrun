@@ -445,6 +445,30 @@ describe('linked DGX Spark units (10-23 D118): llama.cpp RPC, theoretical, the R
     expect(pair.combo.baseline.memory.nodes).toBe(2);
   });
 
+  it('one unit is enough (10-23 D121): a card whose shown quant fits one unit of the same memory on the GPU carries that one-unit result; verdicts stay the linked ones', () => {
+    const run = assembleResults(catalog, withGpu('nvidia-dgx-spark', { nodes: 2, ramGB: 128 }))!;
+    const card = (id: string) => run.all.find((c) => c.model.id === id)!;
+    // gpt-oss-120b MXFP4: 128GB 한 대에 다 들어간다 — 1대 평가(실측 조인)를 참고 줄로, 판정·속도는 2대 그대로
+    const oss = card('gpt-oss-120b');
+    const one = assembleResults(catalog, withGpu('nvidia-dgx-spark', { ramGB: 128 }))!.all.find((c) => c.model.id === 'gpt-oss-120b')!;
+    expect(oss.oneUnit?.q.quant).toBe('MXFP4');
+    expect(oss.oneUnit!.q.result).toEqual(one.combo.display.result);
+    expect(oss.oneUnit!.q.result.confidence).toBe('measured');
+    expect(oss.combo.baseline.result.confidence).toBe('theoretical');
+    // 한 대에 안 들어가 연결이 필요한 모델에는 없다(GLM-5.3-Flash Q4_K_M · DeepSeek V4 Flash MXFP4)
+    for (const id of ['glm-5.3-flash', 'deepseek-v4-flash-0731']) {
+      expect(card(id).combo.display.fits, id).toBe(true);
+      expect(card(id).oneUnit, id).toBeUndefined();
+    }
+    // 들어가지 않는 카드·1대 구성·다른 기기에는 없다
+    expect(run.all.filter((c) => !c.combo.display.fits).every((c) => c.oneUnit === undefined)).toBe(true);
+    expect(one.oneUnit).toBeUndefined();
+    expect(assembleResults(catalog, withGpu('apple-m3-ultra', { ramGB: 256 }))!.all.every((c) => c.oneUnit === undefined)).toBe(true);
+    // 64GB × 2: gpt-oss-120b 는 64GB 한 대에 안 들어가 참고 줄이 없다
+    const pair = assembleResults(catalog, withGpu('nvidia-dgx-spark', { ramGB: 64, nodes: 2 }))!.all.find((c) => c.model.id === 'gpt-oss-120b')!;
+    expect(pair.oneUnit).toBeUndefined();
+  });
+
   it('nodes on any other device resolves to one unit', () => {
     for (const id of ['amd-strix-halo', 'apple-m3-ultra', 'rtx-5090']) {
       const hw = resolveHardware({ ...withGpu(id), nodes: 2 }, catalog)!;

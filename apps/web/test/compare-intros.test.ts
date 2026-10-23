@@ -80,8 +80,8 @@ function introProblems(src: string, where: string, locale: Locale): string[] {
   for (const m of src.matchAll(/<Expect\b([^>]*?)\/>/g)) {
     const claim = Object.fromEntries([...m[1]!.matchAll(/([a-zA-Z]+)="([^"]*)"/g)].map((p) => [p[1]!, p[2]!])) as ExpectClaim;
     const conditioned = claim.quant !== undefined || claim.ram !== undefined || claim.ctx !== undefined;
-    if (conditioned && claim.verdict === undefined && claim.fits === undefined) {
-      problems.push(`${where}: ${m[0]} has a condition but pins neither verdict nor fits`);
+    if (conditioned && claim.verdict === undefined && claim.fits === undefined && claim.oneUnit === undefined) {
+      problems.push(`${where}: ${m[0]} has a condition but pins neither verdict nor fits (nor oneUnit)`);
     }
     if (claim.verdict !== undefined && resolveExpect(claim).confidence === 'theoretical') {
       if (!THEORETICAL_LABEL[locale].test(sentenceAndNext(src, m.index!, m[0].length))) {

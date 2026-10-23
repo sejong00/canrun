@@ -26,7 +26,8 @@
  *     ±1% 안(256 셀 패딩), raw SWA 창·압축기 상태는 컨텍스트와 무관한 상수(엔진은 연산 버퍼 근사에 맡긴다), 공개 실측 참고점 M2 Ultra(#28948 tg32)는
  *     추정이 +25% 높고(±30% 안 — 실측 ≥ 추정 × 0.7) 08-03 옛 빌드는 +33%, 문맥 감쇠는 실측 −19%·엔진 −1.6% — 라벨은 이론 추정(docs/02 §4 ⑩·§7·§9).
  *     로그는 슬롯 하나(-np 1 — 1/1 seqs)라 토큰당 KV 는 슬롯 하나 기준(스니펫이 -np 1 을 붙인다, 기본 4슬롯이면 4배), pp 는 30k 깊이에서 0.26배로
- *     떨어지는데 엔진 pp 는 깊이와 무관 — 엔진 밖 한계로 고정(10-22 D115 리뷰)
+ *     떨어지는데 엔진 pp 는 깊이와 무관 — 엔진 밖 한계로 고정(10-22 D115 리뷰). 지금 빌드 참고점의 가장 작은 과대(+25.0%)는 데이터 계층 판정
+ *     할인(packages/data/src/assess.ts `VERDICT_OVERESTIMATE`)의 값이다(10-23 D121 — 옛 빌드는 뺐다, 넣어도 +33% 이상)
  * 15) GLM-5.3-Flash(KDA + DSA 희소 MLA·인덱서 + mHC — 10-22 엔진 후속 ⑧-b, 엔진 산식 변화 없음): KV 19,712 B/tok 이 llama.cpp 메모리 로그(#30499 댓글)의
  *     MLA·인덱서 캐시와 정확히 같고, KDA 순환 상태(시퀀스마다 ≈ 153MB — 로그와 일치)는 다른 상수 상태 층 하이브리드처럼 미계상(슬롯마다 한 벌 — 스니펫의
  *     -np 1 은 이 상태가 아니라 슬롯 수에 비례하는 인덱서 k-pool 연산 예약 #29950 때문이다, 10-22 ⑧-b 리뷰).
@@ -626,6 +627,14 @@ describe('14) DeepSeek V4 Flash — 압축 어텐션(CSA·HCA)·하이퍼 커넥
     expect(c.source).toMatch(/^https:\/\//);
     const err = tg(c.ctx) / c.measuredTg - 1;
     expect(err).toBeCloseTo(c.recordedErr, 2);
+    // 지금 빌드 참고점 두 열(PR 29.45 · b10809 29.20) 가운데 가장 작은 과대 = 데이터 계층 판정 할인 값(assess VERDICT_OVERESTIMATE
+    // 'deepseek-v4-flash-0731' 0.25 — 10-23 D121 사용자 결정). 엔진 패키지는 데이터 계층을 읽지 않으므로 값으로 고정한다(소수 셋째 자리)
+    const currentErrs = [err, tg(c.ctx) / c.masterTg - 1];
+    expect(Math.min(...currentErrs)).toBeCloseTo(0.25, 3);
+    expect(Math.min(...currentErrs)).toBeGreaterThanOrEqual(0.25);
+    // 08-03 옛 빌드(머지 전 브랜치)는 참고점에서 뺐다 — 넣어도 모든 깊이가 +33% 이상이라 최솟값은 그대로
+    const old = DSV4_REFERENCE.oldBuild.depths.map((d) => tg(d.ctx) / d.measuredTg - 1);
+    expect(Math.min(...old)).toBeGreaterThan(0.33);
     expect(c.measuredTg).toBeGreaterThanOrEqual(tg(c.ctx) * 0.7);
     expect(c.masterTg).toBeGreaterThanOrEqual(tg(c.ctx) * 0.7);
     // pp2048(-ub 2048 가정)은 rough ±40% 안

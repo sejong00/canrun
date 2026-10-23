@@ -1292,8 +1292,26 @@ describe('memory-size verdict lists and the system RAM toggle (10-03 D64)', () =
       expect(page.ramSteps.map((r) => (r.nodes > 1 ? `${r.ram}x${r.nodes}` : String(r.ram))), page.file).toEqual(['64', '128', '64x2', '128x2', '64x4', '128x4']);
       expect(linked.some((r) => r.assumed), `${page.file} a linked row is the page configuration`).toBe(false);
       expect(page.clusterNotes, `${page.file} cluster note`).toBe(1);
+      // 1대로 충분(10-23 D121): 그 행에는 판정 배지·표시 양자화가 없고 같은 메모리 1대 행은 기준 양자화가 들어간다(불가가 아니다).
+      // 그 밖의 여러 대 행은 판정 배지가 있다. 1대 행에는 이 표시가 없다
+      for (const r of linked) {
+        const single = page.ramSteps.find((s) => s.nodes === 1 && s.ram === r.ram)!;
+        if (r.oneUnit) {
+          expect([r.verdict, r.quant, r.displayVerdict], `${page.file} ${r.ram}x${r.nodes} one unit`).toEqual(['', '', '']);
+          expect(single.verdict, `${page.file} ${r.ram}x${r.nodes} one unit but ${r.ram} GB is F`).not.toBe('F');
+        } else {
+          expect(r.verdict, `${page.file} ${r.ram}x${r.nodes} verdict`).not.toBe('');
+        }
+      }
+      expect(page.ramSteps.filter((r) => r.nodes === 1).some((r) => r.oneUnit), `${page.file} one-unit mark on a one-unit row`).toBe(false);
+      // 행과 그 안의 칩이 한 번씩
+      expect(page.oneUnitMarks, `${page.file} one-unit marks`).toBe(linked.filter((r) => r.oneUnit).length * 2);
     }
     expect(dgx, 'DGX Spark combos').toBeGreaterThan(0);
+    // 한 대에 들어가는 모델(1대로 충분)과 연결이 필요한 모델이 둘 다 실제로 있다 — 빈 검사가 아니다
+    const dgxRows = requireCombos().filter((p) => p.combo!.gpuId === 'nvidia-dgx-spark').flatMap((p) => p.ramSteps.filter((r) => r.nodes > 1));
+    expect(dgxRows.some((r) => r.oneUnit)).toBe(true);
+    expect(dgxRows.some((r) => !r.oneUnit)).toBe(true);
   });
 
   it('GPU hubs: the DGX Spark summary adds 64·128 GB × 2 and × 4 after one unit, with the note; other hubs list only their own sizes (10-23 D118)', () => {
@@ -1306,8 +1324,15 @@ describe('memory-size verdict lists and the system RAM toggle (10-03 D64)', () =
         dgx += 1;
         expect(page.hubConfigKeys, page.file).toEqual(['64', '128', '64x2', '128x2', '64x4', '128x4']);
         expect(page.clusterNotes, page.file).toBe(1);
+        // 1대로 충분 수(10-23 D121)는 여러 대 행에만. 요약 칩 4개 + '메모리 구성별 판정' 표의 1대로 충분 칸 수
+        const [one64, one128, ...linkedCounts] = page.hubOneUnitCounts;
+        expect([one64, one128], page.file).toEqual([null, null]);
+        for (const n of linkedCounts) expect(n !== null && n > 0, `${page.file} one-unit count ${n}`).toBe(true);
+        expect(page.oneUnitMarks, page.file).toBe(4 + linkedCounts.reduce<number>((sum, n) => sum + n!, 0));
         continue;
       }
+      expect(page.hubOneUnitCounts.every((n) => n === null), page.file).toBe(true);
+      expect(page.oneUnitMarks, page.file).toBe(0);
       expect(page.clusterNotes, page.file).toBe(0);
       expect(page.hubConfigKeys, page.file).toEqual(gpu.kind === 'dgpu' ? [String(HUB_POLICY.dgpuRamGB)] : (gpu.ramOptionsGB ?? []).map(String));
     }

@@ -117,9 +117,13 @@ export type PageFacts = {
    * 메모리 용량별 판정 행 `[data-ram-step]` (통합·CPU 는 메모리 옵션, dGPU 는 시스템 RAM 계단 — 10-03 D64):
    * verdict = 행 배지(기준 양자화), displayVerdict·quant·fits = 표시 양자화
    */
-  ramSteps: Array<{ ram: number; nodes: number; verdict: string; displayVerdict: string; quant: string; fits: boolean; assumed: boolean; commands: boolean }>;
+  ramSteps: Array<{ ram: number; nodes: number; verdict: string; displayVerdict: string; quant: string; fits: boolean; assumed: boolean; commands: boolean; oneUnit: boolean }>;
   /** GPU 허브 요약 목록 `[data-config]` 키 — 1대는 "128", 여러 대 연결(10-23 D118 — DGX Spark)은 "128x2" (문서 순서) */
   hubConfigKeys: string[];
+  /** 같은 목록의 '1대로 충분' 모델 수 `[data-one-unit-count]`(10-23 D121 — 여러 대 행만, 없으면 null) */
+  hubOneUnitCounts: Array<number | null>;
+  /** `[data-one-unit]` 요소 수 — '1대로 충분' 표시(허브 요약 칩·'메모리 구성별 판정' 칸·콤보 목록 행과 그 칩·가이드 그리드 칸, 10-23 D121) */
+  oneUnitMarks: number;
   /** `[data-cluster-note]` — 여러 대 연결 행 안내 문장(허브 요약·콤보 메모리 구성별 판정, 10-23 D118) 수 */
   clusterNotes: number;
   /** `[data-ram-caption]` 값 ('verdict' | 'file') — dGPU RAM 목록 설명의 갈래 */
@@ -811,6 +815,8 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
     fits: attrValue(e.openTag, 'data-fits') === 'true',
     assumed: hasAttr(e.openTag, 'data-assumed'),
     commands: hasAttr(e.openTag, 'data-commands'),
+    // 여러 대 연결 행의 '1대로 충분'(10-23 D121) — 판정 배지·표시 양자화 속성이 없다
+    oneUnit: hasAttr(e.openTag, 'data-one-unit'),
   }));
   // 행 문장(용량 · 표시 양자화 판정 · 속도)은 규칙 3 검사 대상
   const ramStepTexts = ramStepEls.map((e) => elementText(e.inner));
@@ -894,6 +900,11 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
     ...(ramCaption === undefined ? {} : { ramCaption }),
     ramSame: elementsWithAttr(noScript, 'data-ram-same').length > 0,
     hubConfigKeys: elementsWithAttr(noScript, 'data-config').map((e) => attrValue(e.openTag, 'data-config') ?? ''),
+    hubOneUnitCounts: elementsWithAttr(noScript, 'data-config').map((e) => {
+      const n = attrValue(e.inner, 'data-one-unit-count');
+      return n === undefined ? null : Number(n);
+    }),
+    oneUnitMarks: elementsWithAttr(noScript, 'data-one-unit').length,
     clusterNotes: elementsWithAttr(noScript, 'data-cluster-note').length,
     ...(headerVerdict === undefined ? {} : { headerVerdict }),
     ...(liveSummary === undefined ? {} : { liveSummary }),

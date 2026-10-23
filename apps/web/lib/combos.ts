@@ -51,6 +51,8 @@ export type ComboPage = {
    * 제목·명령·대안은 1대 구성에서만 고른다(클러스터가 대표가 되지 않는다). 다른 기기는 []
    */
   clusterCombos: ComboAssessment[];
+  /** clusterCombos 와 같은 순서 — 같은 메모리 1대에 이미 들어가 그 행이 '1대로 충분'을 보이는가(10-23 D121, 허브 `clusterOneUnit` 과 같은 값) */
+  clusterOneUnit: boolean[];
   /** dGPU: 시스템 RAM 계단(16·32·64·96·128GB)마다의 평가 — 페이지 RAM 단계는 `combo` 그대로 (10-03 D64). 통합·CPU 는 [] */
   ramSteps: RamStep[];
   /** 계단 안에서 맨 위 판정이 바뀌는가 — 참이면 "시스템 RAM 용량별 판정" 목록과 RAM 토글을 그린다 */
@@ -88,6 +90,7 @@ export function getCombo(modelId: string, gpuId: string): ComboPage | undefined 
   const row = gpuHub.rows.find((r) => r.model.id === modelId)!;
   const configCombos = row.combos;
   const clusterCombos = row.clusterCombos ?? [];
+  const clusterOneUnit = row.clusterOneUnit ?? [];
   // 대표 구성은 1대 구성 가운데서만 (row.combos 는 1대 구성뿐 — 2대·4대는 clusterCombos)
   const combo = pickConfigCombo(configCombos, gpu);
   const configIndex = configCombos.indexOf(combo);
@@ -111,6 +114,7 @@ export function getCombo(modelId: string, gpuId: string): ComboPage | undefined 
     combo,
     configCombos,
     clusterCombos,
+    clusterOneUnit,
     ramSteps: steps,
     ramSensitive: ramSensitive(steps),
     ramVerdictChanges: ramVerdictChanges(steps),

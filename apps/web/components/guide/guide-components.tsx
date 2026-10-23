@@ -6,6 +6,7 @@ import { GgufSourceBadge, LicenseBadge } from '@/components/badges';
 import { CtxMatrixTable } from '@/components/ctx-matrix';
 import { SpeedCell } from '@/components/estimate';
 import { ScrollTable, TABLE_CLASS } from '@/components/hub-table';
+import { OneUnitChip } from '@/components/one-unit';
 import { VerdictBadge, VerdictLegend } from '@/components/verdict';
 import { VramBar } from '@/components/vram-bar';
 import { isContentLocale } from '@/i18n/locales';
@@ -137,8 +138,16 @@ export function ComboGrid({ grid }: { grid: string }) {
                   <a href={hub(gpuHref(gpu.id))}>{gpuName(names, gpu)}</a>
                   <span className="block text-xs font-normal text-muted-foreground">{rowLabel(gpu, config)}</span>
                 </th>
-                {cells.map(({ model, combo, atRam, linkable }) => {
+                {cells.map(({ model, combo, atRam, linkable, oneUnit }) => {
                   const q = combo.display;
+                  // 여러 대 칸(10-23 D121): 같은 메모리 1대에 이미 들어가는 모델은 판정·속도 대신 '1대로 충분' — 허브 표와 같은 표시
+                  if (oneUnit) {
+                    return (
+                      <td key={model.id}>
+                        <OneUnitChip />
+                      </td>
+                    );
+                  }
                   return (
                     <td key={model.id}>
                       <div className="flex min-w-36 flex-col items-start gap-1">

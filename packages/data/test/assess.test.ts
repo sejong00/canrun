@@ -10,6 +10,7 @@ import {
   canMixWith,
   cheapestOptions,
   clusterConfigs,
+  clusterOneUnitEnough,
   configKey,
   classifyLicense,
   commandPlan,
@@ -22,6 +23,7 @@ import {
   isMixableGpu,
   memoryMatrix,
   modelGpuRows,
+  oneUnitEnough,
   pickConfigCombo,
   rankableStreet,
   sameSizeQuant,
@@ -257,7 +259,48 @@ describe('여러 대 연결 — DGX Spark 클러스터 (10-23 D118, docs/02 §6.
     }
     const other = summarizeGpu(seed, gpu('apple-m3-ultra'));
     expect('clusterConfigs' in other).toBe(false);
-    expect(other.rows.some((r) => 'clusterCombos' in r)).toBe(false);
+    expect(other.rows.some((r) => 'clusterCombos' in r || 'clusterOneUnit' in r)).toBe(false);
+  });
+
+  it('1대로 충분(10-23 D121 — 사용자 결정): 같은 메모리 1대에 기준 양자화가 GPU 전량으로 들어가는 모델은 여러 대 칸이 1대로 충분, 판정 수는 연결이 필요한 모델만', () => {
+    const hub = summarizeGpu(seed, spark);
+    hub.clusterConfigs!.forEach((cfg, i) => {
+      const single = hub.configs.findIndex((c) => c.ramGB === cfg.ramGB);
+      let need = 0;
+      for (const row of hub.rows) {
+        const one = row.combos[single]!;
+        const expected = one.baseline.fits && one.baseline.result.mode === 'full-gpu';
+        expect(row.clusterOneUnit![i], `${row.model.id} ${configKey(cfg)}`).toBe(expected);
+        expect(oneUnitEnough(one)).toBe(expected);
+        expect(clusterOneUnitEnough(row.combos, row.clusterCombos![i]!)).toBe(expected);
+        if (!expected) need += 1;
+      }
+      const counts = hub.clusterCounts![i]!;
+      expect(counts.S + counts.A + counts.B + counts.F, configKey(cfg)).toBe(need);
+      expect(counts.oneUnit + need).toBe(hub.rows.length);
+      // 연결이 필요한 모델의 판정 수 = 그 모델들의 여러 대 기준 판정
+      for (const v of ['S', 'A', 'B', 'F'] as const) {
+        expect(counts[v]).toBe(hub.rows.filter((r) => !r.clusterOneUnit![i] && r.clusterCombos![i]!.baseline.result.verdict === v).length);
+      }
+    });
+    const byKey = (key: string) => hub.clusterConfigs!.findIndex((c) => configKey(c) === key);
+    const rowOf = (id: string) => hub.rows.find((r) => r.model.id === id)!;
+    // 한 대에 들어가는 모델 — 64·128GB 어느 쪽이든 1대로 충분(이으면 이동 시간만 더해진다)
+    for (const key of ['64x2', '128x2', '64x4', '128x4']) {
+      expect(rowOf('qwen3.6-35b-a3b').clusterOneUnit![byKey(key)], key).toBe(true);
+      expect(rowOf('qwen3.6-27b').clusterOneUnit![byKey(key)], key).toBe(true);
+    }
+    // 64GB 1대에 안 들어가는 gpt-oss-120b 는 64GB × 2·4 에 판정, 128GB 1대에는 들어가 128GB × 2·4 는 1대로 충분
+    expect(rowOf('gpt-oss-120b').clusterOneUnit![byKey('64x2')]).toBe(false);
+    expect(rowOf('gpt-oss-120b').clusterOneUnit![byKey('128x2')]).toBe(true);
+    // 기준 양자화가 1대에 안 들어가고 더 낮은 양자화만 들어가면(Kolibri-1 64GB — IQ4_XS) 연결이 필요한 모델로 센다
+    expect(rowOf('kolibri-1').combos[0]!.baseline.fits).toBe(false);
+    expect(rowOf('kolibri-1').combos[0]!.display.fits).toBe(true);
+    expect(rowOf('kolibri-1').clusterOneUnit![byKey('64x2')]).toBe(false);
+    // CPU 경로로만 들어가는 1대(여러 대는 GPU 경로만 계산한다)는 1대로 충분이 아니다 — 같은 메모리 1대 조합이 없어도 아니다
+    const cpuOnly = { baseline: { fits: true, result: { mode: 'cpu-only' } } } as unknown as Parameters<typeof oneUnitEnough>[0];
+    expect(oneUnitEnough(cpuOnly)).toBe(false);
+    expect(clusterOneUnitEnough([], rowOf('qwen3.6-27b').clusterCombos![0]!)).toBe(false);
   });
 
   it('여러 대 판정: 이론 추정 · 실측 조인 없음 · 전량 GPU 탑재만 · 필요량은 가장 많이 맡는 한 대 기준', () => {
@@ -1129,9 +1172,10 @@ describe('DeepSeek V4 Flash 0731 — compressed attention, mHC, MXFP4 baseline (
   });
 
   it('large-memory Macs hold MXFP4 on the GPU; M2 Ultra 192GB only past the 70% default (CPU path), its Q2_K on the GPU', () => {
-    for (const [id, ram] of [['apple-m3-ultra', 256], ['apple-m3-ultra', 512], ['apple-m5-ultra', 256]] as const) {
+    // M3 Ultra 는 판정 할인(아래 테스트 — 10-23 D121)으로 원활, M5 Ultra 는 할인해도 쾌적
+    for (const [id, ram, verdict] of [['apple-m3-ultra', 256, 'A'], ['apple-m3-ultra', 512, 'A'], ['apple-m5-ultra', 256, 'S']] as const) {
       const c = at(id, ram);
-      expect(c.baseline.result, `${id} ${ram}`).toMatchObject({ verdict: 'S', mode: 'full-gpu', confidence: 'theoretical' });
+      expect(c.baseline.result, `${id} ${ram}`).toMatchObject({ verdict, mode: 'full-gpu', confidence: 'theoretical' });
     }
     const m2 = at('apple-m2-ultra', 192);
     expect(m2.baseline.result).toMatchObject({ verdict: 'B', mode: 'cpu-only' });
@@ -1159,6 +1203,49 @@ describe('DeepSeek V4 Flash 0731 — compressed attention, mHC, MXFP4 baseline (
     }
     const small = at('rtx-4060', 32);
     expect(small.perQuant.every((q) => !q.fits)).toBe(true);
+  });
+
+  it('verdict discount (10-23 D121 — 사용자 결정 ‘GLM 과 같은 방식’): the current-build public results ran 25.0% and 26.1% under the estimate, so the grade uses est ÷ 1.25 — speed, band and label stay the engine values', () => {
+    // 값 = 엔진 회귀 14 DSV4_REFERENCE.current 의 두 열(PR 29.45 · b10809 29.20) 가운데 작은 과대(소수 셋째 자리) — 08-03 옛 빌드는 뺐다(+33% 이상)
+    expect(VERDICT_OVERESTIMATE[V4]).toBe(0.25);
+    for (const ram of [256, 512]) {
+      const c = at('apple-m3-ultra', ram);
+      // 표시 추정 37.4 는 쾌적 임계(생각 모드 20 × 1.5 = 30)를 넘지만 할인하면 29.9 — 원활
+      expect(c.baseline.result.tgTokS.est).toBeGreaterThan(30);
+      expect(c.baseline.result.tgTokS.est / 1.25).toBeLessThan(30);
+      expect(c.baseline.result).toMatchObject({ verdict: 'A', mode: 'full-gpu', confidence: 'theoretical' });
+      expect(c.baseline.estimate.verdict).toBe('A');
+      expect(c.baseline.verdictReason).toBe('cap-overestimate');
+      expect(c.baseline.overestimate).toBe(0.25);
+      expect(c.baseline.result.tgTokS.low).toBeCloseTo(c.baseline.result.tgTokS.est * 0.7, 9);
+      // Q2_K 는 할인해도 쾌적이라 '최후 수단' 힌트가 생긴다
+      expect(c.lastResort).toMatchObject({ quant: 'Q2_K' });
+      expect(c.lastResort!.result.verdict).toBe('S');
+      expect(ctxMatrix(gpu('apple-m3-ultra'), hardwareConfigs(gpu('apple-m3-ultra'), seed.gpus, { ramGB: ram })[0]!, model(V4), c.baseline).rows[1]![0]!.verdict).toBe('A');
+    }
+    // 할인해도 등급이 같으면 사유는 그대로 — M5 Ultra 256GB 쾌적, M2 Ultra 192GB Q2_K 쾌적(GPU)
+    const m5 = at('apple-m5-ultra', 256).baseline;
+    expect(m5.result.verdict).toBe('S');
+    expect(m5.verdictReason).toBe('speed');
+    expect(m5).not.toHaveProperty('overestimate');
+    expect(at('apple-m2-ultra', 192).perQuant.find((x) => x.quant === 'Q2_K')!.result.verdict).toBe('S');
+    // DGX Spark 여러 대(허브 행 — 늘 이론 추정): 128GB × 2 원활 그대로, 64·128GB × 4 는 원활 → 겨우 가능(14.7 ÷ 1.25 = 11.8 < 12)
+    const spark = (ram: number, nodes: number) => {
+      const g = gpu('nvidia-dgx-spark');
+      return assessCombo(seed, g, hardwareConfigs(g, seed.gpus, { ramGB: ram, nodes })[0]!, model(V4)).baseline;
+    };
+    expect(spark(128, 2).result.verdict).toBe('A');
+    for (const ram of [64, 128]) {
+      const four = spark(ram, 4);
+      expect(four.result).toMatchObject({ verdict: 'B', mode: 'full-gpu', confidence: 'theoretical' });
+      expect(four.verdictReason).toBe('cap-overestimate');
+      expect(four.result.tgTokS.est).toBeGreaterThanOrEqual(12);
+    }
+    // MoE 전문가 RAM 배치(그래픽카드 네 장 + 큰 RAM — 계산기 구성): 원활 → 겨우 가능, 사유는 할인(모드 규칙보다 먼저)
+    const four5090 = at('rtx-5090', 128, { gpuCount: 4 }).baseline;
+    expect(four5090.result).toMatchObject({ verdict: 'B', mode: 'cpu-moe' });
+    expect(four5090.verdictReason).toBe('cap-overestimate');
+    expect(four5090.estimate.tgTokS.est).toBeGreaterThanOrEqual(30);
   });
 
   it('the command keeps the MXFP4 shard tag (llama.cpp -hf skips dspark-* sidecars) and puts the first N blocks of experts in RAM', () => {
@@ -1240,8 +1327,8 @@ describe('GLM-5.3-Flash — KDA + DSA hybrid, mHC, Q4_K file as the Q4_K_M basel
   });
 
   it('verdict discount (10-22 ⑧-b 리뷰): every public reference ran ≥ 8.2% under the estimate, so the grade uses est ÷ 1.082 — speed, band and label stay the engine values', () => {
-    // GLM 만(DeepSeek V4 Flash 는 배포된 페이지라 사용자 결정 전까지 — PROGRESS §2 큐 3). 값 = 엔진 회귀 15 GLM53_REFERENCE.recordedErr 의 최솟값
-    expect(VERDICT_OVERESTIMATE).toEqual({ [GLM]: 0.082 });
+    // GLM(값 = 엔진 회귀 15 GLM53_REFERENCE.recordedErr 의 최솟값)과 DeepSeek V4 Flash 0731(10-23 D121 — 위 V4 테스트)
+    expect(VERDICT_OVERESTIMATE).toEqual({ [GLM]: 0.082, 'deepseek-v4-flash-0731': 0.25 });
     expect(Math.min(0.235, 0.238, 0.108, 0.116, 0.082, 0.238, 0.261, 0.242)).toBe(VERDICT_OVERESTIMATE[GLM]);
     for (const ram of [256, 512]) {
       const c = at('apple-m3-ultra', ram);
@@ -1273,7 +1360,7 @@ describe('GLM-5.3-Flash — KDA + DSA hybrid, mHC, Q4_K file as the Q4_K_M basel
 
   it('verdict discount touches no other catalog model (hub configurations)', () => {
     for (const m of seed.models) {
-      if (m.id === GLM) continue;
+      if (m.id in VERDICT_OVERESTIMATE) continue;
       for (const g of seed.gpus) {
         for (const c of hardwareConfigs(g, seed.gpus)) {
           for (const x of assessCombo(seed, g, c, m).perQuant) {

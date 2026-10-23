@@ -61,6 +61,11 @@ export type ResultCard = {
    * 올리기) 그대로이고 이건 참고 줄이다
    */
   singleGpu?: { gpu: GpuCore; q: QuantAssessment };
+  /**
+   * 여러 대 연결(10-23 D121): 표시 quant 가 같은 메모리 **1대**에 GPU 전량으로 들어갈 때 그 1대 평가 — 허브·콤보의 '1대로 충분'과 같은 뜻의 참고 줄.
+   * 판정·표시 속도는 고른 대수의 계산 그대로다(사용자가 직접 고른 구성). 1대 평가는 계산기에서 1대를 고를 때와 같은 값·라벨(8k·f16 실측 조인)
+   */
+  oneUnit?: { q: QuantAssessment };
 };
 
 export type VerdictCounts = Record<Verdict, number> & { otherQuant: number };
@@ -147,6 +152,40 @@ function fastestSingleGpu(
   return best;
 }
 
+/**
+ * 여러 대 연결(10-23 D121): 표시 quant 를 같은 메모리·같은 OS 의 1대 구성으로 다시 평가해 GPU 에 전부 올라가면 그 결과 — '1대로 충분' 참고 줄.
+ * 허브·콤보는 8k·f16 기준 양자화로 같은 규칙(`oneUnitEnough`)을 보고, 계산기는 사용자가 고른 컨텍스트·KV·표시 양자화로 본다.
+ * 카탈로그 밖 모델(`external`)은 단독 결과처럼 늘 이론 추정
+ */
+function oneUnitFit(
+  catalog: CatalogLite,
+  hardware: ResolvedHardware,
+  model: ModelCore,
+  combo: ComboAssessment,
+  ctx: number,
+  kvQuant: CalcState['kv'],
+  external: boolean,
+): ResultCard['oneUnit'] {
+  const q = combo.display;
+  if (hardware.nodes <= 1 || !q.fits) return undefined;
+  const row = catalog.modelQuants.find((r) => r.modelId === model.id && r.quant === q.quant);
+  if (!row) return undefined;
+  const { config } = hardware;
+  const single: HwConfig = hardwareConfigs(hardware.gpu, catalog.gpus, { ramGB: config.ramGB, os: config.hw.os })[0]!;
+  const alone = assessQuant({
+    gpu: hardware.gpu,
+    config: single,
+    model,
+    row,
+    tier: q.tier,
+    benchmarks: external ? [] : catalog.benchmarks,
+    ctx,
+    kvQuant,
+    ...(external ? { theoretical: true } : {}),
+  });
+  return alone.fits && alone.result.mode === 'full-gpu' ? { q: alone } : undefined;
+}
+
 export function assembleResults(catalog: CatalogLite, rawState: CalcState, extra?: ExtraModel): RunResult | undefined {
   // 하드웨어 종류에 맞지 않는 필드(CPU 프로필의 DDR, Apple 의 OS 등)를 먼저 정리한다
   const state = normalize(rawState, catalog);
@@ -183,6 +222,7 @@ export function assembleResults(catalog: CatalogLite, rawState: CalcState, extra
     const row = multi ? catalog.modelQuants.find((r) => r.modelId === model.id && r.quant === combo.display.quant) : undefined;
     const plan = row && combo.display.fits ? commandPlan(gpu, config, model, row, combo.display, { ctx, kvQuant: state.kv }) : undefined;
     const singleGpu = fastestSingleGpu(catalog, hardware, model, combo, ctx, state.kv, false);
+    const oneUnit = oneUnitFit(catalog, hardware, model, combo, ctx, state.kv, false);
     return {
       model,
       combo,
@@ -193,6 +233,7 @@ export function assembleResults(catalog: CatalogLite, rawState: CalcState, extra
       ...(hubConfig ? { hubConfig } : {}),
       ...commandFields(plan),
       ...(singleGpu ? { singleGpu } : {}),
+      ...(oneUnit ? { oneUnit } : {}),
     };
   });
 
@@ -222,6 +263,7 @@ export function assembleResults(catalog: CatalogLite, rawState: CalcState, extra
     const row = extra.origin === 'hf' ? extra.rows.find((r) => r.quant === combo.display.quant) : undefined;
     const plan = row && combo.display.fits ? commandPlan(gpu, config, extra.model, row, combo.display, { ctx, kvQuant: state.kv }) : undefined;
     const singleGpu = fastestSingleGpu(withExtra, hardware, extra.model, combo, ctx, state.kv, true);
+    const oneUnit = oneUnitFit(withExtra, hardware, extra.model, combo, ctx, state.kv, true);
     pinned = {
       model: extra.model,
       combo,
@@ -231,6 +273,7 @@ export function assembleResults(catalog: CatalogLite, rawState: CalcState, extra
       bucket: sizeBucket(extra.model.paramsB),
       ...commandFields(plan),
       ...(singleGpu ? { singleGpu } : {}),
+      ...(oneUnit ? { oneUnit } : {}),
     };
   }
 

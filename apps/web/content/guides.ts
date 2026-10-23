@@ -594,6 +594,7 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
     ...PUBLISHED_1019,
     // 10-21 D115: 'V4 는 계산하지 않음' → DeepSeek V4 Flash 0731 계산(큰 메모리 맥·여러 장·MoE 전문가 RAM 배치 <Expect>, KV 표·확실성 문단)
     // 10-23 D117: DGX Spark 128GB 의 Q2_K 가 CPU 경로 B → 불가(기기 근거 사용 가능량이 두 경로의 한도) — 문장과 <Expect> 를 고쳤다
+    // 10-23 D121: V4 Flash 판정 할인(0.25 — 사용자 결정)으로 M3 Ultra 256·512GB MXFP4 쾌적 → 원활 — 문장·<Expect>·확실성 문단을 고쳤다(M5 Ultra 는 쾌적 그대로)
     dateModified: '2026-10-23',
     grids: {
       // 8~32GB dGPU 6종 × R1 소형 4종 — 0528-qwen3-8b 는 Ollama deepseek-r1 기본 태그, distill-14b 는 :14b (10-19 추가).
@@ -651,7 +652,8 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
     author: 'CanRun',
     grids: {
       // DGX Spark 구성 6줄(1대 64·128GB, 64·128GB × 2대·4대 — GPU 허브 '메모리 구성별 판정' 표와 같은 칸) × 모델 6
-      // (작은 MoE · dense 31B · dense 70B · gpt-oss-120b · 122B MoE · 한 대에 안 들어가는 284B MoE). 본문이 말하는 칸은 전부 <Expect>(여러 대는 nodes)로 고정
+      // (작은 MoE · dense 31B · dense 70B · gpt-oss-120b · 122B MoE · 한 대에 안 들어가는 284B MoE). 본문이 말하는 칸은 전부 <Expect>(여러 대는 nodes)로 고정.
+      // 10-23 D121: 같은 메모리 1대에 들어가는 모델의 여러 대 칸은 '1대로 충분'(<Expect oneUnit>) — 연결이 필요한 칸만 판정·속도
       dgxSpark: {
         gpus: ['nvidia-dgx-spark'],
         rows: [

@@ -2,6 +2,14 @@ CanRun changes often. New models arrive, the calculator gains features, and now 
 
 ## Changes to the site
 
+<Update id="one-unit-enough-alternatives">
+
+### DGX Spark linked rows say when one unit is enough, and suggestions include every model
+
+On the <SiteLink to="/gpu/nvidia-dgx-spark">DGX Spark</SiteLink> page and each model's DGX Spark page, the two- and four-unit rows now say “One unit is enough” for a model that already fits on one unit of the same size, and their verdict counts include only the models that need linking; the calculator still shows the result for the number of units you pick and adds a line when one unit would do. The larger, smaller and faster model suggestions on model-and-GPU pages now also consider models whose speed is always a theoretical estimate, and the card carries that label: that day on an RTX 4090, the larger model suggested next to Llama 3.1 8B changed from Qwen3.5 35B-A3B to K2-Horizon MoVA 36B-A4B. <SiteLink to="/model/deepseek-v4-flash-0731">DeepSeek V4 Flash 0731</SiteLink> is now rated at a speed a fifth below the estimate shown, the way GLM-5.3 Flash already was by a smaller margin, because public results from a current llama.cpp build ran slower than the estimate. That day at an 8k context, its MXFP4 file went from Runs great to Runs well on an M3 Ultra with 256GB or 512GB, and from Runs well to Runs slowly on four linked DGX Sparks.
+
+</Update>
+
 <Update id="dgx-spark-128gb-rtx-pro-6000">
 
 ### DGX Spark pages use the 128GB model, and the RTX PRO 6000 Blackwell joins the catalog

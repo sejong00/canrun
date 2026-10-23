@@ -2,6 +2,14 @@ CanRun은 자주 바뀝니다. 새 모델이 들어오고, 계산기에 기능�
 
 ## 바뀐 기능과 고친 계산
 
+<Update id="one-unit-enough-alternatives">
+
+### DGX Spark 여러 대 행의 ‘1대로 충분’, 모든 모델이 들어가는 대안 카드
+
+<SiteLink to="/gpu/nvidia-dgx-spark">DGX Spark</SiteLink> 페이지와 모델별 DGX Spark 페이지의 두 대·네 대 행은 같은 메모리 한 대에 이미 들어가는 모델이면 판정 대신 ‘1대로 충분’이라고 적고, 그 행의 판정 수에는 연결이 필요한 모델만 셉니다. 계산기는 고른 대수로 계산한 결과를 그대로 보이고, 한 대로 충분한 모델에는 그렇다고 한 줄 더 적습니다. 모델·그래픽카드 조합 페이지의 ‘더 큰 모델’·‘더 작은 모델’·‘더 빠른 모델’ 카드에 속도가 늘 이론 추정인 모델도 들어가 카드에 그 라벨이 붙고, 이날 RTX 4090에서 Llama 3.1 8B 옆의 ‘더 큰 모델’은 Qwen3.5 35B-A3B에서 K2-Horizon MoVA 36B-A4B로 바뀌었습니다. <SiteLink to="/model/deepseek-v4-flash-0731">DeepSeek V4 Flash 0731</SiteLink>은 지금 llama.cpp 빌드의 공개 결과가 추정보다 느려서, GLM-5.3 Flash처럼 표시된 추정보다 5분의 1 낮은 속도로 판정합니다. 이날 8k 컨텍스트에서 MXFP4 파일은 M3 Ultra 256GB·512GB에서 ‘쾌적’에서 ‘원활’로, DGX Spark 네 대 연결에서 ‘원활’에서 ‘겨우 가능’으로 바뀌었습니다.
+
+</Update>
+
 <Update id="dgx-spark-128gb-rtx-pro-6000">
 
 ### DGX Spark 페이지는 128GB 구성 기준, RTX PRO 6000 Blackwell 추가

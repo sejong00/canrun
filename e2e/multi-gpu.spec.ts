@@ -126,6 +126,7 @@ for (const locale of LOCALES) {
     const oss = page.locator('[data-result-card][data-model-id="gpt-oss-120b"]');
     await expect(oss).toBeVisible();
     await expect(oss.locator('[data-rpc-command]')).toHaveCount(0);
+    await expect(oss.locator('[data-one-unit-hint]')).toHaveCount(0);
 
     await nodes.selectOption('2');
     await expect.poll(() => new URL(page.url()).searchParams.get('nodes')).toBe('2');
@@ -135,6 +136,8 @@ for (const locale of LOCALES) {
     await expect(command).toContainText('ggml-rpc-server -H <node2-ip> -p 50052 -c');
     await expect(command).toContainText('--rpc <node2-ip>:50052');
     await expect(oss.locator('[data-cluster-links] a')).toHaveCount(3);
+    // 1대로 충분(10-23 D121): gpt-oss-120b MXFP4 는 128GB 한 대에 다 들어간다 — 고른 대수의 결과는 그대로, 참고 줄 하나
+    await expect(oss.locator('[data-one-unit-hint]')).toContainText(locale === 'ko' ? '1대로 충분합니다' : 'One unit is enough');
 
     await page.reload();
     await expect(page.locator('select[name="nodes"]')).toHaveValue('2');

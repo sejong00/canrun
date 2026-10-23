@@ -138,8 +138,8 @@ describe('hub intro <Expect> pins (AUTHORING §10)', () => {
             // 양자화·RAM·컨텍스트 조건이 붙은 문장은 "어떻게 돌아가는지"(verdict)인지 "올라가는지"(fits)인지 밝힌다 —
             // mode 만 고정하면 같은 문장의 "느리다"가 고정되지 않는다(qwen3.8-27b IQ4_XS 가 실제로는 원활하던 사례)
             const conditioned = claim.quant !== undefined || claim.ram !== undefined || claim.ctx !== undefined;
-            if (conditioned && claim.verdict === undefined && claim.fits === undefined) {
-              problems.push(`${where}: ${m[0]} has a condition but pins neither verdict nor fits`);
+            if (conditioned && claim.verdict === undefined && claim.fits === undefined && claim.oneUnit === undefined) {
+              problems.push(`${where}: ${m[0]} has a condition but pins neither verdict nor fits (nor oneUnit)`);
             }
             // 규칙 3 — 이론 추정(±30%) 셀의 판정은 그 문장이나 바로 다음 문장에 라벨
             if (claim.verdict !== undefined && resolveExpect(claim).confidence === 'theoretical') {
@@ -211,5 +211,19 @@ describe('<Expect nodes> — linked DGX Spark units (10-23 D118)', () => {
     expect(page.combo.nodes).toBeUndefined();
     expect(page.clusterCombos.map((c) => `${c.ramGB}x${c.nodes}`)).toEqual(['64x2', '128x2', '64x4', '128x4']);
     expect(getCombo('gpt-oss-120b', 'apple-m3-ultra')!.clusterCombos).toEqual([]);
+  });
+
+  it('oneUnit (10-23 D121): a linked cell of a model that fits one unit shows “one unit is enough” — pin it with oneUnit, never with a verdict', () => {
+    const at = { model: 'qwen3.6-27b', gpu: 'nvidia-dgx-spark', ram: '128', nodes: '2' };
+    expect(resolveExpect(at).oneUnit).toBe(true);
+    expect(checkExpect({ ...at, oneUnit: 'true' }).oneUnit).toBe(true);
+    expect(() => checkExpect({ ...at, oneUnit: 'false' })).toThrow(/oneUnit=true/);
+    expect(() => checkExpect({ ...at, verdict: 'B' })).toThrow(/one unit is enough/);
+    expect(() => checkExpect({ ...at, fits: 'true' })).toThrow(/one unit is enough/);
+    // 연결이 필요한 모델의 칸은 판정을 그대로 고정한다
+    expect(checkExpect({ model: 'gpt-oss-120b', gpu: 'nvidia-dgx-spark', ram: '64', nodes: '2', oneUnit: 'false', verdict: 'S' }).oneUnit).toBe(false);
+    // 1대 칸에는 쓰지 않는다
+    expect(() => checkExpect({ model: 'qwen3.6-27b', gpu: 'nvidia-dgx-spark', ram: '128', oneUnit: 'true' })).toThrow(/oneUnit needs nodes/);
+    expect(() => checkExpect({ ...at, oneUnit: 'yes' })).toThrow(/"true" or "false"/);
   });
 });

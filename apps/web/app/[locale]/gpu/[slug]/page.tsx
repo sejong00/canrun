@@ -14,6 +14,7 @@ import {
   ScrollTable,
   TABLE_CLASS,
 } from '@/components/hub-table';
+import { OneUnitChip } from '@/components/one-unit';
 import { PageShell } from '@/components/page-shell';
 import { VerdictBadge, VerdictLegend } from '@/components/verdict';
 import { isContentLocale, ogImageLocale } from '@/i18n/locales';
@@ -287,7 +288,8 @@ export default async function GpuHubPage({ params }: Props) {
   // 요약 목록·"메모리 구성별 판정" 표 — 1대 구성 뒤에 2대·4대 연결 구성(10-23 D118 — 있는 기기만). 정렬·대표 판정·FAQ 는 1대 구성 그대로
   const clusterConfigs = hub.clusterConfigs ?? [];
   const summaryConfigs = [...hub.configs, ...clusterConfigs];
-  const summaryCounts = [...hub.counts, ...(hub.clusterCounts ?? [])];
+  // 여러 대 행의 판정 수는 연결이 필요한 모델만 세고, 같은 메모리 1대로 충분한 모델은 `oneUnit` 에 따로 센다(10-23 D121)
+  const summaryCounts: Array<GpuHubData['counts'][number] & { oneUnit?: number }> = [...hub.counts, ...(hub.clusterCounts ?? [])];
   const config = configSuffix(t.hub, hub, locale);
   const faq = buildFaq(t, hub, locale, name);
   const hasPartial = primary.some(
@@ -469,6 +471,12 @@ export default async function GpuHubPage({ params }: Props) {
                       {tSpec('summaryOther', { count: counts.otherQuant })}
                     </span>
                   )}
+                  {counts.oneUnit !== undefined && (
+                    <span data-one-unit-count={counts.oneUnit} className="flex items-center gap-1.5 text-sm">
+                      <OneUnitChip />
+                      <span className="tabular-nums">{tSpec('countLabel', { count: counts.oneUnit })}</span>
+                    </span>
+                  )}
                 </li>
               );
             })}
@@ -569,9 +577,15 @@ export default async function GpuHubPage({ params }: Props) {
                   {hub.rows.map((row) => (
                     <tr key={row.model.id}>
                       <th scope="row">{row.model.name}</th>
-                      {[...row.combos, ...(row.clusterCombos ?? [])].map((combo) => (
+                      {row.combos.map((combo) => (
                         <td key={configKey(combo)}>
                           <VerdictBadge verdict={combo.baseline.result.verdict} compact />
+                        </td>
+                      ))}
+                      {/* 여러 대 연결 칸(10-23 D121): 같은 메모리 1대에 이미 들어가는 모델은 판정 대신 '1대로 충분' */}
+                      {(row.clusterCombos ?? []).map((combo, i) => (
+                        <td key={configKey(combo)}>
+                          {row.clusterOneUnit?.[i] ? <OneUnitChip /> : <VerdictBadge verdict={combo.baseline.result.verdict} compact />}
                         </td>
                       ))}
                     </tr>

@@ -228,105 +228,49 @@ describe('alternatives (docs/04 §4 ⑥, D4)', () => {
     expect(altsFor('cpu-ddr5-5600-2ch', 'qwen3-8b', 1).map(label)).toEqual(['faster-model:qwen3.5-35b-a3b']);
   });
 
-  it('value-expert (MoVA) models are not offered as model alternatives — temporary default pending user decision (D113)', () => {
-    // 고정 집합 + MoVA 36B-A4B: 대안 카드는 MoVA 가 카탈로그에 없을 때와 같아야 한다(PROGRESS §2 큐 3 — 기존 페이지 대안 변화 0)
+  it('always-theoretical structures — value experts (MoVA), hyper-connections and compressed attention — are model alternatives like any other model (10-23 D121 사용자 결정 ‘추천에도 넣기’)', () => {
+    // D113·D115·D116 의 임시 기본값(후보에서 빼기)을 없앴다. 고정 집합에 한 모델씩 더하면 그 모델이 '더 큰·더 작은·더 빠른 모델' 카드로 나오는 구성이
+    // 실제로 있고(빈 검사가 아니다), 카드는 그 모델의 이론 추정 라벨을 그대로 실는다. 그 모델 카드가 없는 구성의 대안은 더하기 전과 같다
     const full = loadSeed();
-    const movaId = 'k2-horizon-mova-36b-a4b';
-    const mova = full.models.find((m) => m.id === movaId)!;
-    expect(mova.arch.valueExperts).toBeDefined();
-    const withMova = {
-      ...seed,
-      models: [...seed.models, mova],
-      modelQuants: [...seed.modelQuants, ...full.modelQuants.filter((r) => r.modelId === movaId)],
-    };
     const modelAlt = (a: Alternative) =>
       a.kind === 'larger-model' || a.kind === 'smaller-model' || a.kind === 'faster-model' ? a.model.id : undefined;
-    let movaQualified = 0;
-    for (const gpuId of ['rtx-4090', 'rtx-3090', 'rtx-5060-ti-16gb', 'apple-m4-pro']) {
-      const g = gpu(gpuId);
-      const hubWith = summarizeGpu(withMova, g);
-      const hubWithout = gpuHub(gpuId);
-      hubWith.configs.forEach((_, ci) => {
-        const movaRow = hubWith.rows.find((r) => r.model.id === movaId)!;
-        if (verdictRank(movaRow.combos[ci]!.baseline.result.verdict) >= verdictRank('A')) movaQualified++;
-        for (const r of hubWithout.rows) {
-          const args = { catalog: seed, gpu: g, configIndex: ci, modelHub: modelHub(r.model.id), model: r.model };
-          const withAlts = alternatives({ ...args, catalog: withMova, gpuHub: hubWith, combo: hubWith.rows.find((x) => x.model.id === r.model.id)!.combos[ci]! });
-          const withoutAlts = alternatives({ ...args, gpuHub: hubWithout, combo: r.combos[ci]! });
-          expect(withAlts.map(modelAlt), `${gpuId}#${ci}/${r.model.id}`).not.toContain(movaId);
-          expect(withAlts.map(label), `${gpuId}#${ci}/${r.model.id}`).toEqual(withoutAlts.map(label));
-        }
-      });
+    const cases = [
+      ['k2-horizon-mova-36b-a4b', ['rtx-4090', 'rtx-3090', 'rtx-5060-ti-16gb', 'apple-m4-pro']],
+      ['deepseek-v4-flash-0731', ['apple-m3-ultra', 'apple-m5-ultra', 'apple-m2-ultra', 'rtx-5090']],
+      ['glm-5.3-flash', ['apple-m3-ultra', 'apple-m5-ultra', 'apple-m2-ultra', 'rtx-5090']],
+    ] as const;
+    for (const [addedId, gpuIds] of cases) {
+      const added = full.models.find((m) => m.id === addedId)!;
+      expect(added.arch.valueExperts !== undefined || added.arch.mhc === true || added.arch.attnType === 'compressed', addedId).toBe(true);
+      const withAdded = {
+        ...seed,
+        models: [...seed.models, added],
+        modelQuants: [...seed.modelQuants, ...full.modelQuants.filter((r) => r.modelId === addedId)],
+      };
+      let offered = 0;
+      for (const gpuId of gpuIds) {
+        const g = gpu(gpuId);
+        const hubWith = summarizeGpu(withAdded, g);
+        const hubWithout = gpuHub(gpuId);
+        hubWith.configs.forEach((_, ci) => {
+          for (const r of hubWithout.rows) {
+            const args = { catalog: seed, gpu: g, configIndex: ci, modelHub: modelHub(r.model.id), model: r.model };
+            const withAlts = alternatives({ ...args, catalog: withAdded, gpuHub: hubWith, combo: hubWith.rows.find((x) => x.model.id === r.model.id)!.combos[ci]! });
+            const withoutAlts = alternatives({ ...args, gpuHub: hubWithout, combo: r.combos[ci]! });
+            const card = withAlts.find((a) => modelAlt(a) === addedId);
+            if (card === undefined) {
+              expect(withAlts.map(label), `${addedId} ${gpuId}#${ci}/${r.model.id}`).toEqual(withoutAlts.map(label));
+              continue;
+            }
+            offered += 1;
+            // 카드는 그 모델의 판정·라벨 그대로(늘 이론 추정), 나머지 카드는 그대로
+            expect('combo' in card && card.combo.display.result.confidence, `${addedId} ${gpuId}#${ci}/${r.model.id}`).toBe('theoretical');
+            expect(withAlts.filter((a) => modelAlt(a) === undefined).map(label)).toEqual(withoutAlts.filter((a) => modelAlt(a) === undefined).map(label));
+          }
+        });
+      }
+      expect(offered, addedId).toBeGreaterThan(0);
     }
-    // MoVA 가 판정 A 이상이라 후보에서 빼지 않으면 '더 큰 모델'을 가져갈 구성이 실제로 있다(이 검사가 빈 검사가 아니다)
-    expect(movaQualified).toBeGreaterThan(0);
-  });
-
-  it('hyper-connection / compressed-attention models (DeepSeek V4 Flash) are not offered as model alternatives either — same temporary default (D115)', () => {
-    const full = loadSeed();
-    const v4Id = 'deepseek-v4-flash-0731';
-    const v4 = full.models.find((m) => m.id === v4Id)!;
-    expect(v4.arch).toMatchObject({ mhc: true, attnType: 'compressed' });
-    const withV4 = {
-      ...seed,
-      models: [...seed.models, v4],
-      modelQuants: [...seed.modelQuants, ...full.modelQuants.filter((r) => r.modelId === v4Id)],
-    };
-    const modelAlt = (a: Alternative) =>
-      a.kind === 'larger-model' || a.kind === 'smaller-model' || a.kind === 'faster-model' ? a.model.id : undefined;
-    let v4Qualified = 0;
-    for (const gpuId of ['apple-m3-ultra', 'apple-m5-ultra', 'apple-m2-ultra', 'rtx-5090']) {
-      const g = gpu(gpuId);
-      const hubWith = summarizeGpu(withV4, g);
-      const hubWithout = gpuHub(gpuId);
-      hubWith.configs.forEach((_, ci) => {
-        const v4Row = hubWith.rows.find((r) => r.model.id === v4Id)!;
-        if (verdictRank(v4Row.combos[ci]!.baseline.result.verdict) >= verdictRank('A')) v4Qualified++;
-        for (const r of hubWithout.rows) {
-          const args = { catalog: seed, gpu: g, configIndex: ci, modelHub: modelHub(r.model.id), model: r.model };
-          const withAlts = alternatives({ ...args, catalog: withV4, gpuHub: hubWith, combo: hubWith.rows.find((x) => x.model.id === r.model.id)!.combos[ci]! });
-          const withoutAlts = alternatives({ ...args, gpuHub: hubWithout, combo: r.combos[ci]! });
-          expect(withAlts.map(modelAlt), `${gpuId}#${ci}/${r.model.id}`).not.toContain(v4Id);
-          expect(withAlts.map(label), `${gpuId}#${ci}/${r.model.id}`).toEqual(withoutAlts.map(label));
-        }
-      });
-    }
-    // M3·M5 Ultra 256GB 이상에서 판정 A 이상이라 후보에서 빼지 않으면 '더 큰 모델'을 가져갈 구성이 실제로 있다(빈 검사가 아니다)
-    expect(v4Qualified).toBeGreaterThan(0);
-  });
-
-  it('the hyper-connection hybrid (GLM-5.3-Flash, 10-22 엔진 후속 ⑧-b) is not offered as a model alternative either — same temporary default (arch.mhc)', () => {
-    const full = loadSeed();
-    const glmId = 'glm-5.3-flash';
-    const glm = full.models.find((m) => m.id === glmId)!;
-    expect(glm.arch).toMatchObject({ mhc: true, attnType: 'hybrid' });
-    const withGlm = {
-      ...seed,
-      models: [...seed.models, glm],
-      modelQuants: [...seed.modelQuants, ...full.modelQuants.filter((r) => r.modelId === glmId)],
-    };
-    const modelAlt = (a: Alternative) =>
-      a.kind === 'larger-model' || a.kind === 'smaller-model' || a.kind === 'faster-model' ? a.model.id : undefined;
-    let glmQualified = 0;
-    for (const gpuId of ['apple-m3-ultra', 'apple-m5-ultra', 'apple-m2-ultra', 'rtx-5090']) {
-      const g = gpu(gpuId);
-      const hubWith = summarizeGpu(withGlm, g);
-      const hubWithout = gpuHub(gpuId);
-      hubWith.configs.forEach((_, ci) => {
-        const glmRow = hubWith.rows.find((r) => r.model.id === glmId)!;
-        if (verdictRank(glmRow.combos[ci]!.baseline.result.verdict) >= verdictRank('A')) glmQualified++;
-        for (const r of hubWithout.rows) {
-          const args = { catalog: seed, gpu: g, configIndex: ci, modelHub: modelHub(r.model.id), model: r.model };
-          const withAlts = alternatives({ ...args, catalog: withGlm, gpuHub: hubWith, combo: hubWith.rows.find((x) => x.model.id === r.model.id)!.combos[ci]! });
-          const withoutAlts = alternatives({ ...args, gpuHub: hubWithout, combo: r.combos[ci]! });
-          expect(withAlts.map(modelAlt), `${gpuId}#${ci}/${r.model.id}`).not.toContain(glmId);
-          expect(withAlts.map(label), `${gpuId}#${ci}/${r.model.id}`).toEqual(withoutAlts.map(label));
-        }
-      });
-    }
-    // M3 Ultra 512GB 에서 판정 A 이상(허브 구성 — M5 Ultra 는 96·256GB 뿐이라 CPU 전용 겨우 가능) — 후보에서 빼지 않으면 '더 큰 모델'을 가져갈 구성이
-    // 실제로 있다(빈 검사가 아니다)
-    expect(glmQualified).toBeGreaterThan(0);
   });
 
   it('never exceeds 3 and never repeats a kind (whole catalog, primary config)', () => {

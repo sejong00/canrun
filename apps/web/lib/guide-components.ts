@@ -114,6 +114,8 @@ export const GUIDE_COMPONENTS: Readonly<Record<string, ComponentSpec>> = {
       ram: opt('ram'),
       // 여러 대 연결 구성(DGX Spark 2대·4대 — `ram` 과 함께, `ctx` 와는 함께 못 쓴다 — lib/expect-claim.ts)
       nodes: opt('nodes'),
+      // 그 여러 대 칸이 '1대로 충분'인가(10-23 D121 — `nodes` 와 함께, 그 칸은 판정·속도 주장을 받지 않는다)
+      oneUnit: opt('bool'),
       ctx: opt('ctx'),
       kv: opt('kv'),
       confidence: opt('confidence'),

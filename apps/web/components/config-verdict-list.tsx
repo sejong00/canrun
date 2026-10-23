@@ -1,5 +1,6 @@
 import { configKey, type ComboAssessment } from '@canrun/data';
 import { useLocale, useTranslations } from 'next-intl';
+import { OneUnitChip } from '@/components/one-unit';
 import { VerdictBadge } from '@/components/verdict';
 import { formatInt } from '@/lib/format';
 import { speedPhrase } from '@/lib/phrases';
@@ -8,6 +9,11 @@ export type ConfigVerdictRow = {
   ramGB: number;
   /** 여러 대 연결 구성(10-23 D118 — DGX Spark)의 대수 — 2 이상일 때만. 라벨이 "128 GB × 2" 가 되고 `data-nodes` 가 붙는다 */
   nodes?: number;
+  /**
+   * 여러 대 연결 행만: 같은 메모리 1대에 이미 들어가는 모델이라 판정·속도 대신 '1대로 충분'을 보인다(10-23 D121 — `clusterOneUnitEnough`).
+   * 그 행에는 `data-one-unit` 이 붙고 표시 양자화 속성(`data-quant` 등)은 없다
+   */
+  oneUnit?: boolean;
   combo: ComboAssessment;
   /** 이 페이지의 판정·제목·FAQ 가 쓰는 구성 */
   assumed?: boolean;
@@ -21,7 +27,8 @@ export type ConfigVerdictRow = {
  * 파일이 왜 안 되는지 · 속도(밴드+라벨, 규칙 3) · 표시보다 나은 추천·최후 수단(허브 힌트와 같은 규칙 — 10-03 D64 리뷰 반영:
  * 표시 양자화는 기준이 불가일 때만 추천으로 바뀌므로, 이게 없으면 RAM 을 늘린 행이 더 나쁜 판정처럼 읽힌다).
  * `data-ram-step` 은 콤보 아일랜드의 RAM 토글이 선택한 행에 aria-current 를 다는 훅, `data-quant`·`data-display-verdict`·`data-fits`
- * (표시 양자화)는 export·E2E 테스트가 읽는다. 여러 대 연결 행(10-23 D118)은 `data-nodes`(대수)가 더 붙고 React key 는 (용량, 대수). 클라이언트 JS 0.
+ * (표시 양자화)는 export·E2E 테스트가 읽는다. 여러 대 연결 행(10-23 D118)은 `data-nodes`(대수)가 더 붙고 React key 는 (용량, 대수). 같은 메모리 1대에 이미
+ * 들어가는 모델의 여러 대 행은 '1대로 충분'만 보인다(`data-one-unit` — 10-23 D121). 클라이언트 JS 0.
  */
 export function ConfigVerdictList({ rows }: { rows: ConfigVerdictRow[] }) {
   const locale = useLocale();
@@ -33,9 +40,26 @@ export function ConfigVerdictList({ rows }: { rows: ConfigVerdictRow[] }) {
   const tConfidence = useTranslations('Confidence');
   return (
     <ul className="flex flex-wrap gap-3">
-      {rows.map(({ ramGB, nodes, combo, assumed, commands }) => {
+      {rows.map(({ ramGB, nodes, oneUnit, combo, assumed, commands }) => {
         const { display: d, recommended, lastResort } = combo;
         const cluster = nodes !== undefined && nodes > 1;
+        const label = cluster
+          ? tGpuHub('clusterOption', { ram: formatInt(locale, ramGB), nodes })
+          : tGpuHub('ramOption', { ram: formatInt(locale, ramGB) });
+        if (cluster && oneUnit) {
+          return (
+            <li
+              key={configKey({ ramGB, nodes })}
+              data-ram-step={ramGB}
+              data-nodes={nodes}
+              data-one-unit=""
+              className="flex flex-wrap items-center gap-2 rounded-md border border-border px-2 py-1 text-sm"
+            >
+              <span className="tabular-nums">{label}</span>
+              <OneUnitChip />
+            </li>
+          );
+        }
         return (
           <li
             key={configKey({ ramGB, ...(cluster ? { nodes } : {}) })}
@@ -48,9 +72,7 @@ export function ConfigVerdictList({ rows }: { rows: ConfigVerdictRow[] }) {
             {...(commands ? { 'data-commands': '' } : {})}
             className="flex flex-wrap items-center gap-2 rounded-md border border-border px-2 py-1 text-sm aria-[current=true]:border-foreground"
           >
-            <span className="tabular-nums">
-              {cluster ? tGpuHub('clusterOption', { ram: formatInt(locale, ramGB), nodes }) : tGpuHub('ramOption', { ram: formatInt(locale, ramGB) })}
-            </span>
+            <span className="tabular-nums">{label}</span>
             <VerdictBadge verdict={combo.baseline.result.verdict} />
             {d.quant !== combo.baseline.quant && (
               <span className="text-xs">

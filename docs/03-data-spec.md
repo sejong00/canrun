@@ -60,7 +60,7 @@ Model { id, family, name, hfId, paramsB, activeParamsB?,   // moe ⇒ activePara
      //   (docs/02 §2.2 — V4 Flash 6,880), raw SWA 창 캐시·압축기 상태는 상수라 미계상. 비-full 이라 attnOverrides 필수(validateAll — 근거는 llama-kv-cache-dsv4.cpp 고정 커밋).
      //   classifyArch(deepseek_v4 전용 분기)가 llama.cpp deepseek4 변환기·로더가 읽는 키만 켜진 config 인지 본다. 엔진 산식은 이 값을 읽지 않는다(표시용 — 엔진 0.12.1)
      // mhc (10-22 D115): 선택 — 하이퍼 커넥션(config hc_mult > 1, DeepSeek V4). 층마다 더하는 연산을 속도식이 세지 않아 추정은 이론 추정(assess isTheoretical —
-     //   docs/02 §4 ⑩). deepseek_v4 밖의 hc_mult > 1 은 classifyArch 가 보류한다. 압축 어텐션·mHC 모델은 콤보 모델 대안 후보에서 뺀다(D113 임시 기본값과 같은 이유 — combo.ts)
+     //   docs/02 §4 ⑩). deepseek_v4 밖의 hc_mult > 1 은 classifyArch 가 보류한다. 압축 어텐션·mHC 모델도 콤보 모델 대안 후보다(10-23 D121 사용자 결정 — D113·D115 의 임시 기본값 '후보에서 빼기'를 없앴다, combo.ts)
      //   10-22 엔진 후속 ⑧-b: glm5_next_text(GLM-5.3-Flash — KDA 34층 + DSA 희소 MLA·라이트닝 인덱서 11층 + MoE + mHC)도 mhc. attnType 은 기존 'hybrid' —
      //   kvBytesPerTokenF16 = DSA 층의 MLA 잠재 K(kv_lora_rank + qk_rope_head_dim) × 2B + 인덱서 행(index_head_dim × 3 key|gate|pooled — llama.cpp 구현값) × 2B
      //   (docs/02 §2.2 — 19,712), KDA 순환 상태(≈ 153MB/시퀀스)는 미계상. arch.kvHeads·headDim 은 GGUF 표기(DSA 층 KV 헤드 1 × 잠재 512 — config 의 head_dim 0·

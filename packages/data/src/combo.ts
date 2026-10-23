@@ -326,28 +326,14 @@ export type AlternativesInput = {
 
 const A_RANK = verdictRank('A');
 
-/**
- * 모델 대안(더 큰·더 작은·더 빠른 모델) 후보인가 — 값 전문가(MoVA, `arch.valueExperts`) 모델은 뺀다.
- * 이 구조는 늘 이론 추정(assess `isTheoretical` ⑧)인데 크기(37.44B)가 Qwen3.5 35B-A3B 바로 위라, 후보로 두면 이미 배포된
- * 기존 콤보 1,455곳(색인 배치 1 포함)의 모델 대안이 보정·실측 추정 모델에서 이 모델로 바뀐다. 대안 규칙(그대로 둘지 ·
- * 크기가 비슷하면 판정·라벨이 나은 쪽을 먼저 · 늘 이론 추정인 모델을 뺄지)은 사용자 결정 대기라, 그때까지 기존 페이지를
- * 그대로 두는 임시 기본값이다(6b060f2 대비 대안 변화 0 — PROGRESS §2 큐 3·§4 D113). 이 모델 자신의 콤보·허브는 그대로 만든다.
- * 하이퍼 커넥션·압축 어텐션(DeepSeek V4 Flash — `arch.mhc`·attnType compressed, 10-22 D115)도 같은 임시 기본값으로 뺀다 — 늘 이론 추정이고(assess
- * `isTheoretical`) 카탈로그에서 가장 커서(284.33B), 후보로 두면 기존 콤보 168곳(GPU 허브 구성 — M3·M5 Ultra·M2 Ultra 등의 '더 큰 모델')이
- * Solar Open2 250B(보정 추정)에서 이 모델로 바뀐다(f7f1e32 대비). GLM-5.3-Flash(하이퍼 커넥션 하이브리드 — `arch.mhc`, 10-22 ⑧-b, 320B)도 같은 필터로 빠진다
- * — 늘 이론 추정이고 DeepSeek V4 Flash 보다도 커서, 후보로 두면 같은 '더 큰 모델' 자리를 가져간다
- */
-const isModelAltCandidate = (model: Model): boolean =>
-  model.arch.valueExperts === undefined && model.arch.mhc !== true && model.arch.attnType !== 'compressed';
-
 /** (a) 더 큰/작은 모델 · (b) 다른 quant · (c) 실행 방식/RAM/칩/GPU — 각 0~1개. */
 export function alternatives(input: AlternativesInput): Alternative[] {
   const { gpu, gpuHub, configIndex, modelHub, model, combo } = input;
   const out: Alternative[] = [];
   const rank = verdictRank(combo.baseline.result.verdict);
-  const rows = gpuHub.rows
-    .filter((row) => isModelAltCandidate(row.model))
-    .map((row) => ({ model: row.model, combo: row.combos[configIndex]! }));
+  // 모델 대안 후보는 카탈로그 전체 — 늘 이론 추정인 구조(값 전문가·하이퍼 커넥션·압축 어텐션)도 넣는다(10-23 D121 사용자 결정 '추천에도 넣기'.
+  // D113·D115·D116 의 임시 기본값 `isModelAltCandidate` 를 없앴다). 카드는 그 모델의 판정·라벨을 그대로 보인다
+  const rows = gpuHub.rows.map((row) => ({ model: row.model, combo: row.combos[configIndex]! }));
 
   // (a) 모델
   const sameOrBetterA = rows.filter((r) => verdictRank(r.combo.baseline.result.verdict) >= A_RANK);
