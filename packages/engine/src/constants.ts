@@ -215,14 +215,16 @@ export const MULTI_GPU_TG_FACTOR = 1;
  * 통합 메모리 여러 대(§6.2 클러스터, 10-23 D118 — DGX Spark) llama.cpp RPC 층 분할의 토큰당 추가 시간 ms — 대 사이 이동(대수 − 1)마다 더한다.
  * 같은 사람·같은 빌드·같은 조건의 1대/2대 tg 쌍에서 1/2대 − 1/1대 로 역산했다. 값은 **TCP 기본 설정(CPU 유휴 상태 켬)** 의 판정 기준 깊이(8,192 — 엔진의 8k
  * 추정은 KV 를 ctx 만큼 읽는다)인 4.93ms 를 0.1ms 위로 올린 값이다 — 깊이 8k 이하의 TCP 기본 설정 점(3.60·3.86·4.93·4.16·0)은 모두 추정이 실측 이하(보수).
- * 근거 범위: TCP 기본 3.6~7.95ms(깊이 0~32k — 깊이가 깊을수록 커진다, 32k 는 이 값으로 +10.3% 과대) · CPU 유휴 상태 끔(cpupower idle-set -D 0) 1.45~6.59ms ·
- * RDMA(RoCEv2) 1.0~1.4ms(깊이 2k) — 이 둘은 추정보다 빠르다(최대 −16.4%). 2대 실측만 있다 — 3·4대는 이동 횟수로 늘린 이론값이고(4대 RPC 공개 실측 없음),
- * 회귀는 test/fixtures.ts CLUSTER_RPC_PAIRS(verify-regression 17)
+ * 근거 범위(조건이 같은 쌍만): TCP 기본 3.6~7.95ms(깊이 0~32k — 깊이가 깊을수록 커진다, 32k 는 이 값으로 +10.3% 과대) · RDMA(RoCEv2) 1.0~1.4ms(깊이 2k).
+ * Classmethod 쌍(4.16·0·1.40·1.04ms)은 첫 기기도 루프백 RPC 서버로 넣은 구성이라 루프백 왕복 몫이 섞여 있다(네트워크 한 번의 값보다 크다 — D118 리뷰).
+ * 2대만 CPU 유휴 상태를 끈 실행(cpupower idle-set -D 0)은 유휴 상태를 끈 1대 실측이 없어 조건이 다른 쌍이다 — 이동 시간이 아니라 표시값(기본 설정 1대에서 낸
+ * 추정)과 그 설정의 2대 실측을 견주는 데에만 쓴다: RDMA·유휴 상태 끔은 실측이 추정보다 빠르다(추정이 최대 −16.4%). 2대 실측만 있다 — 3·4대는 이동 횟수로
+ * 늘린 이론값이고(4대 RPC 공개 실측 없음), 회귀는 test/fixtures.ts CLUSTER_RPC_PAIRS(verify-regression 17)
  */
 // source: https://github.com/ggml-org/llama.cpp/discussions/16578#discussioncomment-15078806 (DGX Spark 2대 RPC TCP 기본 설정, 같은 빌드 b7157 gpt-oss-120b MXFP4 tg32 — 1대 깊이 0·4096·8192·16384·32768 = 60.36·56.84·53.20·49.15·42.41, 2대 49.59·46.61·42.15·38.82·31.72 → 3.60·3.86·4.93·5.41·7.95ms)
-// source: https://github.com/ggml-org/llama.cpp/discussions/16578#discussioncomment-15139580 (같은 사람·같은 빌드, CPU 유휴 상태 끔 — 2대 55.49·50.51·45.99·41.53·33.15 → 1.45·2.21·2.95·3.73·6.59ms, ping 1.010 → 0.030ms)
-// source: https://dev.classmethod.jp/en/articles/dgx-spark-two-node-clustering/ (b8012 tg256 — Qwen3-235B-A22B Q3_K_M 15.51 → 14.57 = 4.16ms, Devstral 2 123B Q4_K_M 2.64 → 2.64 = 0ms(표시 자릿수 ±1.4ms))
-// source: https://dev.classmethod.jp/en/articles/dgx-spark-2node-deepseek-v4-flash-0731/ (RDMA RTT 0.7ms, ctx 2,048 — DeepSeek V4 Flash 0731 UD-IQ2_M 20.13 → 19.58 = 1.40ms · UD-IQ3_S 18.02 → 17.69 = 1.04ms)
+// source: https://github.com/ggml-org/llama.cpp/discussions/16578#discussioncomment-15139580 (같은 사람·같은 빌드, 2대만 CPU 유휴 상태 끔 — 2대 55.49·50.51·45.99·41.53·33.15, 유휴 상태를 끈 1대 실측은 없다(위 기본 설정 1대와 비교용 — 이동 시간 근거 아님), ping 1.010 → 0.030ms)
+// source: https://dev.classmethod.jp/en/articles/dgx-spark-two-node-clustering/ (b8012 tg256, `--rpc <원격>,127.0.0.1` 루프백 RPC 장치 포함 — Qwen3-235B-A22B Q3_K_M 15.51 → 14.57 = 4.16ms, Devstral 2 123B Q4_K_M 2.64 → 2.64 = 0ms(표시 자릿수 ±1.4ms))
+// source: https://dev.classmethod.jp/en/articles/dgx-spark-2node-deepseek-v4-flash-0731/ (RDMA RTT 0.7ms, ctx 2,048, 루프백 RPC 장치 포함 — DeepSeek V4 Flash 0731 UD-IQ2_M 20.13 → 19.58 = 1.40ms · UD-IQ3_S 18.02 → 17.69 = 1.04ms)
 export const RPC_HOP_TG_MS = 5;
 
 /**

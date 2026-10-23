@@ -1179,11 +1179,16 @@ export const SPARK_FIT_CASES: ReadonlyArray<{ label: string; mq: ModelQuant; ctx
 
 /**
  * 통합 메모리 여러 대 — DGX Spark 2대 llama.cpp RPC 층 분할 (10-23 D118, 엔진 0.14.0 `Hardware.nodes`·`RPC_HOP_TG_MS`, docs/02 §6.2·§7).
- * 같은 사람·같은 빌드·같은 조건의 1대/2대 tg 쌍 — 토큰당 추가 시간 = 1/2대 − 1/1대(ms). setup: 'tcp' = TCP 기본 설정(CPU 유휴 상태 켬),
- * 'tcp-idle-off' = 같은 TCP 에 `cpupower idle-set -D 0`, 'rdma' = RoCEv2. depth = llama-bench 깊이(엔진 ctx 와 같은 KV 길이).
+ * 같은 사람·같은 빌드의 1대/2대 tg 쌍 — 1/2대 − 1/1대(ms). setup: 'tcp' = TCP 기본 설정(CPU 유휴 상태 켬), 'rdma' = RoCEv2,
+ * 'tcp-idle-off' = **2대만** 같은 TCP 에 `cpupower idle-set -D 0` — 유휴 상태를 끈 1대 실측은 없어 1대 값은 기본 설정 실행(#15078806)의 것이다(`mixed`, D118 리뷰).
+ * 조건이 다른 쌍이라 1/2대 − 1/1대 가 대 사이 이동 시간이 아니다(유휴 상태를 끄면 1대도 빨라질 수 있어 같은 조건의 이동 시간은 그보다 클 수 있다) —
+ * 대 사이 이동 시간의 근거 범위는 조건이 같은 쌍만으로 잡고, `mixed` 쌍은 표시값(기본 설정 1대에서 낸 추정)과 그 설정의 2대 실측을 견주는 데에만 쓴다.
+ * depth = llama-bench 깊이(엔진 ctx 와 같은 KV 길이).
  * - eugr(#16578): `--rpc 192.168.177.12:15001` 하나 — 첫 기기 GPU + 원격 1대, 장치 둘(엔진의 2대와 같은 배치)
  * - Classmethod: `--rpc <원격>:50052,127.0.0.1:50052` — 첫 기기도 RPC 서버로 넣어 장치가 셋(첫 기기 GPU 가 두 번 잡힌다 — 168GB 에서 첫 기기 116/119GB 를 썼다는
- *   글의 관찰이 층 2/3 몫과 맞는다, 우리 해석). 대 사이 이동은 같은 한 번이라 추가 시간 근거로 쓰되, 메모리 대조(CLUSTER_FIT_CASES)에는 넣지 않는다
+ *   글의 관찰이 층 2/3 몫과 맞는다, 우리 해석). 대 사이 이동은 한 번이지만 루프백 RPC 장치 경계가 한 번 더 있어(원격 → 첫 기기 → 루프백 서버 → 첫 기기 GPU —
+ *   서로 다른 서버 사이 복사는 첫 기기를 거친다: https://github.com/ggml-org/llama.cpp/blob/184f6536024668e8908ab8c86033d56708e62b40/ggml/src/ggml-rpc/ggml-rpc.cpp#L930-L940)
+ *   역산값에는 루프백 왕복 몫이 들어 있다(네트워크 한 번의 값보다 크다 — 상수 근거는 eugr, D118 리뷰). 메모리 대조(CLUSTER_FIT_CASES)에는 넣지 않는다
  * 4대 RPC 공개 실측은 없다 — 3·4대는 이동 횟수(대수 − 1)로 늘린 이론값이다
  */
 export type ClusterPair = {
@@ -1192,8 +1197,10 @@ export type ClusterPair = {
   cluster: number;
   setup: 'tcp' | 'tcp-idle-off' | 'rdma';
   depth: number;
-  /** 1/2대 − 1/1대 (ms) — 출처 값으로 계산해 둔 기록값(테스트가 다시 계산해 맞춘다) */
+  /** 1/2대 − 1/1대 (ms) — 출처 값으로 계산해 둔 기록값(테스트가 다시 계산해 맞춘다). `mixed` 쌍에서는 이동 시간이 아니다 */
   recordedMs: number;
+  /** 1대와 2대의 실행 조건이 다르다(2대만 유휴 상태 끔 — 1대는 기본 설정 실행) — 이동 시간 근거 범위에서 뺀다(D118 리뷰) */
+  mixed?: true;
   source: string;
 };
 const EUGR_TCP = 'https://github.com/ggml-org/llama.cpp/discussions/16578#discussioncomment-15078806';
@@ -1206,15 +1213,15 @@ export const CLUSTER_RPC_PAIRS: readonly ClusterPair[] = [
   { label: 'gpt-oss-120b MXFP4 tg32 d8192 (b7157 TCP)', single: 53.2, cluster: 42.15, setup: 'tcp', depth: 8192, recordedMs: 4.928, source: EUGR_TCP },
   { label: 'gpt-oss-120b MXFP4 tg32 d16384 (b7157 TCP)', single: 49.15, cluster: 38.82, setup: 'tcp', depth: 16384, recordedMs: 5.414, source: EUGR_TCP },
   { label: 'gpt-oss-120b MXFP4 tg32 d32768 (b7157 TCP)', single: 42.41, cluster: 31.72, setup: 'tcp', depth: 32768, recordedMs: 7.947, source: EUGR_TCP },
-  { label: 'gpt-oss-120b MXFP4 tg32 d0 (b7157 TCP, idle states off)', single: 60.36, cluster: 55.49, setup: 'tcp-idle-off', depth: 0, recordedMs: 1.454, source: EUGR_IDLE },
-  { label: 'gpt-oss-120b MXFP4 tg32 d4096 (idle states off)', single: 56.84, cluster: 50.51, setup: 'tcp-idle-off', depth: 4096, recordedMs: 2.205, source: EUGR_IDLE },
-  { label: 'gpt-oss-120b MXFP4 tg32 d8192 (idle states off)', single: 53.2, cluster: 45.99, setup: 'tcp-idle-off', depth: 8192, recordedMs: 2.947, source: EUGR_IDLE },
-  { label: 'gpt-oss-120b MXFP4 tg32 d16384 (idle states off)', single: 49.15, cluster: 41.53, setup: 'tcp-idle-off', depth: 16384, recordedMs: 3.733, source: EUGR_IDLE },
-  { label: 'gpt-oss-120b MXFP4 tg32 d32768 (idle states off)', single: 42.41, cluster: 33.15, setup: 'tcp-idle-off', depth: 32768, recordedMs: 6.587, source: EUGR_IDLE },
-  { label: 'Qwen3-235B-A22B Q3_K_M tg256 (b8012, layer split)', single: 15.51, cluster: 14.57, setup: 'tcp', depth: 0, recordedMs: 4.16, source: CM_TWO },
-  { label: 'Devstral 2 123B Q4_K_M tg256 (b8012, layer split)', single: 2.64, cluster: 2.64, setup: 'tcp', depth: 0, recordedMs: 0, source: CM_TWO },
-  { label: 'DeepSeek V4 Flash 0731 UD-IQ2_M ctx 2,048 (RDMA, RTT 0.7ms)', single: 20.13, cluster: 19.58, setup: 'rdma', depth: 2048, recordedMs: 1.395, source: CM_DSV4 },
-  { label: 'DeepSeek V4 Flash 0731 UD-IQ3_S ctx 2,048 (RDMA, RTT 0.7ms)', single: 18.02, cluster: 17.69, setup: 'rdma', depth: 2048, recordedMs: 1.035, source: CM_DSV4 },
+  { label: 'gpt-oss-120b MXFP4 tg32 d0 (b7157 TCP — 2 units idle states off, 1 unit default)', single: 60.36, cluster: 55.49, setup: 'tcp-idle-off', depth: 0, recordedMs: 1.454, mixed: true, source: EUGR_IDLE },
+  { label: 'gpt-oss-120b MXFP4 tg32 d4096 (2 units idle states off, 1 unit default)', single: 56.84, cluster: 50.51, setup: 'tcp-idle-off', depth: 4096, recordedMs: 2.205, mixed: true, source: EUGR_IDLE },
+  { label: 'gpt-oss-120b MXFP4 tg32 d8192 (2 units idle states off, 1 unit default)', single: 53.2, cluster: 45.99, setup: 'tcp-idle-off', depth: 8192, recordedMs: 2.947, mixed: true, source: EUGR_IDLE },
+  { label: 'gpt-oss-120b MXFP4 tg32 d16384 (2 units idle states off, 1 unit default)', single: 49.15, cluster: 41.53, setup: 'tcp-idle-off', depth: 16384, recordedMs: 3.733, mixed: true, source: EUGR_IDLE },
+  { label: 'gpt-oss-120b MXFP4 tg32 d32768 (2 units idle states off, 1 unit default)', single: 42.41, cluster: 33.15, setup: 'tcp-idle-off', depth: 32768, recordedMs: 6.587, mixed: true, source: EUGR_IDLE },
+  { label: 'Qwen3-235B-A22B Q3_K_M tg256 (b8012, layer split + loopback RPC device)', single: 15.51, cluster: 14.57, setup: 'tcp', depth: 0, recordedMs: 4.16, source: CM_TWO },
+  { label: 'Devstral 2 123B Q4_K_M tg256 (b8012, layer split + loopback RPC device)', single: 2.64, cluster: 2.64, setup: 'tcp', depth: 0, recordedMs: 0, source: CM_TWO },
+  { label: 'DeepSeek V4 Flash 0731 UD-IQ2_M ctx 2,048 (RDMA, RTT 0.7ms, + loopback RPC device)', single: 20.13, cluster: 19.58, setup: 'rdma', depth: 2048, recordedMs: 1.395, source: CM_DSV4 },
+  { label: 'DeepSeek V4 Flash 0731 UD-IQ3_S ctx 2,048 (RDMA, RTT 0.7ms, + loopback RPC device)', single: 18.02, cluster: 17.69, setup: 'rdma', depth: 2048, recordedMs: 1.035, source: CM_DSV4 },
 ];
 
 /** DGX Spark 128GB 2대 (한 대 116.9GB — D117) */
@@ -1238,5 +1245,69 @@ export const CLUSTER_FIT_CASES: ReadonlyArray<{ label: string; mq: ModelQuant; c
     mq: { paramsB: 228.69, activeParamsB: 10, quant: 'Q4_K_M', fileGB: 131.62, kvBytesPerToken: 253952, attnType: 'full', layers: 62, maxContext: 196608 },
     ctx: 34848,
     source: 'https://github.com/ggml-org/llama.cpp/discussions/16578#discussioncomment-15049620',
+  },
+];
+
+/** DGX Spark 64GB 한 대(GPU 가 쓸 수 있는 메모리 48.2GB — D117, 데이터 계층 usableGBByRam 64GB 값으로 고정) */
+export const SPARK_64_USABLE: Hardware = { ...unified(64, 273, 'dgx-spark'), os: 'linux', unifiedUsableGB: 48.2 };
+
+const GLM53_CLUSTER = { layers: 45, moeLayerIdx: Array.from({ length: 42 }, (_, i) => i + 3) } as const;
+/** GLM-5.3-Flash 행 + 트렁크 층 수·전문가 층 번호(데이터 arch.layers 45·expertLayers 3~44 — 앞 3층 dense, 엔진 입력 `moeLayerIdx`, D118 리뷰) */
+export const GLM53_Q4K_CLUSTER: ModelQuant = { ...GLM53_Q4K, ...GLM53_CLUSTER };
+export const GLM53_Q2K_CLUSTER: ModelQuant = { ...GLM53_Q2K, ...GLM53_CLUSTER };
+/**
+ * Kolibri-1 Q4_K_M(bartowski — 모델별 텐서 배치, 헤더 실측 전문가 46.84 · 비전문가 2.57GB) — 50층 전부 MoE(384 × top-6), 전체 어텐션 10/50층
+ * (https://huggingface.co/Aleph-Alpha/Kolibri-1/blob/main/config.json · https://huggingface.co/bartowski/Kolibri-1-GGUF)
+ */
+export const KOLIBRI1_Q4K: ModelQuant = moeFile(
+  { paramsB: 78.1, activeParamsB: 3.46, quant: 'Q4_K_M', kvBytesPerToken: 20480, attnType: 'swa', activeExpertFrac: 6 / 384, moeLayers: 50, topK: 6, layers: 50, maxContext: 262144 },
+  49.76,
+  46.84,
+  2.57,
+);
+
+/**
+ * 가장 많이 맡는 대 — GGUF 헤더로 따라 한 llama.cpp 기본 층 분할(D118 리뷰 — 헤더는 10-23 에 HF 에서 받았다). 같은 기기(남은 메모리가 같다)면 칸 il(0 ~ 블록 수)의 장치 =
+ * 내림(il × 대수 / (블록 수 + 1)), RPC 장치가 앞·첫 기기 GPU 가 맨 뒤라 출력층(마지막 칸)은 첫 기기, 입력 임베딩은 첫 기기 CPU(같은 통합 메모리), MTP 블록은 기본
+ * 미적재(https://github.com/ggml-org/llama.cpp/blob/184f6536024668e8908ab8c86033d56708e62b40/src/llama-model.cpp#L1641-L1699 ·
+ * https://github.com/ggml-org/llama.cpp/blob/184f6536024668e8908ab8c86033d56708e62b40/src/llama.cpp#L275-L276). 값은 대마다 블록 텐서 바이트 합(+ 출력층·입력 임베딩)의
+ * 최댓값 GB(2·3·4대)이고, `engineGB` 는 이 엔진의 가장 많이 맡는 대 가중치(`clusterNodeLoadGB`), `layerUniformGB` 는 층마다 같다고 본 0.14.0 의 값이다.
+ * - GLM-5.3-Flash: 앞 3블록이 dense(0.313GB), MoE 블록은 4.27GB(Q4_K) — 층마다 같다고 보면 2·4대가 실제보다 작았다(−2.12·−2.30GB). 전문가를 그 층의 대로
+ *   세면(0.14.1) 실제 이상(+0.06 ~ +1.26GB). 64GB × 4대·1M·KV q4_0 의 Q2_K 는 0.14.0 이 '들어간다'(47.86 ≤ 48.2)로 봤지만 이 분할로는 가장 많이 맡는 대가
+ *   49.28GB 다(가중치 37.57 + KV 3/11 + 버퍼 10.1) — 지금은 '안 들어간다'(50.22)
+ * - Kolibri-1 Q4_K_M: 블록마다 양자화가 달라 0.894~1.649GB(앞쪽이 무겁고 가장 무거운 대가 첫 RPC 장치) — 엔진은 층마다 같다고 보는 근사라 2·3·4대
+ *   −0.81·−1.66·−2.04GB 작다(카탈로그 큰 행 24개 중 가장 큰 과소 — docs/02 §6.2·§9 에 밝힌 한계, 값 고정)
+ */
+export const CLUSTER_SPLIT_SIM: ReadonlyArray<{
+  label: string;
+  mq: ModelQuant;
+  busiestGB: readonly [number, number, number];
+  engineGB: readonly [number, number, number];
+  layerUniformGB: readonly [number, number, number];
+  source: string;
+}> = [
+  {
+    label: 'GLM-5.3-Flash Q4_K_M (ggml-org Q4_K 2 shards)',
+    mq: GLM53_Q4K_CLUSTER,
+    busiestGB: [95.151, 63.947, 51.163],
+    engineGB: [95.207, 65.197, 52.126],
+    layerUniformGB: [93.033, 64.925, 48.864],
+    source: 'https://huggingface.co/ggml-org/GLM-5.3-Flash-GGUF/blob/main/GLM-5.3-Flash-Q4_K-00001-of-00002.gguf',
+  },
+  {
+    label: 'GLM-5.3-Flash Q2_K (ggml-org 2 shards)',
+    mq: GLM53_Q2K_CLUSTER,
+    busiestGB: [70.237, 46.96, 37.573],
+    engineGB: [70.299, 48.218, 38.544],
+    layerUniformGB: [68.729, 48.022, 36.189],
+    source: 'https://huggingface.co/ggml-org/GLM-5.3-Flash-GGUF/blob/main/GLM-5.3-Flash-Q2_K-00001-of-00002.gguf',
+  },
+  {
+    label: 'Kolibri-1 Q4_K_M (bartowski)',
+    mq: KOLIBRI1_Q4K,
+    busiestGB: [26.854, 18.811, 15.236],
+    engineGB: [26.043, 17.149, 13.197],
+    layerUniformGB: [26.043, 17.149, 13.197],
+    source: 'https://huggingface.co/bartowski/Kolibri-1-GGUF/blob/main/Kolibri-1-Q4_K_M.gguf',
   },
 ];

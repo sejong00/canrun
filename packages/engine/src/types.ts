@@ -175,6 +175,11 @@ export type ModelQuant = {
    * 몫(층 + 출력층 칸을 대수로 나눈 올림 — `clusterShareOf`)에만 쓴다. 한 대·dGPU 산식은 읽지 않는다. 없으면 고르게(1/대수) 나눈다고 본다
    */
   layers?: number;
+  /**
+   * MoE: 라우팅 전문가가 있는 트렁크 층 번호(0부터, 오름차순 — 데이터 arch.expertLayers, 일부 층에만 전문가가 있는 모델만 — D118 리뷰). 통합 메모리 여러 대
+   * (§6.2)에서 헤더 실측 분할 행(`expertGB`)의 전문가 몫을 그 층이 놓이는 대로 세는 데에만 쓴다(`clusterNodeLoadGB`). 한 대·dGPU 산식은 읽지 않는다
+   */
+  moeLayerIdx?: readonly number[];
   maxContext: number;
 };
 

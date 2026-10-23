@@ -36,15 +36,17 @@
  * 16) DGX Spark 가 GPU 에 올릴 수 있는 메모리(10-23 D117, 엔진 0.13.0 `Hardware.unifiedUsableGB`): 1대 공개 실측 4점의 들어감·안 들어감이 기기 근거 값
  *     116.9GB(DGX OS 7.5.0 부팅 가용 − 데스크톱 기본 사용량)와 모두 맞고, 옛 규칙(× 0.70 = 89.6GB)으로는 1대에서 돈 셋이 GPU 에 안 들어간다. CPU 경로 한도도
  *     그 값을 넘지 않는다(같은 메모리). 값이 없는 통합 메모리 기기(맥·Strix Halo)는 산식 그대로(docs/02 §2.3·§7)
- * 17) DGX Spark 여러 대 llama.cpp RPC 층 분할(10-23 D118, 엔진 0.14.0 `Hardware.nodes`·`RPC_HOP_TG_MS`): 같은 사람·같은 조건 1대/2대 공개 쌍 14점의
- *     토큰당 추가 시간 역산(TCP 기본 3.6~7.95ms · CPU 유휴 상태 끔 1.45~6.59ms · RDMA 1.0~1.4ms)과 5ms 로 낸 2대 예측의 오차(전부 ±17% 안, 과대는 TCP 32k
- *     +10.3% 뿐, 깊이 8k 이하 TCP 기본 점은 모두 실측 이하)를 고정하고, 2대에서만 돈 공개 실측 2점이 1대에는 안 들어가고 2대에는 들어감을 본다.
+ * 17) DGX Spark 여러 대 llama.cpp RPC 층 분할(10-23 D118, 엔진 0.14.0·0.14.1 `Hardware.nodes`·`RPC_HOP_TG_MS`): 같은 사람 1대/2대 공개 쌍 14점 — 조건이 같은 9점의
+ *     토큰당 추가 시간 역산(TCP 기본 3.6~7.95ms · RDMA 1.0~1.4ms — Classmethod 쌍은 루프백 RPC 장치 몫 포함)과, 2대만 CPU 유휴 상태를 끈 5점(1대는 기본 설정 —
+ *     조건이 다른 쌍이라 이동 시간 근거에서 뺀다, D118 리뷰)까지 14점 모두의 5ms 2대 예측 오차(전부 ±17% 안, 과대는 TCP 32k +10.3% 뿐, 깊이 8k 이하 TCP 기본
+ *     점은 모두 실측 이하)를 고정하고, 2대에서만 돈 공개 실측 2점이 1대에는 안 들어가고 2대에는 들어감을 본다. 가장 많이 맡는 대는 GGUF 헤더로 따라 한 llama.cpp
+ *     분할과 견준다 — 앞쪽 dense MoE(GLM-5.3-Flash)는 그 이상, 층마다 양자화가 다른 Kolibri-1 Q4_K_M 은 알려진 과소(최대 −2.04GB)를 값으로 고정(D118 리뷰).
  *     3·4대는 이동 횟수(대수 − 1)로 늘린 이론값(4대 RPC 공개 실측 없음) — 라벨은 이론 추정(docs/02 §6.2·§7)
  */
 import { describe, expect, it } from 'vitest';
 import { fit } from '../src/fit';
 import { evaluate } from '../src/index';
-import { clusterShareOf, computeBufferGB, gpuResidentGBFor, kvBytesPerToken, kvGB, usableGB, usableRamGB, weightsGBFromBpw } from '../src/memory';
+import { clusterNodeLoadGB, clusterShareOf, computeBufferGB, gpuResidentGBFor, kvBytesPerToken, kvGB, usableGB, usableRamGB, weightsGBFromBpw } from '../src/memory';
 import { PLE_CUDA_CLASSES, PLE_TOKEN_OVERHEAD_MS, RPC_HOP_TG_MS } from '../src/constants';
 import { bytesPerTokenGB, gpuThroughputGBs, pleOverheadSeconds, ppEstimate, tgEstimate } from '../src/speed';
 import type { Hardware, ModelQuant } from '../src/types';
@@ -95,9 +97,12 @@ import {
   RTX_4090,
   CLUSTER_FIT_CASES,
   CLUSTER_RPC_PAIRS,
+  CLUSTER_SPLIT_SIM,
+  GLM53_Q2K_CLUSTER,
   GPT_OSS_120B,
   SPARK_128_USABLE,
   SPARK_128_X2,
+  SPARK_64_USABLE,
   SPARK_FIT_CASES,
   SPARK_USABLE_128_GB,
   SPEED_CASES,
@@ -759,19 +764,26 @@ describe('17) DGX Spark cluster — llama.cpp RPC layer split (10-23 D118, docs/
   const extraMs = (single: number, cluster: number) => (1 / cluster - 1 / single) * 1000;
   const predict = (single: number, hops: number) => 1 / (1 / single + hops * RPC_HOP_TG_MS * 1e-3);
 
-  it('back-calculates the per-token time each pair adds (1/two units − 1/one unit) and keeps the recorded values', () => {
+  it('back-calculates the per-token time each pair adds (1/two units − 1/one unit) and keeps the recorded values; the hop-time range uses same-condition pairs only', () => {
     for (const p of CLUSTER_RPC_PAIRS) {
       expect(p.source, p.label).toMatch(/^https:\/\//);
       expect(extraMs(p.single, p.cluster), p.label).toBeCloseTo(p.recordedMs, 2);
     }
     const range = (setup: string) => {
-      const ms = CLUSTER_RPC_PAIRS.filter((p) => p.setup === setup).map((p) => extraMs(p.single, p.cluster));
+      const ms = CLUSTER_RPC_PAIRS.filter((p) => p.setup === setup && !p.mixed).map((p) => extraMs(p.single, p.cluster));
       return [Math.min(...ms), Math.max(...ms)];
     };
     expect(range('tcp')[0]).toBeCloseTo(0, 6); // Devstral 2.64 → 2.64 (표시 자릿수 ±1.4ms)
     expect(range('tcp')[1]).toBeCloseTo(7.947, 2); // TCP 기본 깊이 32k
-    expect(range('tcp-idle-off')).toEqual([expect.closeTo(1.454, 2), expect.closeTo(6.587, 2)]);
     expect(range('rdma')).toEqual([expect.closeTo(1.035, 2), expect.closeTo(1.395, 2)]);
+    // 2대만 유휴 상태를 끈 5점은 1대가 기본 설정 실행이라(유휴 상태를 끈 1대 실측 없음 — #15139580) 이동 시간 근거에서 뺀다(D118 리뷰)
+    const mixed = CLUSTER_RPC_PAIRS.filter((p) => p.mixed);
+    expect(mixed.map((p) => p.setup)).toEqual(Array(5).fill('tcp-idle-off'));
+    expect(CLUSTER_RPC_PAIRS.filter((p) => p.setup === 'tcp-idle-off' && !p.mixed)).toEqual([]);
+    for (const p of mixed) {
+      const base = CLUSTER_RPC_PAIRS.find((x) => x.setup === 'tcp' && !x.mixed && x.depth === p.depth && x.source === CLUSTER_RPC_PAIRS[0]!.source)!;
+      expect(p.single, `${p.label} — the one-unit value is the default-settings run`).toBe(base.single);
+    }
   });
 
   it('the constant is the TCP-default value at the verdict depth (8,192) rounded up, so every TCP-default point to 8k is predicted at or below the measurement', () => {
@@ -815,5 +827,43 @@ describe('17) DGX Spark cluster — llama.cpp RPC layer split (10-23 D118, docs/
       expect(two.vram.total).toBeCloseTo(c.mq.fileGB! * share + kvGB(c.mq.kvBytesPerToken, c.ctx) * share + computeBufferGB(c.ctx), 9);
       expect(two.vram.total).toBeLessThan(SPARK_USABLE_128_GB);
     }
+  });
+
+  it('busiest unit vs the llama.cpp split simulated from GGUF headers (D118 review): leading-dense MoE at or above it, the per-layer quant mix gap pinned', () => {
+    for (const c of CLUSTER_SPLIT_SIM) {
+      expect(c.source, c.label).toMatch(/^https:\/\//);
+      [2, 3, 4].forEach((nodes, i) => {
+        const got = clusterNodeLoadGB({ ...SPARK_128_USABLE, nodes }, c.mq, c.mq.fileGB!, 0).weights;
+        expect(got, `${c.label} × ${nodes}`).toBeCloseTo(c.engineGB[i]!, 2);
+        // 층마다 같다고 본 값(0.14.0) — 앞쪽 dense 가 없는 모델은 그대로
+        const uniform = clusterNodeLoadGB({ ...SPARK_128_USABLE, nodes }, { ...c.mq, moeLayerIdx: undefined }, c.mq.fileGB!, 0).weights;
+        expect(uniform, `${c.label} × ${nodes} layer-uniform`).toBeCloseTo(c.layerUniformGB[i]!, 2);
+        if (c.mq.moeLayerIdx !== undefined) {
+          expect(got - c.busiestGB[i]!, `${c.label} × ${nodes} at or above the split`).toBeGreaterThanOrEqual(0);
+          expect(got - c.busiestGB[i]!).toBeLessThan(1.3);
+        } else {
+          // 알려진 한계 — 층마다 양자화가 다른 파일은 층마다 같다고 보는 근사가 작게 본다(docs/02 §6.2·§9)
+          expect(c.busiestGB[i]! - got).toBeGreaterThan(0);
+          expect(c.busiestGB[i]! - got).toBeLessThan(2.1);
+        }
+      });
+    }
+    // 2·4대는 층마다 같다고 보면 실제 분할보다 작았다(GLM-5.3-Flash Q4_K_M −2.12·−2.30GB)
+    const glm = CLUSTER_SPLIT_SIM[0]!;
+    expect(glm.busiestGB[0] - glm.layerUniformGB[0]).toBeCloseTo(2.12, 2);
+    expect(glm.busiestGB[2] - glm.layerUniformGB[2]).toBeCloseTo(2.3, 2);
+    // 그 차이로 '들어간다'가 되던 칸(64GB × 4대 · 1M · KV q4_0 — 헤더 분할로는 가장 많이 맡는 대 49.28GB)은 이제 '안 들어간다'
+    const ctx = 1048576;
+    const sim = 37.573 + (kvGB(GLM53_Q2K_CLUSTER.kvBytesPerToken, ctx, 'q4_0') * 3) / 11 + computeBufferGB(ctx);
+    expect(sim).toBeCloseTo(49.28, 2);
+    expect(sim).toBeGreaterThan(usableGB(SPARK_64_USABLE));
+    const x4 = fit({ ...SPARK_64_USABLE, nodes: 4 }, GLM53_Q2K_CLUSTER, { ctx, kvQuant: 'q4_0' });
+    expect(x4.fits).toBe(false);
+    const need = clusterNodeLoadGB({ ...SPARK_64_USABLE, nodes: 4 }, GLM53_Q2K_CLUSTER, GLM53_Q2K_CLUSTER.fileGB!, kvGB(GLM53_Q2K_CLUSTER.kvBytesPerToken, ctx, 'q4_0'));
+    expect(need.weights + need.kv + computeBufferGB(ctx)).toBeCloseTo(50.215, 2);
+    expect(
+      clusterNodeLoadGB({ ...SPARK_64_USABLE, nodes: 4 }, { ...GLM53_Q2K_CLUSTER, moeLayerIdx: undefined }, GLM53_Q2K_CLUSTER.fileGB!, kvGB(GLM53_Q2K_CLUSTER.kvBytesPerToken, ctx, 'q4_0'))
+        .weights,
+    ).toBeCloseTo(36.189, 2);
   });
 });

@@ -382,6 +382,8 @@ export function toModelQuant(model: ModelCore, row?: QuantRowInput): ModelQuant 
     ...(measured ? { expertGB: row.expertGB } : {}),
     ...(moe && experts !== undefined && topK !== undefined ? { activeExpertFrac: topK / experts } : {}),
     ...(moe ? { moeLayers: model.arch.expertLayers?.length ?? model.arch.layers } : {}),
+    // 전문가 층 번호 — 엔진은 통합 메모리 여러 대(D118 리뷰)의 대마다 전문가 몫에만 쓴다(앞쪽 dense 층이 있는 모델)
+    ...(moe && model.arch.expertLayers !== undefined ? { moeLayerIdx: model.arch.expertLayers } : {}),
     ...(moe && topK !== undefined ? { topK } : {}),
     ...valueExpert,
     maxContext: model.maxContext,

@@ -139,8 +139,11 @@ export function nodeCountOf(hw: Pick<Hardware, 'kind' | 'nodes'>): number {
 /**
  * 통합 메모리 여러 대(§6.2, 10-23 D118)에서 가장 많이 맡는 대의 층 몫 — llama.cpp 기본 층 분할은 장치마다 남은 메모리 비율로 나누고(같은 기기면 고르게),
  * 출력층도 한 칸으로 세어 (층 + 1) 칸을 나눈다(https://github.com/ggml-org/llama.cpp/blob/184f6536024668e8908ab8c86033d56708e62b40/src/llama-model.cpp#L1641-L1699 —
- * 칸 il 의 장치 = upper_bound(splits, il / (층 + 1)), 출력층 = 칸 n_layer). 한 장치가 받는 층은 많아야 올림((층 + 1) / 대수) 개이므로 그 수를 층 수로 나눈 몫을
- * 가중치·KV 모두에 쓴다 — 층 하나를 (상주 가중치 ÷ 층 수)로 보는 상한이라, 출력층이 트렁크 층보다 작은 큰 모델에서는 실제보다 조금 크다(보수).
+ * 칸 il 의 장치 = upper_bound(splits, il / (층 + 1)), 출력층 = 칸 n_layer). 한 장치가 받는 칸은 많아야 올림((층 + 1) / 대수) 개이므로 그 수를 층 수로 나눈 몫을
+ * 가중치·KV 에 쓴다 — 층마다 크기가 같다고 보는 **근사**다(상한이 아니다 — D118 리뷰). 카탈로그 큰 행(파일 40GB 이상 24행)의 GGUF 헤더로 llama.cpp 분할을
+ * 그대로 따라 해 보면 대부분 실제보다 조금 크지만(+0.1~3.9GB — 출력층이 트렁크 층보다 작다), 층마다 양자화가 다른 파일은 작게 나온다(Kolibri-1 Q4_K_M — 블록
+ * 0.89~1.65GB — 2·3·4대 −0.81·−1.66·−2.04GB, Llama 3.3 70B Q4_K_M 3대 −0.23GB). KV 도 층마다 같다고 보므로 KV 층이 띄엄띄엄인 하이브리드는 KV 층이 몰린 대를
+ * 아주 긴 문맥에서 작게 본다(Solar Open2 Q2_K 1M f16 4대 약 3.1GB — docs/02 §6.2·§9). 앞쪽 dense 층이 있는 MoE 의 전문가 몫은 `clusterNodeLoadGB` 가 층 위치로 센다.
  * 층 수가 없는 입력은 1/대수, 대수 1 이면 1. [0, 1] 로 묶는다
  */
 export function clusterShareOf(mq: Pick<ModelQuant, 'layers'>, nodes: number): number {
@@ -151,10 +154,27 @@ export function clusterShareOf(mq: Pick<ModelQuant, 'layers'>, nodes: number): n
 }
 
 /**
+ * 통합 메모리 여러 대(§6.2, D118 리뷰)에서 한 대가 맡는 전문가 층 수의 최댓값 — 같은 기기(남은 메모리가 같다)면 llama.cpp 의 칸 il 장치는
+ * upper_bound(splits = (k + 1)/대수, il/(층 + 1)) = 내림(il × 대수 / (층 + 1))이다(정수 산식 — 경계 칸은 다음 대, 위 clusterShareOf 의 같은 코드).
+ * 전문가 층 번호(`moeLayerIdx` — 데이터 arch.expertLayers)를 그 식으로 대에 나눠 가장 많은 대의 수를 센다. 범위 밖 번호는 양 끝 대로 묶는다
+ */
+export function clusterMaxMoeLayersOf(moeLayerIdx: readonly number[], layers: number, nodes: number): number {
+  const counts = new Array<number>(nodes).fill(0);
+  for (const il of moeLayerIdx) {
+    const unit = Math.min(nodes - 1, Math.max(0, Math.floor((il * nodes) / (layers + 1))));
+    counts[unit] = counts[unit]! + 1;
+  }
+  return Math.max(...counts);
+}
+
+/**
  * 통합 메모리 여러 대(§6.2, 10-23 D118)에서 가장 많이 맡는 대의 가중치·KV GB. 장치에 올라가는 가중치(층·출력층 — `gpuResidentGBFor`)와 KV 는 `clusterShareOf` 몫,
  * 장치 밖 몫(입력 임베딩 — llama.cpp 는 늘 첫 기기의 CPU 에 둔다, 같은 통합 메모리 · 기본 미적재 MTP 블록도 보수로 센다)은 첫 기기에 더한다 — 첫 기기의 칸 수가
- * 다른 대보다 적을 수 있어도 가장 많은 칸 + 장치 밖 몫으로 묶는 상한이다(https://github.com/ggml-org/llama.cpp/blob/184f6536024668e8908ab8c86033d56708e62b40/src/llama.cpp#L275-L276 —
+ * 다른 대보다 적을 수 있어도 가장 많은 칸 + 장치 밖 몫으로 묶는다(https://github.com/ggml-org/llama.cpp/blob/184f6536024668e8908ab8c86033d56708e62b40/src/llama.cpp#L275-L276 —
  * RPC 장치가 목록 앞, 첫 기기의 GPU 가 맨 뒤라 마지막 층들과 출력층을 맡는다 · 입력층은 CPU, 같은 커밋 src/llama-model.cpp#L1688-L1690).
+ * 일부 층에만 전문가가 있는 MoE(`moeLayerIdx` — 앞쪽 dense 층, GLM-5.3-Flash·Ling·K2-Horizon·Nemotron · 헤더 실측 분할 행, D118 리뷰)는 전문가 텐서(`expertGB`)를
+ * 전문가 층에만 나눠 `clusterMaxMoeLayersOf` 대의 몫으로, 나머지 상주 몫(비전문가)만 `clusterShareOf` 몫으로 센다 — 층마다 같다고 보면 dense 층이 작은 만큼
+ * 전문가 층 대를 작게 본다(GLM-5.3-Flash Q4_K_M 4대: 헤더 시뮬레이션 51.16GB 를 48.86 으로 보던 것이 이 식으로 52.13 — 2·3대 95.21·65.20 vs 95.15·63.95).
  * 반복 층 모델(`loops` — 10-22 D114)은 물리 가중치가 첫 반복을 맡은 앞쪽 대에 몰리므로 가중치 몫을 나누지 않는다(보수). 한 대면 { weights, kv } 그대로
  */
 export function clusterNodeLoadGB(
@@ -167,7 +187,13 @@ export function clusterNodeLoadGB(
   if (nodes <= 1) return { weights, kv };
   const share = clusterShareOf(mq, nodes);
   const resident = gpuResidentGBFor(mq, weights);
-  const onDevices = mq.loops !== undefined && mq.loops > 1 ? resident : resident * share;
+  const idx = mq.moeLayerIdx;
+  let onDevices: number;
+  if (mq.loops !== undefined && mq.loops > 1) onDevices = resident;
+  else if (idx !== undefined && idx.length > 0 && mq.layers !== undefined && mq.layers >= 1 && mq.expertGB !== undefined) {
+    const expert = Math.min(resident, Math.max(0, mq.expertGB));
+    onDevices = (expert * clusterMaxMoeLayersOf(idx, mq.layers, nodes)) / idx.length + (resident - expert) * share;
+  } else onDevices = resident * share;
   return { weights: Math.min(weights, onDevices + (weights - resident)), kv: kv * share };
 }
 

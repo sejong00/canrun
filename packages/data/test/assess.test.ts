@@ -223,6 +223,19 @@ describe('여러 대 연결 — DGX Spark 클러스터 (10-23 D118, docs/02 §6.
     }
   });
 
+  it('toModelQuant passes the expert layer indices only for models with arch.expertLayers (engine reads them on clusters only — D118 review)', () => {
+    const glm = seed.models.find((m) => m.id === 'glm-5.3-flash')!;
+    const mq = toModelQuant(glm, seed.modelQuants.find((q) => q.modelId === glm.id && q.quant === 'Q4_K_M'));
+    expect(mq.moeLayerIdx).toEqual(glm.arch.expertLayers);
+    expect(mq.moeLayerIdx).toHaveLength(mq.moeLayers!);
+    for (const m of seed.models.filter((x) => x.arch.expertLayers === undefined)) expect(toModelQuant(m), m.id).not.toHaveProperty('moeLayerIdx');
+    // 64GB × 4대 · 1M · KV q4_0 의 Q2_K — 전문가를 층 위치로 세면 가장 많이 맡는 대가 한 대 몫(48.2)을 넘는다(GGUF 헤더로 따라 한 분할 49.28GB)
+    const [x4] = hardwareConfigs(spark, seed.gpus, { ramGB: 64, nodes: 4 });
+    const q2 = assessCombo(seed, spark, x4!, glm, { ctx: 1048576, kvQuant: 'q4_0' }).perQuant.find((q) => q.quant === 'Q2_K')!;
+    expect(q2.fits).toBe(false);
+    expect(q2.memory.needGB).toBeGreaterThan(49.28);
+  });
+
   it('허브 구성: 64·128GB × 2·4대(3대는 계산기에서만 — 2의 거듭제곱 권장), 키는 (RAM, 대수)', () => {
     expect(clusterConfigs(spark, seed.gpus).map((c) => configKey(c))).toEqual(['64x2', '128x2', '64x4', '128x4']);
     expect(configKey({ ramGB: 128 })).toBe('128');

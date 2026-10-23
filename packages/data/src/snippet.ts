@@ -44,7 +44,8 @@
  *    `ggml-rpc-server -H <그 기기 주소> -p 50052 -c`(https://github.com/ggml-org/llama.cpp/blob/184f6536024668e8908ab8c86033d56708e62b40/tools/rpc/rpc-server.cpp#L105-L110 —
  *    기본 바인드 127.0.0.1·포트 50052, `-c` 는 큰 텐서를 그 기기 디스크에 캐시해 다시 띄울 때 네트워크로 다시 받지 않는다, 같은 커밋 tools/rpc/README.md#L86-L96 ·
  *    실행 파일 이름은 2026-06-27 #25045 부터 ggml-rpc-server, 그 전 빌드는 rpc-server — tools/rpc/CMakeLists.txt), 첫 기기에서 `llama-server … -ngl all --rpc <주소>:50052,…`
- *    (common/arg.cpp#L2683-L2693). 빌드 옵션 `-DGGML_RPC=ON`(ggml/CMakeLists.txt#L250, rpc 도구는 tools/CMakeLists.txt#L32-L34) — RDMA(RoCEv2)는 빌드할 때 libibverbs 가
+ *    (common/arg.cpp#L2683-L2693). 빌드 옵션 `-DGGML_RPC=ON`(ggml/CMakeLists.txt#L250, rpc 도구는 tools/CMakeLists.txt#L32-L34 — NVIDIA llama.cpp 플레이북의 빌드는
+ *    `--target llama-server` 하나라 ggml-rpc-server 타깃을 따로 빌드해야 한다고 계산기 각주가 안내한다, D118 리뷰) — RDMA(RoCEv2)는 빌드할 때 libibverbs 가
  *    있으면 기본으로 켜지고(GGML_RPC_RDMA — ggml/src/ggml-rpc/CMakeLists.txt#L13-L31) 연결 때 정해지며, 안 되면 TCP 로 돈다(README#L98-L112). `--rpc` 의 장치는 목록 앞,
  *    첫 기기 GPU 는 맨 뒤라(src/llama.cpp#L275-L276) 층은 남은 메모리 비율로 나뉘고 첫 기기가 마지막 층들·출력층을 맡는다(src/llama-model.cpp#L1641-L1699 — 엔진 몫과 같다).
  *    `--rpc` 에 첫 기기 자신(127.0.0.1)을 넣지 않는다 — 넣으면 첫 기기 GPU 가 장치 둘로 잡혀 층의 2/(대수 + 1) 을 맡는다(docs/02 §6.2). Ollama 는 RPC 를 쓰지 않아 명령이 없다

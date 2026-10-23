@@ -4,6 +4,7 @@ import { CPU_MOE_GPU_LAYER_MARGIN, PLE_TOKEN_OVERHEAD_MS, RPC_HOP_TG_MS } from '
 import { fit } from '../src/fit';
 import { evaluate } from '../src/index';
 import {
+  clusterMaxMoeLayersOf,
   clusterNodeLoadGB,
   clusterShareOf,
   computeBufferGB,
@@ -35,6 +36,8 @@ import {
   RTX_3060_12GB,
   RTX_4060_8GB,
   RTX_4090,
+  GLM53_Q4K_CLUSTER,
+  KOLIBRI1_Q4K,
   SPARK_128_USABLE,
 } from './fixtures';
 
@@ -398,6 +401,34 @@ describe('§6.2 unified-memory cluster (10-23 D118): DGX Spark × N over llama.c
     expect(clusterNodeLoadGB(x2, OSS120, OSS120.fileGB!, kv)).toEqual({ weights: r.vram.weights, kv: r.vram.kv });
     // 한 대면 그대로
     expect(clusterNodeLoadGB(SPARK_128_USABLE, OSS120, 10, 2)).toEqual({ weights: 10, kv: 2 });
+  });
+
+  it('MoE with leading dense layers: the expert tensors count on the units their layers land on (floor(layer × N / (layers + 1))), the rest by the cell share (D118 review)', () => {
+    const idx = GLM53_Q4K_CLUSTER.moeLayerIdx!;
+    // 45층 + 출력층 = 46칸: 2대 0~22 | 23~45, 3대 0~15 | 16~30 | 31~45, 4대 0~11 | 12~22 | 23~34 | 35~45 — 앞 3층(0·1·2)은 dense
+    expect(clusterMaxMoeLayersOf(idx, 45, 2)).toBe(22);
+    expect(clusterMaxMoeLayersOf(idx, 45, 3)).toBe(15);
+    expect(clusterMaxMoeLayersOf(idx, 45, 4)).toBe(12);
+    expect(clusterMaxMoeLayersOf([0, 1, 2, 3], 4, 2)).toBe(3); // 5칸: il/5 < 0.5 인 0·1·2 가 첫 장치
+    expect(clusterMaxMoeLayersOf([-1, 99], 4, 2)).toBe(1); // 범위 밖 번호는 양 끝 대로
+    const x4 = { ...SPARK_128_USABLE, nodes: 4 };
+    const { expertGB, nonExpertGB, fileGB } = GLM53_Q4K_CLUSTER;
+    const share = 12 / 45;
+    expect(clusterNodeLoadGB(x4, GLM53_Q4K_CLUSTER, fileGB!, 1).weights).toBeCloseTo(
+      (expertGB! * 12) / 42 + nonExpertGB! * share + (fileGB! - expertGB! - nonExpertGB!),
+      9,
+    );
+    expect(clusterNodeLoadGB(x4, GLM53_Q4K_CLUSTER, fileGB!, 1).kv).toBeCloseTo(share, 12); // KV 는 칸 몫 그대로
+    // 층 번호가 없거나(모든 층에 전문가 — Kolibri), 헤더 실측 분할이 없거나, 층 수가 없으면 칸 몫 그대로
+    for (const mq of [{ ...GLM53_Q4K_CLUSTER, moeLayerIdx: undefined }, { ...GLM53_Q4K_CLUSTER, expertGB: undefined }, { ...GLM53_Q4K_CLUSTER, moeLayerIdx: [] }]) {
+      const resident = mq.expertGB !== undefined ? mq.expertGB + mq.nonExpertGB! : fileGB!;
+      expect(clusterNodeLoadGB(x4, mq, fileGB!, 0).weights).toBeCloseTo(resident * share + (fileGB! - resident), 9);
+    }
+    expect(clusterNodeLoadGB(x4, { ...GLM53_Q4K_CLUSTER, layers: undefined }, fileGB!, 0).weights).toBeCloseTo((expertGB! + nonExpertGB!) / 4 + (fileGB! - expertGB! - nonExpertGB!), 9);
+    expect(clusterNodeLoadGB(x4, KOLIBRI1_Q4K, KOLIBRI1_Q4K.fileGB!, 0).weights).toBeCloseTo((46.84 + 2.57) * (13 / 50) + (49.76 - 46.84 - 2.57), 9);
+    // 한 대·dGPU 는 층 번호를 읽지 않는다 — 출력 그대로
+    expect(evaluate(SPARK_128_USABLE, GLM53_Q4K_CLUSTER, { ctx: 32768 })).toEqual(evaluate(SPARK_128_USABLE, { ...GLM53_Q4K_CLUSTER, moeLayerIdx: undefined }, { ctx: 32768 }));
+    expect(evaluate({ ...RTX_4090, nodes: 4 }, GLM53_Q4K_CLUSTER)).toEqual(evaluate(RTX_4090, { ...GLM53_Q4K_CLUSTER, moeLayerIdx: undefined }));
   });
 
   it('fits only when the busiest unit fits one unit’s usable memory — no CPU path across RPC; the ladder still finds a lower quant', () => {
