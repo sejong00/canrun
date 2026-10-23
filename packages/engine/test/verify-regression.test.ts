@@ -26,8 +26,10 @@
  *     ±1% 안(256 셀 패딩), raw SWA 창·압축기 상태는 컨텍스트와 무관한 상수(엔진은 연산 버퍼 근사에 맡긴다), 공개 실측 참고점 M2 Ultra(#28948 tg32)는
  *     추정이 +25% 높고(±30% 안 — 실측 ≥ 추정 × 0.7) 08-03 옛 빌드는 +33%, 문맥 감쇠는 실측 −19%·엔진 −1.6% — 라벨은 이론 추정(docs/02 §4 ⑩·§7·§9).
  *     로그는 슬롯 하나(-np 1 — 1/1 seqs)라 토큰당 KV 는 슬롯 하나 기준(스니펫이 -np 1 을 붙인다, 기본 4슬롯이면 4배), pp 는 30k 깊이에서 0.26배로
- *     떨어지는데 엔진 pp 는 깊이와 무관 — 엔진 밖 한계로 고정(10-22 D115 리뷰). 지금 빌드 참고점의 가장 작은 과대(+25.0%)는 데이터 계층 판정
- *     할인(packages/data/src/assess.ts `VERDICT_OVERESTIMATE`)의 값이다(10-23 D121 — 옛 빌드는 뺐다, 넣어도 +33% 이상)
+ *     떨어지는데 엔진 pp 는 깊이와 무관 — 엔진 밖 한계로 고정(10-22 D115 리뷰). DGX Spark(#27970 — CUDA sparse FA, GLM 의 DGX Spark 점과 같은 방식으로
+ *     unsloth UD-IQ2_XXS 로 본 가정)는 깊이 32k 까지 +21.5~33.1%(±30% 표시 범위 안)이고 긴 문맥 감쇠가 CUDA 에서도 엔진보다 크다(131k 실측 −17.5%·엔진 −8.9%).
+ *     참고점 10개(M2 Ultra 두 열 · DGX Spark 두 열 × 깊이 4) 가운데 가장 작은 과대(+21.5% — DGX Spark 깊이 0 sparse-fa 열)는 데이터 계층 판정
+ *     할인(packages/data/src/assess.ts `VERDICT_OVERESTIMATE`)의 값이다(10-23 D121 — 08-03 옛 빌드는 뺐다, 넣어도 +33% 이상)
  * 15) GLM-5.3-Flash(KDA + DSA 희소 MLA·인덱서 + mHC — 10-22 엔진 후속 ⑧-b, 엔진 산식 변화 없음): KV 19,712 B/tok 이 llama.cpp 메모리 로그(#30499 댓글)의
  *     MLA·인덱서 캐시와 정확히 같고, KDA 순환 상태(시퀀스마다 ≈ 153MB — 로그와 일치)는 다른 상수 상태 층 하이브리드처럼 미계상(슬롯마다 한 벌 — 스니펫의
  *     -np 1 은 이 상태가 아니라 슬롯 수에 비례하는 인덱서 k-pool 연산 예약 #29950 때문이다, 10-22 ⑧-b 리뷰).
@@ -63,6 +65,8 @@ import {
   DSV4_KV_LOG,
   DSV4_M2_ULTRA,
   DSV4_REFERENCE,
+  DSV4_SPARK,
+  DSV4_UD_IQ2XXS,
   GLM53_3090X6,
   GLM53_AVAR6_Q2Q3,
   GLM53_KV_LOG,
@@ -627,19 +631,56 @@ describe('14) DeepSeek V4 Flash — 압축 어텐션(CSA·HCA)·하이퍼 커넥
     expect(c.source).toMatch(/^https:\/\//);
     const err = tg(c.ctx) / c.measuredTg - 1;
     expect(err).toBeCloseTo(c.recordedErr, 2);
-    // 지금 빌드 참고점 두 열(PR 29.45 · b10809 29.20) 가운데 가장 작은 과대 = 데이터 계층 판정 할인 값(assess VERDICT_OVERESTIMATE
-    // 'deepseek-v4-flash-0731' 0.25 — 10-23 D121 사용자 결정). 엔진 패키지는 데이터 계층을 읽지 않으므로 값으로 고정한다(소수 셋째 자리)
-    const currentErrs = [err, tg(c.ctx) / c.masterTg - 1];
-    expect(Math.min(...currentErrs)).toBeCloseTo(0.25, 3);
-    expect(Math.min(...currentErrs)).toBeGreaterThanOrEqual(0.25);
-    // 08-03 옛 빌드(머지 전 브랜치)는 참고점에서 뺐다 — 넣어도 모든 깊이가 +33% 이상이라 최솟값은 그대로
-    const old = DSV4_REFERENCE.oldBuild.depths.map((d) => tg(d.ctx) / d.measuredTg - 1);
-    expect(Math.min(...old)).toBeGreaterThan(0.33);
+    expect(tg(c.ctx) / c.masterTg - 1).toBeCloseTo(0.261, 2);
     expect(c.measuredTg).toBeGreaterThanOrEqual(tg(c.ctx) * 0.7);
     expect(c.masterTg).toBeGreaterThanOrEqual(tg(c.ctx) * 0.7);
     // pp2048(-ub 2048 가정)은 rough ±40% 안
     const pp = ppEstimate({ effClass: 'apple-ultra', fp16Tflops: 27.2 }, DSV4_FLASH_MXFP4, { ubatch: c.ubatch })!;
     expect(Math.abs(pp / c.measuredPp - 1)).toBeLessThan(0.4);
+  });
+
+  it('reference (not fitted): DGX Spark #27970 tg32 (CUDA sparse FA, assumed unsloth UD-IQ2_XXS — the same way as the GLM DGX Spark point) is +21.5–33.1% under the estimate up to 32k, inside the theoretical band', () => {
+    const s = DSV4_REFERENCE.spark;
+    const tgSpark = (ctx: number) => tgEstimate(DSV4_SPARK, DSV4_UD_IQ2XXS, { mode: 'full-gpu' }, { ctx });
+    expect(s.source).toMatch(/^https:\/\//);
+    // 가정 파일은 헤더 실측 값 — GPU 상주 90.56GB(전문가 + 비전문가)로 128GB 1대에 들어간다(D117 기기 값 116.9 — 공개 실행과 맞다)
+    expect(gpuResidentGBFor(DSV4_UD_IQ2XXS)).toBeCloseTo(90.56, 9);
+    expect(fit({ ...DSV4_SPARK, unifiedUsableGB: 116.9 }, DSV4_UD_IQ2XXS, { ctx: 32784 }).mode).toBe('full-gpu');
+    s.points.forEach((p, i) => {
+      const est = tgSpark(p.ctx);
+      expect(est / p.measuredTg - 1, `sparse-fa ctx ${p.ctx}`).toBeCloseTo(s.recordedErr[i]!, 2);
+      expect(est / p.baseTg - 1, `base ctx ${p.ctx}`).toBeCloseTo(s.baseRecordedErr[i]!, 2);
+      expect(p.measuredTg).toBeGreaterThanOrEqual(est * 0.7);
+      expect(p.baseTg).toBeGreaterThanOrEqual(est * 0.7);
+      expect(p.measuredTg).toBeLessThan(est);
+    });
+    // 긴 문맥 감쇠는 CUDA 에서도 엔진보다 크다(인덱서가 문맥에 비례 — docs/02 §9 ②): 131k 실측 −17.5% · 엔진 −8.9%, 524k 부터 표시 범위 밑
+    const d0 = s.points[0]!;
+    const [d131k, , d524k] = s.longDepths;
+    expect(d131k!.measuredTg / d0.measuredTg - 1).toBeCloseTo(-0.175, 2);
+    expect(tgSpark(d131k!.ctx) / tgSpark(d0.ctx) - 1).toBeCloseTo(-0.089, 2);
+    expect(d524k!.measuredTg).toBeLessThan(tgSpark(d524k!.ctx) * 0.7);
+  });
+
+  it('the smallest overestimate among the reference points (M2 Ultra two columns · DGX Spark two columns × 4 depths, long depths too) is the data-layer verdict discount 0.215 — the 08-03 build is left out and would not change it', () => {
+    const c = DSV4_REFERENCE.current;
+    const s = DSV4_REFERENCE.spark;
+    const tgSpark = (ctx: number) => tgEstimate(DSV4_SPARK, DSV4_UD_IQ2XXS, { mode: 'full-gpu' }, { ctx });
+    const errs = [
+      tg(c.ctx) / c.measuredTg - 1,
+      tg(c.ctx) / c.masterTg - 1,
+      ...s.points.flatMap((p) => [tgSpark(p.ctx) / p.measuredTg - 1, tgSpark(p.ctx) / p.baseTg - 1]),
+      ...s.longDepths.map((p) => tgSpark(p.ctx) / p.measuredTg - 1),
+    ];
+    // = assess VERDICT_OVERESTIMATE 'deepseek-v4-flash-0731'(10-23 D121 사용자 결정 'GLM 과 같은 방식'). 엔진 패키지는 데이터 계층을 읽지 않으므로 값으로 고정(소수 셋째 자리)
+    expect(Math.min(...errs)).toBeCloseTo(0.215, 3);
+    expect(Math.min(...errs)).toBeGreaterThanOrEqual(0.215);
+    expect(Math.min(...s.recordedErr, ...s.baseRecordedErr, c.recordedErr)).toBe(0.215);
+    // 가장 작은 점은 DGX Spark 깊이 0 sparse-fa 열 — M2 Ultra(Metal) 두 열은 그보다 크다(+25.0%·+26.1%)
+    expect(Math.min(...errs.slice(0, 2))).toBeGreaterThan(0.25);
+    // 08-03 옛 빌드(머지 전 브랜치)는 참고점에서 뺐다 — 넣어도 모든 깊이가 +33% 이상이라 최솟값은 그대로
+    const old = DSV4_REFERENCE.oldBuild.depths.map((d) => tg(d.ctx) / d.measuredTg - 1);
+    expect(Math.min(...old)).toBeGreaterThan(0.33);
   });
 
   it('reference: the 08-03 branch build is +33% at depth 0, and llama.cpp slows −19% by 30k where the engine slows −1.6% (indexer work grows with context)', () => {

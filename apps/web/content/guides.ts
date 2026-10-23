@@ -594,7 +594,8 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
     ...PUBLISHED_1019,
     // 10-21 D115: 'V4 는 계산하지 않음' → DeepSeek V4 Flash 0731 계산(큰 메모리 맥·여러 장·MoE 전문가 RAM 배치 <Expect>, KV 표·확실성 문단)
     // 10-23 D117: DGX Spark 128GB 의 Q2_K 가 CPU 경로 B → 불가(기기 근거 사용 가능량이 두 경로의 한도) — 문장과 <Expect> 를 고쳤다
-    // 10-23 D121: V4 Flash 판정 할인(0.25 — 사용자 결정)으로 M3 Ultra 256·512GB MXFP4 쾌적 → 원활 — 문장·<Expect>·확실성 문단을 고쳤다(M5 Ultra 는 쾌적 그대로)
+    // 10-23 D121: V4 Flash 판정 할인(0.215 — 사용자 결정 'GLM 과 같은 방식', 리뷰 반영으로 DGX Spark #27970 참고점 포함)으로 계산기의 그래픽카드 네 장 MoE 전문가
+    // RAM 배치(RTX 5090 네 장 + 64GB MXFP4 · RTX 3090 네 장 + 128GB Q2_K) 원활 → 겨우 가능 — 여러 장 문단·확실성 문단·출처(#27970)를 고쳤다. M3 Ultra·M5 Ultra 8k 는 쾌적 그대로
     dateModified: '2026-10-23',
     grids: {
       // 8~32GB dGPU 6종 × R1 소형 4종 — 0528-qwen3-8b 는 Ollama deepseek-r1 기본 태그, distill-14b 는 :14b (10-19 추가).

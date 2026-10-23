@@ -1031,9 +1031,20 @@ export const DSV4_KV_LOG = {
  * - #28948(09-19 머지) 비교 표의 PR 열(= 지금 master, b10809 열은 29.20) tg32 — 모델 줄은 "deepseek4 ?B MXFP4 MoE" 뿐이라 파일은 같은 작성자(ggerganov)가 08-03 에
  *   명시한 ggml-org 0731 MXFP4 로 본 가정(시기·작성자 추정)이다. pp2048 은 같은 PR 의 다른 점처럼 -ub 2048 가정
  * - #25893 브랜치(08-03 머지 전 — HC 융합 op 포함) ggml-org 0731 MXFP4 144.34 GiB 명시, -fa 1 -ub 2048, tg128 깊이 0 · 10k · 20k · 30k — 옛 빌드 참고와 문맥 감쇠
- * 깊이 0 의 tgN 은 ctx 512(위 MoE 회귀와 같은 관례), 깊이 d 는 d + 64(tg128 평균)
+ * - DGX Spark(am17an, #27970 — 09-02 머지, CUDA sparse FA): llama-bench tg32 깊이 0·4,096·8,192·32,768 = sparse-fa 열(머지된 코드) 19.07·18.28·18.26·17.52 ·
+ *   기준 빌드(dfc29b64e) 열 19.00·18.16·18.18·17.01. 모델 줄은 "deepseek4 ?B IQ2_XXS - 2.0625 bpw" 뿐이라, GLM 의 DGX Spark 점(#30640 — 같은 작성자, "IQ2_XXS")을
+ *   unsloth UD-IQ2_XXS 로 본 것과 같은 방식으로 unsloth UD-IQ2_XXS 0731(아래 `DSV4_UD_IQ2XXS`)로 본 가정이다(10-23 D121 리뷰 — 그 전 D115 는 '파일 크기 없음'으로 뺐다).
+ *   카탈로그 파일이 아니라 콤보로는 조인 안 됨. 131k~1M 은 긴 문맥 감쇠 대조용(§9 ②)
+ * 깊이 0 의 tgN 은 ctx 512(위 MoE 회귀와 같은 관례), 깊이 d 는 d + N/2(tg128 → d + 64, tg32 → d + 16)
  */
 export const DSV4_M2_ULTRA: Hardware = unified(192, 800, 'apple-ultra');
+export const DSV4_SPARK: Hardware = { ...unified(128, 273, 'dgx-spark'), os: 'linux' };
+/**
+ * https://huggingface.co/unsloth/DeepSeek-V4-Flash-0731-GGUF UD-IQ2_XXS(3분할 합계 90,860,736,928 B = 90.86GB) — GGUF 헤더 실측(10-23, scripts/gguf-header.ts):
+ * file_type 19(IQ2_XXS — #27970 모델 줄의 "IQ2_XXS - 2.0625 bpw" 와 같은 형식), 원소 284,334,567,511(카탈로그 paramsB 284.33 과 같다), 전문가 83.87 · GPU 상주 비전문가 6.69GB
+ * (입력 임베딩 0.30GB 는 GPU 밖). quant 는 tg 산식이 읽지 않는 값이라 형식만 맞춘다(GLM53_UD_IQ2XXS 와 같은 관례)
+ */
+export const DSV4_UD_IQ2XXS: ModelQuant = moeFile({ ...DSV4, quant: 'Q2_K' }, 90.86, 83.87, 6.69);
 export const DSV4_REFERENCE = {
   current: { label: 'M2 Ultra #28948 PR (master) tg32', source: PR(28948), ctx: 512, measuredTg: 29.45, masterTg: 29.2, measuredPp: 419.11, ubatch: 2048, recordedErr: 0.25 },
   oldBuild: {
@@ -1055,6 +1066,29 @@ export const DSV4_REFERENCE = {
     ],
     ubatch: 2048,
     recordedErr: 0.334,
+  },
+  spark: {
+    label: 'DGX Spark #27970 tg32 (sparse-fa · base dfc29b64e)',
+    source: PR(27970),
+    points: [
+      { ctx: 512, measuredTg: 19.07, baseTg: 19.0 },
+      { ctx: 4112, measuredTg: 18.28, baseTg: 18.16 },
+      { ctx: 8208, measuredTg: 18.26, baseTg: 18.18 },
+      { ctx: 32784, measuredTg: 17.52, baseTg: 17.01 },
+    ],
+    /** sparse-fa 열 · 기준 빌드 열의 과대(추정 ÷ 실측 − 1) */
+    recordedErr: [0.215, 0.265, 0.262, 0.292],
+    baseRecordedErr: [0.22, 0.273, 0.268, 0.331],
+    /**
+     * sparse-fa 열의 긴 문맥 — 감쇠 대조용. 과대가 더 커(+34~56%) 판정 할인(가장 작은 과대)에는 영향이 없다. 524k 부터는 표시 범위(추정 × 0.7) 밑이다.
+     * 기준 빌드 열의 긴 문맥은 sparse FA 전이라 더 느려(1M 5.31) 넣지 않았다
+     */
+    longDepths: [
+      { ctx: 131088, measuredTg: 15.73 },
+      { ctx: 262160, measuredTg: 13.94 },
+      { ctx: 524304, measuredTg: 11.32 },
+      { ctx: 1048592, measuredTg: 8.3 },
+    ],
   },
 } as const;
 

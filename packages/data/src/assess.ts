@@ -483,18 +483,21 @@ export function isFp16Crippled(gpu: Pick<Gpu, 'kind' | 'fp16Tflops'>): boolean {
  * (1 + 이 값)으로 나눈 속도를 쓴다. 표시 속도·범위·라벨은 엔진 값 그대로다(규칙 3 — 엔진 산식·상수는 건드리지 않는다). 값 = 참고점 가운데 가장 작은
  * 과대 비율 min(추정 ÷ 공개 결과 − 1) — 모든 참고점이 적어도 이만큼은 느렸다. 실측이 조인된 결과(measured)는 할인하지 않는다.
  * GLM-5.3-Flash(10-22 ⑧-b 리뷰): 생각 모드라 쾌적 임계가 30 인데 M3 Ultra Q2_K 추정 30.5 가 같은 칩 계열·같은 파일 참고점(M2 Ultra +23.5%)으로 보면
- * 원활 쪽이다. DeepSeek V4 Flash 0731(10-23 D121 — 사용자 결정 'GLM 과 같은 방식 적용'): 지금 빌드 공개 결과(M2 Ultra #28948)가 +25.0%·+26.1% 라
- * M3 Ultra 256·512GB MXFP4 8k 추정 37.4 가 할인하면 29.9 로 쾌적 임계 30 아래다. 08-03 옛 빌드(#25893 브랜치 — 머지 전)는 그 뒤 llama.cpp 가 빨라져
- * 참고점에서 뺐다(넣어도 +33% 이상이라 최솟값은 그대로 — 엔진 회귀 14 가 함께 고정)
+ * 원활 쪽이다. DeepSeek V4 Flash 0731(10-23 D121 — 사용자 결정 'GLM 과 같은 방식 적용'): GLM 과 같은 규칙으로 참고점을 모았다 — M2 Ultra(#28948, Metal)
+ * +25.0%·+26.1% 와, GLM 의 DGX Spark 점(#30640 "IQ2_XXS" → unsloth UD-IQ2_XXS 로 본 가정)과 같은 방식으로 넣은 DGX Spark 점(#27970 "IQ2_XXS" → unsloth
+ * UD-IQ2_XXS 0731 헤더 분할로 본 가정, CUDA) +21.5~33.1%. 가장 작은 과대는 DGX Spark 깊이 0 의 PR 열 +21.5% 다. 이 값으로는 M3 Ultra 256·512GB MXFP4 8k
+ * 추정 37.4 가 할인해도 30.8 로 쾌적 그대로고, 바뀌는 판정은 그래픽카드 네 장 + 큰 RAM 의 MoE 전문가 RAM 배치(원활 → 겨우 가능 — 계산기 구성)와 긴 문맥 칸
+ * 일부다. 08-03 옛 빌드(#25893 브랜치 — 머지 전)는 그 뒤 llama.cpp 가 빨라져 참고점에서 뺐다(넣어도 +33% 이상이라 최솟값은 그대로 — 엔진 회귀 14 가 함께 고정)
  */
 // source: https://github.com/ggml-org/llama.cpp/pull/30640 (GLM — DGX Spark tg64 깊이 65,536 = 18.4 — 추정 +8.2%, 참고점 8개 중 가장 작다) ·
 //   https://github.com/ggml-org/llama.cpp/pull/29958 (GLM — M2 Ultra +23.5·+23.8%) · https://github.com/ggml-org/llama.cpp/pull/29928#issuecomment-5983042076
 //   (GLM — 6 × RTX 3090 +23.8~26.1%) — 엔진 회귀 15 fixture `GLM53_REFERENCE.recordedErr` 의 최솟값(packages/engine/test/fixtures.ts, docs/02 §5·§7·§9) ·
-//   https://github.com/ggml-org/llama.cpp/pull/28948 (DeepSeek V4 Flash — M2 Ultra tg32, PR 열 29.45 = 추정 +25.0% · b10809 열 29.20 = +26.1%, 지금 빌드 참고점 2개 중
-//   작은 쪽) — 엔진 회귀 14 fixture `DSV4_REFERENCE.current` 의 최솟값
+//   https://github.com/ggml-org/llama.cpp/pull/27970 (DeepSeek V4 Flash — DGX Spark tg32 깊이 0 sparse-fa 열 19.07 = 추정 +21.5%, 참고점 10개 중 가장 작다 —
+//   파일은 https://huggingface.co/unsloth/DeepSeek-V4-Flash-0731-GGUF UD-IQ2_XXS 로 본 가정) · https://github.com/ggml-org/llama.cpp/pull/28948 (DeepSeek V4 Flash —
+//   M2 Ultra tg32, PR 열 29.45 = +25.0% · b10809 열 29.20 = +26.1%) — 엔진 회귀 14 fixture `DSV4_REFERENCE.current`·`DSV4_REFERENCE.spark` 의 최솟값
 export const VERDICT_OVERESTIMATE: Readonly<Record<string, number>> = Object.freeze({
   'glm-5.3-flash': 0.082,
-  'deepseek-v4-flash-0731': 0.25,
+  'deepseek-v4-flash-0731': 0.215,
 });
 
 /** 판정 할인(`VERDICT_OVERESTIMATE`) — 대상 모델의 추정 결과면 판정만 할인한 속도로 다시 정한다(속도·범위·라벨·모드는 그대로) */

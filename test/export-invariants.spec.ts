@@ -1286,12 +1286,15 @@ describe('memory-size verdict lists and the system RAM toggle (10-03 D64)', () =
       if (page.combo!.gpuId !== 'nvidia-dgx-spark') {
         expect(linked, `${page.file} linked rows`).toEqual([]);
         expect(page.clusterNotes, `${page.file} cluster note`).toBe(0);
+        expect(page.clusterCountNotes, `${page.file} cluster count note`).toBe(0);
         continue;
       }
       dgx += 1;
       expect(page.ramSteps.map((r) => (r.nodes > 1 ? `${r.ram}x${r.nodes}` : String(r.ram))), page.file).toEqual(['64', '128', '64x2', '128x2', '64x4', '128x4']);
       expect(linked.some((r) => r.assumed), `${page.file} a linked row is the page configuration`).toBe(false);
       expect(page.clusterNotes, `${page.file} cluster note`).toBe(1);
+      // 판정 수 안내는 허브 요약에만 — 콤보 목록에는 판정 수가 없다(10-23 D121 리뷰)
+      expect(page.clusterCountNotes, `${page.file} cluster count note`).toBe(0);
       // 1대로 충분(10-23 D121): 그 행에는 판정 배지·표시 양자화가 없고 같은 메모리 1대 행은 기준 양자화가 들어간다(불가가 아니다).
       // 그 밖의 여러 대 행은 판정 배지가 있다. 1대 행에는 이 표시가 없다
       for (const r of linked) {
@@ -1324,6 +1327,7 @@ describe('memory-size verdict lists and the system RAM toggle (10-03 D64)', () =
         dgx += 1;
         expect(page.hubConfigKeys, page.file).toEqual(['64', '128', '64x2', '128x2', '64x4', '128x4']);
         expect(page.clusterNotes, page.file).toBe(1);
+        expect(page.clusterCountNotes, page.file).toBe(1);
         // 1대로 충분 수(10-23 D121)는 여러 대 행에만. 요약 칩 4개 + '메모리 구성별 판정' 표의 1대로 충분 칸 수
         const [one64, one128, ...linkedCounts] = page.hubOneUnitCounts;
         expect([one64, one128], page.file).toEqual([null, null]);
@@ -1334,6 +1338,7 @@ describe('memory-size verdict lists and the system RAM toggle (10-03 D64)', () =
       expect(page.hubOneUnitCounts.every((n) => n === null), page.file).toBe(true);
       expect(page.oneUnitMarks, page.file).toBe(0);
       expect(page.clusterNotes, page.file).toBe(0);
+      expect(page.clusterCountNotes, page.file).toBe(0);
       expect(page.hubConfigKeys, page.file).toEqual(gpu.kind === 'dgpu' ? [String(HUB_POLICY.dgpuRamGB)] : (gpu.ramOptionsGB ?? []).map(String));
     }
     expect(dgx, 'DGX Spark hubs (en + ko)').toBeGreaterThanOrEqual(2);

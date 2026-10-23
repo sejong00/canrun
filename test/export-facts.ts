@@ -126,6 +126,8 @@ export type PageFacts = {
   oneUnitMarks: number;
   /** `[data-cluster-note]` — 여러 대 연결 행 안내 문장(허브 요약·콤보 메모리 구성별 판정, 10-23 D118) 수 */
   clusterNotes: number;
+  /** `[data-cluster-count-note]` — 여러 대 행 판정 수 안내(허브 요약에만 — 10-23 D121 리뷰) 수 */
+  clusterCountNotes: number;
   /** `[data-ram-caption]` 값 ('verdict' | 'file') — dGPU RAM 목록 설명의 갈래 */
   ramCaption?: string;
   /** `[data-ram-same]` — RAM 계단에서 맨 위 판정이 같다는 구절 (RAM 목록이 없는 dGPU 콤보) */
@@ -906,6 +908,7 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
     }),
     oneUnitMarks: elementsWithAttr(noScript, 'data-one-unit').length,
     clusterNotes: elementsWithAttr(noScript, 'data-cluster-note').length,
+    clusterCountNotes: elementsWithAttr(noScript, 'data-cluster-count-note').length,
     ...(headerVerdict === undefined ? {} : { headerVerdict }),
     ...(liveSummary === undefined ? {} : { liveSummary }),
     numberFingerprint: fingerprint,

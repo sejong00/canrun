@@ -483,7 +483,8 @@ export default async function GpuHubPage({ params }: Props) {
           </ul>
           {clusterConfigs.length > 0 && (
             <p data-cluster-note className="text-sm text-muted-foreground">
-              {tSpec('clusterNote')}
+              {/* 판정 수 안내는 요약 목록이 있는 허브에만 — 콤보·가이드 그리드의 같은 안내 문장에는 판정 수가 없다(10-23 D121 리뷰) */}
+              {tSpec('clusterNote')} <span data-cluster-count-note>{tSpec('clusterCountNote')}</span>
             </p>
           )}
           <VerdictLegend className="mt-2" />
