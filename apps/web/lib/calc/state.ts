@@ -1,7 +1,7 @@
 /**
  * 계산기 상태 (P1-3 D31) — 순수 타입·기본값·정규화. URL 코덱(url.ts)과 아일랜드 리듀서가 공유한다.
  */
-import { canMixWith, HUB_POLICY, isMixableGpu, MANUAL_NUMBER_FIELDS, type CatalogLite, type GpuCore, type ManualSpec } from '@canrun/data/client';
+import { canMixWith, HUB_POLICY, isMixableGpu, MANUAL_NUMBER_FIELDS, type CatalogLite, type ClusterCore, type GpuCore, type ManualSpec } from '@canrun/data/client';
 import type { EffClass, KvQuant, Os, Verdict } from '@canrun/engine';
 
 export type DdrKind = 'ddr4-3200' | 'ddr5-5600' | 'ddr5-6000';
@@ -100,6 +100,11 @@ export type CalcState = {
    * `gpus` 와 합쳐 최대 4장. 1번과 같은 id 는 `gpus` 로 접는다. 1번을 입력하는 중(none·unresolved)엔 그대로 둔다
    */
   plus?: string[];
+  /**
+   * 여러 대 연결 대수 2 ~ maxNodes (10-23 D118 — 레코드에 `cluster` 가 있는 통합 메모리 기기만, 지금은 DGX Spark). 1대는 기본값이라 생략.
+   * llama.cpp RPC 층 분할로 계산하고 이론 추정. dGPU 의 `gpus`(한 기기 안의 카드 장수)와 따로 둔다 — 통합 메모리 기기는 `gpus` 를 계속 받지 않는다
+   */
+  nodes?: number;
   ctx: number;
   kv: KvQuant;
   cat: Category[];
@@ -182,6 +187,19 @@ export function osLocked(hardware: HardwareChoice, catalog: CatalogLite): Os | u
     return 'macos';
   }
   return undefined;
+}
+
+/** 여러 대 연결 정보 (10-23 D118) — 카탈로그에서 고른 통합 메모리 기기에 `cluster` 가 있을 때만 */
+export function clusterOf(hardware: HardwareChoice, catalog: CatalogLite): ClusterCore | undefined {
+  if (hardware.kind !== 'catalog') return undefined;
+  const gpu = findGpu(catalog, hardware.gpuId);
+  return gpu?.kind === 'unified' ? gpu.cluster : undefined;
+}
+
+/** 대수 선택지 1 ~ maxNodes — 여러 대 연결이 없는 하드웨어는 빈 목록(폼이 선택 칸을 그리지 않는다) */
+export function nodeOptions(hardware: HardwareChoice, catalog: CatalogLite): readonly number[] {
+  const cluster = clusterOf(hardware, catalog);
+  return cluster ? Array.from({ length: cluster.maxNodes }, (_, i) => i + 1) : [];
 }
 
 /** 선택 가능한 OS — Apple·DGX 는 고정, 그 외는 windows|linux (macOS 는 Apple 실리콘에만 성립: dGPU·Strix 에 macOS 를 주면 OS 예약이 0 이 된다) */
@@ -298,6 +316,9 @@ export function normalize(state: CalcState, catalog: CatalogLite): CalcState {
     (next.hardware.kind === 'custom' && next.hardware.custom.kind === 'dgpu');
   if (next.gpus !== undefined && (!dgpuChoice || next.gpus === 1 || !GPU_COUNT_OPTIONS.includes(next.gpus))) next.gpus = undefined;
   if (next.plus !== undefined) Object.assign(next, normalizePlus(next, catalog));
+  // 여러 대 연결(10-23 D118)은 `cluster` 가 있는 카탈로그 통합 메모리 기기에만, 2 ~ maxNodes 정수만 — 다른 하드웨어로 바뀌면 지운다. 1대는 기본값이라 생략
+  if (next.nodes !== undefined && !nodeOptions(next.hardware, catalog).includes(next.nodes)) next.nodes = undefined;
+  if (next.nodes === 1) next.nodes = undefined;
   // 모델 모드 (D65): 허용 목록 밖이면 기본값, 종류는 정규 순서·중복 제거
   if (!CALC_MODES.includes(next.mode)) next.mode = 'hardware';
   next.type = HW_TYPES.filter((t) => state.type.includes(t));

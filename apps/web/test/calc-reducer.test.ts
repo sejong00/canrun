@@ -185,3 +185,19 @@ describe('calculator reducer — mixed GPUs (10-03 D67)', () => {
     expect(s).toMatchObject({ gpus: 2, plus: ['rtx-3060-12gb'] });
   });
 });
+
+describe('linked units (10-23 D118 — DGX Spark cluster)', () => {
+  it('sets 2–4 units on the DGX Spark only; switching hardware or using a GPU row from the model list drops it', () => {
+    let s = reduce(at('nvidia-dgx-spark'), { type: 'nodes', nodes: 4 });
+    expect(s.nodes).toBe(4);
+    s = reduce(s, { type: 'nodes', nodes: 1 });
+    expect(s.nodes).toBeUndefined();
+    s = reduce(at('nvidia-dgx-spark'), { type: 'nodes', nodes: 2 });
+    expect(reduce(s, { type: 'ram', ramGB: 64 })).toMatchObject({ nodes: 2, ramGB: 64 });
+    expect(reduce(s, { type: 'hardware', hardware: { kind: 'catalog', gpuId: 'amd-strix-halo' } }).nodes).toBeUndefined();
+    expect(reduce(s, { type: 'hardware', hardware: { kind: 'catalog', gpuId: 'rtx-5090' } }).nodes).toBeUndefined();
+    expect(reduce(s, { type: 'useGpu', gpuId: 'nvidia-dgx-spark', ramGB: 128 }).nodes).toBeUndefined();
+    // 다른 통합 메모리 기기는 대수를 받지 않는다
+    expect(reduce(at('apple-m3-ultra'), { type: 'nodes', nodes: 2 }).nodes).toBeUndefined();
+  });
+});

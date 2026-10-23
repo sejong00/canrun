@@ -179,3 +179,21 @@ describe('<Expect> ctx claims follow the RAM the ctx table is computed at (10-14
     expect(() => resolveExpect({ model: 'llama-3.1-8b', gpu: 'rtx-3090', ctx: '32768', ram: '128' })).toThrow(/computed at/);
   });
 });
+
+describe('<Expect nodes> — linked DGX Spark units (10-23 D118)', () => {
+  it('points at the (RAM, units) row of the combo, needs ram, and refuses ctx (the ctx table is one unit)', () => {
+    expect(resolveExpect({ model: 'gpt-oss-120b', gpu: 'nvidia-dgx-spark', ram: '64', fits: 'false' }).fits).toBe(false);
+    const two = resolveExpect({ model: 'gpt-oss-120b', gpu: 'nvidia-dgx-spark', ram: '64', nodes: '2' });
+    expect(two).toMatchObject({ fits: true, verdict: 'S', mode: 'full-gpu', confidence: 'theoretical' });
+    expect(resolveExpect({ model: 'glm-5.3-flash', gpu: 'nvidia-dgx-spark', ram: '128', nodes: '2', quant: 'Q4_K_M' }).fits).toBe(true);
+    expect(() => resolveExpect({ model: 'gpt-oss-120b', gpu: 'nvidia-dgx-spark', nodes: '2' })).toThrow(/nodes needs ram/);
+    expect(() => resolveExpect({ model: 'gpt-oss-120b', gpu: 'nvidia-dgx-spark', ram: '128', nodes: '3' })).toThrow(/no 128 GB × 3/);
+    expect(() => resolveExpect({ model: 'gpt-oss-120b', gpu: 'nvidia-dgx-spark', ram: '128', nodes: '2', ctx: '8192' })).toThrow(/one unit/);
+    expect(() => resolveExpect({ model: 'gpt-oss-120b', gpu: 'apple-m3-ultra', ram: '256', nodes: '2' })).toThrow(/no 256 GB × 2/);
+    // 대표 구성은 1대 — 콤보 페이지 헤더 판정은 1대 구성에서 고른다
+    const page = getCombo('gpt-oss-120b', 'nvidia-dgx-spark')!;
+    expect(page.combo.nodes).toBeUndefined();
+    expect(page.clusterCombos.map((c) => `${c.ramGB}x${c.nodes}`)).toEqual(['64x2', '128x2', '64x4', '128x4']);
+    expect(getCombo('gpt-oss-120b', 'apple-m3-ultra')!.clusterCombos).toEqual([]);
+  });
+});

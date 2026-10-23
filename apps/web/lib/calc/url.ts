@@ -1,6 +1,7 @@
 /**
  * 계산기 공유 URL 코덱 (P1-3 D31) — 기본값 생략·키 순서 고정·미지 키 삭제. 순수 함수.
- *   gpu=<id|이름|별칭|custom> [kind class vram mem bw fp16] gpus plus ram ddr os display ctx kv cat min size sort mode m hf mm type budget gsort
+ *   gpu=<id|이름|별칭|custom> [kind class vram mem bw fp16] gpus plus nodes ram ddr os display ctx kv cat min size sort mode m hf mm type budget gsort
+ * 여러 대 연결(10-23 D118): `nodes=2|3|4` — 레코드에 `cluster` 가 있는 통합 메모리 기기(DGX Spark)만, 1대는 생략(정리 규칙은 state.ts normalize).
  * 서로 다른 GPU(10-03 D67): `plus=rtx-3060-12gb[,…]` — 함께 꽂은 카드의 카탈로그 id, 넣은 순서 그대로(정리 규칙은 state.ts normalizePlus).
  * 모델 모드(10-03 D65): `mode=model` + 대상 `m`(카탈로그) 또는 `hf`(불러온 모델), GPU 필터 `type`·`budget`·`gsort`. `ctx`·`kv`·`min` 은
  * 두 모드가 같은 뜻으로 쓴다. 기본 모드(hardware)는 생략하므로 기존 하드웨어 모드 URL 은 그대로다.
@@ -126,6 +127,7 @@ export function parseCalcQuery(search: string, catalog: CatalogLite, names: GpuN
   state.gpus = num(q.get('gpus'), 1, 8);
   const plus = (q.get('plus') ?? '').split(',').map((id) => id.trim()).filter(Boolean).slice(0, 8);
   state.plus = plus.length > 0 ? plus : undefined;
+  state.nodes = num(q.get('nodes'), 1, 8);
   state.ramGB = num(q.get('ram'), 1, 2048);
   state.ddr = oneOf(q.get('ddr'), DDR_KINDS) ?? DEFAULT_DDR;
   state.os = oneOf(q.get('os'), OS_VALUES);
@@ -166,6 +168,7 @@ export function serializeCalcQuery(state: CalcState, catalog: CatalogLite): stri
   }
   if (s.gpus !== undefined) q.set('gpus', String(s.gpus));
   if (s.plus !== undefined && s.plus.length > 0) q.set('plus', s.plus.join(','));
+  if (s.nodes !== undefined) q.set('nodes', String(s.nodes));
   if (s.ramGB !== undefined) q.set('ram', String(s.ramGB));
   if (s.ddr !== DEFAULT_DDR) q.set('ddr', s.ddr);
   if (s.os !== undefined) q.set('os', s.os);

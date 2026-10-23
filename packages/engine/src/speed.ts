@@ -14,6 +14,7 @@ import {
   PP_MOE,
   PP_REF_PARAMS_B,
   PP_UBATCH,
+  RPC_HOP_TG_MS,
 } from './constants';
 import type { FitResult } from './fit';
 import {
@@ -23,6 +24,7 @@ import {
   isUniformGpus,
   kvGB,
   loopExtraGB,
+  nodeCountOf,
   nonExpertGBFor,
   unreadValueExpertGB,
   weightsGB,
@@ -147,10 +149,22 @@ export function pleOverheadSeconds(
   return PLE_TOKEN_OVERHEAD_MS[b] * 1e-3;
 }
 
-/** full-gpu(§3.1) — 읽기 시간(클래스 dense 계수) + 토큰당 고정 시간(MoE 는 MoE 층 × topK, 층별 임베딩 표 dense 는 PLE 값, 그 밖은 0). */
+/**
+ * 통합 메모리 여러 대(§6.2 클러스터, 10-23 D118)의 토큰당 추가 시간 초 = (대수 − 1) × `RPC_HOP_TG_MS`. llama.cpp RPC 층 분할은 토큰마다 대를 차례로
+ * 지나므로 읽기 시간은 한 대에 다 올린 것과 같고(같은 기기 파이프라인 — 대역폭 비합산), 대 사이를 건널 때마다 RPC 왕복·동기화 시간이 붙는다.
+ * 한 대면 0(기존 출력 그대로 — 0 을 더한다)
+ */
+export function clusterHopSeconds(hw: Pick<Hardware, 'kind' | 'nodes'>): number {
+  return (nodeCountOf(hw) - 1) * RPC_HOP_TG_MS * 1e-3;
+}
+
+/**
+ * full-gpu(§3.1) — 읽기 시간(클래스 dense 계수) + 토큰당 고정 시간(MoE 는 MoE 층 × topK, 층별 임베딩 표 dense 는 PLE 값, 그 밖은 0)
+ * + 통합 메모리 여러 대의 대 사이 이동 시간(§6.2 — 한 대면 0).
+ */
 function tgFullGpu(hw: Hardware, mq: ModelQuant, bytes: number): number {
   const read = bytes / gpuThroughputGBs(hw);
-  return 1 / (read + (isMoe(mq) ? moeOverheadSeconds(hw, mq) : pleOverheadSeconds(hw, mq)));
+  return 1 / (read + (isMoe(mq) ? moeOverheadSeconds(hw, mq) : pleOverheadSeconds(hw, mq)) + clusterHopSeconds(hw));
 }
 
 /**

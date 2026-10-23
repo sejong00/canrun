@@ -474,3 +474,36 @@ describe('several GPUs (D58 같은 카드 · 10-03 D67 서로 다른 카드)', (
     expect(plan.llamaCpp?.ngl).toBe(Math.floor((combo.display.gpuFrac ?? 0) * model('llama-3.3-70b').arch.layers));
   });
 });
+
+describe('DGX Spark 여러 대 (10-23 D118): llama.cpp RPC — 다른 기기마다 ggml-rpc-server, 첫 기기 llama-server --rpc', () => {
+  const spark = seed.gpus.find((g) => g.id === 'nvidia-dgx-spark')!;
+  const oss = seed.models.find((m) => m.id === 'gpt-oss-120b')!;
+  const row = seed.modelQuants.find((r) => r.modelId === 'gpt-oss-120b' && r.quant === 'MXFP4')!;
+
+  it('2·3·4대: 서버 명령 (대수 − 1)개, 첫 기기 명령은 -ngl all … --rpc 자리표시:50052 들 — Ollama 는 없다', () => {
+    for (const nodes of [2, 3, 4]) {
+      const config = hardwareConfigs(spark, seed.gpus, { ramGB: 128, nodes })[0]!;
+      const combo = assessCombo(seed, spark, config, oss);
+      const plan = commandPlan(spark, config, oss, row, combo.display);
+      expect(plan.nodes).toBe(nodes);
+      const hosts = Array.from({ length: nodes - 1 }, (_, i) => `<node${i + 2}-ip>`);
+      expect(plan.llamaCpp!.rpcServers).toEqual(hosts.map((h) => `ggml-rpc-server -H ${h} -p 50052 -c`));
+      expect(plan.llamaCpp!.command).toBe(`llama-server -hf ${row.ggufRepo}:MXFP4 -c 8192 -ngl all -fa on --rpc ${hosts.map((h) => `${h}:50052`).join(',')}`);
+      expect(plan.ollama).toBeUndefined();
+      expect(plan.ollamaOmitted).toBe('cluster');
+      expect(plan.llamaCpp!.command).not.toContain('127.0.0.1');
+    }
+    // KV 양자화 플래그 뒤에 --rpc
+    const config = hardwareConfigs(spark, seed.gpus, { ramGB: 128, nodes: 2 })[0]!;
+    const q8 = commandPlan(spark, config, oss, row, assessCombo(seed, spark, config, oss, { kvQuant: 'q8_0' }).display, { kvQuant: 'q8_0' });
+    expect(q8.llamaCpp!.command).toMatch(/--cache-type-v q8_0 --rpc <node2-ip>:50052$/);
+  });
+
+  it('1대 구성의 명령은 그대로 — rpcServers·nodes 키가 없다', () => {
+    const config = hardwareConfigs(spark, seed.gpus, { ramGB: 128 })[0]!;
+    const plan = commandPlan(spark, config, oss, row, assessCombo(seed, spark, config, oss).display);
+    expect('nodes' in plan).toBe(false);
+    expect('rpcServers' in plan.llamaCpp!).toBe(false);
+    expect(plan.llamaCpp!.command).not.toContain('--rpc');
+  });
+});

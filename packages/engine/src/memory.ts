@@ -127,7 +127,51 @@ export function gpuSharesOf(hw: Hardware): number[] {
   return caps.map((cap) => (pool > 0 ? cap / pool : 1 / units.length));
 }
 
-/** 모드별 사용 가능 메모리 GB (§2.3). */
+/**
+ * 통합 메모리 기기 대수 (§6.2 클러스터, 10-23 D118) — 정수 1 이상, 통합 메모리가 아니면 1. dGPU 의 장수(`gpuCountOf`)와 따로 센다
+ * (dGPU 여러 장은 한 기기 안의 카드, 이것은 네트워크로 이은 기기)
+ */
+export function nodeCountOf(hw: Pick<Hardware, 'kind' | 'nodes'>): number {
+  if (hw.kind !== 'unified' || hw.nodes === undefined) return 1;
+  return Math.max(1, Math.floor(hw.nodes));
+}
+
+/**
+ * 통합 메모리 여러 대(§6.2, 10-23 D118)에서 가장 많이 맡는 대의 층 몫 — llama.cpp 기본 층 분할은 장치마다 남은 메모리 비율로 나누고(같은 기기면 고르게),
+ * 출력층도 한 칸으로 세어 (층 + 1) 칸을 나눈다(https://github.com/ggml-org/llama.cpp/blob/184f6536024668e8908ab8c86033d56708e62b40/src/llama-model.cpp#L1641-L1699 —
+ * 칸 il 의 장치 = upper_bound(splits, il / (층 + 1)), 출력층 = 칸 n_layer). 한 장치가 받는 층은 많아야 올림((층 + 1) / 대수) 개이므로 그 수를 층 수로 나눈 몫을
+ * 가중치·KV 모두에 쓴다 — 층 하나를 (상주 가중치 ÷ 층 수)로 보는 상한이라, 출력층이 트렁크 층보다 작은 큰 모델에서는 실제보다 조금 크다(보수).
+ * 층 수가 없는 입력은 1/대수, 대수 1 이면 1. [0, 1] 로 묶는다
+ */
+export function clusterShareOf(mq: Pick<ModelQuant, 'layers'>, nodes: number): number {
+  if (nodes <= 1) return 1;
+  const layers = mq.layers;
+  if (layers === undefined || layers < 1) return 1 / nodes;
+  return Math.min(1, Math.ceil((layers + 1) / nodes) / layers);
+}
+
+/**
+ * 통합 메모리 여러 대(§6.2, 10-23 D118)에서 가장 많이 맡는 대의 가중치·KV GB. 장치에 올라가는 가중치(층·출력층 — `gpuResidentGBFor`)와 KV 는 `clusterShareOf` 몫,
+ * 장치 밖 몫(입력 임베딩 — llama.cpp 는 늘 첫 기기의 CPU 에 둔다, 같은 통합 메모리 · 기본 미적재 MTP 블록도 보수로 센다)은 첫 기기에 더한다 — 첫 기기의 칸 수가
+ * 다른 대보다 적을 수 있어도 가장 많은 칸 + 장치 밖 몫으로 묶는 상한이다(https://github.com/ggml-org/llama.cpp/blob/184f6536024668e8908ab8c86033d56708e62b40/src/llama.cpp#L275-L276 —
+ * RPC 장치가 목록 앞, 첫 기기의 GPU 가 맨 뒤라 마지막 층들과 출력층을 맡는다 · 입력층은 CPU, 같은 커밋 src/llama-model.cpp#L1688-L1690).
+ * 반복 층 모델(`loops` — 10-22 D114)은 물리 가중치가 첫 반복을 맡은 앞쪽 대에 몰리므로 가중치 몫을 나누지 않는다(보수). 한 대면 { weights, kv } 그대로
+ */
+export function clusterNodeLoadGB(
+  hw: Pick<Hardware, 'kind' | 'nodes'>,
+  mq: ModelQuant,
+  weights: number,
+  kv: number,
+): { weights: number; kv: number } {
+  const nodes = nodeCountOf(hw);
+  if (nodes <= 1) return { weights, kv };
+  const share = clusterShareOf(mq, nodes);
+  const resident = gpuResidentGBFor(mq, weights);
+  const onDevices = mq.loops !== undefined && mq.loops > 1 ? resident : resident * share;
+  return { weights: Math.min(weights, onDevices + (weights - resident)), kv: kv * share };
+}
+
+/** 모드별 사용 가능 메모리 GB (§2.3). 통합 메모리 여러 대(§6.2)도 **한 대** 값 — 판정은 가장 많이 맡는 대가 이 값에 들어가는지로 한다 */
 export function usableGB(hw: Hardware): number {
   switch (hw.kind) {
     case 'dgpu':

@@ -2,13 +2,15 @@
  * 허브 판정 조립 (packages/data/src/assess.ts) — docs/01 §3 허브 판정 규칙의 회귀 고정.
  * 기대값은 P1-1 계획 검토의 전 카탈로그 시뮬레이션(2,378 구성) 수치와 일치한다.
  */
-import { MOE_EXPERT_OVERHEAD_US } from '@canrun/engine';
+import { MOE_EXPERT_OVERHEAD_US, RPC_HOP_TG_MS } from '@canrun/engine';
 import { describe, expect, it } from 'vitest';
 import {
   assessCombo,
   baselineRow,
   canMixWith,
   cheapestOptions,
+  clusterConfigs,
+  configKey,
   classifyLicense,
   commandPlan,
   ctxMatrix,
@@ -24,6 +26,7 @@ import {
   sameSizeQuant,
   summarizeGpu,
   summarizeModel,
+  toCatalogLite,
   toModelQuant,
   unifiedCpuBandwidth,
   memBandwidthAt,
@@ -192,6 +195,89 @@ describe('GPU 가 쓸 수 있는 통합 메모리 — 기기 근거 값 (10-23 D
     // 64GB 는 보도된 약 56GB(가중치 + KV — NVIDIA 확인 아님)보다 낮은 보수값, 옛 × 0.70(44.8)보다는 높다
     expect(usableGBAt(spark, 64)!).toBeLessThan(56);
     expect(usableGBAt(spark, 64)!).toBeGreaterThan(64 * 0.7);
+  });
+});
+
+describe('여러 대 연결 — DGX Spark 클러스터 (10-23 D118, docs/02 §6.2)', () => {
+  const spark = gpu('nvidia-dgx-spark');
+
+  it('레코드: 최대 4대(케이블 직결 3대·스위치 4대) · 200Gb/s · NVIDIA 문서 출처 — 다른 기기에는 없다', () => {
+    expect(spark.cluster).toMatchObject({ maxNodes: 4, directMaxNodes: 3, linkGbps: 200 });
+    expect(spark.cluster!.sources).toContain('https://docs.nvidia.com/dgx/dgx-spark/spark-clustering.html');
+    for (const url of spark.cluster!.sources) expect(spark.sources).toContain(url);
+    expect(seed.gpus.filter((g) => g.cluster).map((g) => g.id)).toEqual(['nvidia-dgx-spark']);
+    // 계산기 lite 카탈로그에는 문서용 sources 를 빼고 간다
+    expect(toCatalogLite(seed).gpus.find((g) => g.id === 'nvidia-dgx-spark')!.cluster).toEqual({ maxNodes: 4, directMaxNodes: 3, linkGbps: 200 });
+  });
+
+  it('hardwareConfigs 기본은 1대 그대로(키 없음), nodes 2~4 는 한 대 값 + Hardware.nodes, 범위 밖·다른 기기는 1대', () => {
+    for (const c of hardwareConfigs(spark, seed.gpus)) {
+      expect('nodes' in c, String(c.ramGB)).toBe(false);
+      expect('nodes' in c.hw).toBe(false);
+    }
+    const x3 = hardwareConfigs(spark, seed.gpus, { ramGB: 128, nodes: 3 })[0]!;
+    expect(x3).toMatchObject({ ramGB: 128, nodes: 3, hw: { ramGB: 128, nodes: 3, unifiedUsableGB: 116.9, memBandwidthGBs: 273 } });
+    for (const nodes of [1, 5, 2.5, 0]) expect('nodes' in hardwareConfigs(spark, seed.gpus, { ramGB: 128, nodes })[0]!, String(nodes)).toBe(false);
+    for (const id of ['apple-m3-ultra', 'amd-strix-halo', 'rtx-5090', 'cpu-ddr5-5600-2ch']) {
+      expect('nodes' in hardwareConfigs(gpu(id), seed.gpus, { nodes: 2 })[0]!.hw, id).toBe(false);
+    }
+  });
+
+  it('허브 구성: 64·128GB × 2·4대(3대는 계산기에서만 — 2의 거듭제곱 권장), 키는 (RAM, 대수)', () => {
+    expect(clusterConfigs(spark, seed.gpus).map((c) => configKey(c))).toEqual(['64x2', '128x2', '64x4', '128x4']);
+    expect(configKey({ ramGB: 128 })).toBe('128');
+    expect(configKey({ ramGB: 128, nodes: 1 })).toBe('128');
+    expect(HUB_POLICY.clusterHubNodes).toEqual([2, 4]);
+    for (const g of seed.gpus.filter((x) => x.id !== 'nvidia-dgx-spark')) expect(clusterConfigs(g, seed.gpus), g.id).toEqual([]);
+  });
+
+  it('허브 데이터: 1대 구성·정렬·카운트·FAQ 는 그대로이고 2대·4대 행만 덧붙는다 — 다른 기기는 키도 없다', () => {
+    const hub = summarizeGpu(seed, spark);
+    expect(hub.configs.map((c) => c.ramGB)).toEqual([64, 128]);
+    expect(hub.primaryIndex).toBe(1);
+    expect(hub.clusterConfigs!.map(configKey)).toEqual(['64x2', '128x2', '64x4', '128x4']);
+    expect(hub.clusterCounts).toHaveLength(4);
+    for (const row of hub.rows) {
+      expect(row.combos).toHaveLength(2);
+      expect(row.clusterCombos!.map((c) => configKey(c))).toEqual(['64x2', '128x2', '64x4', '128x4']);
+    }
+    const other = summarizeGpu(seed, gpu('apple-m3-ultra'));
+    expect('clusterConfigs' in other).toBe(false);
+    expect(other.rows.some((r) => 'clusterCombos' in r)).toBe(false);
+  });
+
+  it('여러 대 판정: 이론 추정 · 실측 조인 없음 · 전량 GPU 탑재만 · 필요량은 가장 많이 맡는 한 대 기준', () => {
+    const x2 = hardwareConfigs(spark, seed.gpus, { ramGB: 128, nodes: 2 })[0]!;
+    const one = hardwareConfigs(spark, seed.gpus, { ramGB: 128 })[0]!;
+    const oss = model('gpt-oss-120b');
+    const c1 = assessCombo(seed, spark, one, oss);
+    const c2 = assessCombo(seed, spark, x2, oss);
+    expect(c1.baseline.result.confidence).toBe('measured');
+    expect(c2.nodes).toBe(2);
+    expect(c2.baseline.result.confidence).toBe('theoretical');
+    expect(c2.baseline.measured).toBeUndefined();
+    expect(c2.baseline.result.mode).toBe('full-gpu');
+    // 속도 = 1대 추정 + 이동 1번
+    expect(1 / c2.baseline.result.tgTokS.est - 1 / c1.baseline.estimate.tgTokS.est).toBeCloseTo(RPC_HOP_TG_MS * 1e-3, 12);
+    const m = c2.baseline.memory;
+    expect(m.nodes).toBe(2);
+    expect(m.gpuUsableGB).toBe(116.9);
+    expect(m.needGB).toBeCloseTo(c2.baseline.result.vram.total, 9);
+    // 층 36 개 · 2대 — 가장 많이 맡는 대는 19/36 칸(출력층 칸 포함 올림) + 그 대의 버퍼: 1대 필요량의 반보다 조금 크다
+    expect(m.needGB).toBeGreaterThan(c1.baseline.memory.needGB / 2);
+    expect(m.needGB).toBeLessThan(c1.baseline.memory.needGB * 0.55);
+    expect(m.ramGB).toBe(0);
+    // 1대 구성의 메모리 기록에는 nodes 가 없다
+    expect('nodes' in c1.baseline.memory).toBe(false);
+    // 1대에 안 들어가는 모델: 64GB 1대 불가 → 2대 가능
+    const x2s = hardwareConfigs(spark, seed.gpus, { ramGB: 64, nodes: 2 })[0]!;
+    expect(assessCombo(seed, spark, hardwareConfigs(spark, seed.gpus, { ramGB: 64 })[0]!, oss).baseline.fits).toBe(false);
+    expect(assessCombo(seed, spark, x2s, oss).baseline.result.verdict).toBe('S');
+    // 안 들어가면 F(no-fit) — RPC 너머 CPU 경로는 없다
+    const glm = assessCombo(seed, spark, x2s, model('glm-5.3-flash')).perQuant.find((q) => q.quant === 'Q2_K')!;
+    expect(glm.fits).toBe(false);
+    expect(glm.fReason).toBe('no-fit');
+    expect(glm.memory.needGB).toBeGreaterThan(glm.memory.gpuUsableGB);
   });
 });
 

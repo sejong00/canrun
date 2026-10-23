@@ -2,12 +2,14 @@
 
 import { CPU_MOE_GPU_LAYER_MARGIN, QUANT_BPW, QUANT_LADDER } from './constants';
 import {
+  clusterNodeLoadGB,
   computeBufferGB,
   expertGBFor,
   gpuCountOf,
   gpuOsReserveGB,
   gpuResidentGBFor,
   kvGB,
+  nodeCountOf,
   usableGB,
   usableRamGB,
   weightsGB,
@@ -63,6 +65,16 @@ function fitOnce(hw: Hardware, mq: ModelQuant, weights: number, opts?: FitOption
   // 연산 버퍼는 GPU 마다 따로 (§6 멀티 GPU — 장수 1 이면 그대로). OS 예약은 화면 출력 카드 몫(서로 다른 카드면 카드별 합, D67)
   const buffer = computeBufferGB(ctx) * gpuCountOf(hw);
   const osReserve = gpuOsReserveGB(hw);
+
+  // 통합 메모리 여러 대(§6.2 클러스터 — 10-23 D118): llama.cpp RPC 층 분할은 전량 GPU 탑재만 본다 — 가장 많이 맡는 대(층 몫 + 첫 기기의 장치 밖 몫)
+  // + 그 대의 KV 몫 + 그 대의 연산 버퍼가 한 대 사용 가능량에 들어가야 한다. 물리 한도(limit)·breakdown 도 그 한 대 값이다. RPC 너머 CPU 경로는 계산하지 않는다
+  if (nodeCountOf(hw) > 1) {
+    const load = clusterNodeLoadGB(hw, mq, weights, kv);
+    const fits = load.weights + load.kv + buffer <= usableGB(hw);
+    return fits
+      ? { fits: true, mode: 'full-gpu', vram: breakdown(load.weights, load.kv, buffer, osReserve, hw.ramGB) }
+      : { fits: false, mode: 'cpu-only', vram: breakdown(0, 0, 0, osReserve, hw.ramGB) };
+  }
 
   // cpu 단독 하드웨어는 곧바로 4번 경로
   if (hw.kind === 'cpu') {

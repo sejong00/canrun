@@ -23,6 +23,8 @@ export const GPU_CORE_KEYS = [
   'memBandwidthByRam',
   // 구성별 GPU 사용 가능 메모리(10-23 D117 — DGX Spark) — 계산기도 `hardwareConfigs` 로 같은 값을 쓴다
   'usableGBByRam',
+  // 여러 대 연결(10-23 D118 — DGX Spark) — 계산기의 대수 선택. lite 에는 문서용 sources 를 빼고 보낸다(`toCatalogLite`)
+  'cluster',
   'fp16Tflops',
   // pp 추정의 행렬 FP16(10-16 D91 — AMD)
   'fp16MatrixTflops',
@@ -67,7 +69,9 @@ export const QUANT_DEF_CORE_KEYS = ['id', 'bpw', 'tier'] as const satisfies read
 
 export const BENCH_CORE_KEYS = ['gpuId', 'modelId', 'quant', 'ctx', 'tgTokS'] as const satisfies readonly (keyof BenchPoint)[];
 
-export type GpuCore = Pick<Gpu, (typeof GPU_CORE_KEYS)[number]>;
+/** 여러 대 연결 정보 중 조립 함수가 읽는 몫 (10-23 D118) — 전체 레코드의 `cluster` 는 sources 가 더 있어 이 타입에 대입된다 */
+export type ClusterCore = Omit<NonNullable<Gpu['cluster']>, 'sources'>;
+export type GpuCore = Omit<Pick<Gpu, (typeof GPU_CORE_KEYS)[number]>, 'cluster'> & { cluster?: ClusterCore };
 export type ModelCore = Pick<Model, (typeof MODEL_CORE_KEYS)[number]>;
 export type ModelQuantCore = Pick<ModelQuantRecord, (typeof MODEL_QUANT_CORE_KEYS)[number]>;
 export type QuantDefCore = Pick<QuantDef, (typeof QUANT_DEF_CORE_KEYS)[number]>;
@@ -110,7 +114,13 @@ function pick<T extends object, K extends keyof T>(obj: T, keys: readonly K[]): 
 export function toCatalogLite(seed: CatalogCore): CatalogLite {
   const rowKeys = new Set(seed.modelQuants.map((r) => `${r.modelId}\u0000${r.quant}`));
   return {
-    gpus: seed.gpus.map((g) => pick(g, GPU_CORE_KEYS)),
+    gpus: seed.gpus.map((g) => {
+      const core = pick(g, GPU_CORE_KEYS);
+      if (!g.cluster) return core;
+      // 문서용 sources 는 브라우저로 보내지 않는다(위 머리 주석) — 키 순서는 상수 순서 그대로
+      const { maxNodes, directMaxNodes, linkGbps } = g.cluster;
+      return { ...core, cluster: { maxNodes, directMaxNodes, linkGbps } };
+    }),
     models: seed.models.map((m) => pick(m, MODEL_CORE_KEYS)),
     modelQuants: seed.modelQuants.map((r) => pick(r, MODEL_QUANT_CORE_KEYS)),
     quantDefs: seed.quantDefs.map((q) => pick(q, QUANT_DEF_CORE_KEYS)),

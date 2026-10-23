@@ -1176,3 +1176,67 @@ export const SPARK_FIT_CASES: ReadonlyArray<{ label: string; mq: ModelQuant; ctx
     source: 'https://dev.classmethod.jp/en/articles/dgx-spark-2node-deepseek-v4-flash-0731/',
   },
 ];
+
+/**
+ * 통합 메모리 여러 대 — DGX Spark 2대 llama.cpp RPC 층 분할 (10-23 D118, 엔진 0.14.0 `Hardware.nodes`·`RPC_HOP_TG_MS`, docs/02 §6.2·§7).
+ * 같은 사람·같은 빌드·같은 조건의 1대/2대 tg 쌍 — 토큰당 추가 시간 = 1/2대 − 1/1대(ms). setup: 'tcp' = TCP 기본 설정(CPU 유휴 상태 켬),
+ * 'tcp-idle-off' = 같은 TCP 에 `cpupower idle-set -D 0`, 'rdma' = RoCEv2. depth = llama-bench 깊이(엔진 ctx 와 같은 KV 길이).
+ * - eugr(#16578): `--rpc 192.168.177.12:15001` 하나 — 첫 기기 GPU + 원격 1대, 장치 둘(엔진의 2대와 같은 배치)
+ * - Classmethod: `--rpc <원격>:50052,127.0.0.1:50052` — 첫 기기도 RPC 서버로 넣어 장치가 셋(첫 기기 GPU 가 두 번 잡힌다 — 168GB 에서 첫 기기 116/119GB 를 썼다는
+ *   글의 관찰이 층 2/3 몫과 맞는다, 우리 해석). 대 사이 이동은 같은 한 번이라 추가 시간 근거로 쓰되, 메모리 대조(CLUSTER_FIT_CASES)에는 넣지 않는다
+ * 4대 RPC 공개 실측은 없다 — 3·4대는 이동 횟수(대수 − 1)로 늘린 이론값이다
+ */
+export type ClusterPair = {
+  label: string;
+  single: number;
+  cluster: number;
+  setup: 'tcp' | 'tcp-idle-off' | 'rdma';
+  depth: number;
+  /** 1/2대 − 1/1대 (ms) — 출처 값으로 계산해 둔 기록값(테스트가 다시 계산해 맞춘다) */
+  recordedMs: number;
+  source: string;
+};
+const EUGR_TCP = 'https://github.com/ggml-org/llama.cpp/discussions/16578#discussioncomment-15078806';
+const EUGR_IDLE = 'https://github.com/ggml-org/llama.cpp/discussions/16578#discussioncomment-15139580';
+const CM_TWO = 'https://dev.classmethod.jp/en/articles/dgx-spark-two-node-clustering/';
+const CM_DSV4 = 'https://dev.classmethod.jp/en/articles/dgx-spark-2node-deepseek-v4-flash-0731/';
+export const CLUSTER_RPC_PAIRS: readonly ClusterPair[] = [
+  { label: 'gpt-oss-120b MXFP4 tg32 d0 (b7157 TCP)', single: 60.36, cluster: 49.59, setup: 'tcp', depth: 0, recordedMs: 3.598, source: EUGR_TCP },
+  { label: 'gpt-oss-120b MXFP4 tg32 d4096 (b7157 TCP)', single: 56.84, cluster: 46.61, setup: 'tcp', depth: 4096, recordedMs: 3.861, source: EUGR_TCP },
+  { label: 'gpt-oss-120b MXFP4 tg32 d8192 (b7157 TCP)', single: 53.2, cluster: 42.15, setup: 'tcp', depth: 8192, recordedMs: 4.928, source: EUGR_TCP },
+  { label: 'gpt-oss-120b MXFP4 tg32 d16384 (b7157 TCP)', single: 49.15, cluster: 38.82, setup: 'tcp', depth: 16384, recordedMs: 5.414, source: EUGR_TCP },
+  { label: 'gpt-oss-120b MXFP4 tg32 d32768 (b7157 TCP)', single: 42.41, cluster: 31.72, setup: 'tcp', depth: 32768, recordedMs: 7.947, source: EUGR_TCP },
+  { label: 'gpt-oss-120b MXFP4 tg32 d0 (b7157 TCP, idle states off)', single: 60.36, cluster: 55.49, setup: 'tcp-idle-off', depth: 0, recordedMs: 1.454, source: EUGR_IDLE },
+  { label: 'gpt-oss-120b MXFP4 tg32 d4096 (idle states off)', single: 56.84, cluster: 50.51, setup: 'tcp-idle-off', depth: 4096, recordedMs: 2.205, source: EUGR_IDLE },
+  { label: 'gpt-oss-120b MXFP4 tg32 d8192 (idle states off)', single: 53.2, cluster: 45.99, setup: 'tcp-idle-off', depth: 8192, recordedMs: 2.947, source: EUGR_IDLE },
+  { label: 'gpt-oss-120b MXFP4 tg32 d16384 (idle states off)', single: 49.15, cluster: 41.53, setup: 'tcp-idle-off', depth: 16384, recordedMs: 3.733, source: EUGR_IDLE },
+  { label: 'gpt-oss-120b MXFP4 tg32 d32768 (idle states off)', single: 42.41, cluster: 33.15, setup: 'tcp-idle-off', depth: 32768, recordedMs: 6.587, source: EUGR_IDLE },
+  { label: 'Qwen3-235B-A22B Q3_K_M tg256 (b8012, layer split)', single: 15.51, cluster: 14.57, setup: 'tcp', depth: 0, recordedMs: 4.16, source: CM_TWO },
+  { label: 'Devstral 2 123B Q4_K_M tg256 (b8012, layer split)', single: 2.64, cluster: 2.64, setup: 'tcp', depth: 0, recordedMs: 0, source: CM_TWO },
+  { label: 'DeepSeek V4 Flash 0731 UD-IQ2_M ctx 2,048 (RDMA, RTT 0.7ms)', single: 20.13, cluster: 19.58, setup: 'rdma', depth: 2048, recordedMs: 1.395, source: CM_DSV4 },
+  { label: 'DeepSeek V4 Flash 0731 UD-IQ3_S ctx 2,048 (RDMA, RTT 0.7ms)', single: 18.02, cluster: 17.69, setup: 'rdma', depth: 2048, recordedMs: 1.035, source: CM_DSV4 },
+];
+
+/** DGX Spark 128GB 2대 (한 대 116.9GB — D117) */
+export const SPARK_128_X2: Hardware = { ...SPARK_128_USABLE, nodes: 2 };
+
+/**
+ * 2대에서만 돈 공개 실측(eugr #16578 — `--rpc` 원격 1대, 장치 둘): 1대(116.9)에 안 들어가고 2대에 들어간다. llama-bench `-d 0,…,32768 -p 2048 -n 32` 라
+ * 가장 긴 문맥 = 32,768 + 2,048 + 32. KV = 2 × 층 × KV 헤드 × head_dim × 2B(config.json)
+ */
+export const CLUSTER_FIT_CASES: ReadonlyArray<{ label: string; mq: ModelQuant; ctx: number; source: string }> = [
+  {
+    label: 'Qwen3-VL-235B-A22B UD-Q4_K_XL 124.91GiB (b7121) — 2 Sparks to 32k',
+    // 124.91 GiB = 134.12 GB · 94층 × KV 4 × 128 (https://huggingface.co/Qwen/Qwen3-VL-235B-A22B-Instruct/blob/main/config.json)
+    mq: { paramsB: 235.09, activeParamsB: 22, quant: 'Q4_K_M', fileGB: 134.12, kvBytesPerToken: 192512, attnType: 'full', layers: 94, maxContext: 262144 },
+    ctx: 34848,
+    source: 'https://github.com/ggml-org/llama.cpp/discussions/16578#discussioncomment-15033766',
+  },
+  {
+    label: 'MiniMax-M2 UD-Q4_K_XL 122.58GiB (b7122) — 2 Sparks to 32k',
+    // 122.58 GiB = 131.62 GB · 62층 × KV 8 × 128 (https://huggingface.co/MiniMaxAI/MiniMax-M2/blob/main/config.json)
+    mq: { paramsB: 228.69, activeParamsB: 10, quant: 'Q4_K_M', fileGB: 131.62, kvBytesPerToken: 253952, attnType: 'full', layers: 62, maxContext: 196608 },
+    ctx: 34848,
+    source: 'https://github.com/ggml-org/llama.cpp/discussions/16578#discussioncomment-15049620',
+  },
+];

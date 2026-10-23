@@ -6,6 +6,7 @@ import { SpeedCellCore } from '@/components/speed-text';
 import { VerdictChip } from '@/components/verdict-chip';
 import { formatCompact, formatCtx, formatGB, formatInt, formatParams } from '@/lib/format';
 import { comboDetailQuery, differsFromHubAssumption, type ResolvedHardware } from '@/lib/calc/hardware';
+import { DGX_CLUSTER_LINKS } from '@/lib/cluster-links';
 import type { ResultCard as Card } from '@/lib/calc/run';
 import type { CalcState } from '@/lib/calc/state';
 import { gpuName, memoryText, modeKey, noteLines, quantText, speedPhrase } from '@/lib/phrases';
@@ -77,8 +78,11 @@ export function ResultCard({
   // "상세" 라벨 — 콤보 페이지의 평가 구성이 사용자 구성과 다르면 부기: dGPU 는 허브 가정(D2), 통합·CPU 는 콤보 페이지가 고른 RAM·OS
   const hubOther = hardware.gpu.kind !== 'dgpu' ? card.hubConfig : undefined;
   const osLabel = (os: ResolvedHardware['os']) => t.calc(os === 'windows' ? 'osWindows' : os === 'linux' ? 'osLinux' : 'osMacos');
-  const detailsLabel =
-    hardware.gpu.kind === 'dgpu'
+  // 여러 대 연결(10-23 D118): 콤보 페이지는 1대 구성이다 — 그 RAM 을 밝힌다
+  const cluster = hardware.nodes > 1;
+  const detailsLabel = cluster
+    ? t.calc('cardDetailsOneUnit', { ram: formatInt(locale, card.hubConfig?.ramGB ?? hardware.ramGB) })
+    : hardware.gpu.kind === 'dgpu'
       ? differsFromHubAssumption(state, hardware, ramShown)
         ? t.calc(ramShown ? 'cardDetailsHubNoRam' : 'cardDetailsHub')
         : t.calc('cardDetails')
@@ -208,15 +212,33 @@ export function ResultCard({
       {card.command && (
         <div className="flex flex-col gap-1">
           <p className="text-xs text-muted-foreground">{t.calc('hfCommand')}</p>
-          {/* 불러온 모델(D57)과 GPU 여러 장 구성(D67 — 콤보 페이지 명령은 1장 기준)의 명령 */}
+          {/* 불러온 모델(D57)과 GPU 여러 장 구성(D67 — 콤보 페이지 명령은 1장 기준)의 명령. 여러 대 연결(10-23 D118)은 다른 기기마다 RPC 서버 줄이 먼저 */}
           <code
             {...(external ? { 'data-hf-command': '' } : { 'data-run-command': '' })}
+            {...(card.rpcServers ? { 'data-rpc-command': '' } : {})}
             className="block overflow-x-auto whitespace-pre rounded-md bg-muted p-2 text-xs"
           >
-            {card.command}
+            {card.rpcServers ? [...card.rpcServers, card.command].join('\n') : card.command}
           </code>
           {card.commandFitAuto && (
             <p className="text-xs text-muted-foreground">{t.calc(card.commandFitAuto === 'loops' ? 'fitAutoNoteLoops' : 'fitAutoNote')}</p>
+          )}
+          {card.rpcServers && (
+            <>
+              <p className="text-xs text-muted-foreground">{t.calc('clusterCommandNote', { n: hardware.nodes })}</p>
+              <p className="text-xs text-muted-foreground">{t.calc('clusterVllmNote')}</p>
+              <p data-cluster-links className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
+                <a href={DGX_CLUSTER_LINKS.cable} rel="noopener noreferrer" target="_blank">
+                  {t.calc('clusterLinkCable')}
+                </a>
+                <a href={DGX_CLUSTER_LINKS.switch} rel="noopener noreferrer" target="_blank">
+                  {t.calc('clusterLinkSwitch')}
+                </a>
+                <a href={DGX_CLUSTER_LINKS.vllm} rel="noopener noreferrer" target="_blank">
+                  {t.calc('clusterLinkVllm')}
+                </a>
+              </p>
+            </>
           )}
         </div>
       )}
@@ -230,7 +252,7 @@ export function ResultCard({
             <a href={comboHref} data-combo-link>
               {detailsLabel}
             </a>
-            <a href={`${comboHref}#snippet`}>{t.calc(hardware.gpuCount > 1 ? 'cardHowToRunOneGpu' : 'cardHowToRun')}</a>
+            <a href={`${comboHref}#snippet`}>{t.calc(cluster ? 'cardHowToRunOneUnit' : hardware.gpuCount > 1 ? 'cardHowToRunOneGpu' : 'cardHowToRun')}</a>
           </>
         ) : (
           <a href={`${prefix}/model/${model.id}`}>{t.calc('cardModelHub')}</a>

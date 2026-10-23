@@ -107,6 +107,11 @@ export function memoryText(
   gpu: Pick<GpuCore, 'kind' | 'vramGB'>,
 ): string {
   const m = q.memory;
+  // 여러 대 연결(10-23 D118): 가장 많이 맡는 한 대의 몫 / 한 대 사용 가능량 — 판정이 비교하는 두 값(엔진 fit 과 같다). 안 들어가면 그 대의 필요량
+  if (m.nodes !== undefined && m.nodes > 1) {
+    const used = q.fReason === 'no-fit' ? m.needGB : m.gpuGB;
+    return tMemory('gpuNode', { used: formatGB(locale, used), total: formatGB(locale, m.gpuUsableGB) });
+  }
   if (q.fReason === 'no-fit') return tMemory('need', { need: formatGB(locale, m.needGB) });
   // dGPU 분모는 엔진의 물리 한도 — 멀티 GPU(§6, D58)면 VRAM 합. 1장이면 vramGB 와 같다
   const total = gpu.kind === 'dgpu' ? q.result.vram.limit || (gpu.vramGB ?? 0) : m.gpuUsableGB;
@@ -140,6 +145,10 @@ export function noFitText(
       gpu: formatGB(locale, m.gpuUsableGB),
       ram: formatGB(locale, m.ramUsableGB),
     });
+  }
+  // 여러 대 연결(10-23 D118): 가장 많이 맡는 한 대의 필요량 vs 한 대 사용 가능량
+  if (m.nodes !== undefined && m.nodes > 1) {
+    return tReason('noFitCluster', { need, gpu: formatGB(locale, m.gpuUsableGB) });
   }
   if (gpuKind === 'unified') {
     return tReason('noFitUnified', {

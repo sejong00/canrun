@@ -114,6 +114,21 @@ export const GpuSchema = z
       .array(z.object({ ramGB: z.number().positive(), usableGB: z.number().positive() }))
       .min(1)
       .optional(),
+    /**
+     * 여러 대 연결(클러스터) — 같은 통합 메모리 기기를 제조사 공식 네트워크로 이어 쓸 수 있는 기기만 (10-23 D118 — 지금은 DGX Spark: 내장 ConnectX-7).
+     * 허브·콤보의 2대·4대 행과 계산기의 대수 선택이 읽는다(엔진 입력 `Hardware.nodes` — 계산은 llama.cpp RPC 층 분할, docs/02 §6.2).
+     * maxNodes = 제조사가 지원하는 최대 대수, directMaxNodes = 스위치 없이 케이블로 바로 잇는 최대 대수, linkGbps = 기기마다 링크 속도.
+     * sources(https, 레코드 sources 에도 있어야 한다) = 그 대수·연결 방식을 밝힌 제조사 문서
+     */
+    cluster: z
+      .object({
+        maxNodes: z.number().int().min(2).max(8),
+        directMaxNodes: z.number().int().min(2),
+        linkGbps: z.number().positive(),
+        sources: z.array(z.string().regex(/^https:\/\//, 'must be an https URL')).min(1),
+      })
+      .strict()
+      .optional(),
     /** GTX 10 시리즈처럼 FP16 크리플이면 실효값(예: 0.18). Apple 은 위키백과 Apple silicon 표의 FP32 이론값 — 애플 미공개, 애플 GPU 는 FP16 이 FP32 와 같은 속도(10-16 D87) */
     fp16Tflops: z.number().positive().optional(),
     /**
@@ -187,6 +202,16 @@ export const GpuSchema = z
       }
       for (const gb of gpu.ramOptionsGB ?? []) {
         if (!seen.has(gb)) ctx.addIssue({ code: 'custom', message: `${gpu.id} usableGBByRam: the ${gb} GB configuration is missing` });
+      }
+    }
+    if (gpu.cluster) {
+      const where = `${gpu.id} cluster`;
+      if (gpu.kind !== 'unified') ctx.addIssue({ code: 'custom', message: `${where}: for unified memory devices only (docs/02 §6.2)` });
+      if (gpu.cluster.directMaxNodes > gpu.cluster.maxNodes) {
+        ctx.addIssue({ code: 'custom', message: `${where}: directMaxNodes must not exceed maxNodes` });
+      }
+      for (const url of gpu.cluster.sources) {
+        if (!gpu.sources.includes(url)) ctx.addIssue({ code: 'custom', message: `${where}: source ${url} missing from sources` });
       }
     }
     if ((gpu.vendor === 'apple') !== (gpu.products !== undefined)) {

@@ -2,6 +2,14 @@ CanRun changes often. New models arrive, the calculator gains features, and now 
 
 ## Changes to the site
 
+<Update id="dgx-spark-cluster">
+
+### DGX Spark: two and four linked units
+
+The <SiteLink to="/gpu/nvidia-dgx-spark">DGX Spark</SiteLink> page and each model's DGX Spark page now also show verdicts for two and four units linked over ConnectX-7, and the calculator lets you pick one to four units and shows the llama.cpp command to start on each one. These verdicts are worked out for llama.cpp RPC, which splits the layers across the units: memory adds up, but each token still passes through every unit, so the speed stays close to one unit's and drops by a little for every hop, a cost measured on two units linked over TCP. They are theoretical estimates, and vLLM tensor parallelism, which NVIDIA's own guides use, can be faster. That day at an 8k context, gpt-oss-120b, which does not load on one 64GB unit, came out as Runs great on two of them, and GLM-5.3-Flash at Q4_K_M, too big for one 128GB unit, as Runs well on two.
+
+</Update>
+
 <Update id="dgx-spark-64gb">
 
 ### DGX Spark: a 64GB configuration, partner models and the memory its GPU can use

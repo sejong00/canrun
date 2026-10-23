@@ -131,6 +131,8 @@ export type CalcAction =
   /** 직접 입력 모델 값 병합(D66) — 숫자 칸에 값이 생기면 불러온 HF 모델을 뺀다. null = 직접 입력 지우기 */
   | { type: 'manual'; patch: Partial<ManualSpec> | null }
   | { type: 'gpus'; gpus: number | undefined }
+  /** 여러 대 연결 대수 (10-23 D118) — 정리(기기·범위)는 normalize */
+  | { type: 'nodes'; nodes: number | undefined }
   /** 함께 꽂은 다른 카드 목록 통째로 (10-03 D67) — 정리(자격·최대 4장·같은 카드 접기)는 normalize */
   | { type: 'plus'; plus: string[] | undefined }
   | { type: 'clearFilters' }
@@ -208,6 +210,8 @@ export function makeReducer(catalog: CatalogLite) {
       }
       case 'gpus':
         return normalize({ ...state, gpus: action.gpus }, catalog);
+      case 'nodes':
+        return normalize({ ...state, nodes: action.nodes }, catalog);
       case 'plus':
         return normalize({ ...state, plus: action.plus }, catalog);
       case 'clearFilters':
@@ -224,7 +228,8 @@ export function makeReducer(catalog: CatalogLite) {
       case 'useGpu': {
         // 'hardware' 와 같은 RAM·OS 유지 규칙으로 바꾼 뒤, 통합·CPU 행이면 그 행의 메모리 용량으로 (`m` = 대상 모델은 그대로 강조).
         // GPU 수는 1장으로 되돌리고 함께 꽂은 카드도 뺀다(D67) — 행은 1장으로 계산했으니 넘어간 화면도 그 행과 같아야 한다(여러 장이면 전부 이론 추정이 된다, 리뷰 반영)
-        const next = withHardware({ ...state, mode: 'hardware', gpus: undefined, plus: undefined }, { kind: 'catalog', gpuId: action.gpuId }, catalog);
+        // 여러 대 연결도 1대로 되돌린다(10-23 D118 — 행은 1대로 계산했다)
+        const next = withHardware({ ...state, mode: 'hardware', gpus: undefined, plus: undefined, nodes: undefined }, { kind: 'catalog', gpuId: action.gpuId }, catalog);
         const kind = catalog.gpus.find((g) => g.id === action.gpuId)?.kind;
         return kind !== 'dgpu' && action.ramGB !== undefined ? normalize({ ...next, ramGB: action.ramGB }, catalog) : next;
       }

@@ -225,6 +225,8 @@ describe('gpus= (멀티 GPU, D58)', () => {
     expect(parseCalcQuery('?gpu=rtx-3090&gpus=1', catalog).gpus).toBeUndefined();
     expect(parseCalcQuery('?gpu=rtx-3090&gpus=7', catalog).gpus).toBeUndefined();
     expect(parseCalcQuery('?gpu=apple-m4&gpus=2', catalog).gpus).toBeUndefined();
+    // 통합 메모리 여러 대(10-23 D118 — DGX Spark)는 gpus 가 아니라 nodes 로 받는다 — DGX 의 gpus= 도 계속 버린다
+    expect(parseCalcQuery('?gpu=nvidia-dgx-spark&gpus=2', catalog).gpus).toBeUndefined();
     expect(parseCalcQuery('?gpu=custom&kind=dgpu&vram=24&bw=936&gpus=3', catalog).gpus).toBe(3);
   });
 });
@@ -346,5 +348,23 @@ describe('model mode keys (10-03 D65): mode m hf type budget gsort', () => {
       const qs = `?mode=model&m=${model.id}`;
       expect(serializeCalcQuery(parseCalcQuery(qs, catalog), catalog), model.id).toBe(qs);
     }
+  });
+});
+
+describe('nodes= (여러 대 연결, 10-23 D118 — DGX Spark)', () => {
+  it('round-trips 2–4 units right after plus; drops 1, out of range and every device without cluster data (other unified chips, dGPU, CPU, custom)', () => {
+    const s: CalcState = { ...defaultState(), hardware: { kind: 'catalog', gpuId: 'nvidia-dgx-spark' }, nodes: 2, ramGB: 64 };
+    expect(serializeCalcQuery(s, catalog)).toBe('?gpu=nvidia-dgx-spark&nodes=2&ram=64');
+    for (const nodes of [2, 3, 4]) expect(roundTrip({ ...s, nodes }).nodes).toBe(nodes);
+    expect(parseCalcQuery('?gpu=nvidia-dgx-spark&nodes=1', catalog).nodes).toBeUndefined();
+    expect(parseCalcQuery('?gpu=nvidia-dgx-spark&nodes=5', catalog).nodes).toBeUndefined();
+    expect(parseCalcQuery('?gpu=nvidia-dgx-spark&nodes=2.5', catalog).nodes).toBeUndefined();
+    expect(parseCalcQuery('?gpu=nvidia-dgx-spark&nodes=4', catalog)).toMatchObject({ nodes: 4, gpus: undefined });
+    const blocked = catalog.gpus.filter((g) => !g.cluster).map((g) => g.id);
+    expect(blocked.length).toBe(catalog.gpus.length - 1);
+    for (const id of blocked) expect(parseCalcQuery(`?gpu=${id}&nodes=2`, catalog).nodes, id).toBeUndefined();
+    expect(parseCalcQuery('?gpu=custom&kind=unified&class=dgx-spark&mem=128&bw=273&nodes=2', catalog).nodes).toBeUndefined();
+    // 기기를 바꾸면 정리된다
+    expect(normalize({ ...s, hardware: { kind: 'catalog', gpuId: 'apple-m3-ultra' } }, catalog).nodes).toBeUndefined();
   });
 });

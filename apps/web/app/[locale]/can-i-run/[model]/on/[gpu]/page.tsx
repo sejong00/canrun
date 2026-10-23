@@ -400,8 +400,17 @@ export default async function ComboPage({ params }: Props) {
               {t.combo('configCaption', { ram: formatInt(locale, page.config.ramGB) })}
             </p>
             <ConfigVerdictList
-              rows={page.configCombos.map((c, i) => ({ ramGB: c.ramGB, combo: c, assumed: i === page.configIndex }))}
+              rows={[
+                ...page.configCombos.map((c, i) => ({ ramGB: c.ramGB, combo: c, assumed: i === page.configIndex })),
+                // 2대·4대 연결(10-23 D118 — DGX Spark) — 1대 행 뒤에, 대표 구성이 되지 않는다
+                ...page.clusterCombos.map((c) => ({ ramGB: c.ramGB, ...(c.nodes !== undefined ? { nodes: c.nodes } : {}), combo: c })),
+              ]}
             />
+            {page.clusterCombos.length > 0 && (
+              <p data-cluster-note className="text-sm text-muted-foreground">
+                {t.gpuHub('clusterNote')}
+              </p>
+            )}
           </section>
         )}
 

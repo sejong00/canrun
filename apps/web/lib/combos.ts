@@ -46,6 +46,11 @@ export type ComboPage = {
   combo: ComboAssessment;
   /** 이 구성의 전 RAM 옵션 조합 (통합·CPU 의 "메모리 용량별 판정") */
   configCombos: ComboAssessment[];
+  /**
+   * 여러 대 연결 기기(10-23 D118 — DGX Spark)만: 2대·4대 구성의 조합 — "메모리 용량별 판정" 목록에 1대 행 뒤로 붙는다. 대표 구성(`configIndex`·`combo`)·
+   * 제목·명령·대안은 1대 구성에서만 고른다(클러스터가 대표가 되지 않는다). 다른 기기는 []
+   */
+  clusterCombos: ComboAssessment[];
   /** dGPU: 시스템 RAM 계단(16·32·64·96·128GB)마다의 평가 — 페이지 RAM 단계는 `combo` 그대로 (10-03 D64). 통합·CPU 는 [] */
   ramSteps: RamStep[];
   /** 계단 안에서 맨 위 판정이 바뀌는가 — 참이면 "시스템 RAM 용량별 판정" 목록과 RAM 토글을 그린다 */
@@ -82,6 +87,8 @@ export function getCombo(modelId: string, gpuId: string): ComboPage | undefined 
   const modelHub = getModelHub(modelId)!;
   const row = gpuHub.rows.find((r) => r.model.id === modelId)!;
   const configCombos = row.combos;
+  const clusterCombos = row.clusterCombos ?? [];
+  // 대표 구성은 1대 구성 가운데서만 (row.combos 는 1대 구성뿐 — 2대·4대는 clusterCombos)
   const combo = pickConfigCombo(configCombos);
   const configIndex = configCombos.indexOf(combo);
   const config = gpuHub.configs[configIndex]!;
@@ -103,6 +110,7 @@ export function getCombo(modelId: string, gpuId: string): ComboPage | undefined 
     config,
     combo,
     configCombos,
+    clusterCombos,
     ramSteps: steps,
     ramSensitive: ramSensitive(steps),
     ramVerdictChanges: ramVerdictChanges(steps),

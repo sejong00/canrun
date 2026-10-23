@@ -1,4 +1,4 @@
-import { isFp16Crippled, type ComboAssessment, type ComboPick, type Gpu, type GpuHubData } from '@canrun/data';
+import { configKey, isFp16Crippled, type ComboAssessment, type ComboPick, type Gpu, type GpuHubData, type HwConfig } from '@canrun/data';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
@@ -91,6 +91,12 @@ function primaryMemoryLabel(t: Translate, hub: GpuHubData, locale: string): stri
 function configSuffix(t: Translate, hub: GpuHubData, locale: string): string {
   if (hub.gpu.kind === 'dgpu') return '';
   return t('summaryConfig', { ram: formatInt(locale, hub.configs[hub.primaryIndex]!.ramGB) });
+}
+
+/** 구성 라벨 — 1대는 "128 GB", 여러 대 연결(10-23 D118 — DGX Spark)은 "128 GB × 2" */
+function configLabel(t: Translate, cfg: Pick<HwConfig, 'ramGB' | 'nodes'>, locale: string): string {
+  const ram = formatInt(locale, cfg.ramGB);
+  return cfg.nodes !== undefined && cfg.nodes > 1 ? t('clusterOption', { ram, nodes: cfg.nodes }) : t('ramOption', { ram });
 }
 
 function primaryCombos(hub: GpuHubData): ComboAssessment[] {
@@ -278,6 +284,10 @@ export default async function GpuHubPage({ params }: Props) {
   }));
   const primary = primaryCombos(hub);
   const multiConfig = hub.configs.length > 1;
+  // 요약 목록·"메모리 구성별 판정" 표 — 1대 구성 뒤에 2대·4대 연결 구성(10-23 D118 — 있는 기기만). 정렬·대표 판정·FAQ 는 1대 구성 그대로
+  const clusterConfigs = hub.clusterConfigs ?? [];
+  const summaryConfigs = [...hub.configs, ...clusterConfigs];
+  const summaryCounts = [...hub.counts, ...(hub.clusterCounts ?? [])];
   const config = configSuffix(t.hub, hub, locale);
   const faq = buildFaq(t, hub, locale, name);
   const hasPartial = primary.some(
@@ -441,14 +451,12 @@ export default async function GpuHubPage({ params }: Props) {
             {tSpec('summaryCaption', { config: multiConfig ? '' : config })}
           </p>
           <ul className="flex flex-col gap-2">
-            {hub.configs.map((cfg, index) => {
-              const counts = hub.counts[index]!;
+            {summaryConfigs.map((cfg, index) => {
+              const counts = summaryCounts[index]!;
               return (
-                <li key={cfg.ramGB} className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                <li key={configKey(cfg)} data-config={configKey(cfg)} className="flex flex-wrap items-center gap-x-4 gap-y-2">
                   {multiConfig && (
-                    <span className="w-16 font-medium tabular-nums">
-                      {tSpec('ramOption', { ram: formatInt(locale, cfg.ramGB) })}
-                    </span>
+                    <span className={`${clusterConfigs.length > 0 ? 'w-28' : 'w-16'} font-medium tabular-nums`}>{configLabel(tSpec, cfg, locale)}</span>
                   )}
                   {(['S', 'A', 'B', 'F'] as const).map((v) => (
                     <span key={v} className="flex items-center gap-1.5 text-sm">
@@ -465,6 +473,11 @@ export default async function GpuHubPage({ params }: Props) {
               );
             })}
           </ul>
+          {clusterConfigs.length > 0 && (
+            <p data-cluster-note className="text-sm text-muted-foreground">
+              {tSpec('clusterNote')}
+            </p>
+          )}
           <VerdictLegend className="mt-2" />
         </section>
 
@@ -545,9 +558,9 @@ export default async function GpuHubPage({ params }: Props) {
                 <thead>
                   <tr>
                     <th scope="col">{tTable('model')}</th>
-                    {hub.configs.map((cfg) => (
-                      <th key={cfg.ramGB} scope="col" className="tabular-nums">
-                        {tSpec('ramOption', { ram: formatInt(locale, cfg.ramGB) })}
+                    {summaryConfigs.map((cfg) => (
+                      <th key={configKey(cfg)} scope="col" className="tabular-nums">
+                        {configLabel(tSpec, cfg, locale)}
                       </th>
                     ))}
                   </tr>
@@ -556,8 +569,8 @@ export default async function GpuHubPage({ params }: Props) {
                   {hub.rows.map((row) => (
                     <tr key={row.model.id}>
                       <th scope="row">{row.model.name}</th>
-                      {row.combos.map((combo) => (
-                        <td key={combo.ramGB}>
+                      {[...row.combos, ...(row.clusterCombos ?? [])].map((combo) => (
+                        <td key={configKey(combo)}>
                           <VerdictBadge verdict={combo.baseline.result.verdict} compact />
                         </td>
                       ))}

@@ -13,6 +13,8 @@ import { EXPECT_CONFIDENCES, EXPECT_MODES } from './guide-components';
  * ctx 표는 콤보 페이지의 `qConfig` 구성으로 계산된다 — 기준 구성(dGPU 시스템 RAM 32GB)에 안 들어가는 콤보면 RAM 힌트 구성(예: 64GB)이라
  * 페이지 RAM 과 다르다. 그래서 그런 콤보의 ctx 주장은 `ram` 으로 그 용량을 밝혀야 하고, `ram` 을 주면 ctx 표의 RAM 과 같아야 한다
  * (10-14 hub-intros 리뷰 — 같은 8k 칸을 두고 "안 올라간다"와 "올라간다"가 둘 다 통과하던 문제).
+ * `nodes`(10-23 D118): 여러 대 연결 구성(DGX Spark 2대·4대 — 콤보의 `clusterCombos`)을 가리킨다. `ram` 과 함께만 쓰고(구성 키가 (RAM, 대수)), ctx 표는 1대
+ * 구성으로 계산되므로 `ctx` 와 함께 쓸 수 없다.
  */
 export type ExpectClaim = {
   model: string;
@@ -22,6 +24,8 @@ export type ExpectClaim = {
   quant?: string;
   mode?: string;
   ram?: string;
+  /** 여러 대 연결 대수 (10-23 D118) — `ram` 과 함께 */
+  nodes?: string;
   ctx?: string;
   kv?: string;
   confidence?: string;
@@ -29,16 +33,25 @@ export type ExpectClaim = {
 
 export type ExpectActual = { verdict: Verdict; fits: boolean; mode: string; confidence: Confidence };
 
-function label({ model, gpu, quant, ram, ctx, kv }: ExpectClaim): string {
-  return `${model} × ${gpu}${quant ? ` ${quant}` : ''}${ram ? ` @${ram}GB` : ''}${ctx ? ` ctx ${ctx}${kv ? `/${kv}` : ''}` : ''}`;
+function label({ model, gpu, quant, ram, nodes, ctx, kv }: ExpectClaim): string {
+  return `${model} × ${gpu}${quant ? ` ${quant}` : ''}${ram ? ` @${ram}GB` : ''}${nodes ? ` ×${nodes}` : ''}${ctx ? ` ctx ${ctx}${kv ? `/${kv}` : ''}` : ''}`;
 }
 
 /** 주장이 가리키는 칸의 실제 값 — 칸이 없거나 조건 조합이 맞지 않으면 throw */
 export function resolveExpect(claim: ExpectClaim): ExpectActual {
-  const { model, gpu, quant, ram, ctx, kv } = claim;
+  const { model, gpu, quant, ram, nodes, ctx, kv } = claim;
   const page = getCombo(model, gpu);
   if (!page) throw new Error(`guide Expect: unknown combo ${model} × ${gpu}`);
   const at = label(claim);
+  if (nodes !== undefined) {
+    if (ram === undefined) throw new Error(`guide Expect: ${at} — nodes needs ram (a configuration is (RAM, units))`);
+    if (ctx !== undefined || kv !== undefined) throw new Error(`guide Expect: ${at} — the ctx table is computed on one unit, not ${nodes}`);
+    const found = page.clusterCombos.find((c) => c.ramGB === Number(ram) && c.nodes === Number(nodes));
+    if (!found) throw new Error(`guide Expect: ${at} — no ${ram} GB × ${nodes} configuration`);
+    const q = quant === undefined ? found.baseline : found.perQuant.find((row) => row.quant === quant);
+    if (!q) throw new Error(`guide Expect: ${at} — no such quant`);
+    return { verdict: q.result.verdict, fits: q.fits, mode: q.result.mode, confidence: q.result.confidence };
+  }
   if (ctx !== undefined) {
     const tableRam = page.qConfig.ramGB;
     if (ram !== undefined && Number(ram) !== tableRam) {

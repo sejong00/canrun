@@ -40,6 +40,14 @@
  *    KDA 순환 상태(층마다 128² × 64헤드 f32 + conv — 34층 ≈ 153MB)도 시퀀스마다 한 벌(recurrent_rs_size = n_seq_max — 같은 커밋 src/llama-model.cpp#L2883-L2926)이라
  *    `-np 1` 이면 한 벌로 줄지만, 이것은 이 모델만의 이유가 아니다 — Qwen3.5 27B·122B-A10B·Solar Open2 250B 같은 기존 상수 상태 층 하이브리드도 슬롯마다
  *    ≈ 0.16GB(기본 4슬롯 ≈ 0.63~0.65GB)를 미계상으로 두고 명령에 `-np` 를 붙이지 않는다(D63 — 배포된 명령 그대로, docs/02 §9)
+ *  - 통합 메모리 여러 대(10-23 D118 — DGX Spark 클러스터, 엔진 `Hardware.nodes`)는 llama.cpp RPC 명령이다. 다른 기기마다
+ *    `ggml-rpc-server -H <그 기기 주소> -p 50052 -c`(https://github.com/ggml-org/llama.cpp/blob/184f6536024668e8908ab8c86033d56708e62b40/tools/rpc/rpc-server.cpp#L105-L110 —
+ *    기본 바인드 127.0.0.1·포트 50052, `-c` 는 큰 텐서를 그 기기 디스크에 캐시해 다시 띄울 때 네트워크로 다시 받지 않는다, 같은 커밋 tools/rpc/README.md#L86-L96 ·
+ *    실행 파일 이름은 2026-06-27 #25045 부터 ggml-rpc-server, 그 전 빌드는 rpc-server — tools/rpc/CMakeLists.txt), 첫 기기에서 `llama-server … -ngl all --rpc <주소>:50052,…`
+ *    (common/arg.cpp#L2683-L2693). 빌드 옵션 `-DGGML_RPC=ON`(ggml/CMakeLists.txt#L250, rpc 도구는 tools/CMakeLists.txt#L32-L34) — RDMA(RoCEv2)는 빌드할 때 libibverbs 가
+ *    있으면 기본으로 켜지고(GGML_RPC_RDMA — ggml/src/ggml-rpc/CMakeLists.txt#L13-L31) 연결 때 정해지며, 안 되면 TCP 로 돈다(README#L98-L112). `--rpc` 의 장치는 목록 앞,
+ *    첫 기기 GPU 는 맨 뒤라(src/llama.cpp#L275-L276) 층은 남은 메모리 비율로 나뉘고 첫 기기가 마지막 층들·출력층을 맡는다(src/llama-model.cpp#L1641-L1699 — 엔진 몫과 같다).
+ *    `--rpc` 에 첫 기기 자신(127.0.0.1)을 넣지 않는다 — 넣으면 첫 기기 GPU 가 장치 둘로 잡혀 층의 2/(대수 + 1) 을 맡는다(docs/02 §6.2). Ollama 는 RPC 를 쓰지 않아 명령이 없다
  *  - Ollama KV 캐시 양자화 = 서버 env `OLLAMA_KV_CACHE_TYPE`(f16|q8_0|q4_0, 전역), 플래시 어텐션 필요 —
  *    `OLLAMA_FLASH_ATTENTION=1` 로 강제 (https://docs.ollama.com/faq "How can I set the quantization type for the K/V cache?",
  *    "How can I enable Flash Attention?"). f16(기본)이면 env 를 붙이지 않는다
@@ -48,6 +56,7 @@
 
 import {
   gpuCountOf,
+  nodeCountOf,
   type KvQuant,
   type Mode,
   type Os,
@@ -152,6 +161,11 @@ export type LlamaCppPlan = {
   gpuExpertLayers?: number;
   /** cpu-moe: 메모리 부족 오류 때 올릴 `--n-cpu-moe` 다음 값 0~2개(`nextCpuMoeFlags`) */
   nCpuMoeNext?: number[];
+  /**
+   * 통합 메모리 여러 대(10-23 D118): 첫 기기 밖의 기기마다 먼저 띄울 RPC 서버 명령(2번 기기부터 차례로) — `command` 는 첫 기기의 llama-server(`--rpc` 로 이 서버들을 잇는다).
+   * 주소는 자리표시(`<node2-ip>` …) — 화면 각주가 각 기기의 ConnectX-7 주소로 바꾸라고 안내한다
+   */
+  rpcServers?: string[];
 };
 
 export type OllamaPlan = {
@@ -167,7 +181,16 @@ export type OllamaPlan = {
   moeAuto: boolean;
 };
 
-export type OllamaOmitted = 'no-fit' | 'sharded';
+/** 'cluster' = 통합 메모리 여러 대(10-23 D118) — Ollama 는 llama.cpp RPC 를 쓰지 않는다 */
+export type OllamaOmitted = 'no-fit' | 'sharded' | 'cluster';
+
+/** llama.cpp RPC 서버 기본 포트 (tools/rpc/rpc-server.cpp — `port = 50052`) */
+export const RPC_PORT = 50052;
+
+/** n 번 기기의 주소 자리표시 (2부터) — 명령 안의 글자라 번역하지 않는다 */
+export function rpcHostPlaceholder(n: number): string {
+  return `<node${n}-ip>`;
+}
 
 export type CommandPlan = {
   os: Os;
@@ -178,6 +201,8 @@ export type CommandPlan = {
   layers: number;
   /** 반복 층 모델(10-22 D114 — `arch.loops`)의 반복 횟수 — `-ngl` 이 논리 층(layers × loops)을 센다는 각주용. 반복이 없으면 생략 */
   loops?: number;
+  /** 통합 메모리 여러 대 연결(10-23 D118) 대수 — 2 이상일 때만. 있으면 llamaCpp.rpcServers 가 있다 */
+  nodes?: number;
   file: CommandFile;
   llamaCpp?: LlamaCppPlan;
   ollama?: OllamaPlan;
@@ -218,6 +243,8 @@ export function commandPlan(
   };
   const mode = q.result.mode;
   const loops = model.arch.loops !== undefined && model.arch.loops > 1 ? model.arch.loops : undefined;
+  // 통합 메모리 여러 대(10-23 D118) — 엔진 fit 은 전량 GPU 탑재만 내므로 여러 대 명령은 늘 -ngl all + --rpc
+  const nodes = nodeCountOf(config.hw);
   const base: CommandPlan = {
     os: config.hw.os,
     mode,
@@ -226,6 +253,7 @@ export function commandPlan(
     kvQuant,
     layers,
     ...(loops !== undefined ? { loops } : {}),
+    ...(nodes > 1 ? { nodes } : {}),
     file,
   };
   if (!q.fits) return { ...base, ollamaOmitted: 'no-fit' };
@@ -267,6 +295,8 @@ export function commandPlan(
   // 라이트닝 인덱서 k-pool(GLM-5.3-Flash — 10-22 ⑧-b 리뷰): KV 는 슬롯들이 나눠 쓰지만 k-pool 연산 예약(#29950)·KDA 순환 상태가 슬롯 수만큼 — 'pool'
   const singleSlot: LlamaCppPlan['singleSlot'] =
     model.arch.attnType === 'compressed' ? true : model.arch.indexerKPool !== undefined ? 'pool' : undefined;
+  // 여러 대: 2번 기기부터의 주소(자리표시) — 다른 기기마다 RPC 서버, 첫 기기의 --rpc 가 차례로 잇는다(헤더 주석)
+  const rpcHosts = nodes > 1 ? Array.from({ length: nodes - 1 }, (_, i) => rpcHostPlaceholder(i + 2)) : [];
   const flags = [
     `-hf ${file.repo}:${file.tag}`,
     `-c ${ctx}`,
@@ -275,10 +305,12 @@ export function commandPlan(
     ...(nCpuMoe !== undefined ? [`--n-cpu-moe ${nCpuMoe}`] : []),
     '-fa on',
     ...(kvQuant !== 'f16' ? [`--cache-type-k ${kvQuant}`, `--cache-type-v ${kvQuant}`] : []),
+    ...(rpcHosts.length > 0 ? [`--rpc ${rpcHosts.map((h) => `${h}:${RPC_PORT}`).join(',')}`] : []),
   ];
   const llamaCpp: LlamaCppPlan = {
     command: `llama-server ${flags.join(' ')}`,
     ngl,
+    ...(rpcHosts.length > 0 ? { rpcServers: rpcHosts.map((h) => `ggml-rpc-server -H ${h} -p ${RPC_PORT} -c`) } : {}),
     ...(singleSlot !== undefined ? { singleSlot } : {}),
     ...(nCpuMoe !== undefined
       ? {
@@ -291,6 +323,7 @@ export function commandPlan(
 
   let ollamaOmitted: OllamaOmitted | undefined;
   if (shards > 1) ollamaOmitted = 'sharded';
+  if (nodes > 1) ollamaOmitted = 'cluster';
   const ollama: OllamaPlan | undefined = ollamaOmitted
     ? undefined
     : {

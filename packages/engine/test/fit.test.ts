@@ -1,10 +1,20 @@
 /** fit 판정 유닛 — docs/02 §2.4 + §8 시드. */
 import { describe, expect, it } from 'vitest';
-import { CPU_MOE_GPU_LAYER_MARGIN, PLE_TOKEN_OVERHEAD_MS } from '../src/constants';
+import { CPU_MOE_GPU_LAYER_MARGIN, PLE_TOKEN_OVERHEAD_MS, RPC_HOP_TG_MS } from '../src/constants';
 import { fit } from '../src/fit';
 import { evaluate } from '../src/index';
-import { computeBufferGB, gpuUnitsOf, kvGB, osReserveGB, usableGB, usableRamGB } from '../src/memory';
-import { tgEstimate } from '../src/speed';
+import {
+  clusterNodeLoadGB,
+  clusterShareOf,
+  computeBufferGB,
+  gpuUnitsOf,
+  kvGB,
+  nodeCountOf,
+  osReserveGB,
+  usableGB,
+  usableRamGB,
+} from '../src/memory';
+import { clusterHopSeconds, tgEstimate } from '../src/speed';
 import type { Hardware, ModelQuant } from '../src/types';
 import {
   GEMMA4_E2B_Q4,
@@ -25,6 +35,7 @@ import {
   RTX_3060_12GB,
   RTX_4060_8GB,
   RTX_4090,
+  SPARK_128_USABLE,
 } from './fixtures';
 
 describe('§2.4 mode ordering', () => {
@@ -343,6 +354,75 @@ describe('§6 multi-GPU (beta): same GPU × N', () => {
   it('ignores gpuCount on non-dGPU hardware and treats < 1 as 1', () => {
     expect(usableGB({ ...M4_MAX_128, gpuCount: 4 })).toBeCloseTo(usableGB(M4_MAX_128), 6);
     expect(usableGB({ ...one3090, gpuCount: 0 })).toBeCloseTo(usableGB(one3090), 6);
+    // 통합 메모리 여러 대(§6.2, 10-23 D118)는 gpuCount 가 아니라 nodes 로 센다 — gpuCount 는 여전히 무시
+    expect(fit({ ...SPARK_128_USABLE, gpuCount: 4 }, LLAMA33_70B_Q4)).toEqual(fit(SPARK_128_USABLE, LLAMA33_70B_Q4));
+  });
+});
+
+describe('§6.2 unified-memory cluster (10-23 D118): DGX Spark × N over llama.cpp RPC', () => {
+  const OSS120 = { ...GPT_OSS_120B, layers: 36 };
+  const x2: Hardware = { ...SPARK_128_USABLE, nodes: 2 };
+  const x4: Hardware = { ...SPARK_128_USABLE, nodes: 4 };
+
+  it('nodes missing, 1 or below is the single machine — byte-identical output; nodes on dGPU / CPU is ignored', () => {
+    for (const nodes of [undefined, 1, 0, 0.5]) {
+      const hw: Hardware = { ...SPARK_128_USABLE, ...(nodes !== undefined ? { nodes } : {}) };
+      expect(nodeCountOf(hw)).toBe(1);
+      expect(evaluate(hw, OSS120, { ctx: 32768 })).toEqual(evaluate(SPARK_128_USABLE, GPT_OSS_120B, { ctx: 32768 }));
+    }
+    expect(nodeCountOf({ ...RTX_4090, nodes: 4 })).toBe(1);
+    expect(evaluate({ ...RTX_4090, nodes: 4 }, LLAMA33_70B_Q4)).toEqual(evaluate(RTX_4090, LLAMA33_70B_Q4));
+    expect(nodeCountOf({ kind: 'cpu', nodes: 2 })).toBe(1);
+    expect(nodeCountOf({ ...x2, nodes: 2.7 })).toBe(2);
+    expect(clusterHopSeconds(SPARK_128_USABLE)).toBe(0);
+  });
+
+  it('busiest unit = ceil((layers + 1) / N) / layers of the device weights and KV + the first unit’s off-device bytes + one compute buffer', () => {
+    expect(clusterShareOf({ layers: 36 }, 2)).toBeCloseTo(19 / 36, 12);
+    expect(clusterShareOf({ layers: 36 }, 4)).toBeCloseTo(10 / 36, 12);
+    expect(clusterShareOf({ layers: 80 }, 3)).toBeCloseTo(27 / 80, 12);
+    expect(clusterShareOf({}, 4)).toBe(0.25);
+    expect(clusterShareOf({ layers: 1 }, 2)).toBe(1);
+    expect(clusterShareOf({ layers: 36 }, 1)).toBe(1);
+    const r = fit(x2, OSS120, { ctx: 8192 });
+    const share = 19 / 36;
+    const kv = kvGB(OSS120.kvBytesPerToken, 8192);
+    // gpt-oss: 장치 몫 = expertGB + nonExpertGB(헤더 실측), 장치 밖(입력 임베딩) = 파일 − 그 합
+    const resident = OSS120.expertGB! + OSS120.nonExpertGB!;
+    expect(r.mode).toBe('full-gpu');
+    expect(r.vram.weights).toBeCloseTo(resident * share + (OSS120.fileGB! - resident), 9);
+    expect(r.vram.kv).toBeCloseTo(kv * share, 12);
+    expect(r.vram.buffer).toBeCloseTo(computeBufferGB(8192), 12);
+    expect(r.vram.osReserve).toBe(0);
+    expect(r.vram.limit).toBe(128); // 한 대의 물리 용량
+    expect(clusterNodeLoadGB(x2, OSS120, OSS120.fileGB!, kv)).toEqual({ weights: r.vram.weights, kv: r.vram.kv });
+    // 한 대면 그대로
+    expect(clusterNodeLoadGB(SPARK_128_USABLE, OSS120, 10, 2)).toEqual({ weights: 10, kv: 2 });
+  });
+
+  it('fits only when the busiest unit fits one unit’s usable memory — no CPU path across RPC; the ladder still finds a lower quant', () => {
+    // 1대 상한(116.9)에 안 들어가는 260GB dense 는 2대에도 안 들어가고(가장 많이 맡는 대 > 116.9) 4대에는 들어간다
+    const big: ModelQuant = { paramsB: 400, quant: 'Q4_K_M', fileGB: 260, kvBytesPerToken: 320 * 1024, attnType: 'full', layers: 80, maxContext: 131072 };
+    expect(fit(SPARK_128_USABLE, big).fits).toBe(false);
+    const two = fit(x2, big);
+    expect(two.fits).toBe(false);
+    expect(two.mode).toBe('cpu-only');
+    expect(two.vram.total).toBe(0);
+    expect(two.bestQuant).toBe('IQ4_XS'); // 400B × 4.46bpw / 8 = 223GB → 가장 많이 맡는 대 223 × 41/80 + KV·버퍼 ≈ 116.2GB
+    expect(fit(x4, big).fits).toBe(true);
+    // 반복 층 모델은 물리 가중치가 앞쪽 대에 몰린다 — 가중치 몫을 나누지 않는다(보수, D114)
+    const looped = clusterNodeLoadGB(x2, { ...NANBEIGE42_Q4, layers: 22 }, 2, 1);
+    expect(looped.weights).toBe(2);
+    expect(looped.kv).toBeCloseTo(12 / 22, 12);
+  });
+
+  it('speed: one-unit pipeline time + (N − 1) × RPC_HOP_TG_MS per token; pp is the one-unit value', () => {
+    const single = tgEstimate(SPARK_128_USABLE, OSS120, { mode: 'full-gpu' }, { ctx: 8192 });
+    for (const [hw, hops] of [[x2, 1], [{ ...SPARK_128_USABLE, nodes: 3 }, 2], [x4, 3]] as const) {
+      const t = tgEstimate(hw, OSS120, { mode: 'full-gpu' }, { ctx: 8192 });
+      expect(1 / t - 1 / single).toBeCloseTo(hops * RPC_HOP_TG_MS * 1e-3, 12);
+      expect(evaluate(hw, OSS120).ppTokS).toEqual(evaluate(SPARK_128_USABLE, OSS120).ppTokS);
+    }
   });
 });
 

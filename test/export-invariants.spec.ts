@@ -32,7 +32,7 @@ import { ADSENSE_CLIENT, DAUM_WEBMASTER_LINE, INDEXNOW_KEY } from '../apps/web/l
 import { ENGINE_SPEC_DATE } from '../packages/engine/src/index';
 import { CF_PAGES_REDIRECT_LINE_LIMIT } from '../scripts/build-redirects';
 import { comboCardText, loadCatalog, ogTranslators } from '../scripts/og-cards';
-import { MAC_LINES, summarizeGpu, type GpuHubData } from '../packages/data/src/index';
+import { HUB_POLICY, MAC_LINES, summarizeGpu, type GpuHubData } from '../packages/data/src/index';
 import { comboOgImage, compareOgImage, defaultOgImage, guideOgImage, hubOgImage } from '../apps/web/lib/og-images';
 import { STATIC_PAGE_SLUGS } from '../apps/web/content/pages';
 import { ALL_LOCALES, CONTENT_LOCALES, HTML_LANG, INDEXED_LOCALES, OG_LOCALE } from '../apps/web/i18n/locales';
@@ -1277,6 +1277,41 @@ describe('memory-size verdict lists and the system RAM toggle (10-03 D64)', () =
       const twin = map.get(localePath('ko', page.urlPath))!;
       expect(twin.ramSteps, `${page.urlPath} ko twin rows`).toEqual(page.ramSteps);
     }
+  });
+
+  it('DGX Spark combos list one unit then 64·128 GB × 2 and × 4 linked units (never the page configuration), with the RPC note; no other combo has linked rows (10-23 D118)', () => {
+    let dgx = 0;
+    for (const page of requireCombos()) {
+      const linked = page.ramSteps.filter((r) => r.nodes > 1);
+      if (page.combo!.gpuId !== 'nvidia-dgx-spark') {
+        expect(linked, `${page.file} linked rows`).toEqual([]);
+        expect(page.clusterNotes, `${page.file} cluster note`).toBe(0);
+        continue;
+      }
+      dgx += 1;
+      expect(page.ramSteps.map((r) => (r.nodes > 1 ? `${r.ram}x${r.nodes}` : String(r.ram))), page.file).toEqual(['64', '128', '64x2', '128x2', '64x4', '128x4']);
+      expect(linked.some((r) => r.assumed), `${page.file} a linked row is the page configuration`).toBe(false);
+      expect(page.clusterNotes, `${page.file} cluster note`).toBe(1);
+    }
+    expect(dgx, 'DGX Spark combos').toBeGreaterThan(0);
+  });
+
+  it('GPU hubs: the DGX Spark summary adds 64·128 GB × 2 and × 4 after one unit, with the note; other hubs list only their own sizes (10-23 D118)', () => {
+    const hubs = pages.filter((p) => p.kind === 'gpu');
+    let dgx = 0;
+    for (const page of hubs) {
+      const id = page.urlPath.split('/').pop()!;
+      const gpu = gpus.find((g) => g.id === id)!;
+      if (id === 'nvidia-dgx-spark') {
+        dgx += 1;
+        expect(page.hubConfigKeys, page.file).toEqual(['64', '128', '64x2', '128x2', '64x4', '128x4']);
+        expect(page.clusterNotes, page.file).toBe(1);
+        continue;
+      }
+      expect(page.clusterNotes, page.file).toBe(0);
+      expect(page.hubConfigKeys, page.file).toEqual(gpu.kind === 'dgpu' ? [String(HUB_POLICY.dgpuRamGB)] : (gpu.ramOptionsGB ?? []).map(String));
+    }
+    expect(dgx, 'DGX Spark hubs (en + ko)').toBeGreaterThanOrEqual(2);
   });
 
   it('the live summary is empty in static HTML (filled only after interaction — D28)', () => {

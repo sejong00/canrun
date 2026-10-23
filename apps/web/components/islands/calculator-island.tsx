@@ -360,9 +360,11 @@ export function CalculatorIsland({
         <p className="rounded-lg border border-verdict-b-fg/40 bg-verdict-b-bg p-3 text-sm text-verdict-b-fg">
           {state.hardware.kind === 'custom'
             ? t.calc('customNotice')
-            : results.hardware.extras.length > 0
-              ? t.calc('heteroNotice')
-              : t.calc('multiGpuNotice', { n: results.hardware.gpuCount })}
+            : results.hardware.nodes > 1
+              ? t.calc('clusterNotice', { n: results.hardware.nodes })
+              : results.hardware.extras.length > 0
+                ? t.calc('heteroNotice')
+                : t.calc('multiGpuNotice', { n: results.hardware.gpuCount })}
           {state.hardware.kind === 'custom' && results.hardware.gpuCount > 1 ? ` ${t.calc('multiGpuNotice', { n: results.hardware.gpuCount })}` : ''}
         </p>
       )}
@@ -413,6 +415,8 @@ function shareTextFor(t: ReturnType<typeof bindTranslators>, locale: string, sta
       mem: formatMemGB(locale, c.kind === 'dgpu' ? (c.vramGB ?? 0) : (c.memGB ?? 0)),
     });
   }
+  // 여러 대 연결(10-23 D118)은 "2× DGX Spark" / "DGX Spark 2대"
+  if (hw.nodes > 1) return t.share('text', { gpu: t.calc('nodesTimes', { gpu: gpuName(t.names, hw.gpu), n: hw.nodes }) });
   return t.share('text', { gpu: gpuSetLabel(t, hw) });
 }
 
@@ -450,6 +454,16 @@ function assumptionText(t: ReturnType<typeof bindTranslators>, locale: string, s
     });
   }
   if (gpu.kind === 'unified') {
+    // 여러 대 연결(10-23 D118): 대마다 메모리·사용 가능량과 그 합
+    if (hw.nodes > 1) {
+      return t.calc('assumeCluster', {
+        ...common,
+        gpu: name,
+        n: hw.nodes,
+        usable: formatGB(locale, usableGB(config.hw)),
+        total: formatGB(locale, usableGB(config.hw) * hw.nodes),
+      });
+    }
     return t.calc('assumeUnified', { ...common, gpu: name, usable: formatGB(locale, usableGB(config.hw)) });
   }
   return t.calc('assumeCpu', { ...common, ddr: t.calc(state.ddr), usable: formatGB(locale, usableGB(config.hw)) });

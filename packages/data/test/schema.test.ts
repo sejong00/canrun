@@ -150,6 +150,29 @@ describe('structural refinements', () => {
     expect(GpuSchema.safeParse({ ...validGpu, usableGBByRam: [{ ramGB: 16, usableGB: 10 }] }).success).toBe(false);
   });
 
+  it('several units linked (10-23 D118 — DGX Spark cluster): unified only, direct ≤ max, https sources that are also record sources, no extra keys', () => {
+    const doc = 'https://docs.nvidia.com/dgx/dgx-spark/spark-clustering.html';
+    const spark = {
+      ...validGpu,
+      id: 'spark-test',
+      vendor: 'nvidia-dgx',
+      kind: 'unified',
+      vramGB: undefined,
+      ramOptionsGB: [64, 128],
+      memBandwidthGBs: 273,
+      effClass: 'dgx-spark',
+      sources: [...validGpu.sources, doc],
+    };
+    const cluster = { maxNodes: 4, directMaxNodes: 3, linkGbps: 200, sources: [doc] };
+    expect(GpuSchema.safeParse({ ...spark, cluster }).success).toBe(true);
+    expect(GpuSchema.safeParse({ ...spark, cluster: { ...cluster, directMaxNodes: 5 } }).success).toBe(false);
+    expect(GpuSchema.safeParse({ ...spark, cluster: { ...cluster, maxNodes: 1 } }).success).toBe(false);
+    expect(GpuSchema.safeParse({ ...spark, cluster: { ...cluster, sources: ['http://example.com/x'] } }).success).toBe(false);
+    expect(GpuSchema.safeParse({ ...spark, cluster: { ...cluster, sources: ['https://example.com/not-in-sources'] } }).success).toBe(false);
+    expect(GpuSchema.safeParse({ ...spark, cluster: { ...cluster, nic: 'cx7' } }).success).toBe(false);
+    expect(GpuSchema.safeParse({ ...validGpu, sources: [...validGpu.sources, doc], cluster }).success).toBe(false);
+  });
+
   it('every Apple chip in the seed names at least one Mac', () => {
     const apple = loadSeed().gpus.filter((g) => g.vendor === 'apple');
     expect(apple.length).toBeGreaterThan(0);

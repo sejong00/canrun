@@ -15,6 +15,7 @@ import {
   GPU_COUNT_OPTIONS,
   KV_OPTIONS,
   MAX_GPUS,
+  clusterOf,
   defaultOs,
   defaultRam,
   findGpu,
@@ -275,6 +276,8 @@ export function HardwareForm({ locale, catalog, names, t, state, dispatch, hydra
   const mixable = selected !== undefined && isMixableGpu(selected);
   const plusCount = mixable ? (state.plus?.length ?? 0) : 0;
   const multiGpu = (state.gpus ?? 1) + plusCount > 1;
+  // 여러 대 연결(10-23 D118 — DGX Spark): 레코드에 cluster 가 있는 통합 메모리 기기만 대수(1 ~ maxNodes)를 고른다
+  const cluster = clusterOf(state.hardware, catalog);
 
   return (
     <form
@@ -447,6 +450,32 @@ export function HardwareForm({ locale, catalog, names, t, state, dispatch, hydra
               </select>
             </div>
             {mixable && <ExtraGpus catalog={catalog} t={t} primary={selected} state={state} dispatch={dispatch} hydrated={hydrated} />}
+          </div>
+        )}
+
+        {cluster && (
+          <div data-node-set className="flex flex-col gap-1 sm:max-w-xl">
+            <label htmlFor={`${id}-nodes`} className="text-sm font-medium">
+              {t.calc('nodesLabel')}
+            </label>
+            <select
+              id={`${id}-nodes`}
+              name="nodes"
+              className={SELECT}
+              value={state.nodes ?? 1}
+              disabled={!hydrated}
+              onChange={(e) => {
+                const n = Number(e.currentTarget.value);
+                dispatch({ type: 'nodes', nodes: n > 1 ? n : undefined });
+              }}
+            >
+              {Array.from({ length: cluster.maxNodes }, (_, i) => i + 1).map((n) => (
+                <option key={n} value={n}>
+                  {t.calc('nodesOption', { n })}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-muted-foreground">{t.calc('nodesHint', { max: cluster.maxNodes, direct: cluster.directMaxNodes })}</p>
           </div>
         )}
 

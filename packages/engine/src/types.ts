@@ -92,6 +92,14 @@ export type Hardware = {
    * 층은 카드마다 남은 메모리(VRAM − 화면 출력 예약)에 비례해 나뉘고, 토큰마다 카드를 차례로 지난다
    */
   gpus?: readonly GpuUnit[];
+  /**
+   * unified 전용: 같은 통합 메모리 기기를 이어 쓰는 대수 (기본 1, §6.2 클러스터 — 10-23 D118, 지금은 DGX Spark). 2 이상이면 llama.cpp RPC 층 분할
+   * (`--rpc` — 다른 기기에서 ggml-rpc-server, 첫 기기에서 llama-server): 위의 ramGB·unifiedUsableGB·대역폭은 **한 대** 값이고, 층과 그 층의 KV 는 대마다
+   * 나뉘어 각 대에 연산 버퍼가 따로 잡히며, 가장 많이 맡는 대가 한 대 사용 가능량에 들어가야 한다(첫 대는 출력층·입력 임베딩도). 토큰은 대를 차례로 지나므로
+   * 대역폭은 합쳐지지 않고, 대 사이 이동(대수 − 1)마다 토큰당 `RPC_HOP_TG_MS` 가 더해진다. 전량 GPU 탑재만 계산한다(RPC 너머 CPU 경로는 보지 않는다).
+   * 없거나 1 이하면 지금과 같다(출력이 바이트까지 같다)
+   */
+  nodes?: number;
 };
 
 export type ModelQuant = {
@@ -162,6 +170,11 @@ export type ModelQuant = {
    * 없으면(사다리·실측 없는 행) 읽기 바이트 전체를 반복 블록으로 본다 — 보수(낮게 본다)
    */
   loopGB?: number;
+  /**
+   * 트렁크 층 수(config `num_hidden_layers` — 데이터 계층은 늘 채운다, 10-23 D118). 통합 메모리 여러 대(§6.2 — `Hardware.nodes` ≥ 2)에서 가장 많이 맡는 대의
+   * 몫(층 + 출력층 칸을 대수로 나눈 올림 — `clusterShareOf`)에만 쓴다. 한 대·dGPU 산식은 읽지 않는다. 없으면 고르게(1/대수) 나눈다고 본다
+   */
+  layers?: number;
   maxContext: number;
 };
 

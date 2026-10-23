@@ -9,6 +9,7 @@
  */
 
 import {
+  clusterNodeLoadGB,
   computeBufferGB,
   EFF,
   evaluate,
@@ -17,6 +18,7 @@ import {
   gpuCountOf,
   gpuResidentGBFor,
   kvGB,
+  nodeCountOf,
   usableGB,
   usableRamGB,
   VERDICT_THRESHOLDS,
@@ -97,6 +99,12 @@ export const HUB_POLICY = Object.freeze({
    * (`sameSizeQuant` — 10-03 D63 후속: Nemotron 3.5 Lightning Q2_K 18.91GB = IQ4_XS 18.92GB. 행을 지우면 sync 가 다시 넣는다)
    */
   sameSizeQuantRatio: 0.95,
+  /**
+   * 여러 대 연결 기기(레코드 `cluster` — DGX Spark, 10-23 D118)의 GPU 허브·콤보 "메모리 구성별 판정"에 더하는 대수 — NVIDIA 가 2의 거듭제곱 연결을 권한다
+   * (제품 페이지 FAQ "connect DGX Spark in a power-of-2 number"). 3대는 계산기에서만(대수 선택 1~maxNodes). 기기의 maxNodes 를 넘는 값은 뺀다.
+   * 대표 판정·정렬·FAQ·대안·모델 허브는 1대 구성 그대로다(`hardwareConfigs` 기본 인자는 1대만 — 2대·4대 행은 `clusterConfigs`)
+   */
+  clusterHubNodes: [2, 4] as readonly number[],
 });
 
 export type QuantTier = QuantDefCore['tier'];
@@ -126,8 +134,10 @@ export type SeedCatalog = {
 /** 허브가 평가하는 하드웨어 구성 1개 (dGPU = 가정 RAM 1개, 통합·CPU = RAM 옵션마다). */
 export type HwConfig = {
   gpuId: string;
-  /** 시스템 RAM (dGPU) 또는 통합/CPU 메모리 용량 (GB) */
+  /** 시스템 RAM (dGPU) 또는 통합/CPU 메모리 용량 (GB) — 여러 대 연결(`nodes`)이면 한 대 값 */
   ramGB: number;
+  /** 통합 메모리 기기 여러 대 연결(10-23 D118 — 엔진 `Hardware.nodes`) 대수 — 2 이상일 때만 있다(1대 구성은 키가 없다) */
+  nodes?: number;
   /** dGPU 의 RAM 이 정책 가정값인지 (페이지에 가정을 명시해야 함) */
   assumedRam: boolean;
   hw: Hardware;
@@ -221,6 +231,11 @@ export function dgpuHardware(
 export type HardwareConfigOptions = DgpuOptions & {
   /** 지정 시 그 RAM 1개 구성만 (dGPU: 사용자 RAM → assumedRam=false, 통합·CPU: 옵션 밖 값도 허용) */
   ramGB?: number;
+  /**
+   * 여러 대 연결 대수 (10-23 D118) — 레코드에 `cluster` 가 있는 통합 메모리 기기에서 2 ~ maxNodes 일 때만 구성에 붙는다(엔진 `Hardware.nodes`).
+   * 그 밖의 기기·범위 밖 값·1 은 무시한다(1대 구성). 허브는 `clusterConfigs`, 계산기는 사용자 선택
+   */
+  nodes?: number;
   /** dGPU 시스템 RAM 대역폭 (계산기의 DDR 종류) — 기본은 정책 프로필 */
   ramBandwidthGBs?: number;
 };
@@ -246,6 +261,7 @@ export function hardwareConfigs(
   const ramOptions = opts.ramGB !== undefined ? [opts.ramGB] : (gpu.ramOptionsGB ?? []);
   // Apple 실리콘은 macOS 고정, 그 외 통합·CPU 는 기본 linux (계산기가 windows 를 고를 수 있다)
   const os: Os = gpu.vendor === 'apple' ? 'macos' : opts.os === 'windows' ? 'windows' : 'linux';
+  const nodes = clusterNodesFor(gpu, opts.nodes);
   return ramOptions.map((ramGB) => {
     // 구성마다 대역폭이 다른 칩(10-20 Apple M6) — 그 밖의 칩은 칩 값 그대로
     const bandwidth = memBandwidthAt(gpu, ramGB);
@@ -254,6 +270,7 @@ export function hardwareConfigs(
     return {
       gpuId: gpu.id,
       ramGB,
+      ...(nodes !== undefined ? { nodes } : {}),
       assumedRam: false,
       hw: {
         kind: gpu.kind,
@@ -269,9 +286,34 @@ export function hardwareConfigs(
         ramBandwidthGBs:
           gpu.kind === 'unified' ? unifiedCpuBandwidth({ effClass: gpu.effClass, memBandwidthGBs: bandwidth }) : bandwidth,
         effClass: gpu.effClass,
+        // 여러 대 연결(10-23 D118) — 위 값은 모두 한 대 값이다
+        ...(nodes !== undefined ? { nodes } : {}),
       },
     };
   });
+}
+
+/** 구성에 붙일 여러 대 연결 대수 — `cluster` 가 있는 통합 메모리 기기에서 2 ~ maxNodes 정수만, 그 밖은 undefined(1대) (10-23 D118) */
+function clusterNodesFor(gpu: Pick<GpuCore, 'kind' | 'cluster'>, nodes: number | undefined): number | undefined {
+  if (gpu.kind !== 'unified' || !gpu.cluster || nodes === undefined || !Number.isInteger(nodes)) return undefined;
+  return nodes >= 2 && nodes <= gpu.cluster.maxNodes ? nodes : undefined;
+}
+
+/**
+ * 여러 대 연결 기기(레코드 `cluster` — DGX Spark, 10-23 D118)의 허브·콤보 2대·4대 구성 — 대수(`HUB_POLICY.clusterHubNodes`, maxNodes 이하) 순, 같은 대수 안에서는
+ * 메모리 옵션 순(64GB × 2 · 128GB × 2 · 64GB × 4 · 128GB × 4). 다른 기기는 빈 목록. 1대 구성(`hardwareConfigs` 기본)과 따로 둔다 — 대표 구성·정렬·FAQ·대안이 1대 기준이게
+ */
+export function clusterConfigs(gpu: GpuCore, gpus: readonly GpuCore[]): HwConfig[] {
+  const cluster = gpu.kind === 'unified' ? gpu.cluster : undefined;
+  if (!cluster) return [];
+  return HUB_POLICY.clusterHubNodes
+    .filter((nodes) => nodes <= cluster.maxNodes)
+    .flatMap((nodes) => (gpu.ramOptionsGB ?? []).flatMap((ramGB) => hardwareConfigs(gpu, gpus, { ramGB, nodes })));
+}
+
+/** 구성을 가리키는 키 — 1대는 메모리 용량 그대로("128"), 여러 대 연결은 "128x2" (10-23 D118 — 허브·콤보 목록의 React key·data 속성) */
+export function configKey(config: { ramGB: number; nodes?: number }): string {
+  return config.nodes !== undefined && config.nodes > 1 ? `${config.ramGB}x${config.nodes}` : String(config.ramGB);
 }
 
 /**
@@ -334,6 +376,8 @@ export function toModelQuant(model: ModelCore, row?: QuantRowInput): ModelQuant 
     activeParamsB: model.activeParamsB,
     kvBytesPerToken: model.arch.kvBytesPerTokenF16,
     attnType: model.arch.attnType,
+    // 트렁크 층 수 — 엔진은 통합 메모리 여러 대(10-23 D118)의 대마다 몫에만 쓴다
+    layers: model.arch.layers,
     nonExpertGB: measured ? row.nonExpertGB : model.nonExpertGB,
     ...(measured ? { expertGB: row.expertGB } : {}),
     ...(moe && experts !== undefined && topK !== undefined ? { activeExpertFrac: topK / experts } : {}),
@@ -506,6 +550,8 @@ export type MemoryNeed = {
    * 그 밖의 모드·하드웨어는 0. 분해 바의 각주용 (10-03 D62)
    */
   offGpuGB: number;
+  /** 통합 메모리 여러 대 연결(10-23 D118) 대수 — 2 이상일 때만. 있으면 위의 필요량·사용 가능량·GPU 몫은 가장 많이 맡는 **한 대** 값이다 */
+  nodes?: number;
 };
 
 export type MeasuredJoin = {
@@ -575,6 +621,22 @@ function memoryNeed(
   const weights = weightsGB(mq);
   const kv = kvGB(mq.kvBytesPerToken, ctx, kvQuant);
   const hw = config.hw;
+  // 통합 메모리 여러 대(10-23 D118): 필요량·사용 가능량은 가장 많이 맡는 한 대 기준(엔진 fit 과 같은 몫) — 판정이 비교하는 바로 그 두 값이다
+  const nodes = nodeCountOf(hw);
+  if (nodes > 1) {
+    const load = clusterNodeLoadGB(hw, mq, weights, kv);
+    const need = load.weights + load.kv + computeBufferGB(ctx);
+    return {
+      totalNeedGB: need,
+      needGB: need,
+      gpuGB: fits ? result.vram.total : 0,
+      gpuUsableGB: Math.max(0, usableGB(hw)),
+      ramGB: 0,
+      ramUsableGB: Math.max(0, usableRamGB(hw)),
+      offGpuGB: 0,
+      nodes,
+    };
+  }
   const cpuPath = hw.kind === 'cpu' || (fits && result.mode === 'cpu-only');
   // 연산 버퍼는 GPU 마다(엔진 fit 과 같다 — 여러 장이면 ×N, docs/02 §6)
   const gpuNeed = needWeightsGB(hw.kind, mq) + kv + computeBufferGB(ctx) * gpuCountOf(hw);
@@ -631,7 +693,8 @@ export function assessQuant(input: AssessQuantInput): QuantAssessment {
   const reasoning = isReasoning(model);
 
   const fitResult = fit(config.hw, mq, { ctx, kvQuant });
-  const theoretical = input.theoretical ?? isTheoretical(gpu, model, fitResult.mode);
+  // 여러 대 연결(10-23 D118)은 늘 이론 추정 — 대 사이 이동 시간 근거가 2대 공개 쌍뿐이고 3·4대 실측이 없다(docs/02 §6.2)
+  const theoretical = input.theoretical ?? (nodeCountOf(config.hw) > 1 || isTheoretical(gpu, model, fitResult.mode));
   const raw = evaluate(config.hw, mq, { ctx, kvQuant, reasoning, theoretical });
   // 판정 할인(10-22 ⑧-b 리뷰) — 공개 결과가 모두 추정보다 느린 모델은 등급만 할인한 속도로(속도·범위는 그대로)
   const estimate = discountVerdict(model, raw, fitResult, reasoning);
@@ -641,6 +704,8 @@ export function assessQuant(input: AssessQuantInput): QuantAssessment {
     (config.hw.kind !== 'dgpu' || fitResult.mode === 'full-gpu') &&
     // 실측은 1장 기준 — 여러 장(같은 카드 D58·서로 다른 카드 D67) 구성에는 붙이지 않는다. 통합·CPU 는 늘 1
     gpuCountOf(config.hw) === 1 &&
+    // 실측은 1대 기준 — 여러 대 연결(10-23 D118) 구성에도 붙이지 않는다
+    nodeCountOf(config.hw) === 1 &&
     ctx === HUB_POLICY.referenceCtx &&
     kvQuant === 'f16';
   const points = joinable ? measuredPoints(input.benchmarks, gpu.id, model.id, row.quant) : [];
@@ -731,7 +796,8 @@ export function estimateAt(
     ctx: opts.ctx,
     kvQuant: opts.kvQuant,
     reasoning,
-    theoretical: opts.theoretical ?? isTheoretical(gpu, model, fitResult.mode),
+    // 여러 대 연결은 늘 이론 추정 — assessQuant 와 같은 규칙(10-23 D118)
+    theoretical: opts.theoretical ?? (nodeCountOf(config.hw) > 1 || isTheoretical(gpu, model, fitResult.mode)),
   });
   // 판정 할인 — assessQuant 와 같은 규칙(ctx 계단·행렬이 같은 등급을 그리도록)
   return { fit: fitResult, result: discountVerdict(model, result, fitResult, reasoning) };
@@ -741,6 +807,8 @@ export type ComboAssessment = {
   gpuId: string;
   modelId: string;
   ramGB: number;
+  /** 여러 대 연결 구성(10-23 D118)의 대수 — 2 이상일 때만 (`HwConfig.nodes`) */
+  nodes?: number;
   reasoning: boolean;
   /** 판정 배지·카운트·정렬 기준 */
   baseline: QuantAssessment;
@@ -928,6 +996,7 @@ export function assessCombo(
     gpuId: gpu.id,
     modelId: model.id,
     ramGB: config.ramGB,
+    ...(config.nodes !== undefined ? { nodes: config.nodes } : {}),
     reasoning: isReasoning(model),
     baseline,
     ...(recommended ? { recommended } : {}),
@@ -970,6 +1039,8 @@ export type GpuHubRow = {
   model: Model;
   /** configs 와 같은 순서 */
   combos: ComboAssessment[];
+  /** 여러 대 연결 기기(10-23 D118)만 — clusterConfigs 와 같은 순서 */
+  clusterCombos?: ComboAssessment[];
 };
 
 export type GpuHubData = {
@@ -980,6 +1051,12 @@ export type GpuHubData = {
   rows: GpuHubRow[];
   /** configs 와 같은 순서 */
   counts: VerdictCounts[];
+  /**
+   * 여러 대 연결 기기(레코드 `cluster` — DGX Spark, 10-23 D118)만: 2대·4대 구성(`clusterConfigs`)과 그 판정 수. 요약 목록·"메모리 구성별 판정" 표의 행을 더할 뿐이고
+   * 정렬·대표 구성(primaryIndex)·FAQ 는 위 1대 구성 그대로다
+   */
+  clusterConfigs?: HwConfig[];
+  clusterCounts?: VerdictCounts[];
   benchmarks: BenchPoint[];
   faq: {
     /** primary 구성에서 full-gpu 로 도는 가장 큰 모델 (paramsB 기준) + 그 quant */
@@ -1012,13 +1089,17 @@ function pickQuant(
 export function summarizeGpu(catalog: SeedCatalog, gpu: Gpu): GpuHubData {
   const configs = hardwareConfigs(gpu, catalog.gpus);
   const primaryIndex = configs.length - 1;
+  // 2대·4대 연결 구성(10-23 D118) — 있는 기기만 행에 덧붙인다(없는 기기는 키도 없다 — 기존 허브 데이터 그대로)
+  const clusters = clusterConfigs(gpu, catalog.gpus);
   const rows: GpuHubRow[] = catalog.models.map((model) => ({
     model,
     combos: configs.map((config) => assessCombo(catalog, gpu, config, model)),
+    ...(clusters.length > 0 ? { clusterCombos: clusters.map((config) => assessCombo(catalog, gpu, config, model)) } : {}),
   }));
   rows.sort((a, b) => compareCombos(a.combos[primaryIndex]!, b.combos[primaryIndex]!));
 
   const counts = configs.map((_, i) => countVerdicts(rows.map((row) => row.combos[i]!)));
+  const clusterCounts = clusters.map((_, i) => countVerdicts(rows.map((row) => row.clusterCombos![i]!)));
 
   const primary = rows.map((row) => row.combos[primaryIndex]!);
   const paramsOf = (combo: ComboAssessment) =>
@@ -1041,6 +1122,7 @@ export function summarizeGpu(catalog: SeedCatalog, gpu: Gpu): GpuHubData {
     primaryIndex,
     rows,
     counts,
+    ...(clusters.length > 0 ? { clusterConfigs: clusters, clusterCounts } : {}),
     benchmarks: catalog.benchmarks.filter((bp) => bp.gpuId === gpu.id),
     faq: {
       ...(largestFullGpu ? { largestFullGpu } : {}),

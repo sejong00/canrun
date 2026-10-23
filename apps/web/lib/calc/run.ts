@@ -52,6 +52,10 @@ export type ResultCard = {
    */
   commandFitAuto?: 'cpu-moe' | 'loops';
   /**
+   * 여러 대 연결(10-23 D118 — DGX Spark): 첫 기기 밖의 기기마다 먼저 띄울 RPC 서버 명령(2번 기기부터) — `command` 는 첫 기기의 llama-server(`--rpc`)
+   */
+  rpcServers?: string[];
+  /**
    * 서로 다른 카드 구성(D67)에서 표시 quant 가 카드 한 장에 다 들어가고 그 카드만 쓰면 더 빠를 때 — 가장 빠른 카드와 그 카드 한 장 구성의
    * 평가(계산기에 그 카드만 넣었을 때와 같은 값·라벨 — 8k·f16 실측 조인, 보정 추정 규칙). 판정·표시 속도는 llama.cpp 기본(모든 카드에 나눠
    * 올리기) 그대로이고 이건 참고 줄이다
@@ -79,9 +83,11 @@ export type RunResult = {
 };
 
 /** 명령 계획 → 카드의 명령·`--fit` 각주 종류 (계획이 없거나 llama.cpp 명령이 없으면 비운다) */
-function commandFields(plan: CommandPlan | undefined): Pick<ResultCard, 'command' | 'commandFitAuto'> {
+function commandFields(plan: CommandPlan | undefined): Pick<ResultCard, 'command' | 'commandFitAuto' | 'rpcServers'> {
   const llama = plan?.llamaCpp;
   if (!llama) return {};
+  // 여러 대 연결(10-23 D118): 다른 기기마다 RPC 서버 + 첫 기기 llama-server — -ngl all 이라 --fit 각주는 없다
+  if (llama.rpcServers) return { command: llama.command, rpcServers: llama.rpcServers };
   if (llama.ngl !== 'auto') return { command: llama.command };
   return { command: llama.command, commandFitAuto: plan.loops !== undefined ? 'loops' : 'cpu-moe' };
 }
@@ -147,9 +153,11 @@ export function assembleResults(catalog: CatalogLite, rawState: CalcState, extra
   const hardware = resolveHardware(state, catalog);
   if (!hardware) return undefined;
   const { gpu, config, theoretical } = hardware;
-  const multi = hardware.gpuCount > 1 && gpu.id !== 'custom';
+  // GPU 여러 장(D58·D67)·여러 대 연결(10-23 D118 — 콤보 페이지 명령은 1장·1대 기준)이면 이 구성의 명령을 카드에 직접 단다
+  const multi = (hardware.gpuCount > 1 || hardware.nodes > 1) && gpu.id !== 'custom';
   // 통합·CPU 의 콤보 페이지 구성 후보 (기본 인자 = 허브 경로와 동일). 옵션이 하나면 평가 없이 그 구성
-  const hubConfigs = gpu.kind !== 'dgpu' && !theoretical ? hardwareConfigs(gpu, catalog.gpus) : [];
+  // 여러 대 연결(10-23 D118)은 구성 때문에 이론 추정이지만 콤보 페이지는 그대로 있다(1대 구성) — 그 구성을 고른다
+  const hubConfigs = gpu.kind !== 'dgpu' && (!theoretical || hardware.nodes > 1) ? hardwareConfigs(gpu, catalog.gpus) : [];
 
   const all: ResultCard[] = catalog.models.map((model) => {
     const ctx = Math.min(state.ctx, model.maxContext);

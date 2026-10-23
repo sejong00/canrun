@@ -402,3 +402,53 @@ describe('assembleResults — mixed GPUs (10-03 D67, beta)', () => {
     expect(alone.all.some((c) => c.command)).toBe(false);
   });
 });
+
+describe('linked DGX Spark units (10-23 D118): llama.cpp RPC, theoretical, the RPC commands on each card, the one-unit combo page', () => {
+  it('two units: every card is theoretical, no measurements join, runnable cards carry ggml-rpc-server lines and llama-server --rpc', () => {
+    const run = assembleResults(catalog, withGpu('nvidia-dgx-spark', { nodes: 2, ramGB: 128 }))!;
+    expect(run.hardware.nodes).toBe(2);
+    expect(run.hardware.theoretical).toBe(true);
+    expect(run.hardware.config.hw.nodes).toBe(2);
+    for (const card of run.all) {
+      expect(card.combo.baseline.result.confidence, card.model.id).toBe('theoretical');
+      expect(card.combo.baseline.measured, card.model.id).toBeUndefined();
+      if (card.combo.display.fits) {
+        expect(card.rpcServers, card.model.id).toEqual(['ggml-rpc-server -H <node2-ip> -p 50052 -c']);
+        expect(card.command, card.model.id).toMatch(/^llama-server .* -ngl all .*--rpc <node2-ip>:50052$/);
+        expect(card.commandFitAuto, card.model.id).toBeUndefined();
+      } else {
+        expect(card.rpcServers, card.model.id).toBeUndefined();
+      }
+      // 콤보 페이지(상세)는 1대 구성 — 1대 구성 가운데 고른 RAM(허브와 같은 pickConfigCombo)
+      const combos = hardwareConfigs(seed.gpus.find((g) => g.id === 'nvidia-dgx-spark')!, catalog.gpus).map((c) => assessCombo(catalog, run.hardware.gpu, c, card.model));
+      expect(card.hubConfig, card.model.id).toEqual({ ramGB: pickConfigCombo(combos).ramGB, os: 'linux' });
+    }
+    const oss = run.all.find((c) => c.model.id === 'gpt-oss-120b')!;
+    const one = assembleResults(catalog, withGpu('nvidia-dgx-spark', { ramGB: 128 }))!.all.find((c) => c.model.id === 'gpt-oss-120b')!;
+    expect(one.combo.baseline.result.confidence).toBe('measured');
+    expect(one.rpcServers).toBeUndefined();
+    expect(oss.combo.baseline.result.tgTokS.est).toBeLessThan(one.combo.baseline.estimate.tgTokS.est);
+  });
+
+  it('three and four units: one server line per extra unit; 64GB × 2 runs gpt-oss-120b, which does not fit one 64GB unit', () => {
+    for (const nodes of [3, 4]) {
+      const run = assembleResults(catalog, withGpu('nvidia-dgx-spark', { nodes, ramGB: 128 }))!;
+      const card = run.all.find((c) => c.model.id === 'gpt-oss-120b')!;
+      expect(card.rpcServers).toHaveLength(nodes - 1);
+      expect(card.command).toContain(`--rpc ${Array.from({ length: nodes - 1 }, (_, i) => `<node${i + 2}-ip>:50052`).join(',')}`);
+    }
+    const small = assembleResults(catalog, withGpu('nvidia-dgx-spark', { ramGB: 64 }))!.all.find((c) => c.model.id === 'gpt-oss-120b')!;
+    const pair = assembleResults(catalog, withGpu('nvidia-dgx-spark', { ramGB: 64, nodes: 2 }))!.all.find((c) => c.model.id === 'gpt-oss-120b')!;
+    expect(small.combo.baseline.fits).toBe(false);
+    expect(pair.combo.baseline.result.verdict).toBe('S');
+    expect(pair.combo.baseline.memory.nodes).toBe(2);
+  });
+
+  it('nodes on any other device resolves to one unit', () => {
+    for (const id of ['amd-strix-halo', 'apple-m3-ultra', 'rtx-5090']) {
+      const hw = resolveHardware({ ...withGpu(id), nodes: 2 }, catalog)!;
+      expect(hw.nodes, id).toBe(1);
+      expect('nodes' in hw.config.hw, id).toBe(false);
+    }
+  });
+});

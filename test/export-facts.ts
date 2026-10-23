@@ -117,7 +117,11 @@ export type PageFacts = {
    * 메모리 용량별 판정 행 `[data-ram-step]` (통합·CPU 는 메모리 옵션, dGPU 는 시스템 RAM 계단 — 10-03 D64):
    * verdict = 행 배지(기준 양자화), displayVerdict·quant·fits = 표시 양자화
    */
-  ramSteps: Array<{ ram: number; verdict: string; displayVerdict: string; quant: string; fits: boolean; assumed: boolean; commands: boolean }>;
+  ramSteps: Array<{ ram: number; nodes: number; verdict: string; displayVerdict: string; quant: string; fits: boolean; assumed: boolean; commands: boolean }>;
+  /** GPU 허브 요약 목록 `[data-config]` 키 — 1대는 "128", 여러 대 연결(10-23 D118 — DGX Spark)은 "128x2" (문서 순서) */
+  hubConfigKeys: string[];
+  /** `[data-cluster-note]` — 여러 대 연결 행 안내 문장(허브 요약·콤보 메모리 구성별 판정, 10-23 D118) 수 */
+  clusterNotes: number;
   /** `[data-ram-caption]` 값 ('verdict' | 'file') — dGPU RAM 목록 설명의 갈래 */
   ramCaption?: string;
   /** `[data-ram-same]` — RAM 계단에서 맨 위 판정이 같다는 구절 (RAM 목록이 없는 dGPU 콤보) */
@@ -799,6 +803,8 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
   const ramStepEls = elementsWithAttr(noScript, 'data-ram-step');
   const ramSteps = ramStepEls.map((e) => ({
     ram: Number(attrValue(e.openTag, 'data-ram-step')),
+    // 여러 대 연결 행(10-23 D118)만 data-nodes — 없으면 1대
+    nodes: Number(attrValue(e.openTag, 'data-nodes') ?? '1'),
     verdict: attrValue(e.inner, 'data-verdict') ?? '',
     displayVerdict: attrValue(e.openTag, 'data-display-verdict') ?? '',
     quant: attrValue(e.openTag, 'data-quant') ?? '',
@@ -887,6 +893,8 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
     ramSteps,
     ...(ramCaption === undefined ? {} : { ramCaption }),
     ramSame: elementsWithAttr(noScript, 'data-ram-same').length > 0,
+    hubConfigKeys: elementsWithAttr(noScript, 'data-config').map((e) => attrValue(e.openTag, 'data-config') ?? ''),
+    clusterNotes: elementsWithAttr(noScript, 'data-cluster-note').length,
     ...(headerVerdict === undefined ? {} : { headerVerdict }),
     ...(liveSummary === undefined ? {} : { liveSummary }),
     numberFingerprint: fingerprint,

@@ -1,5 +1,5 @@
 import { computeBufferGB, kvGB, usableGB } from '@canrun/engine';
-import type { ComboAssessment, Gpu, Model } from '@canrun/data';
+import { configKey, type ComboAssessment, type Gpu, type Model } from '@canrun/data';
 import { useLocale, useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
 import { GgufSourceBadge, LicenseBadge } from '@/components/badges';
@@ -545,7 +545,7 @@ export function UnifiedTierTable({ gpus }: { gpus: string }) {
               return data.configs.map((config, i) => {
                 const counts = data.counts[i]!;
                 return (
-                  <tr key={`${gpu.id}-${config.ramGB}`}>
+                  <tr key={`${gpu.id}-${configKey(config)}`}>
                     <th scope="row">
                       <a href={hub(gpuHref(gpu.id))}>{gpuName(names, gpu)}</a>
                     </th>

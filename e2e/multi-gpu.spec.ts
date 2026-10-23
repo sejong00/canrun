@@ -1,6 +1,7 @@
 /**
  * 계산기 — 같은 GPU 여러 장 (docs/02 §6 베타, PROGRESS §4 D58): 장수 선택 → 베타 안내·이론 추정·URL gpus= 동기, 통합 메모리로 바꾸면 사라짐.
  * 서로 다른 GPU 섞기 (10-03 D67): "다른 GPU 함께 쓰기" → 카드 고르기 → URL plus=·안내·가정 문장·VRAM 합, 합계 4장 상한, 빼기, 맥이면 사라짐.
+ * DGX Spark 여러 대 연결 (10-23 D118): 대수 선택(1~4) → URL nodes=·가정 문장·이론 추정 안내·RPC 명령, 다른 통합 메모리 기기면 사라짐.
  */
 import { expect, test } from '@playwright/test';
 import { collectProblems, LOCALES, localePath, open } from './helpers';
@@ -111,6 +112,37 @@ for (const locale of LOCALES) {
     await open(page, `${calc}?gpu=apple-m4-pro&plus=rtx-3060-12gb`);
     await expect(page.locator('[data-extra-gpus]')).toHaveCount(0);
     await expect.poll(() => new URL(page.url()).searchParams.get('plus')).toBeNull();
+    expect(problems).toEqual([]);
+  });
+
+  test(`${locale} calculator — linked DGX Spark units: units select, nodes=, RPC commands, theoretical notice (10-23 D118)`, async ({ page }) => {
+    const problems = collectProblems(page);
+    await open(page, `${calc}?gpu=nvidia-dgx-spark`);
+    const nodes = page.locator('select[name="nodes"]');
+    await expect(nodes).toHaveValue('1');
+    await expect(nodes.locator('option')).toHaveCount(4);
+    // 통합 메모리 기기는 GPU 장수 선택이 없다(대수 선택만)
+    await expect(page.locator('select[name="gpus"]')).toHaveCount(0);
+    const oss = page.locator('[data-result-card][data-model-id="gpt-oss-120b"]');
+    await expect(oss).toBeVisible();
+    await expect(oss.locator('[data-rpc-command]')).toHaveCount(0);
+
+    await nodes.selectOption('2');
+    await expect.poll(() => new URL(page.url()).searchParams.get('nodes')).toBe('2');
+    await expect(page.locator('[data-assumptions]')).toContainText(locale === 'ko' ? '2대' : '2×');
+    await expect(page.getByText(locale === 'ko' ? '2대 연결은 llama.cpp RPC 방식으로 계산합니다' : 'Linking 2 units is calculated as llama.cpp RPC')).toBeVisible();
+    const command = oss.locator('[data-rpc-command]');
+    await expect(command).toContainText('ggml-rpc-server -H <node2-ip> -p 50052 -c');
+    await expect(command).toContainText('--rpc <node2-ip>:50052');
+    await expect(oss.locator('[data-cluster-links] a')).toHaveCount(3);
+
+    await page.reload();
+    await expect(page.locator('select[name="nodes"]')).toHaveValue('2');
+
+    // 다른 통합 메모리 기기는 대수 선택이 없고 URL 에서도 빠진다
+    await open(page, `${calc}?gpu=apple-m4-pro&nodes=2`);
+    await expect(page.locator('select[name="nodes"]')).toHaveCount(0);
+    await expect.poll(() => new URL(page.url()).searchParams.get('nodes')).toBeNull();
     expect(problems).toEqual([]);
   });
 }

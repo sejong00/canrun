@@ -26,6 +26,8 @@ export type ResolvedHardware = {
   gpuCount: number;
   /** 함께 꽂은 다른 카드 (10-03 D67, 넣은 순서) — 없으면 빈 배열. 1번 GPU 장수 = gpuCount − extras.length */
   extras: GpuCore[];
+  /** 여러 대 연결 대수 (10-23 D118 — DGX Spark, 1 이상). 1 이 아니면 이론 추정이고 결과 카드에 RPC 명령이 붙는다 */
+  nodes: number;
   /** 실제 평가에 쓰인 값 (기본값 채움) */
   ramGB: number;
   os: HwConfig['hw']['os'];
@@ -90,7 +92,7 @@ export function resolveHardware(state: CalcState, catalog: CatalogLite): Resolve
       ramBandwidthGBs: ddrBandwidth(catalog, state.ddr),
       ...(gpuCount > 1 ? { gpuCount } : {}),
     });
-    return config ? { gpu, config, theoretical: true, ramGB, os, gpuCount, extras: [] } : undefined;
+    return config ? { gpu, config, theoretical: true, ramGB, os, gpuCount, extras: [], nodes: 1 } : undefined;
   }
 
   let gpu = findGpu(catalog, hw.gpuId);
@@ -109,6 +111,8 @@ export function resolveHardware(state: CalcState, catalog: CatalogLite): Resolve
       ? (state.plus ?? []).map((id) => findGpu(catalog, id)).filter((g): g is GpuCore => g !== undefined && canMixWith(gpu, g))
       : [];
   const gpuCount = primaryCount + extras.length;
+  // 여러 대 연결(10-23 D118) — `cluster` 가 있는 통합 메모리 기기만(정리는 normalize, 범위 밖이면 hardwareConfigs 도 1대로 둔다)
+  const requestedNodes = gpu.kind === 'unified' && gpu.cluster ? (state.nodes ?? 1) : 1;
   const [config] = hardwareConfigs(gpu, catalog.gpus, {
     ramGB,
     os,
@@ -116,8 +120,12 @@ export function resolveHardware(state: CalcState, catalog: CatalogLite): Resolve
     ramBandwidthGBs: ddrBandwidth(catalog, state.ddr),
     ...(primaryCount > 1 ? { gpuCount: primaryCount } : {}),
     ...(extras.length > 0 ? { extraGpus: extras } : {}),
+    ...(requestedNodes > 1 ? { nodes: requestedNodes } : {}),
   });
-  return config ? { gpu, config, theoretical: gpuCount > 1, ramGB, os, gpuCount, extras } : undefined;
+  if (!config) return undefined;
+  const nodes = config.nodes ?? 1;
+  // 멀티 GPU·여러 대 연결은 보정 표본 밖 — 이론 추정
+  return { gpu, config, theoretical: gpuCount > 1 || nodes > 1, ramGB, os, gpuCount, extras, nodes };
 }
 
 /**

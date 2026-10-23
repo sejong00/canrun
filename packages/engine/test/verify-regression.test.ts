@@ -36,12 +36,16 @@
  * 16) DGX Spark 가 GPU 에 올릴 수 있는 메모리(10-23 D117, 엔진 0.13.0 `Hardware.unifiedUsableGB`): 1대 공개 실측 4점의 들어감·안 들어감이 기기 근거 값
  *     116.9GB(DGX OS 7.5.0 부팅 가용 − 데스크톱 기본 사용량)와 모두 맞고, 옛 규칙(× 0.70 = 89.6GB)으로는 1대에서 돈 셋이 GPU 에 안 들어간다. CPU 경로 한도도
  *     그 값을 넘지 않는다(같은 메모리). 값이 없는 통합 메모리 기기(맥·Strix Halo)는 산식 그대로(docs/02 §2.3·§7)
+ * 17) DGX Spark 여러 대 llama.cpp RPC 층 분할(10-23 D118, 엔진 0.14.0 `Hardware.nodes`·`RPC_HOP_TG_MS`): 같은 사람·같은 조건 1대/2대 공개 쌍 14점의
+ *     토큰당 추가 시간 역산(TCP 기본 3.6~7.95ms · CPU 유휴 상태 끔 1.45~6.59ms · RDMA 1.0~1.4ms)과 5ms 로 낸 2대 예측의 오차(전부 ±17% 안, 과대는 TCP 32k
+ *     +10.3% 뿐, 깊이 8k 이하 TCP 기본 점은 모두 실측 이하)를 고정하고, 2대에서만 돈 공개 실측 2점이 1대에는 안 들어가고 2대에는 들어감을 본다.
+ *     3·4대는 이동 횟수(대수 − 1)로 늘린 이론값(4대 RPC 공개 실측 없음) — 라벨은 이론 추정(docs/02 §6.2·§7)
  */
 import { describe, expect, it } from 'vitest';
 import { fit } from '../src/fit';
 import { evaluate } from '../src/index';
-import { computeBufferGB, gpuResidentGBFor, kvBytesPerToken, kvGB, usableGB, usableRamGB, weightsGBFromBpw } from '../src/memory';
-import { PLE_CUDA_CLASSES, PLE_TOKEN_OVERHEAD_MS } from '../src/constants';
+import { clusterShareOf, computeBufferGB, gpuResidentGBFor, kvBytesPerToken, kvGB, usableGB, usableRamGB, weightsGBFromBpw } from '../src/memory';
+import { PLE_CUDA_CLASSES, PLE_TOKEN_OVERHEAD_MS, RPC_HOP_TG_MS } from '../src/constants';
 import { bytesPerTokenGB, gpuThroughputGBs, pleOverheadSeconds, ppEstimate, tgEstimate } from '../src/speed';
 import type { Hardware, ModelQuant } from '../src/types';
 import {
@@ -89,7 +93,11 @@ import {
   QWEN3_8B_Q4,
   RTX_4060_8GB,
   RTX_4090,
+  CLUSTER_FIT_CASES,
+  CLUSTER_RPC_PAIRS,
+  GPT_OSS_120B,
   SPARK_128_USABLE,
+  SPARK_128_X2,
   SPARK_FIT_CASES,
   SPARK_USABLE_128_GB,
   SPEED_CASES,
@@ -744,5 +752,68 @@ describe('16) DGX Spark usable memory (10-23 D117, docs/02 §2.3·§7): 1대 공
     // 1대 상한(UD-IQ3_S 116.1GB)이 들어가는 여유 — 컨텍스트 2k 에서 0.3GB 남짓
     const edge = SPARK_FIT_CASES[2]!;
     expect(SPARK_USABLE_128_GB - fit(SPARK_128_USABLE, edge.mq, { ctx: edge.ctx }).vram.total).toBeCloseTo(0.265, 2);
+  });
+});
+
+describe('17) DGX Spark cluster — llama.cpp RPC layer split (10-23 D118, docs/02 §6.2·§7): 2대 공개 쌍 14점', () => {
+  const extraMs = (single: number, cluster: number) => (1 / cluster - 1 / single) * 1000;
+  const predict = (single: number, hops: number) => 1 / (1 / single + hops * RPC_HOP_TG_MS * 1e-3);
+
+  it('back-calculates the per-token time each pair adds (1/two units − 1/one unit) and keeps the recorded values', () => {
+    for (const p of CLUSTER_RPC_PAIRS) {
+      expect(p.source, p.label).toMatch(/^https:\/\//);
+      expect(extraMs(p.single, p.cluster), p.label).toBeCloseTo(p.recordedMs, 2);
+    }
+    const range = (setup: string) => {
+      const ms = CLUSTER_RPC_PAIRS.filter((p) => p.setup === setup).map((p) => extraMs(p.single, p.cluster));
+      return [Math.min(...ms), Math.max(...ms)];
+    };
+    expect(range('tcp')[0]).toBeCloseTo(0, 6); // Devstral 2.64 → 2.64 (표시 자릿수 ±1.4ms)
+    expect(range('tcp')[1]).toBeCloseTo(7.947, 2); // TCP 기본 깊이 32k
+    expect(range('tcp-idle-off')).toEqual([expect.closeTo(1.454, 2), expect.closeTo(6.587, 2)]);
+    expect(range('rdma')).toEqual([expect.closeTo(1.035, 2), expect.closeTo(1.395, 2)]);
+  });
+
+  it('the constant is the TCP-default value at the verdict depth (8,192) rounded up, so every TCP-default point to 8k is predicted at or below the measurement', () => {
+    const at8k = CLUSTER_RPC_PAIRS.find((p) => p.setup === 'tcp' && p.depth === 8192)!;
+    expect(RPC_HOP_TG_MS).toBe(Math.ceil(extraMs(at8k.single, at8k.cluster) * 10) / 10);
+    for (const p of CLUSTER_RPC_PAIRS.filter((x) => x.setup === 'tcp' && x.depth <= 8192)) {
+      expect(predict(p.single, 1) / p.cluster - 1, p.label).toBeLessThanOrEqual(0);
+    }
+  });
+
+  it('predicts every two-unit result within ±17% from its one-unit result; the only over-estimates beyond +6% are TCP-default 32k (+10.3%)', () => {
+    const errs = CLUSTER_RPC_PAIRS.map((p) => ({ p, e: predict(p.single, 1) / p.cluster - 1 }));
+    for (const { p, e } of errs) expect(Math.abs(e), p.label).toBeLessThan(0.17);
+    expect(Math.max(...errs.map((x) => Math.abs(x.e)))).toBeCloseTo(0.164, 3); // idle states off, depth 0
+    const over = errs.filter((x) => x.e > 0.06);
+    expect(over.map((x) => x.p.label)).toEqual(['gpt-oss-120b MXFP4 tg32 d32768 (b7157 TCP)']);
+    expect(over[0]!.e).toBeCloseTo(0.103, 3);
+    // RDMA·유휴 상태 끔 점(깊이 8k 이하)은 실측이 더 빠르다 — 이 설정이면 표시보다 빠를 수 있다(docs/02 §6.2)
+    for (const { p, e } of errs.filter((x) => x.p.setup !== 'tcp' && x.p.depth <= 8192)) expect(e, p.label).toBeLessThan(0);
+  });
+
+  it('end to end: gpt-oss-120b on two 128GB units at 8k lands within ±10% of the 2-unit run at depth 8,192 (theoretical label, ±30%)', () => {
+    const r = evaluate(SPARK_128_X2, { ...GPT_OSS_120B, layers: 36 }, { ctx: 8192, theoretical: true });
+    expect(r.mode).toBe('full-gpu');
+    expect(r.confidence).toBe('theoretical');
+    const one = evaluate(SPARK_128_USABLE, GPT_OSS_120B, { ctx: 8192 }).tgTokS.est;
+    expect(r.tgTokS.est).toBeCloseTo(predict(one, 1), 9);
+    const measured = CLUSTER_RPC_PAIRS.find((p) => p.setup === 'tcp' && p.depth === 8192)!.cluster;
+    expect(Math.abs(r.tgTokS.est / measured - 1)).toBeLessThan(0.1);
+    expect(measured).toBeGreaterThanOrEqual(r.tgTokS.low);
+  });
+
+  it('models that ran only on two units do not fit one unit and fit two (busiest unit: ceil((layers + 1) / 2) / layers of the weights and KV + its own buffer)', () => {
+    for (const c of CLUSTER_FIT_CASES) {
+      expect(c.source, c.label).toMatch(/^https:\/\//);
+      expect(fit(SPARK_128_USABLE, c.mq, { ctx: c.ctx }).fits, `${c.label} on one unit`).toBe(false);
+      const two = fit(SPARK_128_X2, c.mq, { ctx: c.ctx });
+      expect(two.fits && two.mode === 'full-gpu', `${c.label} on two units`).toBe(true);
+      const share = clusterShareOf(c.mq, 2);
+      expect(share).toBeCloseTo(Math.ceil((c.mq.layers! + 1) / 2) / c.mq.layers!, 12);
+      expect(two.vram.total).toBeCloseTo(c.mq.fileGB! * share + kvGB(c.mq.kvBytesPerToken, c.ctx) * share + computeBufferGB(c.ctx), 9);
+      expect(two.vram.total).toBeLessThan(SPARK_USABLE_128_GB);
+    }
   });
 });

@@ -10,6 +10,7 @@
 export type SiteUpdate = { readonly id: string; readonly date: string };
 
 export const SITE_UPDATES = [
+  { id: 'dgx-spark-cluster', date: '2026-10-23' },
   { id: 'dgx-spark-64gb', date: '2026-10-23' },
   { id: 'sparse-linear-hybrid', date: '2026-10-22' },
   { id: 'compressed-attention', date: '2026-10-21' },
