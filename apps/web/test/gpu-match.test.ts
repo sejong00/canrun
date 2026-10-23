@@ -135,6 +135,10 @@ describe('matchGpu — catalog self-resolution', () => {
       expect(matchGpu(q, gpus), q).toEqual({ kind: 'exact', id: 'nvidia-dgx-spark' });
     }
     for (const q of ['gx10', 'zgx nano', 'thinkstation pgx', 'edgexpert', 'gn100', 'ai top atom']) expect(rankGpus(q, gpus)[0]?.id, q).toBe('nvidia-dgx-spark');
+    // 제조사의 공식 전체 이름(별칭보다 길다)은 확정하지 않지만 목록 맨 위 — "ai" 하나만 겹치는 Strix Halo 보다 앞 (10-23 D117 리뷰)
+    for (const q of ['HP ZGX Nano G1n AI Station', 'Acer Veriton GN100 AI Mini Workstation', 'MSI EdgeXpert MS-C931']) {
+      expect(rankGpus(q, gpus)[0]?.id, q).toBe('nvidia-dgx-spark');
+    }
     expect(matchGpu('DDR5-5600 듀얼채널 CPU', gpus, { names: koNames })).toEqual({ kind: 'exact', id: 'cpu-ddr5-5600-2ch' });
     expect(matchGpu('nope', gpus)).toEqual({ kind: 'none' });
     expect(matchGpu('', gpus)).toEqual({ kind: 'none' });
@@ -157,6 +161,33 @@ describe('matchGpu — catalog self-resolution', () => {
     // 콤보박스 목록엔 여전히 뜬다 (확정만 금지)
     expect(rankGpus('4070 ti', gpus).map((g) => g.id)).toContain('rtx-4070-ti-super');
     expect(rankGpus('7900', gpus).map((g) => g.id)).toEqual(expect.arrayContaining(['rx-7900-xt', 'rx-7900-xtx']));
+  });
+
+  it('an alias alone does not catch words that other GPU names own (10-23 D117 review — "Dell Pro Max with GB10", "GIGABYTE AI TOP ATOM")', () => {
+    const ids = (q: string) => rankGpus(q, gpus).map((g) => g.id);
+    // pro·max·ai 는 Apple·Strix Halo 이름의 단어 — OEM 별칭이 그 목록에 끼거나 앞서지 않는다(별칭을 넣기 전과 같은 목록)
+    expect(ids('pro')).toEqual(['apple-m4-pro', 'apple-m5-pro']);
+    expect(ids('radeon pro')).toEqual(['apple-m4-pro', 'apple-m5-pro']);
+    expect(ids('ai')).toEqual(['amd-strix-halo']);
+    expect(ids('max')).not.toContain('nvidia-dgx-spark');
+    // 이름 부분 일치가 없으면 겹치는 토큰 목록 — Apple Pro·Max 후보가 남고, 남의 이름 단어만 겹치는 DGX Spark 는 빠진다
+    expect(ids('pro max')).toEqual(expect.arrayContaining(['apple-m4-pro', 'apple-m4-max-40c', 'apple-m5-pro', 'apple-m5-max-40c']));
+    expect(ids('pro max')).not.toContain('nvidia-dgx-spark');
+    expect(ids('macbook pro')).toEqual(['apple-m4-pro', 'apple-m5-pro']);
+    expect(matchGpu('pro', gpus)).toEqual({ kind: 'none' });
+    // 그 GPU 에만 있는 토큰(dell·top·gb10)이 있으면 그대로 잡힌다
+    for (const q of ['dell pro max', 'ai top', 'max with gb10']) expect(ids(q)[0], q).toBe('nvidia-dgx-spark');
+  });
+
+  it('a fallback list (no partial match) puts the GPUs that share more of the query first, then catalog order (10-23 D117 review)', () => {
+    const first = (q: string) => rankGpus(q, gpus)[0]?.id;
+    expect(first('asus rtx 4090')).toBe('rtx-4090');
+    expect(first('m4 pro 48gb')).toBe('apple-m4-pro');
+    expect(first('dgx spark 64gb')).toBe('nvidia-dgx-spark');
+    // 남의 이름 단어(ai — Strix Halo 이름)는 별칭에만 그 단어가 있는 GPU(DGX Spark) 몫으로 세지 않는다
+    expect(rankGpus('ryzen ai 9 hx 370', gpus).map((g) => g.id)).toEqual(['amd-strix-halo']);
+    // 겹치는 수가 같으면 카탈로그 순서 그대로
+    expect(rankGpus('pro max', gpus).map((g) => g.id).slice(0, 3)).toEqual(['apple-m4-pro', 'apple-m4-max-32c', 'apple-m4-max-40c']);
   });
 
   it('vendor-only queries browse that vendor instead of listing everything popular-first (re-verification)', () => {

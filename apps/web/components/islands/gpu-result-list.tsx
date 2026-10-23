@@ -6,7 +6,7 @@ import { GpuResultRow } from '@/components/islands/gpu-result-row';
 import { Pill } from '@/components/pill';
 import { VerdictChip } from '@/components/verdict-chip';
 import { formatCtx, formatInt } from '@/lib/format';
-import { formatPriceFx, krwNoteFx, type KrwRate } from '@/lib/krw';
+import { formatPriceFx, krwNoteFx, msrpConfigRamGB, type KrwRate } from '@/lib/krw';
 import { comboDetailQuery } from '@/lib/calc/hardware';
 import type { GpuView, MineRow, ModelRunResult } from '@/lib/calc/run-model';
 import { BUDGET_OPTIONS_USD, HW_TYPES, type CalcState, type HwType } from '@/lib/calc/state';
@@ -59,12 +59,15 @@ export function GpuResultList({
   const id = useId();
   const toggle = <T extends string>(list: readonly T[], value: T): T[] => (list.includes(value) ? list.filter((v) => v !== value) : [...list, value]);
   const price = (usd: number) => formatPriceFx(t.common, locale, usd, fx);
-  const priceText = (gpu: GpuCore): string =>
-    gpu.streetUSD !== undefined && gpu.priceAsOf
-      ? t.gpuHub('priceStreet', { price: price(gpu.streetUSD), date: gpu.priceAsOf })
-      : gpu.msrpUSD !== undefined
-        ? t.gpuHub('priceMsrp', { price: price(gpu.msrpUSD) })
-        : t.common('none');
+  // 통합 메모리 PC 의 출시가는 가장 큰 구성의 값 — 모델 허브 표와 같이 구성을 적는다 (10-23 D117 리뷰)
+  const priceText = (gpu: GpuCore): string => {
+    if (gpu.streetUSD !== undefined && gpu.priceAsOf) return t.gpuHub('priceStreet', { price: price(gpu.streetUSD), date: gpu.priceAsOf });
+    if (gpu.msrpUSD === undefined) return t.common('none');
+    const msrpRam = msrpConfigRamGB(gpu);
+    return msrpRam !== undefined
+      ? t.gpuHub('priceMsrpConfig', { price: price(gpu.msrpUSD), ram: formatInt(locale, msrpRam) })
+      : t.gpuHub('priceMsrp', { price: price(gpu.msrpUSD) });
+  };
   const osLabel = (os: string) => t.calc(os === 'windows' ? 'osWindows' : os === 'linux' ? 'osLinux' : 'osMacos');
   const mineId = state.hardware.kind === 'catalog' ? state.hardware.gpuId : undefined;
   // 키를 리터럴로 써서 i18n 정적 스캔이 확인하게 한다

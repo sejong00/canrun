@@ -1140,7 +1140,9 @@ export const GLM53_REFERENCE = {
 /**
  * DGX Spark 가 GPU 에 올릴 수 있는 메모리 (10-23 D117, 엔진 0.13.0 `Hardware.unifiedUsableGB`) — 공개 실측 4점(1대):
  * - GLM-5.3-Flash UD-IQ2_XXS 101.84GB 를 1대에서 GPU 로 돌렸다(#30640 — tg64 깊이 65,536 까지, 위 GLM53_REFERENCE.spark)
- * - Qwen3-235B-A22B Q3_K_M 105GB — "At 105GB, it barely fits on a single unit."(Classmethod, llama.cpp b8012, pp2048·tg256).
+ * - Qwen3-235B-A22B Q3_K_M 112.45GB — "At 105GB, it barely fits on a single unit."(Classmethod, llama.cpp b8012, pp2048·tg256 — 글의 GGUF 는 모두 unsloth).
+ *   글의 105 는 GiB 다(llama-bench 크기 열 단위): unsloth/Qwen3-235B-A22B-GGUF Q3_K_M 3분할 합계 112,447,380,832 B = 112.45GB = 104.72GiB
+ *   (HF API https://huggingface.co/api/models/unsloth/Qwen3-235B-A22B-GGUF/tree/main/Q3_K_M — 10-23 D117 리뷰). 필요량 112.45 + KV 0.44 + 버퍼 0.52 = 113.41
  *   KV = 2 × 94층 × KV 헤드 4 × head_dim 128 × 2B = 192,512 B/tok(https://huggingface.co/Qwen/Qwen3-235B-A22B/blob/main/config.json)
  * - DeepSeek V4 Flash 0731 UD-IQ3_S 116.1GB 는 1대에서 돌았고(글이 "1대 상한"이라 부른다) UD-Q3_K_XL 128.2GB 는 1대에 안 들어간다
  *   (Classmethod 2026-08-10 — 컨텍스트 2,048·생성 128). KV 는 위 DSV4 픽스처의 압축 KV
@@ -1153,8 +1155,8 @@ const QWEN3_235B: Omit<ModelQuant, 'fileGB'> = { paramsB: 235.09, activeParamsB:
 export const SPARK_FIT_CASES: ReadonlyArray<{ label: string; mq: ModelQuant; ctx: number; fits: boolean; source: string }> = [
   { label: 'GLM-5.3-Flash UD-IQ2_XXS 101.84GB tg64 @65,536 (#30640)', mq: GLM53_UD_IQ2XXS, ctx: 65600, fits: true, source: PR(30640) },
   {
-    label: 'Qwen3-235B-A22B Q3_K_M 105GB pp2048 + tg256 (Classmethod b8012 — "barely fits")',
-    mq: { ...QWEN3_235B, fileGB: 105 },
+    label: 'Qwen3-235B-A22B Q3_K_M 112.45GB ("105GB" in the article is GiB) pp2048 + tg256 (Classmethod b8012 — "barely fits")',
+    mq: { ...QWEN3_235B, fileGB: 112.45 },
     ctx: 2304,
     fits: true,
     source: 'https://dev.classmethod.jp/en/articles/dgx-spark-two-node-clustering/',

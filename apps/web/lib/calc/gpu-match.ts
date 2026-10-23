@@ -3,7 +3,8 @@
  * 순수 함수(브라우저·node 공용). 카탈로그 이름·별칭·로케일 표시명(GpuName 오버라이드)을 토큰 집합으로 비교한다.
  *
  * 점수: 정규화 문자열 == 이름 100 > == 별칭/표시명 90 > 토큰 집합 동일 80 > 질의 토큰 ⊂ GPU 토큰 60.
- * 동점이면 토큰 수가 많은 쪽(최장 일치). 메모리 용량 분기 형제(4060 Ti 8/16GB, 3080 10/12GB, M4 Max 32c/40c)는
+ * 동점이면 토큰 수가 많은 쪽(최장 일치). 별칭으로만 부분 일치할 때는 질의에 다른 GPU 이름에 없는 토큰이 하나는 있어야 한다
+ * (OEM 제품 별칭의 pro·max·ai — 10-23 D117 리뷰). 메모리 용량 분기 형제(4060 Ti 8/16GB, 3080 10/12GB, M4 Max 32c/40c)는
  * 질의에 용량을 가르는 숫자가 없으면 고르지 않고 `ambiguous` 로 돌려준다 — 감지가 VRAM 을 추측하지 않는다.
  */
 import type { GpuCore } from '@canrun/data/client';
@@ -96,18 +97,44 @@ function tokenSetEq(a: readonly string[], b: readonly string[]): boolean {
   return a.length === b.length && a.every((t) => b.includes(t));
 }
 
+/**
+ * 카탈로그 이름 토큰 → 그 토큰이 이름에 든 GPU id — 별칭 부분 일치 규칙(아래 `scoreGpu`)이 쓴다. 별칭에만 있는 일반 단어
+ * (OEM 제품 이름 "Dell Pro Max with GB10" 의 pro·max, "GIGABYTE AI TOP ATOM" 의 ai)가 다른 GPU 이름의 SKU 단어와 겹친다 (10-23 D117 리뷰)
+ */
+function nameTokenOwners(gpus: readonly GpuCore[]): Map<string, Set<string>> {
+  const owners = new Map<string, Set<string>>();
+  for (const g of gpus) {
+    for (const t of gpuTokens(g.name)) {
+      const set = owners.get(t) ?? new Set<string>();
+      set.add(g.id);
+      owners.set(t, set);
+    }
+  }
+  return owners;
+}
+
 /** GPU 1개의 점수 (0 = 무관) */
-function scoreGpu(query: string, qTokens: string[], gpu: GpuCore, names: GpuNames): Candidate | undefined {
+function scoreGpu(
+  query: string,
+  qTokens: string[],
+  gpu: GpuCore,
+  names: GpuNames,
+  owners: ReadonlyMap<string, ReadonlySet<string>>,
+): Candidate | undefined {
   const override = names[gpu.id];
   const q = normalizeGpuText(query);
+  // 별칭으로만 부분 일치할 때는 질의에 다른 GPU 이름에 없는 토큰이 하나는 있어야 한다 — "pro"·"pro max" 가 OEM 별칭
+  // "dell pro max with gb10" 으로 DGX Spark 를 M4 Pro 보다 앞에 두거나 Apple 후보를 밀어내지 않게 (10-23 D117 리뷰).
+  // "dell"·"gx10"·"pgx" 처럼 그 GPU 에만 있는 토큰이 있으면 그대로 잡힌다. 이름·로케일 표시명·정확 일치·토큰 집합 일치는 그대로
+  const ownToken = qTokens.some((t) => [...(owners.get(t) ?? [])].every((id) => id === gpu.id));
   let best = 0;
   let bestTokens = 0;
-  const consider = (label: string, exactScore: number) => {
+  const consider = (label: string, exactScore: number, alias = false) => {
     const tokens = gpuTokens(label);
     let s = 0;
     if (normalizeGpuText(label) === q) s = exactScore;
     else if (tokens.length > 0 && tokenSetEq(tokens, qTokens)) s = 80;
-    else if (qTokens.length > 0 && qTokens.every((t) => tokens.includes(t))) {
+    else if (qTokens.length > 0 && qTokens.every((t) => tokens.includes(t)) && (!alias || ownToken)) {
       // 질의 ⊂ 라벨: 라벨의 나머지가 시리즈 접두·메모리 용량·DDR 구성뿐이면 60(확정 가능), Ti/Super/XT/Laptop/Max 같은 SKU 토큰이
       // 남으면 50(목록엔 뜨지만 확정 금지 — "RTX 4070 Ti" 를 4070 Ti Super 로, "GTX 1080" 을 1080 Ti 로 오매칭하던 문제).
       // 메모리 표기는 **원래 라벨**에서 먼저 뺀다 — 질의 토큰을 먼저 빼면 "3050 8 gb" 에서 8 이 빠진 뒤 "3050 gb" 가 용량으로
@@ -122,7 +149,7 @@ function scoreGpu(query: string, qTokens: string[], gpu: GpuCore, names: GpuName
   };
   consider(gpu.name, 100);
   if (override) consider(override, 90);
-  for (const alias of gpu.aliases) consider(alias, 90);
+  for (const alias of gpu.aliases) consider(alias, 90, true);
   if (best === 0) return undefined;
   // laptop 플래그와 form 이 어긋나면 탈락 (질의에 laptop 이 있으면 노트북 SKU 만)
   if (qTokens.includes('laptop') && gpu.form !== 'laptop') return undefined;
@@ -138,16 +165,25 @@ export function rankGpus(query: string, gpus: readonly GpuCore[], names: GpuName
     const pool = vendor ? gpus.filter((g) => catalogVendor(g) === vendor) : gpus;
     return [...pool].sort((a, b) => Number(b.popular) - Number(a.popular) || a.name.localeCompare(b.name));
   }
+  const owners = nameTokenOwners(gpus);
   const scored = gpus
-    .map((gpu) => scoreGpu(query, qTokens, gpu, names))
+    .map((gpu) => scoreGpu(query, qTokens, gpu, names, owners))
     .filter((c): c is Candidate => c !== undefined)
     .sort((a, b) => b.score - a.score || b.tokens - a.tokens || a.gpu.name.localeCompare(b.gpu.name));
   if (scored.length > 0) return scored.map((c) => c.gpu);
-  // 부분 일치가 아예 없으면 토큰 하나라도 겹치는 GPU (오타·부분 입력)
-  return gpus.filter((g) => {
-    const tokens = gpuTokens([g.name, names[g.id] ?? '', ...g.aliases].join(' '));
-    return qTokens.some((t) => tokens.includes(t));
-  });
+  // 부분 일치가 아예 없으면 토큰 하나라도 겹치는 GPU (오타·부분 입력) — 겹치는 토큰이 많은 쪽 먼저, 같으면 카탈로그 순서.
+  // 제품 전체 이름("HP ZGX Nano G1n AI Station")이 별칭(hp zgx nano g1n)보다 길어도 그 GPU 가 "ai" 하나만 겹치는 Strix Halo 보다 앞에 온다.
+  // 별칭에만 있는 토큰은 부분 일치와 같은 규칙으로 센다 — 다른 GPU 이름에 있는 단어(pro·max·ai)는 그 이름의 GPU 몫 (10-23 D117 리뷰)
+  return gpus
+    .map((g, index) => {
+      const own = new Set(gpuTokens(`${g.name} ${names[g.id] ?? ''}`));
+      const alias = new Set(gpuTokens(g.aliases.join(' ')));
+      const counts = (t: string) => own.has(t) || (alias.has(t) && [...(owners.get(t) ?? [])].every((id) => id === g.id));
+      return { g, index, overlap: qTokens.filter(counts).length };
+    })
+    .filter((x) => x.overlap > 0)
+    .sort((a, b) => b.overlap - a.overlap || a.index - b.index)
+    .map((x) => x.g);
 }
 
 const MEMORY_UNITS = new Set(['gb', 'c', 'core']);
@@ -203,8 +239,10 @@ export function matchGpu(
   const qTokens = gpuTokens(query);
   if (qTokens.length === 0) return { kind: 'none' };
   const pool = opts.vendor ? gpus.filter((g) => catalogVendor(g) === opts.vendor) : gpus;
+  // 별칭 부분 일치 규칙의 "다른 GPU 이름"은 벤더로 거르기 전 카탈로그 전체 기준 — 감지 경로와 검색 경로가 같은 답을 내게
+  const owners = nameTokenOwners(gpus);
   const scored = pool
-    .map((gpu) => scoreGpu(query, qTokens, gpu, names))
+    .map((gpu) => scoreGpu(query, qTokens, gpu, names, owners))
     .filter((c): c is Candidate => c !== undefined)
     .sort((a, b) => b.score - a.score || b.tokens - a.tokens || a.gpu.id.localeCompare(b.gpu.id));
   const top = scored[0];

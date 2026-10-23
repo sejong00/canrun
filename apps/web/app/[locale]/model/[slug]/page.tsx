@@ -36,6 +36,7 @@ import { loadModelAbout } from '@/lib/model-about';
 import { needAt8k } from '@/lib/model-need';
 import { getModelHub } from '@/lib/hubs';
 import type { QA } from '@/lib/jsonld';
+import { msrpConfigRamGB } from '@/lib/krw';
 import { calculatorHref, comboHref, gpuHref, hfUrl, localeHref, modelHref, modelsHref } from '@/lib/links';
 import { hubOgImage } from '@/lib/og-images';
 import { isComboIndexable } from '@/lib/publish';
@@ -512,15 +513,19 @@ export default async function ModelHubPage({ params }: Props) {
               <tbody>
                 {hub.gpuRows.map((row, index) => {
                   const { gpu } = row;
+                  // 통합 메모리 PC 의 출시가는 가장 큰 구성의 값 — 행이 더 작은 구성(DGX Spark 64GB)이어도 그 구성의 값처럼 읽히지 않게 구성을 적는다 (10-23 D117 리뷰)
+                  const msrpRam = msrpConfigRamGB(gpu);
                   const price =
                     gpu.streetUSD !== undefined && gpu.priceAsOf
                       ? tGpuHub('priceStreet', {
                           price: formatPrice(t.common, locale, gpu.streetUSD),
                           date: gpu.priceAsOf,
                         })
-                      : gpu.msrpUSD !== undefined
-                        ? tGpuHub('priceMsrp', { price: formatPrice(t.common, locale, gpu.msrpUSD) })
-                        : t.common('none');
+                      : gpu.msrpUSD === undefined
+                        ? t.common('none')
+                        : msrpRam !== undefined
+                          ? tGpuHub('priceMsrpConfig', { price: formatPrice(t.common, locale, gpu.msrpUSD), ram: formatInt(locale, msrpRam) })
+                          : tGpuHub('priceMsrp', { price: formatPrice(t.common, locale, gpu.msrpUSD) });
                   return (
                     <tr
                       key={gpu.id}

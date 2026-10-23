@@ -28,6 +28,7 @@ import { gpuHubGuides } from '@/lib/gpu-hub-guides';
 import { guideEntry } from '@/lib/guides';
 import { getGpuHub } from '@/lib/hubs';
 import type { QA } from '@/lib/jsonld';
+import { msrpConfigRamGB } from '@/lib/krw';
 import { comboHref, compareHref, comparesHref, gpuHref, gpusHref, guideHref, localeHref, modelHref } from '@/lib/links';
 import { hubOgImage } from '@/lib/og-images';
 import { isComboIndexable } from '@/lib/publish';
@@ -298,12 +299,16 @@ export default async function GpuHubPage({ params }: Props) {
   // 이 칩이 들어간 맥과 메모리 구성(10-16 D97, 애플 사양 페이지) — Apple 칩만
   const macMemory = macLineMemory(gpu);
 
+  // 통합 메모리 PC 의 출시가는 가장 큰 구성의 값 — 어느 구성인지 적는다(/gpus·비교와 같은 규칙, 10-23 D117 리뷰 — DGX Spark 64GB 는 OEM 판이라 출시가가 다르다)
+  const msrpRam = msrpConfigRamGB(gpu);
   const price =
     gpu.streetUSD !== undefined && gpu.priceAsOf
       ? tSpec('priceStreet', { price: formatPrice(t.common, locale, gpu.streetUSD), date: gpu.priceAsOf })
-      : gpu.msrpUSD !== undefined
-        ? tSpec('priceMsrp', { price: formatPrice(t.common, locale, gpu.msrpUSD) })
-        : undefined;
+      : gpu.msrpUSD === undefined
+        ? undefined
+        : msrpRam !== undefined
+          ? tSpec('priceMsrpConfig', { price: formatPrice(t.common, locale, gpu.msrpUSD), ram: formatInt(locale, msrpRam) })
+          : tSpec('priceMsrp', { price: formatPrice(t.common, locale, gpu.msrpUSD) });
 
   return (
     <PageShell locale={locale} href={href}>

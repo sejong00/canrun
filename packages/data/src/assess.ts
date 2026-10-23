@@ -495,11 +495,11 @@ export type MemoryNeed = {
   needGB: number;
   /** GPU(통합 풀)에 올라가는 양 — OS 예약 포함, 엔진 breakdown.total */
   gpuGB: number;
-  /** GPU(통합 풀) 사용 가능량 (dGPU: VRAM − OS 예약, 통합: RAM × 0.70) — CPU 프로필은 0 */
+  /** GPU(통합 풀) 사용 가능량 (dGPU: VRAM − OS 예약, 통합: 기기 근거 값 `usableGBByRam`(DGX Spark — 10-23 D117) 또는 RAM × 0.70) — CPU 프로필은 0 */
   gpuUsableGB: number;
   /** 시스템 RAM 에 올라가는 양 (cpu-moe·부분 오프로드·CPU 추론) */
   ramGB: number;
-  /** 시스템 RAM 사용 가능량 (RAM − 4GB) */
+  /** 시스템 RAM 사용 가능량 (RAM − 4GB — 통합 메모리 기기 근거 값이 있으면 그 값을 넘지 않는다, 10-23 D117) */
   ramUsableGB: number;
   /**
    * dGPU 에 전량 올렸을 때(full-gpu) 파일 중 그래픽카드에 올리지 않는 GB — 입력 임베딩(시스템 RAM)·MTP 블록(미적재).

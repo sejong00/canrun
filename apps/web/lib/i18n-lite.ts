@@ -162,6 +162,8 @@ export const CALC_MESSAGE_SPEC: MessageSpec = {
     // 모델 모드 GPU 목록 (10-03 D65) — 모델 허브 표와 같은 문구를 쓴다
     'GpuHub.priceStreet',
     'GpuHub.priceMsrp',
+    // 통합 메모리 PC 출시가의 구성 (10-23 D117 리뷰 — 모델 허브 표와 같은 문구)
+    'GpuHub.priceMsrpConfig',
     'ModelHub.gpuTitle',
     'ModelHub.configRam',
     'ModelHub.cheapestTitle',

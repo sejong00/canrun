@@ -29,6 +29,7 @@ import {
 } from '@/lib/compare-phrases';
 import { compareOgImagePath, getCompare } from '@/lib/compares';
 import { formatGB, formatInt, formatRatio } from '@/lib/format';
+import { msrpConfigRamGB } from '@/lib/krw';
 import { calculatorHref, compareHref, comparesHref, gpuHref, localeHref } from '@/lib/links';
 import { gpuName, speedPhrase, type Translate } from '@/lib/phrases';
 import { formatPrice, krwNote } from '@/lib/price';
@@ -47,18 +48,17 @@ export const dynamicParams = false;
 type Tr = Translate & { has?: (key: string) => boolean };
 
 async function translators(locale: Locale) {
-  const [compare, hub, common, confidence, combo, names, list, breadcrumb] = await Promise.all([
+  const [compare, hub, common, confidence, combo, names, breadcrumb] = await Promise.all([
     getTranslations({ locale, namespace: 'Compare' }),
     getTranslations({ locale, namespace: 'GpuHub' }),
     getTranslations({ locale, namespace: 'Common' }),
     getTranslations({ locale, namespace: 'Confidence' }),
     getTranslations({ locale, namespace: 'Combo' }),
     getTranslations({ locale, namespace: 'GpuName' }),
-    getTranslations({ locale, namespace: 'GpuList' }),
     getTranslations({ locale, namespace: 'Breadcrumb' }),
   ]);
-  return { compare, hub, common, confidence, combo, names, list, breadcrumb } as unknown as CompareTranslators &
-    Record<'list' | 'breadcrumb', Tr>;
+  return { compare, hub, common, confidence, combo, names, breadcrumb } as unknown as CompareTranslators &
+    Record<'breadcrumb', Tr>;
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
@@ -84,8 +84,9 @@ function priceText(t: Awaited<ReturnType<typeof translators>>, locale: Locale, s
   const { gpu } = side;
   if (side.street) return t.hub('priceStreet', { price: formatPrice(t.common, locale, side.street.usd), date: side.street.asOf });
   if (gpu.msrpUSD === undefined) return undefined;
-  if (gpu.kind === 'unified' && gpu.ramOptionsGB?.length) {
-    return t.list('priceMsrpConfig', { price: formatPrice(t.common, locale, gpu.msrpUSD), ram: formatInt(locale, gpu.ramOptionsGB.at(-1)!) });
+  const msrpRam = msrpConfigRamGB(gpu);
+  if (msrpRam !== undefined) {
+    return t.hub('priceMsrpConfig', { price: formatPrice(t.common, locale, gpu.msrpUSD), ram: formatInt(locale, msrpRam) });
   }
   return t.hub('priceMsrp', { price: formatPrice(t.common, locale, gpu.msrpUSD) });
 }

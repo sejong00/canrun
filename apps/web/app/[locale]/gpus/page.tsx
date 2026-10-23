@@ -20,6 +20,7 @@ import { catalog } from '@/lib/catalog';
 import { formatGB, formatInt } from '@/lib/format';
 import { getGpuHub } from '@/lib/hubs';
 import { itemListJsonLd } from '@/lib/jsonld';
+import { msrpConfigRamGB } from '@/lib/krw';
 import { gpuHref, gpusHref, localeHref } from '@/lib/links';
 import { gpuName, type Translate } from '@/lib/phrases';
 import { formatPrice, krwNote } from '@/lib/price';
@@ -109,15 +110,17 @@ export default async function GpuListPage({ params }: Props) {
     gpu.kind === 'dgpu'
       ? tHub('memoryVram', { vram: formatInt(locale, gpu.vramGB ?? 0) })
       : (gpu.ramOptionsGB ?? []).map((ram) => tHub('ramOption', { ram: formatInt(locale, ram) })).join(' · ');
-  // 통합 메모리 PC 의 출시가는 가장 큰 메모리 구성의 완제품 값(data/gpus.json note·출처) — 어느 구성인지 함께 적는다
-  const price = (gpu: Gpu) =>
-    gpu.streetUSD !== undefined && gpu.priceAsOf
-      ? tHub('priceStreet', { price: formatPrice(tCommon, locale, gpu.streetUSD), date: gpu.priceAsOf })
-      : gpu.msrpUSD !== undefined
-        ? gpu.kind === 'unified' && gpu.ramOptionsGB?.length
-          ? t('priceMsrpConfig', { price: formatPrice(tCommon, locale, gpu.msrpUSD), ram: formatInt(locale, gpu.ramOptionsGB.at(-1)!) })
-          : tHub('priceMsrp', { price: formatPrice(tCommon, locale, gpu.msrpUSD) })
-        : tCommon('none');
+  // 통합 메모리 PC 의 출시가는 가장 큰 메모리 구성의 완제품 값(data/gpus.json note·출처) — 어느 구성인지 함께 적는다(`msrpConfigRamGB`)
+  const price = (gpu: Gpu) => {
+    if (gpu.streetUSD !== undefined && gpu.priceAsOf) {
+      return tHub('priceStreet', { price: formatPrice(tCommon, locale, gpu.streetUSD), date: gpu.priceAsOf });
+    }
+    if (gpu.msrpUSD === undefined) return tCommon('none');
+    const msrpRam = msrpConfigRamGB(gpu);
+    return msrpRam !== undefined
+      ? tHub('priceMsrpConfig', { price: formatPrice(tCommon, locale, gpu.msrpUSD), ram: formatInt(locale, msrpRam) })
+      : tHub('priceMsrp', { price: formatPrice(tCommon, locale, gpu.msrpUSD) });
+  };
   const countCell = (gpu: Gpu) => {
     const { counts, ramGB } = verdictCounts(gpu);
     const ram = formatInt(locale, ramGB);
