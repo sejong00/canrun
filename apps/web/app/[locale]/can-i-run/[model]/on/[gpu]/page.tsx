@@ -357,7 +357,7 @@ export default async function ComboPage({ params }: Props) {
           </p>
           <div className="flex flex-wrap gap-2">
             {gpu.form === 'laptop' && <Pill tone="caution">{t.gpuHub('badgeLaptop')}</Pill>}
-            {gpu.kind === 'unified' && <Pill tone="info">{t.gpuHub('badgeUnified')}</Pill>}
+            {gpu.kind === 'unified' && <Pill tone="info">{t.gpuHub(gpu.usableGBByRam ? 'badgeUnifiedDevice' : 'badgeUnified')}</Pill>}
             {gpu.kind === 'cpu' && <Pill tone="info">{t.gpuHub('badgeCpu')}</Pill>}
             {isFp16Crippled(gpu) && <Pill tone="caution">{t.gpuHub('badgeFp16')}</Pill>}
             <LicenseBadge license={model.license} hfId={model.hfId} />

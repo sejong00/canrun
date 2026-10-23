@@ -52,6 +52,10 @@ const GPU_LOADERS: Loaders<GpuIntroId> = {
     en: () => import('@/content/en/hubs/gpu/apple-m4-pro.mdx') as Promise<IntroModule>,
     ko: () => import('@/content/ko/hubs/gpu/apple-m4-pro.mdx') as Promise<IntroModule>,
   },
+  'nvidia-dgx-spark': {
+    en: () => import('@/content/en/hubs/gpu/nvidia-dgx-spark.mdx') as Promise<IntroModule>,
+    ko: () => import('@/content/ko/hubs/gpu/nvidia-dgx-spark.mdx') as Promise<IntroModule>,
+  },
 };
 
 const MODEL_LOADERS: Loaders<ModelIntroId> = {

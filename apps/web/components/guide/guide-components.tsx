@@ -680,7 +680,23 @@ export function Threshold() {
 }
 
 /** 인라인 수치 한 개 — 데이터에서 계산 (산문에 숫자를 쓰지 않는다, D43) */
-export function Num({ kind, model, gpu, quant, ctx, kv }: { kind: string; model?: string; gpu?: string; quant?: string; ctx?: string; kv?: string }) {
+export function Num({
+  kind,
+  model,
+  gpu,
+  quant,
+  ctx,
+  kv,
+  ram,
+}: {
+  kind: string;
+  model?: string;
+  gpu?: string;
+  quant?: string;
+  ctx?: string;
+  kv?: string;
+  ram?: string;
+}) {
   const { locale } = useHub();
   const t = useTranslations('GuideData');
   const tCommon = useTranslations('Common');
@@ -728,9 +744,12 @@ export function Num({ kind, model, gpu, quant, ctx, kv }: { kind: string; model?
       text = t('gbps', { value: formatInt(locale, needGpu(gpu, 'Num').memBandwidthGBs) });
       break;
     case 'usableGB': {
+      // 허브 요약 구성(통합 메모리 칩 = 가장 큰 메모리), `ram` 을 주면 그 메모리 구성(10-23 D117 — DGX Spark 64GB)
       const g = needGpu(gpu, 'Num');
       const data = getGpuHub(g.id)!;
-      text = tCommon('gb', { value: formatGB(locale, usableGB(data.configs[data.primaryIndex]!.hw)) });
+      const config = ram === undefined ? data.configs[data.primaryIndex] : data.configs.find((c) => c.ramGB === Number(ram));
+      if (!config) throw new Error(`guide Num usableGB: ${g.id} has no ${ram} GB configuration`);
+      text = tCommon('gb', { value: formatGB(locale, usableGB(config.hw)) });
       break;
     }
     case 'params': {

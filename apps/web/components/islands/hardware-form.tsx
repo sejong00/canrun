@@ -402,7 +402,7 @@ export function HardwareForm({ locale, catalog, names, t, state, dispatch, hydra
               )}
               {selected.kind === 'unified' && (
                 <Pill tone="info" badge="unified">
-                  {t.gpuHub('badgeUnified')}
+                  {t.gpuHub(selected.usableGBByRam ? 'badgeUnifiedDevice' : 'badgeUnified')}
                 </Pill>
               )}
               {selected.kind === 'cpu' && (

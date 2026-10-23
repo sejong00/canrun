@@ -33,14 +33,31 @@ const CAPITALIZED = new Set([
   'framework',
   'desktop',
   'spark',
+  // DGX Spark OEM 판 제품 이름 (10-23 D117)
+  'ascent',
+  'dell',
+  'nano',
+  'lenovo',
+  'acer',
+  'veriton',
 ]);
 
-/** 소문자 별칭 하나 → 표기 ("5070ti" → "5070Ti", "4070tis" → "4070TiS", "ryzen ai max 395" → "Ryzen AI Max 395") */
+/** 대소문자가 섞인 제품 표기 — 첫 글자 대문자·전부 대문자 규칙에 맞지 않는 단어 (10-23 D117 — DGX Spark OEM 판) */
+const MIXED_CASE: Readonly<Record<string, string>> = {
+  with: 'with',
+  thinkstation: 'ThinkStation',
+  edgexpert: 'EdgeXpert',
+  g1n: 'G1n',
+};
+
+/** 소문자 별칭 하나 → 표기 ("5070ti" → "5070Ti", "4070tis" → "4070TiS", "ryzen ai max 395" → "Ryzen AI Max 395", "lenovo thinkstation pgx" → "Lenovo ThinkStation PGX") */
 export function aliasLabel(alias: string): string {
   return alias
     .split(' ')
-    .map((word) =>
-      CAPITALIZED.has(word) ? word.charAt(0).toUpperCase() + word.slice(1) : word.toUpperCase().replace(/(\d)TI(S?)$/, '$1Ti$2'),
+    .map(
+      (word) =>
+        MIXED_CASE[word] ??
+        (CAPITALIZED.has(word) ? word.charAt(0).toUpperCase() + word.slice(1) : word.toUpperCase().replace(/(\d)TI(S?)$/, '$1Ti$2')),
     )
     .join(' ');
 }

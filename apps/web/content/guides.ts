@@ -304,6 +304,8 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
   },
   'unified-memory-128gb': {
     ...PUBLISHED_1015,
+    // 10-23 D117: DGX Spark 의 GPU 몫(공개 부팅 기록 − 데스크톱, 70% 아님)·64GB 구성 — '같은 70%'·'128GB 네 줄이 같다' 문장을 고쳤다
+    dateModified: '2026-10-23',
     grids: {
       // 128GB급 통합 메모리 3종 + 맥 스튜디오 Ultra 2종 + 비교용 RTX 5090(시스템 RAM 32GB 기준) × MoE·dense·대형 MoE 5종.
       // 통합 메모리 칸은 "가장 좋은 판정이 나는 가장 작은 구성"이라 본문이 그 점을 설명한다. llama-3.3-70b 는 Strix·M4 Max·M2 Ultra
@@ -572,7 +574,8 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
   'deepseek-local': {
     ...PUBLISHED_1019,
     // 10-21 D115: 'V4 는 계산하지 않음' → DeepSeek V4 Flash 0731 계산(큰 메모리 맥·여러 장·MoE 전문가 RAM 배치 <Expect>, KV 표·확실성 문단)
-    dateModified: '2026-10-21',
+    // 10-23 D117: DGX Spark 128GB 의 Q2_K 가 CPU 경로 B → 불가(기기 근거 사용 가능량이 두 경로의 한도) — 문장과 <Expect> 를 고쳤다
+    dateModified: '2026-10-23',
     grids: {
       // 8~32GB dGPU 6종 × R1 소형 4종 — 0528-qwen3-8b 는 Ollama deepseek-r1 기본 태그, distill-14b 는 :14b (10-19 추가).
       // 원본 R1·V3·V4-Pro 는 카탈로그 밖이라 모델 카드 출처의 산문으로만. V4 Flash 0731(10-21 D115)은 6장 모두 32GB RAM 에서 안 들어가 그리드에 넣지 않고 산문 <Expect> 로

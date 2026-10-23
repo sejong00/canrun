@@ -1092,7 +1092,7 @@ export const GLM53_KV_LOG = {
  *   (`-hf ggml-org/GLM-5.3-Flash-GGUF:Q2_K`)으로 본 가정, 192GB 의 기본 GPU 한도(70%)로는 카탈로그 콤보가 CPU 경로(필요 134.55 > 134.4)라 조인 안 됨.
  *   재현 명령이 `llama-batched-bench -npl 1,2` 인데 본문이 어느 npl 값인지 밝히지 않아 npl 1 로 읽었다(npl 2 합계라면 과대가 더 크다)
  * - DGX Spark(am17an, #30640 — 10-21 머지, 지금 빌드): tg64 깊이 0·16,384·65,536 = 20.4·19.6·18.4, pp2048(-ub 2048) 548.8. 파일은 "IQ2_XXS" 뿐이라
- *   unsloth UD-IQ2_XXS(101.84GB — 전문가 92.54·비전문가 6.15, MTP 2.79 포함)로 본 가정, 엔진 GPU 몫(89.6)에 안 들어가 콤보로는 조인 안 됨
+ *   unsloth UD-IQ2_XXS(101.84GB — 전문가 92.54·비전문가 6.15, MTP 2.79 포함)로 본 가정, 카탈로그 파일이 아니라 콤보로는 조인 안 됨(10-22 에는 엔진 GPU 몫 89.6 에도 안 들어갔다 — 10-23 D117 의 기기 근거 값 116.9 로는 들어간다, 회귀 16)
  * - RTX 3090 × 6(#29928 댓글 — PR 브랜치 헤드 1e24094d7 빌드(머지 전), 200W 전력 제한·-ts 9/7/7/7/7/9): avar6 Q2_K-Q3_K 128.26GB(전문가 110.19·비전문가 9.46·MTP 7.93) llama-bench
  *   tg128 깊이 0·8,192·32,768 = 37.24·36.14·35.50 — 계산기 최대 4장이라 카탈로그 밖 구성
  * 깊이 d 의 tgN 은 ctx d + N/2(위 관례), 깊이 0 은 ctx 512(tg64 — 위 MoE 회귀 관례)·64(tg128 평균)
@@ -1136,3 +1136,41 @@ export const GLM53_REFERENCE = {
     recordedErr: [0.238, 0.261, 0.242],
   },
 } as const;
+
+/**
+ * DGX Spark 가 GPU 에 올릴 수 있는 메모리 (10-23 D117, 엔진 0.13.0 `Hardware.unifiedUsableGB`) — 공개 실측 4점(1대):
+ * - GLM-5.3-Flash UD-IQ2_XXS 101.84GB 를 1대에서 GPU 로 돌렸다(#30640 — tg64 깊이 65,536 까지, 위 GLM53_REFERENCE.spark)
+ * - Qwen3-235B-A22B Q3_K_M 105GB — "At 105GB, it barely fits on a single unit."(Classmethod, llama.cpp b8012, pp2048·tg256).
+ *   KV = 2 × 94층 × KV 헤드 4 × head_dim 128 × 2B = 192,512 B/tok(https://huggingface.co/Qwen/Qwen3-235B-A22B/blob/main/config.json)
+ * - DeepSeek V4 Flash 0731 UD-IQ3_S 116.1GB 는 1대에서 돌았고(글이 "1대 상한"이라 부른다) UD-Q3_K_XL 128.2GB 는 1대에 안 들어간다
+ *   (Classmethod 2026-08-10 — 컨텍스트 2,048·생성 128). KV 는 위 DSV4 픽스처의 압축 KV
+ * 값은 데이터 계층 `data/gpus.json` nvidia-dgx-spark `usableGBByRam` 128GB 116.9(DGX OS 7.5.0 부팅 가용 120.55GB − 데스크톱 기본 사용량 3.6GB — 엔진 패키지는
+ * 데이터 계층을 읽지 않으므로 값으로 고정). 옛 규칙(× 0.70 = 89.6GB)으로는 앞의 셋이 GPU 에 안 들어간다
+ */
+export const SPARK_USABLE_128_GB = 116.9;
+export const SPARK_128_USABLE: Hardware = { ...unified(128, 273, 'dgx-spark'), os: 'linux', unifiedUsableGB: SPARK_USABLE_128_GB };
+const QWEN3_235B: Omit<ModelQuant, 'fileGB'> = { paramsB: 235.09, activeParamsB: 22, quant: 'Q3_K_M', kvBytesPerToken: 192512, attnType: 'full', maxContext: 40960 };
+export const SPARK_FIT_CASES: ReadonlyArray<{ label: string; mq: ModelQuant; ctx: number; fits: boolean; source: string }> = [
+  { label: 'GLM-5.3-Flash UD-IQ2_XXS 101.84GB tg64 @65,536 (#30640)', mq: GLM53_UD_IQ2XXS, ctx: 65600, fits: true, source: PR(30640) },
+  {
+    label: 'Qwen3-235B-A22B Q3_K_M 105GB pp2048 + tg256 (Classmethod b8012 — "barely fits")',
+    mq: { ...QWEN3_235B, fileGB: 105 },
+    ctx: 2304,
+    fits: true,
+    source: 'https://dev.classmethod.jp/en/articles/dgx-spark-two-node-clustering/',
+  },
+  {
+    label: 'DeepSeek V4 Flash 0731 UD-IQ3_S 116.1GB ctx 2,048 + 128 (Classmethod — single-unit upper limit)',
+    mq: { ...DSV4, quant: 'IQ3_XS', fileGB: 116.1 },
+    ctx: 2176,
+    fits: true,
+    source: 'https://dev.classmethod.jp/en/articles/dgx-spark-2node-deepseek-v4-flash-0731/',
+  },
+  {
+    label: 'DeepSeek V4 Flash 0731 UD-Q3_K_XL 128.2GB (Classmethod — does not fit one unit)',
+    mq: { ...DSV4, quant: 'Q3_K_M', fileGB: 128.2 },
+    ctx: 2176,
+    fits: false,
+    source: 'https://dev.classmethod.jp/en/articles/dgx-spark-2node-deepseek-v4-flash-0731/',
+  },
+];

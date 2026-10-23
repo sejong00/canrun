@@ -130,6 +130,20 @@ describe('usableGB / usableRamGB (§2.3)', () => {
     expect(usableGB(hw)).toBeCloseTo(28, 6);
     expect(usableRamGB({ ramGB: 32 })).toBeCloseTo(28, 6);
   });
+
+  it('unified with a device value (10-23 D117 — DGX Spark): the GPU pool is that value and the CPU path never exceeds it', () => {
+    const spark: Hardware = { ...base, kind: 'unified', os: 'linux', ramGB: 128, effClass: 'dgx-spark', unifiedUsableGB: 116.9 };
+    expect(usableGB(spark)).toBe(116.9);
+    expect(usableRamGB(spark)).toBe(116.9);
+    // 64GB 구성 — CPU 경로도 ram − 4(60) 이 아니라 기기 값
+    const small: Hardware = { ...spark, ramGB: 64, unifiedUsableGB: 48.2 };
+    expect(usableGB(small)).toBe(48.2);
+    expect(usableRamGB(small)).toBe(48.2);
+    // 기기 값이 ram − 4 보다 크면 ram − 4 (나쁜 데이터가 CPU 경로를 키우지 않게)
+    expect(usableRamGB({ ...spark, unifiedUsableGB: 126 })).toBe(124);
+    // 통합 메모리가 아닌 하드웨어는 이 필드를 보지 않는다
+    expect(usableRamGB({ kind: 'dgpu', ramGB: 32, unifiedUsableGB: 10 })).toBe(28);
+  });
 });
 
 describe('GPU card list (§6, 10-03 D67)', () => {

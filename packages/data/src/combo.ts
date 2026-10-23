@@ -286,6 +286,8 @@ export function twinGpus<G extends GpuCore>(gpu: G, gpus: readonly G[]): G[] {
       (g.ramOptionsGB ?? []).join('/'),
       g.memBandwidthGBs,
       (g.memBandwidthByRam ?? []).map((b) => `${b.ramGB}:${b.memBandwidthGBs}`).join('/'),
+      // GPU 가 쓸 수 있는 메모리(10-23 D117 — DGX Spark)도 같아야 한다
+      (g.usableGBByRam ?? []).map((u) => `${u.ramGB}:${u.usableGB}`).join('/'),
       g.effClass,
     ].join('|');
   const mine = key(gpu);

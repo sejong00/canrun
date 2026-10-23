@@ -122,6 +122,8 @@ export const COMPARES: Readonly<Record<CompareSlug, CompareEntry>> = {
   },
   'amd-strix-halo-vs-nvidia-dgx-spark': {
     ...PUBLISHED_1019,
+    // 10-23 D117: DGX Spark 의 GPU 몫(공개 부팅 기록 − 데스크톱)·64GB 구성 — 소개글 첫 문단
+    dateModified: '2026-10-23',
     a: 'amd-strix-halo',
     b: 'nvidia-dgx-spark',
     group: 'cross-platform',

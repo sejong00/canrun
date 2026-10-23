@@ -16,6 +16,7 @@ Gpu { id, name, aliases[],  // 검색 별칭 + P1-3 계산기 콤보박스·GPU 
      ramOptionsGB?: number[],   // unified/cpu 필수 — 선택 가능한 RAM 구성 GB (min 1)
      memBandwidthGBs, fp16Tflops?,   // FP16 크리플(GTX 10)이면 실효값
      memBandwidthByRam?: { ramGB, memBandwidthGBs }[],   // unified 전용 — 메모리 구성마다 대역폭이 다른 칩(Apple M6 16GB 153.6, 10-20). memBandwidthGBs 는 가장 높은 구성 값, 여기 값은 그보다 낮고 ramOptionsGB 안의 구성만 → 엔진 입력·콤보 사양 줄이 구성 값을 쓴다(hardwareConfigs)
+     usableGBByRam?: { ramGB, usableGB }[],   // unified 전용 — GPU 가 쓸 수 있는 메모리에 기기 근거가 있는 기기의 구성별 값(DGX Spark 64GB 48.2·128GB 116.9, 10-23 D117). ramOptionsGB 의 구성을 빠짐없이·한 번씩, 구성 용량보다 작게(zod) → 엔진 입력 Hardware.unifiedUsableGB(hardwareConfigs — 계산기 lite 카탈로그 키). 없으면 엔진 ram × 0.70(docs/02 §2.3). 값의 유도는 레코드 note·docs/02 §2.3, 출처는 레코드 sources
      effClass:'nvidia'|'amd'|'intel-arc'|'apple'|'apple-ultra'|'strix'|'dgx-spark'|'cpu',
      neuralAccelerators?: true,   // GPU 코어마다 행렬곱 가속기(Apple M5 계열·M6 — 애플 뉴스룸, M6 는 10-20) → pp 계수 PP_COEF_NEURAL_ACCEL (docs/02 §3.5, 10-16 D86)
      launchYear:2015..2026, msrpUSD?, streetUSD?, streetKRW?,
@@ -169,7 +170,7 @@ Submission (P2, D1 — 미구현) { BenchPoint + submitterHash, ip rate-limit fi
 | arc-b580 | 12 | 456 | 27.3 | $249 | ~$250-330 | pp 약함 |
 | **랩톱**: rtx-5090-laptop 24/896 · 5080-laptop 16/896 · 5070-ti-laptop 12/672 · 4090-laptop 16/576 · 4080-laptop 12/432 · 4070-laptop 8/256 · 4060-laptop 8/256 | | | | | | 데스크톱과 별개 SKU + 경고 배지 |
 
-통합 메모리 (kind:'unified', usable = ram×0.7):
+통합 메모리 (kind:'unified', usable = ram×0.7 — `usableGBByRam` 이 있는 기기는 그 값, 10-23 D117):
 
 Apple 의 fp16Tflops: 애플이 밝히지 않아 위키백과 'Apple silicon' 표의 FP32 이론값(애플 GPU 는 FP16 이 FP32 와 같은 속도) — M4 3.76 · M4 Pro 8.08 · M4 Max 12.92/16.16 · M5 4.15 · M5 Pro 8.29 · M5 Max 13.27/16.59 · M5 Ultra 33.18 · M6 5.33 · M3 Ultra 28.26 · M2 Ultra 27.2 (10-16 D87 — 시드 값은 FP32×2).
 
@@ -181,7 +182,7 @@ Apple 의 fp16Tflops: 애플이 밝히지 않아 위키백과 'Apple silicon' �
 | apple-m6 | 153.6 / 170.6 | 16 / 24-32 | 2026-09 출시(맥 미니만, 애플 사양 128108 — 16GB 153GB/s · 24·32GB 170GB/s → `memBandwidthByRam`). #4167 실측(32GB) tg −6.0% · `neuralAccelerators`(애플 뉴스룸 2026-08 "a Neural Accelerator in each core", #4167 pp512 실측이 계수 179 로 −3.5% — 10-20) |
 | apple-m3-ultra / m2-ultra | 819 / 800 | 96-512 / 64-192 | effClass 'apple-ultra' |
 | amd-strix-halo (Ryzen AI Max+ 395) | 256 | ~128 | Framework Desktop $1,999 |
-| nvidia-dgx-spark | 273 | 128 | $3,999 |
+| nvidia-dgx-spark | 273 | 64 / 128 | msrpUSD $3,999 = 2025-10-15 출시가(128GB). 64GB 는 OEM 전용(NVIDIA 제품 페이지·블로그 2026-10-02 — 10-23 판매 시작, 릴리스 노트 2026-10 "supports both 64 GB and 128 GB") · `usableGBByRam` 48.2 / 116.9(DGX OS 7.5.0 부팅 가용 120.55GB − 데스크톱 3.6GB, 64GB 는 같은 고정 몫 — docs/02 §2.3) · OEM 판 7종(ASUS Ascent GX10·Dell Pro Max with GB10·HP ZGX Nano G1n·Lenovo ThinkStation PGX·MSI EdgeXpert·Acer Veriton GN100·GIGABYTE AI TOP ATOM — 같은 GB10·273GB/s)은 aliases(레코드 하나 — D110 과 같은 이유) · popular. 2026-02 $4,699 인상(NVIDIA 포럼 공지)·64GB 시작가 $4,999 는 note 에만(실거래가 기준일 아님) — 10-23 D117 |
 | cpu-ddr5-5600-2ch / ddr5-6000 / ddr4-3200 | 89.6 / 96 / 51.2 | — | CPU-only 프로필 |
 
 주의 데이터(정기 확인): RTX 50 Super = **2027 연기(미출시)**, Intel B770 = 미출시, 가격은 `priceAsOf` 필수·주간 갱신.

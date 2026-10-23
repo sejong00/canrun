@@ -75,7 +75,7 @@ function fitOnce(hw: Hardware, mq: ModelQuant, weights: number, opts?: FitOption
     };
   }
 
-  const pool = usableGB(hw); // dgpu: Σvram−osReserve, unified: ram×0.70
+  const pool = usableGB(hw); // dgpu: Σvram−osReserve, unified: 기기 근거 값(DGX Spark — D117) 또는 ram×0.70
   const limit = hw.kind === 'dgpu' ? vramTotalGB(hw) : hw.ramGB;
   const usableRam = usableRamGB(hw);
 

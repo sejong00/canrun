@@ -1,8 +1,8 @@
-CanRun 계산으로는 128GB 기기 세 대에 올라가는 큰 모델이 똑같습니다. 세 기기는 스트릭스 헤일로 PC, NVIDIA DGX Spark, M4 Max를 단 2025년 맥 스튜디오입니다. 스트릭스 헤일로는 Ryzen AI Max+ 395가 속한 AMD 플랫폼의 코드명입니다. 셋 다 128GB 구성이면 gpt-oss-120b가 GPU에 전부 올라갑니다<Expect model="gpt-oss-120b" gpu="amd-strix-halo" ram="128" fits="true" mode="full-gpu" /><Expect model="gpt-oss-120b" gpu="nvidia-dgx-spark" ram="128" fits="true" mode="full-gpu" /><Expect model="gpt-oss-120b" gpu="apple-m4-max-40c" ram="128" fits="true" mode="full-gpu" />. 차이는 글이 나오는 속도를 정하는 메모리 대역폭과, 128GB 가운데 GPU가 쓸 수 있는 몫에서 납니다. 이 차이는 dense 모델에서 잘 드러납니다. CanRun 추정으로 Gemma 4 31B는 DGX Spark에서 겨우 돌아가지만<Expect model="gemma-4-31b" gpu="nvidia-dgx-spark" verdict="B" />, 대역폭이 두 배인 M4 Max에서는 원활하게 돌아갑니다<Expect model="gemma-4-31b" gpu="apple-m4-max-40c" verdict="A" />.
+CanRun 계산으로는 128GB 기기 세 대에 기본 양자화로 올라가는 큰 모델이 똑같습니다. 세 기기는 스트릭스 헤일로 PC, 128GB NVIDIA DGX Spark, M4 Max를 단 2025년 맥 스튜디오입니다. 스트릭스 헤일로는 Ryzen AI Max+ 395가 속한 AMD 플랫폼의 코드명입니다. 셋 다 128GB 구성이면 gpt-oss-120b가 GPU에 전부 올라갑니다<Expect model="gpt-oss-120b" gpu="amd-strix-halo" ram="128" fits="true" mode="full-gpu" /><Expect model="gpt-oss-120b" gpu="nvidia-dgx-spark" ram="128" fits="true" mode="full-gpu" /><Expect model="gpt-oss-120b" gpu="apple-m4-max-40c" ram="128" fits="true" mode="full-gpu" />. 차이는 글이 나오는 속도를 정하는 메모리 대역폭과, 128GB 가운데 GPU가 쓸 수 있는 몫에서 납니다. 이 차이는 dense 모델에서 잘 드러납니다. CanRun 추정으로 Gemma 4 31B는 DGX Spark에서 겨우 돌아가지만<Expect model="gemma-4-31b" gpu="nvidia-dgx-spark" verdict="B" />, 대역폭이 두 배인 M4 Max에서는 원활하게 돌아갑니다<Expect model="gemma-4-31b" gpu="apple-m4-max-40c" verdict="A" />.
 
 ## 128GB 통합 메모리에 들어가는 모델
 
-세 기기 모두 CPU와 GPU가 메모리 하나를 나눠 씁니다. 이런 구조를 통합 메모리라고 부릅니다. 따로 달린 VRAM이 없으니, 모델은 이 메모리 가운데 GPU가 쓸 수 있는 몫에 들어가야 합니다. CanRun은 GGUF 파일 전체에 KV 캐시와 연산 버퍼를 더해 필요량을 구합니다. KV 캐시는 지금까지의 대화를 담는 메모리이고, 연산 버퍼는 계산에 쓰는 작업 공간입니다. 이 필요량을 통합 메모리의 약 70%와 비교합니다. 세 회사 기기에 모두 같은 비율을 씁니다. 128GB 기기라면 GPU 몫은 <Num kind="usableGB" gpu="amd-strix-halo" />입니다. 이 70%의 근거와 기기별 실제 한도는 다음 절에서 설명합니다.
+세 기기 모두 CPU와 GPU가 메모리 하나를 나눠 씁니다. 이런 구조를 통합 메모리라고 부릅니다. 따로 달린 VRAM이 없으니, 모델은 이 메모리 가운데 GPU가 쓸 수 있는 몫에 들어가야 합니다. CanRun은 GGUF 파일 전체에 KV 캐시와 연산 버퍼를 더해 필요량을 구합니다. KV 캐시는 지금까지의 대화를 담는 메모리이고, 연산 버퍼는 계산에 쓰는 작업 공간입니다. 스트릭스 헤일로와 맥은 이 필요량을 통합 메모리의 약 70%와 비교합니다. 128GB 기기라면 GPU 몫은 <Num kind="usableGB" gpu="amd-strix-halo" />입니다. DGX Spark는 공개된 부팅 기록을 바탕으로, Linux와 데스크톱이 쓰고 남은 <Num kind="usableGB" gpu="nvidia-dgx-spark" ram="128" />를 GPU 몫으로 봅니다. 두 값의 근거와 기기별 실제 한도는 다음 절에서 설명합니다.
 
 아래 표는 CanRun 카탈로그에서 가장 큰 축에 드는 모델들의 필요량입니다. 8k 컨텍스트와 f16(양자화하지 않은 16비트) KV 캐시를 기준으로 했습니다. 양자화는 모델마다 기본값을 썼습니다. 대부분은 CanRun의 기준인 4비트 Q4_K_M이고, gpt-oss는 원래 배포 형식인 MXFP4입니다. Solar Open 2 250B는 CanRun 데이터에 Q4_K_M 파일이 없어 IQ4_XS로 계산했습니다.
 
@@ -14,7 +14,7 @@ Llama 3.3 70B와 gpt-oss-120b는 세 기기 모두 GPU 몫 안에 들어갑니�
 
 <UnifiedTierTable gpus="amd-strix-halo,nvidia-dgx-spark,apple-m4-max-40c,apple-m5-ultra,apple-m3-ultra,apple-m2-ultra" />
 
-표에서 128GB 구성은 스트릭스 헤일로·DGX Spark·M4 Max·M2 Ultra의 네 줄입니다. 네 줄은 GPU가 쓸 수 있는 메모리가 같아서, 들어가지 않는 모델도 같습니다. 그 밖에는 두 애플 칩이 스트릭스 헤일로·DGX Spark보다 쾌적하게 돌아가는 모델이 많습니다. 스트릭스 헤일로와 DGX Spark는 대역폭이 거의 같고, CanRun 추정에서 쾌적하게 돌아가는 모델 수도 비슷합니다. 반면 M2 Ultra는 대역폭이 M4 Max의 1.5배쯤인데도 쾌적하게 돌아가는 모델 수가 같습니다. CanRun이 Ultra 칩에 더 낮은 계수를 쓰기 때문입니다(‘이 숫자는 얼마나 확실한가’에서 설명합니다). 예를 들어 <HubLink model="qwen3-32b" />는 두 칩 모두에서 원활하게 돌아가고, 쾌적한 칩은 없습니다<Expect model="qwen3-32b" gpu="apple-m4-max-40c" ram="128" verdict="A" /><Expect model="qwen3-32b" gpu="apple-m2-ultra" ram="128" verdict="A" />. 2026년 맥 스튜디오의 M5 Ultra는 대역폭이 M3 Ultra의 1.5배입니다. 그래서 가장 작은 96GB 구성에서도 쾌적하게 돌아가는 모델이 다른 칩의 어느 줄보다 많습니다. Qwen3 32B도 M5 Ultra에서는 쾌적하게 돌아갑니다<Expect model="qwen3-32b" gpu="apple-m5-ultra" ram="96" verdict="S" />.
+표에서 128GB 구성은 스트릭스 헤일로·DGX Spark·M4 Max·M2 Ultra의 네 줄입니다. 이 가운데 DGX Spark 줄은 GPU 몫을 다르게 계산해서, GPU가 쓸 수 있는 메모리가 나머지 세 줄보다 많습니다(다음 절에서 설명합니다). DGX Spark에는 64GB 줄도 있습니다. NVIDIA의 협력 제조사가 파는 구성인데, 여기서는 gpt-oss-120b가 들어가지 않습니다<Expect model="gpt-oss-120b" gpu="nvidia-dgx-spark" ram="64" fits="false" />. 그 밖에는 두 애플 칩이 스트릭스 헤일로·DGX Spark보다 쾌적하게 돌아가는 모델이 많습니다. 스트릭스 헤일로와 DGX Spark는 대역폭이 거의 같고, CanRun 추정에서 쾌적하게 돌아가는 모델 수도 비슷합니다. 반면 M2 Ultra는 대역폭이 M4 Max의 1.5배쯤인데도 쾌적하게 돌아가는 모델 수가 같습니다. CanRun이 Ultra 칩에 더 낮은 계수를 쓰기 때문입니다(‘이 숫자는 얼마나 확실한가’에서 설명합니다). 예를 들어 <HubLink model="qwen3-32b" />는 두 칩 모두에서 원활하게 돌아가고, 쾌적한 칩은 없습니다<Expect model="qwen3-32b" gpu="apple-m4-max-40c" ram="128" verdict="A" /><Expect model="qwen3-32b" gpu="apple-m2-ultra" ram="128" verdict="A" />. 2026년 맥 스튜디오의 M5 Ultra는 대역폭이 M3 Ultra의 1.5배입니다. 그래서 가장 작은 96GB 구성에서도 쾌적하게 돌아가는 모델이 다른 칩의 어느 줄보다 많습니다. Qwen3 32B도 M5 Ultra에서는 쾌적하게 돌아갑니다<Expect model="qwen3-32b" gpu="apple-m5-ultra" ram="96" verdict="S" />.
 
 맥 스튜디오(2025)에서 128GB 구성이 있는 칩은 40코어 GPU M4 Max뿐이고, M3 Ultra에는 128GB 구성이 없습니다. 애플은 2025년 3월 M3 Ultra를 96GB부터 512GB까지 고를 수 있게 내놓았습니다. 하지만 이 맥 스튜디오의 사양 페이지에는 지금 96GB부터 256GB까지만 나옵니다. 표의 512GB 줄은 이 구성이 빠지기 전에 512GB로 산 기기에 해당합니다. 2023년 맥 스튜디오의 M2 Ultra는 64GB·128GB·192GB 구성이었습니다.
 
@@ -22,7 +22,7 @@ Llama 3.3 70B와 gpt-oss-120b는 세 기기 모두 GPU 몫 안에 들어갑니�
 
 ## 128GB 가운데 GPU가 쓸 수 있는 양
 
-CanRun은 통합 메모리 기기라면 어느 것이든 메모리의 약 70%를 GPU 몫으로 봅니다. 실제 한도는 운영체제와 설정에 따라 다르고, 세 회사가 다루는 방식도 다릅니다.
+CanRun은 맥과 스트릭스 헤일로에서 메모리의 약 70%를 GPU 몫으로 봅니다. 실제 한도는 운영체제와 설정에 따라 다르고, 세 회사가 다루는 방식도 다릅니다. DGX Spark에는 공개된 부팅 기록에서 구한 값을 씁니다. 이 값은 아래에서 설명합니다.
 
 ### 맥 스튜디오
 
@@ -36,11 +36,13 @@ Linux에서는 사정이 다릅니다. AMD ROCm 문서에 따르면 GPU가 기�
 
 ### DGX Spark
 
-NVIDIA는 DGX Spark의 메모리를 128GB 통합 시스템 메모리로만 적고, GPU 몫을 따로 밝히지 않습니다. NVIDIA의 알려진 문제(Known issues) 문서에는 메모리 표시에 관한 내용이 있습니다. GPU에 전용 프레임버퍼 메모리가 없어서, `nvidia-smi`는 전체 메모리 사용량을 Not Supported로 표시합니다. 프로세스별 GPU 메모리는 그대로 보여 줍니다. 같은 문서는 CUDA 프로그램이 읽는 남은 메모리가 실제로 할당할 수 있는 양보다 적게 나올 수 있다고 경고합니다.
+NVIDIA는 DGX Spark의 메모리를 통합 시스템 메모리로만 적고, GPU 몫을 따로 밝히지 않습니다. 제품 페이지에는 이제 128GB와 함께 64GB 구성도 나옵니다. 64GB 구성은 협력 제조사만 팔고, 대역폭은 같습니다. NVIDIA의 알려진 문제(Known issues) 문서에는 메모리 표시에 관한 내용이 있습니다. GPU에 전용 프레임버퍼 메모리가 없어서, `nvidia-smi`는 전체 메모리 사용량을 Not Supported로 표시합니다. 프로세스별 GPU 메모리는 그대로 보여 줍니다. 같은 문서는 CUDA 프로그램이 읽는 남은 메모리가 실제로 할당할 수 있는 양보다 적게 나올 수 있다고 경고합니다.
 
-### CanRun의 70%는 어디쯤인가
+Linux에서는 GPU도 다른 프로그램과 같은 메모리에서 몫을 받습니다. 그래서 CanRun은 시스템과 데스크톱이 쓰고 남은 양을 GPU 몫으로 봅니다. 사용자들이 NVIDIA 개발자 포럼에 올린 커널 부팅 로그를 보면, 부팅 뒤 남는 메모리는 DGX OS 7.5.0에서 가장 적습니다. 새 커널 기능이 이전 커널보다 몇 GB를 더 예약하기 때문입니다. 같은 글타래에는 이 문제를 고치는 업데이트가 배포되고 있다는 답이 달려 있습니다. CanRun은 이 가장 낮은 값에서 데스크톱이 가만히 있을 때 쓰는 메모리를 뺍니다. 데스크톱 사용량은 다른 사용자가 알린 값입니다. 그러면 128GB 구성에는 <Num kind="usableGB" gpu="nvidia-dgx-spark" ram="128" />가 남습니다. 64GB 구성은 아직 공개된 값이 없어서, 128GB에서 구한 고정 몫을 똑같이 빼 <Num kind="usableGB" gpu="nvidia-dgx-spark" ram="64" />로 봅니다. 한 대로 돌린 공개 결과도 이 값과 맞습니다. 한 사용자가 DGX Spark 한 대에 올린 DeepSeek V4 Flash 0731 파일 가운데 가장 큰 것은 짧은 컨텍스트에서 이 값 안에 들어갑니다. 그 사용자가 한 대에는 들어가지 않는다고 적은 한 단계 큰 파일은 이 값을 넘습니다.
 
-128GB 맥에서 CanRun의 70%는 macOS 기본 한도보다 낮습니다. 스트릭스 헤일로에서는 Linux 기본값과 Windows 최대치 사이에 있습니다. DGX Spark는 GPU 몫이 공개되지 않아서, 70%는 CanRun이 가정한 값입니다. 이 차이는 필요량이 그 사이에 걸리는 모델에서만 문제가 됩니다. 예를 들어 Solar Open 2 250B의 Q2_K 파일은 <Num kind="needGB" model="solar-open2-250b" quant="Q2_K" gpu="amd-strix-halo" />가 필요합니다. Q2_K는 품질 손실이 큰 2비트 양자화입니다. 이 필요량은 CanRun의 GPU 몫을 넘어서, 128GB 기기에서는 CPU 전용으로 계산됩니다. CPU 전용으로 계산하면 속도와 상관없이 판정이 겨우 돌아가는 단계에서 멈춥니다<Expect model="solar-open2-250b" gpu="amd-strix-halo" ram="128" quant="Q2_K" verdict="B" mode="cpu-only" />. 이 값은 이론 추정입니다. 한도를 올리면 GPU에 들어갈 수도 있습니다. 실제로 어디에 올라갔는지는 `ollama ps`나 llama.cpp 로딩 로그로 확인하세요.
+### CanRun의 값은 어디쯤인가
+
+128GB 맥에서 CanRun의 70%는 macOS 기본 한도보다 낮습니다. 스트릭스 헤일로에서는 Linux 기본값과 Windows 최대치 사이에 있습니다. DGX Spark에서 CanRun의 값은 가장 낮은 부팅 기록에서 출발합니다. 그래서 이전 커널이나 문제가 고쳐진 커널을 쓰거나 데스크톱 없이 돌리면 여유가 조금 더 있습니다. 이 차이는 필요량이 그 사이에 걸리는 모델에서만 문제가 됩니다. 예를 들어 Solar Open 2 250B의 Q2_K 파일은 <Num kind="needGB" model="solar-open2-250b" quant="Q2_K" gpu="amd-strix-halo" />가 필요합니다. Q2_K는 품질 손실이 큰 2비트 양자화입니다. 이 필요량은 70% 몫을 넘어서, 128GB 스트릭스 헤일로와 맥에서는 CPU 전용으로 계산됩니다. CPU 전용으로 계산하면 속도와 상관없이 판정이 겨우 돌아가는 단계에서 멈춥니다<Expect model="solar-open2-250b" gpu="amd-strix-halo" ram="128" quant="Q2_K" verdict="B" mode="cpu-only" /><Expect model="solar-open2-250b" gpu="apple-m4-max-40c" ram="128" quant="Q2_K" verdict="B" mode="cpu-only" />. 이 값은 이론 추정입니다. DGX Spark에서는 GPU 몫 안에 들어가 원활하게 돌아갑니다<Expect model="solar-open2-250b" gpu="nvidia-dgx-spark" ram="128" quant="Q2_K" verdict="A" mode="full-gpu" />. 한도를 올리면 나머지 두 기기에서도 GPU에 들어갈 수 있습니다. 실제로 어디에 올라갔는지는 `ollama ps`나 llama.cpp 로딩 로그로 확인하세요.
 
 ## 생성 속도 — gpt-oss-120b 공개 벤치마크
 
@@ -66,13 +68,13 @@ DGX Spark 결과는 어느 빌드로 잰 값인지 함께 봐야 합니다. CanR
 
 Qwen3.5 35B-A3B는 토큰마다 파라미터를 약 3B만 쓰는 MoE 모델이라, 여섯 기기 모두에서 쾌적하게 돌아갑니다<Expect model="qwen3.5-35b-a3b" gpu="amd-strix-halo" verdict="S" /><Expect model="qwen3.5-35b-a3b" gpu="nvidia-dgx-spark" verdict="S" /><Expect model="qwen3.5-35b-a3b" gpu="apple-m4-max-40c" verdict="S" /><Expect model="qwen3.5-35b-a3b" gpu="apple-m3-ultra" verdict="S" /><Expect model="qwen3.5-35b-a3b" gpu="apple-m2-ultra" verdict="S" /><Expect model="qwen3.5-35b-a3b" gpu="rtx-5090" verdict="S" />.
 
-dense 모델은 토큰마다 가중치를 전부 읽으므로 여기서 차이가 벌어집니다. Gemma 4 31B는 스트릭스 헤일로와 DGX Spark에서 겨우 돌아갑니다<Expect model="gemma-4-31b" gpu="amd-strix-halo" verdict="B" /><Expect model="gemma-4-31b" gpu="nvidia-dgx-spark" verdict="B" />. M4 Max와 M3·M2 Ultra에서는 원활하게 돌아가고<Expect model="gemma-4-31b" gpu="apple-m4-max-40c" verdict="A" /><Expect model="gemma-4-31b" gpu="apple-m3-ultra" verdict="A" /><Expect model="gemma-4-31b" gpu="apple-m2-ultra" verdict="A" />, RTX 5090에서는 쾌적하게 돌아갑니다<Expect model="gemma-4-31b" gpu="rtx-5090" verdict="S" />. 표에 없는 M5 Ultra에서도 쾌적하게 돌아갑니다<Expect model="gemma-4-31b" gpu="apple-m5-ultra" verdict="S" />. 모두 보정된 추정입니다. 스트릭스 헤일로와 DGX Spark에서는 엄격한 기준이 결과를 가릅니다. 두 기기의 Gemma 4 31B 추정 속도는 ‘원활’ 기준선의 일반 값과 1.5배 값 사이에 있습니다. 비슷한 크기에 생각 모드가 없는 dense 모델 Gemma 3 27B는 두 기기 모두에서 원활하게 돌아갑니다<Expect model="gemma-3-27b" gpu="amd-strix-halo" verdict="A" /><Expect model="gemma-3-27b" gpu="nvidia-dgx-spark" verdict="A" />.
+dense 모델은 토큰마다 가중치를 전부 읽으므로 여기서 차이가 벌어집니다. Gemma 4 31B는 스트릭스 헤일로와 DGX Spark에서 겨우 돌아갑니다<Expect model="gemma-4-31b" gpu="amd-strix-halo" verdict="B" /><Expect model="gemma-4-31b" gpu="nvidia-dgx-spark" verdict="B" />. M4 Max와 M3·M2 Ultra에서는 원활하게 돌아가고<Expect model="gemma-4-31b" gpu="apple-m4-max-40c" verdict="A" /><Expect model="gemma-4-31b" gpu="apple-m3-ultra" verdict="A" /><Expect model="gemma-4-31b" gpu="apple-m2-ultra" verdict="A" />, RTX 5090에서는 쾌적하게 돌아갑니다<Expect model="gemma-4-31b" gpu="rtx-5090" verdict="S" />. 표에 없는 M5 Ultra에서도 쾌적하게 돌아갑니다<Expect model="gemma-4-31b" gpu="apple-m5-ultra" verdict="S" />. DGX Spark 칸은 공개 벤치마크 결과이고<Expect model="gemma-4-31b" gpu="nvidia-dgx-spark" verdict="B" confidence="measured" />, 나머지는 모두 보정된 추정입니다. 스트릭스 헤일로와 DGX Spark에서는 엄격한 기준이 결과를 가릅니다. 두 기기의 Gemma 4 31B 추정 속도는 ‘원활’ 기준선의 일반 값과 1.5배 값 사이에 있습니다. 비슷한 크기에 생각 모드가 없는 dense 모델 Gemma 3 27B는 두 기기 모두에서 원활하게 돌아갑니다<Expect model="gemma-3-27b" gpu="amd-strix-halo" verdict="A" /><Expect model="gemma-3-27b" gpu="nvidia-dgx-spark" verdict="A" />.
 
 표에는 없지만, 더 큰 dense 모델인 Llama 3.3 70B도 마찬가지입니다. Q4_K_M이면 128GB 기기 모두에서 GPU에 전부 올라갑니다. 스트릭스 헤일로와 DGX Spark에서는 겨우 돌아갑니다<Expect model="llama-3.3-70b" gpu="amd-strix-halo" ram="128" verdict="B" mode="full-gpu" /><Expect model="llama-3.3-70b" gpu="nvidia-dgx-spark" ram="128" verdict="B" mode="full-gpu" />. M4 Max와 M3·M2 Ultra에서는 원활하게 돌아가고, 96GB M3 Ultra도 마찬가지입니다<Expect model="llama-3.3-70b" gpu="apple-m4-max-40c" ram="128" verdict="A" mode="full-gpu" /><Expect model="llama-3.3-70b" gpu="apple-m2-ultra" ram="128" verdict="A" mode="full-gpu" /><Expect model="llama-3.3-70b" gpu="apple-m3-ultra" ram="96" verdict="A" mode="full-gpu" />. 통합 메모리 기기 가운데 대역폭이 가장 큰 M5 Ultra에서도 원활하게 돌아가는 데 그칩니다<Expect model="llama-3.3-70b" gpu="apple-m5-ultra" ram="96" verdict="A" mode="full-gpu" />. dense 70B 모델을 주로 돌리려 한다면, CanRun 추정으로는 이 글의 기기 가운데 빠르게 돌려 주는 것이 없습니다.
 
 큰 MoE 모델 두 개는 칩마다 결과가 다르게 갈립니다. Qwen3.5 122B-A10B는 토큰마다 쓰는 파라미터가 gpt-oss-120b의 약 두 배입니다. 스트릭스 헤일로와 DGX Spark에서는 원활하게 돌아갑니다<Expect model="qwen3.5-122b-a10b" gpu="amd-strix-halo" ram="128" verdict="A" /><Expect model="qwen3.5-122b-a10b" gpu="nvidia-dgx-spark" ram="128" verdict="A" />. M4 Max와 128GB M2 Ultra에서는 쾌적하게 돌아갑니다<Expect model="qwen3.5-122b-a10b" gpu="apple-m4-max-40c" ram="128" verdict="S" /><Expect model="qwen3.5-122b-a10b" gpu="apple-m2-ultra" ram="128" verdict="S" />. M3 Ultra 칸에는 256GB 구성이 적혀 있습니다. 96GB 구성에서는 GPU 몫이 모자라 CPU 전용으로 계산되기 때문입니다. CPU 전용으로 계산하면 속도와 상관없이 판정이 겨우 돌아가는 단계에서 멈춥니다<Expect model="qwen3.5-122b-a10b" gpu="apple-m3-ultra" ram="96" verdict="B" mode="cpu-only" />. 이 값은 이론 추정입니다.
 
-Solar Open 2 250B는 128GB 기기에서 IQ4_XS로는 돌릴 수 없습니다. 표는 대신 Q2_K 파일을 제안하는데, 앞 절에서 본 대로 CPU 전용으로 계산됩니다. 256GB M3 Ultra와 256GB M5 Ultra는 IQ4_XS 파일을 GPU에 다 올려 쾌적하게 돌립니다<Expect model="solar-open2-250b" gpu="apple-m3-ultra" ram="256" verdict="S" mode="full-gpu" /><Expect model="solar-open2-250b" gpu="apple-m5-ultra" ram="256" verdict="S" mode="full-gpu" />. 192GB M2 Ultra에서는 CanRun의 GPU 몫을 조금 넘어 CPU 전용으로 계산됩니다. 그래서 속도와 상관없이 CanRun은 겨우 돌아간다고 봅니다(이론 추정)<Expect model="solar-open2-250b" gpu="apple-m2-ultra" ram="192" verdict="B" mode="cpu-only" />. 이 구성에서는 macOS 기본 한도가 CanRun의 값보다 높습니다. 포기하기 전에 `ollama ps`로 확인해 보세요.
+Solar Open 2 250B는 128GB 기기에서 IQ4_XS로는 돌릴 수 없습니다. 표는 대신 Q2_K 파일을 제안합니다. 앞 절에서 본 대로 스트릭스 헤일로와 M4 Max에서는 CPU 전용으로, DGX Spark에서는 GPU에 전부 올려 계산합니다. 256GB M3 Ultra와 256GB M5 Ultra는 IQ4_XS 파일을 GPU에 다 올려 쾌적하게 돌립니다<Expect model="solar-open2-250b" gpu="apple-m3-ultra" ram="256" verdict="S" mode="full-gpu" /><Expect model="solar-open2-250b" gpu="apple-m5-ultra" ram="256" verdict="S" mode="full-gpu" />. 192GB M2 Ultra에서는 CanRun의 GPU 몫을 조금 넘어 CPU 전용으로 계산됩니다. 그래서 속도와 상관없이 CanRun은 겨우 돌아간다고 봅니다(이론 추정)<Expect model="solar-open2-250b" gpu="apple-m2-ultra" ram="192" verdict="B" mode="cpu-only" />. 이 구성에서는 macOS 기본 한도가 CanRun의 값보다 높습니다. 포기하기 전에 `ollama ps`로 확인해 보세요.
 
 ## 긴 컨텍스트와 프롬프트 처리
 
@@ -96,7 +98,7 @@ gpt-oss-120b는 카드에 다 들어가지 않아서, 들어가지 않는 전문
 
 PC 쪽이 앞서는 것은 전체 메모리 크기입니다. 시스템 RAM이 128GB면 32GB 카드와 합쳐 Solar Open 2 250B를 IQ4_XS로 올릴 수 있습니다. 128GB 통합 메모리 기기로는 할 수 없는 일입니다. 다만 CanRun은 이 구성도 겨우 돌아간다고 봅니다(이론 추정)<Expect model="solar-open2-250b" gpu="rtx-5090" ram="128" verdict="B" mode="cpu-moe" confidence="theoretical" />.
 
-이 글은 가격을 비교하지 않습니다. CanRun 데이터의 DGX Spark 가격은 <Price gpu="nvidia-dgx-spark" />입니다. 스트릭스 헤일로와 맥은 같은 칩이라도 제조사와 메모리 구성에 따라 값이 다릅니다. CanRun 데이터에는 이 기기들의 날짜가 붙은 실거래가도 없습니다.
+이 글은 가격을 비교하지 않습니다. CanRun 데이터의 DGX Spark 가격은 NVIDIA가 처음 내놓은 128GB 제품의 <Price gpu="nvidia-dgx-spark" />입니다. 협력 제조사 제품과 64GB 구성, 스트릭스 헤일로와 맥은 같은 칩이라도 제조사와 메모리 구성에 따라 값이 다릅니다. CanRun 데이터에는 이 기기들의 날짜가 붙은 실거래가도 없습니다.
 
 더 볼 곳:
 
@@ -106,7 +108,7 @@ PC 쪽이 앞서는 것은 전체 메모리 크기입니다. 시스템 RAM이 12
 
 ## 이 숫자는 얼마나 확실한가
 
-메모리 수치는 공식으로 계산합니다. 실제 GGUF 파일 크기에 모델 설정으로 구한 KV 캐시와 연산 버퍼를 더합니다. 어림한 부분은 GPU 몫입니다. 통합 메모리 기기 모두에 70%를 쓰고, 기기별 실제 한도와 어떻게 다른지는 둘째 절에서 설명했습니다.
+메모리 수치는 공식으로 계산합니다. 실제 GGUF 파일 크기에 모델 설정으로 구한 KV 캐시와 연산 버퍼를 더합니다. 어림한 부분은 GPU 몫입니다. 맥과 스트릭스 헤일로에는 70%를, DGX Spark에는 공개된 부팅 기록에서 구한 값을 씁니다. 기기별 실제 한도와 어떻게 다른지는 둘째 절에서 설명했습니다.
 
 속도는 신뢰 라벨이 ‘실측’인 칸만 공개 벤치마크 결과입니다. 이 글에서 GPU에 전부 올라가는 나머지 칸은 ‘보정된 추정’이고, 오차 범위는 ±20%입니다. ±12%는 NVIDIA·AMD 그래픽카드의 dense 모델에만 씁니다. CPU 전용 칸과 전문가를 RAM에 둔 RTX 5090 칸은 ‘이론 추정(±30%)’입니다.
 
@@ -136,7 +138,7 @@ CanRun 계산에 넣지 않는 것도 있습니다.
 
 ### 스트릭스 헤일로와 DGX Spark 가운데 어느 쪽이 빠른가요?
 
-답을 생성하는 속도는 큰 차이가 없습니다. 한 참여자가 같은 llama.cpp 빌드로 잰 결과에서, 기본 설정으로는 두 기기가 거의 같았습니다. DGX Spark에서 mmap을 끄자 대화 첫머리에서 약 5분의 1, 32k 토큰이 쌓인 뒤에는 약 10분의 1 더 빨랐습니다. DGX Spark가 크게 앞서는 것은 프롬프트 처리이고, 프롬프트가 길수록 차이가 커집니다. CanRun 추정으로는 dense 모델에서 두 기기가 2% 안쪽으로 비슷하고, MoE 모델에서는 DGX Spark가 빠르지만 그 차이는 대화 첫머리의 mmap을 끈 결과보다 작습니다. 두 기기의 계수가 서로 다른 공개 결과에서 나왔으니, 차이의 크기는 조심해서 봐야 합니다. 메모리는 둘 다 128GB이고, CanRun 계산의 GPU 몫도 같습니다.
+답을 생성하는 속도는 큰 차이가 없습니다. 한 참여자가 같은 llama.cpp 빌드로 잰 결과에서, 기본 설정으로는 두 기기가 거의 같았습니다. DGX Spark에서 mmap을 끄자 대화 첫머리에서 약 5분의 1, 32k 토큰이 쌓인 뒤에는 약 10분의 1 더 빨랐습니다. DGX Spark가 크게 앞서는 것은 프롬프트 처리이고, 프롬프트가 길수록 차이가 커집니다. CanRun 추정으로는 dense 모델에서 두 기기가 2% 안쪽으로 비슷하고, MoE 모델에서는 DGX Spark가 빠르지만 그 차이는 대화 첫머리의 mmap을 끈 결과보다 작습니다. 두 기기의 계수가 서로 다른 공개 결과에서 나왔으니, 차이의 크기는 조심해서 봐야 합니다. 메모리는 둘 다 128GB입니다. 다만 CanRun은 공개된 부팅 기록을 바탕으로 DGX Spark의 GPU 몫을 스트릭스 헤일로의 70%보다 크게 계산합니다.
 
 ### 맥 스튜디오가 스트릭스 헤일로나 DGX Spark보다 빠른가요?
 
@@ -159,7 +161,11 @@ CanRun 계산으로는 돌릴 수 있습니다. 128k 컨텍스트를 f16 KV 캐�
 - [llama.cpp 토론 #2182: 애플 실리콘의 VRAM/RAM 분할](https://github.com/ggml-org/llama.cpp/discussions/2182): macOS가 기본으로 남겨 두는 메모리, `iogpu.wired_limit_mb`
 - [AMD: 가변 그래픽 메모리 FAQ](https://www.amd.com/en/blogs/2025/faqs-amd-variable-graphics-memory-vram-ai-model-sizes-quantization-mcp-more.html): 128GB Ryzen AI Max+ 395 시스템의 그래픽 전용 메모리 최대 96GB, 공유 메모리를 합친 112GB, Adrenalin 설정
 - [AMD ROCm 문서: RDNA3.5 시스템 최적화](https://rocm.docs.amd.com/en/latest/reference/system-optimization/rdna3-5.html): 커널의 기본 GTT 한도(시스템 RAM의 약 절반), BIOS 예약을 작게 두는 설정, 1024 기준 GB로 표시하는 `amd-ttm`
+- [NVIDIA DGX Spark 제품 페이지](https://www.nvidia.com/en-us/products/workstations/dgx-spark/): 대역폭이 같은 64GB·128GB 구성, 64GB 구성은 협력 제조사만 판다는 것
 - [NVIDIA DGX Spark 사용자 가이드: 하드웨어](https://docs.nvidia.com/dgx/dgx-spark/hardware.html): 128GB 통합 시스템 메모리와 대역폭
+- [NVIDIA 개발자 포럼: DGX OS 7.5.0에서 부팅 뒤 남는 메모리가 줄어든 문제](https://forums.developer.nvidia.com/t/dgx-os-7-5-0-ota-uefi-5-36-0acum027-7-2-gib-less-ram-available-at-boot/383222): 사용자들이 올린 커널별 부팅 로그(CanRun의 DGX Spark 값은 이 가운데 가장 낮은 값에서 출발한다)와 고치는 업데이트에 관한 답
+- [NVIDIA 개발자 포럼: DGX 시스템이 차지하는 메모리](https://forums.developer.nvidia.com/t/the-dgx-system-itself-takes-up-20gb-memory/350359): CanRun이 빼는 데스크톱의 기본 메모리 사용량을 한 사용자가 잰 값, 대시보드에 더 크게 나오는 이유(파일 캐시)
+- [Classmethod: DGX Spark 한 대·두 대에서 DeepSeek V4 Flash 0731 돌리기](https://dev.classmethod.jp/en/articles/dgx-spark-2node-deepseek-v4-flash-0731/): DGX Spark 한 대에 올라간 파일 크기와 올라가지 않은 파일 크기
 - [NVIDIA DGX Spark 사용자 가이드: 알려진 문제](https://docs.nvidia.com/dgx/dgx-spark/known-issues.html): `nvidia-smi`의 전체 메모리 사용량 Not Supported 표시와 프로세스별 GPU 메모리 표시, 할당 가능량보다 적게 나오는 남은 메모리
 - [Apple: 맥 스튜디오(2025) 기술 사양](https://support.apple.com/en-us/122211): M4 Max·M3 Ultra의 메모리 구성(M3 Ultra는 지금 256GB까지 나온다)과 대역폭
 - [Apple: 맥 스튜디오(M5 Max 또는 M5 Ultra) 기술 사양](https://support.apple.com/en-us/128107): M5 Max·M5 Ultra의 메모리 구성과 대역폭, 256GB 구성이 80코어 GPU M5 Ultra에만 있다는 것

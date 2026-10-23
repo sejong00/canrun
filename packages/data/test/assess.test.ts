@@ -27,6 +27,7 @@ import {
   toModelQuant,
   unifiedCpuBandwidth,
   memBandwidthAt,
+  usableGBAt,
   VERDICT_OVERESTIMATE,
   verdictRank,
   vramBreakdown,
@@ -157,6 +158,40 @@ describe('구성별 대역폭 (10-20 — Apple M6, 애플 사양 128108)', () =>
     expect(memBandwidthAt(m6, 32)).toBe(170.6);
     // 구성별 값이 없는 칩은 그대로
     for (const config of hardwareConfigs(gpu('apple-m5'), seed.gpus)) expect(config.hw.memBandwidthGBs).toBe(153.6);
+  });
+});
+
+describe('GPU 가 쓸 수 있는 통합 메모리 — 기기 근거 값 (10-23 D117 — DGX Spark)', () => {
+  it('64GB·128GB 구성이 엔진 입력 unifiedUsableGB 로 간다 — 다른 통합 메모리 기기는 넣지 않는다(엔진 기본 × 0.70)', () => {
+    const spark = gpu('nvidia-dgx-spark');
+    expect(hardwareConfigs(spark, seed.gpus).map((c) => [c.ramGB, c.hw.unifiedUsableGB, c.hw.os])).toEqual([
+      [64, 48.2, 'linux'],
+      [128, 116.9, 'linux'],
+    ]);
+    // 계산기 경로(RAM 하나)도 같다
+    expect(hardwareConfigs(spark, seed.gpus, { ramGB: 64 })[0]!.hw.unifiedUsableGB).toBe(48.2);
+    expect(usableGBAt(spark, 128)).toBe(116.9);
+    // 옵션 밖 RAM(커스텀 등)·dGPU 는 값 없음
+    expect(usableGBAt(spark, 96)).toBeUndefined();
+    expect(usableGBAt(gpu('rtx-5090'), 32)).toBeUndefined();
+    for (const g of seed.gpus.filter((x) => x.kind === 'unified' && x.id !== 'nvidia-dgx-spark')) {
+      for (const config of hardwareConfigs(g, seed.gpus)) expect('unifiedUsableGB' in config.hw, g.id).toBe(false);
+    }
+  });
+
+  it('값은 공개 부팅 로그와 데스크톱 기본 사용량에서 나온다 — 128GB 는 KHO 커널 가용 − 3.6GB, 64GB 는 같은 고정 몫을 64GiB 에서 뺀 값(내림)', () => {
+    // https://forums.developer.nvidia.com/t/dgx-os-7-5-0-ota-uefi-5-36-0acum027-7-2-gib-less-ram-available-at-boot/383222 — 커널 7.0 "Memory: … available" 117,723,484 KiB
+    const bootAvailableGB = (117_723_484 * 1024) / 1e9;
+    // https://forums.developer.nvidia.com/t/the-dgx-system-itself-takes-up-20gb-memory/350359 — "the actual usage is 3.6GB/128GB"
+    const desktopGB = 3.6;
+    const floor1 = (x: number) => Math.floor(x * 10) / 10;
+    const fixedShareGB = (128 * 2 ** 30) / 1e9 - bootAvailableGB;
+    const spark = gpu('nvidia-dgx-spark');
+    expect(usableGBAt(spark, 128)).toBe(floor1(bootAvailableGB - desktopGB));
+    expect(usableGBAt(spark, 64)).toBe(floor1((64 * 2 ** 30) / 1e9 - fixedShareGB - desktopGB));
+    // 64GB 는 보도된 약 56GB(가중치 + KV — NVIDIA 확인 아님)보다 낮은 보수값, 옛 × 0.70(44.8)보다는 높다
+    expect(usableGBAt(spark, 64)!).toBeLessThan(56);
+    expect(usableGBAt(spark, 64)!).toBeGreaterThan(64 * 0.7);
   });
 });
 
@@ -978,14 +1013,17 @@ describe('DeepSeek V4 Flash 0731 — compressed attention, mHC, MXFP4 baseline (
     expect(m2.perQuant.find((q) => q.quant === 'Q2_K')!.result).toMatchObject({ verdict: 'S', mode: 'full-gpu' });
   });
 
-  it('128GB unified memory (DGX Spark, Strix Halo): MXFP4 does not fit, Q2_K only on the CPU path', () => {
-    for (const id of ['nvidia-dgx-spark', 'amd-strix-halo']) {
-      const c = at(id, 128);
-      expect(c.baseline.fits, id).toBe(false);
-      const q2 = c.perQuant.find((q) => q.quant === 'Q2_K')!;
-      expect(q2.result, id).toMatchObject({ verdict: 'B', mode: 'cpu-only' });
-      expect(c.display.quant, id).toBe('Q2_K');
-    }
+  it('128GB unified memory: MXFP4 fits neither; Q2_K only on the CPU path of the Strix Halo, and not at all on the DGX Spark (10-23 D117 — 116.9GB usable, both paths)', () => {
+    for (const id of ['nvidia-dgx-spark', 'amd-strix-halo']) expect(at(id, 128).baseline.fits, id).toBe(false);
+    // 표시 행 — Strix Halo 는 돌아가는 Q2_K, DGX Spark 는 들어가는 행이 없어 기준(MXFP4) 그대로
+    expect(at('amd-strix-halo', 128).display.quant).toBe('Q2_K');
+    expect(at('nvidia-dgx-spark', 128).display.quant).toBe('MXFP4');
+    expect(at('amd-strix-halo', 128).perQuant.find((q) => q.quant === 'Q2_K')!.result).toMatchObject({ verdict: 'B', mode: 'cpu-only' });
+    // DGX Spark: 기기 근거 사용 가능량(KHO 커널 부팅 가용 − 데스크톱 기본 사용량)이 GPU·CPU 경로 모두의 한도 — 8k 필요량(가중치 + KV)이 그보다 크다
+    const spark = at('nvidia-dgx-spark', 128).perQuant.find((q) => q.quant === 'Q2_K')!;
+    expect(spark.fits).toBe(false);
+    expect(spark.memory).toMatchObject({ gpuUsableGB: 116.9, ramUsableGB: 116.9 });
+    expect(spark.memory.needGB).toBeGreaterThan(116.9);
   });
 
   it('dGPU + system RAM: experts in RAM from 192GB with an RTX 5090 or RTX 4090 (MXFP4), Q2_K from 128GB; RTX 4060 + 32GB does not fit', () => {

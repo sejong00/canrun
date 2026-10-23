@@ -134,15 +134,20 @@ export function usableGB(hw: Hardware): number {
       // 카드 목록이 없으면 vram × N − 예약 1장분(D58 식 그대로), 있으면 Σ VRAM − Σ 화면 출력 예약 (D67)
       return vramTotalGB(hw) - gpuOsReserveGB(hw);
     case 'unified':
-      return hw.ramGB * UNIFIED_USABLE_FRACTION;
+      // 기기 근거 값(DGX Spark — 10-23 D117)이 있으면 그 값, 없으면 macOS 기본 GPU 한도 비율(맥·Strix Halo 는 그대로)
+      return hw.unifiedUsableGB ?? hw.ramGB * UNIFIED_USABLE_FRACTION;
     case 'cpu':
       return usableRamGB(hw);
   }
 }
 
-/** cpu-moe/오프로드에서 CPU 쪽 사용 가능 RAM GB (§2.3 usable(cpu)). */
-export function usableRamGB(hw: Pick<Hardware, 'ramGB'>): number {
-  return hw.ramGB - CPU_OS_RESERVE_GB;
+/**
+ * cpu-moe/오프로드에서 CPU 쪽 사용 가능 RAM GB (§2.3 usable(cpu)). 통합 메모리 기기 근거 값(`unifiedUsableGB` — 10-23 D117)이 있으면
+ * 그 값을 넘지 않는다 — OS·데스크톱 몫을 이미 뺀 같은 메모리라, CPU 로 돌린다고 더 많이 쓸 수 없다
+ */
+export function usableRamGB(hw: Pick<Hardware, 'ramGB'> & Partial<Pick<Hardware, 'kind' | 'unifiedUsableGB'>>): number {
+  const ram = hw.ramGB - CPU_OS_RESERVE_GB;
+  return hw.kind === 'unified' && hw.unifiedUsableGB !== undefined ? Math.min(ram, hw.unifiedUsableGB) : ram;
 }
 
 /**

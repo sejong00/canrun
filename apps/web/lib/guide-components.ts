@@ -88,6 +88,8 @@ export const GUIDE_COMPONENTS: Readonly<Record<string, ComponentSpec>> = {
       quant: opt('quant'),
       ctx: opt('ctx'),
       kv: opt('kv'),
+      // usableGB 의 메모리 구성(통합 메모리 칩 — 없으면 가장 큰 구성, 10-23 D117 DGX Spark 64GB)
+      ram: opt('ram'),
     },
   },
   Price: { block: false, data: true, props: { gpu: req('gpu') } },

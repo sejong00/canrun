@@ -249,6 +249,8 @@ export function hardwareConfigs(
   return ramOptions.map((ramGB) => {
     // 구성마다 대역폭이 다른 칩(10-20 Apple M6) — 그 밖의 칩은 칩 값 그대로
     const bandwidth = memBandwidthAt(gpu, ramGB);
+    // GPU 가 쓸 수 있는 메모리에 기기 근거가 있는 구성(10-23 D117 — DGX Spark) — 그 밖은 엔진 기본(ram × 0.70)
+    const usable = usableGBAt(gpu, ramGB);
     return {
       gpuId: gpu.id,
       ramGB,
@@ -262,6 +264,7 @@ export function hardwareConfigs(
         // M5 계열·M6 — pp 는 Neural Accelerator 계수(10-16 D86)
         ...(gpu.neuralAccelerators ? { neuralAccel: true } : {}),
         ramGB,
+        ...(usable !== undefined ? { unifiedUsableGB: usable } : {}),
         // 통합 메모리·CPU 프로필은 시스템 RAM 이 곧 메모리 풀이다
         ramBandwidthGBs:
           gpu.kind === 'unified' ? unifiedCpuBandwidth({ effClass: gpu.effClass, memBandwidthGBs: bandwidth }) : bandwidth,
@@ -277,6 +280,15 @@ export function hardwareConfigs(
  */
 export function memBandwidthAt(gpu: Pick<GpuCore, 'memBandwidthGBs' | 'memBandwidthByRam'>, ramGB: number): number {
   return gpu.memBandwidthByRam?.find((b) => b.ramGB === ramGB)?.memBandwidthGBs ?? gpu.memBandwidthGBs;
+}
+
+/**
+ * 이 메모리 구성에서 GPU 가 쓸 수 있는 통합 메모리 GB — 기기 근거 값(`usableGBByRam`, 10-23 D117 — DGX Spark)이 있으면 그 값, 없으면 undefined
+ * (엔진이 ram × `UNIFIED_USABLE_FRACTION` 으로 계산한다). 통합 메모리 기기만 — 허브·콤보·계산기의 엔진 입력(`hardwareConfigs`)이 쓴다
+ */
+export function usableGBAt(gpu: Pick<GpuCore, 'kind' | 'usableGBByRam'>, ramGB: number): number | undefined {
+  if (gpu.kind !== 'unified') return undefined;
+  return gpu.usableGBByRam?.find((u) => u.ramGB === ramGB)?.usableGB;
 }
 
 /**

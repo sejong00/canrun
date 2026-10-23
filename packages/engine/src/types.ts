@@ -69,6 +69,12 @@ export type Hardware = {
   neuralAccel?: boolean;
   /** 시스템 RAM (cpu-moe/오프로드) */
   ramGB: number;
+  /**
+   * unified 전용: 이 기기·이 메모리 구성에서 GPU 가 쓸 수 있는 통합 메모리 GB — 기기 근거가 있는 값(데이터 계층 `usableGBByRam`, 10-23 D117 —
+   * 지금은 DGX Spark: Linux·CUDA 라 macOS 의 기본 GPU 한도가 없고, 부팅 뒤 커널이 내주는 메모리에서 OS·데스크톱 기본 사용량을 뺀 값).
+   * 없으면 `ramGB × UNIFIED_USABLE_FRACTION`(§2.3). 있으면 CPU 경로의 한도도 이 값을 넘지 않는다(같은 메모리 — OS 몫을 이미 뺐다)
+   */
+  unifiedUsableGB?: number;
   ramBandwidthGBs: number;
   effClass: EffClass;
   /** 실측 누적 시 기기별 학습 계수 (Phase 2) — 클래스 기본값을 대체 */

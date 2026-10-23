@@ -68,6 +68,14 @@ describe('GPU aliases ("다른 표기" on GPU hubs)', () => {
     ['ryzen ai max 395', 'Ryzen AI Max 395'],
     ['radeon 8060s', 'Radeon 8060S'],
     ['dgx spark', 'DGX Spark'],
+    // DGX Spark OEM 판 (10-23 D117)
+    ['asus ascent gx10', 'ASUS Ascent GX10'],
+    ['dell pro max with gb10', 'Dell Pro Max with GB10'],
+    ['hp zgx nano g1n', 'HP ZGX Nano G1n'],
+    ['lenovo thinkstation pgx', 'Lenovo ThinkStation PGX'],
+    ['msi edgexpert', 'MSI EdgeXpert'],
+    ['acer veriton gn100', 'Acer Veriton GN100'],
+    ['gigabyte ai top atom', 'GIGABYTE AI TOP ATOM'],
   ] as const)('%s → %s', (alias, expected) => {
     expect(aliasLabel(alias)).toBe(expected);
   });
@@ -75,6 +83,18 @@ describe('GPU aliases ("다른 표기" on GPU hubs)', () => {
   it('keeps the data order, drops duplicates, and lists nothing for CPU profiles (their aliases are calculator search words)', () => {
     const gpu = (id: string) => catalog.gpus.find((g) => g.id === id)!;
     expect(gpuAliasLabels(gpu('rtx-5090'))).toEqual(['5090', 'RTX5090']);
+    // DGX Spark — 같은 GB10 칩의 OEM 판 7종이 "다른 표기"로 (10-23 D117 — 레코드는 하나)
+    expect(gpuAliasLabels(gpu('nvidia-dgx-spark'))).toEqual([
+      'DGX Spark',
+      'GB10',
+      'ASUS Ascent GX10',
+      'Dell Pro Max with GB10',
+      'HP ZGX Nano G1n',
+      'Lenovo ThinkStation PGX',
+      'MSI EdgeXpert',
+      'Acer Veriton GN100',
+      'GIGABYTE AI TOP ATOM',
+    ]);
     expect(gpuAliasLabels({ kind: 'dgpu', aliases: ['5070ti', '5070Ti'] })).toEqual(['5070Ti']);
     for (const g of catalog.gpus.filter((x) => x.kind === 'cpu')) expect(gpuAliasLabels(g), g.id).toEqual([]);
   });

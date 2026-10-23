@@ -130,6 +130,11 @@ describe('matchGpu — catalog self-resolution', () => {
     expect(matchGpu('cpu only', gpus)).toEqual({ kind: 'exact', id: 'cpu-ddr5-5600-2ch' });
     expect(matchGpu('7900xtx', gpus)).toEqual({ kind: 'exact', id: 'rx-7900-xtx' });
     expect(matchGpu('strix halo', gpus)).toEqual({ kind: 'exact', id: 'amd-strix-halo' });
+    // DGX Spark OEM 판 (10-23 D117) — 제품 이름 그대로면 확정, 모델 번호만 치면 목록 맨 위
+    for (const q of ['ASUS Ascent GX10', 'Dell Pro Max with GB10', 'HP ZGX Nano G1n', 'Lenovo ThinkStation PGX', 'MSI EdgeXpert', 'Acer Veriton GN100', 'GIGABYTE AI TOP ATOM']) {
+      expect(matchGpu(q, gpus), q).toEqual({ kind: 'exact', id: 'nvidia-dgx-spark' });
+    }
+    for (const q of ['gx10', 'zgx nano', 'thinkstation pgx', 'edgexpert', 'gn100', 'ai top atom']) expect(rankGpus(q, gpus)[0]?.id, q).toBe('nvidia-dgx-spark');
     expect(matchGpu('DDR5-5600 듀얼채널 CPU', gpus, { names: koNames })).toEqual({ kind: 'exact', id: 'cpu-ddr5-5600-2ch' });
     expect(matchGpu('nope', gpus)).toEqual({ kind: 'none' });
     expect(matchGpu('', gpus)).toEqual({ kind: 'none' });

@@ -105,6 +105,15 @@ export const GpuSchema = z
       .array(z.object({ ramGB: z.number().positive(), memBandwidthGBs: z.number().positive() }))
       .min(1)
       .optional(),
+    /**
+     * 통합 메모리 기기 중 GPU 가 쓸 수 있는 메모리에 기기 근거가 있는 기기의 구성별 값 (decimal GB, 10-23 D117 — 지금은 DGX Spark: Linux·CUDA 라
+     * macOS 의 기본 GPU 한도(×0.70)가 없다). 엔진 입력 `Hardware.unifiedUsableGB` 로 간다(`hardwareConfigs`). 있으면 ramOptionsGB 의 구성을 빠짐없이
+     * 적는다(구성마다 규칙이 갈리지 않게). 값의 근거(공개 부팅 로그·OS 기본 사용량)는 레코드 sources·note 와 docs/02 §2.3·docs/03 §2
+     */
+    usableGBByRam: z
+      .array(z.object({ ramGB: z.number().positive(), usableGB: z.number().positive() }))
+      .min(1)
+      .optional(),
     /** GTX 10 시리즈처럼 FP16 크리플이면 실효값(예: 0.18). Apple 은 위키백과 Apple silicon 표의 FP32 이론값 — 애플 미공개, 애플 GPU 는 FP16 이 FP32 와 같은 속도(10-16 D87) */
     fp16Tflops: z.number().positive().optional(),
     /**
@@ -161,6 +170,23 @@ export const GpuSchema = z
         if (memBandwidthGBs >= gpu.memBandwidthGBs) {
           ctx.addIssue({ code: 'custom', message: `${where}: must be below memBandwidthGBs (the highest configuration)` });
         }
+      }
+    }
+    if (gpu.usableGBByRam) {
+      if (gpu.kind !== 'unified') {
+        ctx.addIssue({ code: 'custom', message: `${gpu.id}: usableGBByRam is for unified memory devices only` });
+      }
+      const seen = new Set<number>();
+      for (const { ramGB, usableGB } of gpu.usableGBByRam) {
+        const where = `${gpu.id} usableGBByRam ${ramGB} GB`;
+        if (!(gpu.ramOptionsGB ?? []).includes(ramGB)) ctx.addIssue({ code: 'custom', message: `${where}: not in ramOptionsGB` });
+        if (seen.has(ramGB)) ctx.addIssue({ code: 'custom', message: `${where}: listed twice` });
+        seen.add(ramGB);
+        // OS 몫을 뺀 값 — 구성 용량보다 작아야 한다
+        if (usableGB >= ramGB) ctx.addIssue({ code: 'custom', message: `${where}: must be below the configuration size` });
+      }
+      for (const gb of gpu.ramOptionsGB ?? []) {
+        if (!seen.has(gb)) ctx.addIssue({ code: 'custom', message: `${gpu.id} usableGBByRam: the ${gb} GB configuration is missing` });
       }
     }
     if ((gpu.vendor === 'apple') !== (gpu.products !== undefined)) {

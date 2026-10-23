@@ -33,11 +33,14 @@
  *     공개 실측 참고점 3곳(M2 Ultra #29958 · DGX Spark #30640 · 6 × 3090 #29928 — 모두 파일 가정이나 카탈로그 밖 구성이라 조인 안 됨)은 추정이 8~26% 높고
  *     ±30% 표시 범위 안, 문맥 감쇠는 엔진과 같다(DeepSeek V4 와 다르다) — 라벨은 이론 추정(docs/02 §4 ⑩·§7·§9). 가장 작은 과대(+8.2%)는 데이터 계층 판정
  *     할인(packages/data/src/assess.ts `VERDICT_OVERESTIMATE`)의 값이다 — 등급만 이만큼 낮춘 속도로 정한다(엔진 값은 그대로)
+ * 16) DGX Spark 가 GPU 에 올릴 수 있는 메모리(10-23 D117, 엔진 0.13.0 `Hardware.unifiedUsableGB`): 1대 공개 실측 4점의 들어감·안 들어감이 기기 근거 값
+ *     116.9GB(DGX OS 7.5.0 부팅 가용 − 데스크톱 기본 사용량)와 모두 맞고, 옛 규칙(× 0.70 = 89.6GB)으로는 1대에서 돈 셋이 GPU 에 안 들어간다. CPU 경로 한도도
+ *     그 값을 넘지 않는다(같은 메모리). 값이 없는 통합 메모리 기기(맥·Strix Halo)는 산식 그대로(docs/02 §2.3·§7)
  */
 import { describe, expect, it } from 'vitest';
 import { fit } from '../src/fit';
 import { evaluate } from '../src/index';
-import { computeBufferGB, gpuResidentGBFor, kvBytesPerToken, kvGB, weightsGBFromBpw } from '../src/memory';
+import { computeBufferGB, gpuResidentGBFor, kvBytesPerToken, kvGB, usableGB, usableRamGB, weightsGBFromBpw } from '../src/memory';
 import { PLE_CUDA_CLASSES, PLE_TOKEN_OVERHEAD_MS } from '../src/constants';
 import { bytesPerTokenGB, gpuThroughputGBs, pleOverheadSeconds, ppEstimate, tgEstimate } from '../src/speed';
 import type { Hardware, ModelQuant } from '../src/types';
@@ -86,6 +89,9 @@ import {
   QWEN3_8B_Q4,
   RTX_4060_8GB,
   RTX_4090,
+  SPARK_128_USABLE,
+  SPARK_FIT_CASES,
+  SPARK_USABLE_128_GB,
   SPEED_CASES,
   WEIGHTS_CASES,
 } from './fixtures';
@@ -713,5 +719,30 @@ describe('15) GLM-5.3-Flash — KDA + DSA(희소 MLA·인덱서)·하이퍼 커�
     const m6 = g.points[2]!.measuredTg / g.points[0]!.measuredTg - 1;
     const e6 = tgAt(GLM53_3090X6, GLM53_AVAR6_Q2Q3, g.points[2]!.ctx) / tgAt(GLM53_3090X6, GLM53_AVAR6_Q2Q3, g.points[0]!.ctx) - 1;
     expect(Math.abs(e6 - m6)).toBeLessThan(0.02);
+  });
+});
+
+describe('16) DGX Spark usable memory (10-23 D117, docs/02 §2.3·§7): 1대 공개 실측 4점', () => {
+  it('every public single-unit run fits (and the one that did not, does not) under the device value — the old 70% rule misses three', () => {
+    const old: Hardware = { ...SPARK_128_USABLE, unifiedUsableGB: undefined };
+    let oldMisses = 0;
+    for (const c of SPARK_FIT_CASES) {
+      expect(c.source, c.label).toMatch(/^https:\/\//);
+      const r = fit(SPARK_128_USABLE, c.mq, { ctx: c.ctx });
+      expect(r.fits && r.mode === 'full-gpu', c.label).toBe(c.fits);
+      if (c.fits && fit(old, c.mq, { ctx: c.ctx }).mode !== 'full-gpu') oldMisses += 1;
+    }
+    expect(oldMisses).toBe(3);
+  });
+
+  it('the device value bounds both paths; without it a unified machine keeps ram × 0.70 and ram − 4', () => {
+    expect(usableGB(SPARK_128_USABLE)).toBe(SPARK_USABLE_128_GB);
+    expect(usableRamGB(SPARK_128_USABLE)).toBe(SPARK_USABLE_128_GB);
+    const old: Hardware = { ...SPARK_128_USABLE, unifiedUsableGB: undefined };
+    expect(usableGB(old)).toBeCloseTo(89.6, 9);
+    expect(usableRamGB(old)).toBe(124);
+    // 1대 상한(UD-IQ3_S 116.1GB)이 들어가는 여유 — 컨텍스트 2k 에서 0.3GB 남짓
+    const edge = SPARK_FIT_CASES[2]!;
+    expect(SPARK_USABLE_128_GB - fit(SPARK_128_USABLE, edge.mq, { ctx: edge.ctx }).vram.total).toBeCloseTo(0.265, 2);
   });
 });

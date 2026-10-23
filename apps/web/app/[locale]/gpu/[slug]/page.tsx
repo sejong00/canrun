@@ -326,7 +326,8 @@ export default async function GpuHubPage({ params }: Props) {
           </h1>
           <div className="flex flex-wrap gap-2">
             {gpu.form === 'laptop' && <Pill tone="caution">{tSpec('badgeLaptop')}</Pill>}
-            {gpu.kind === 'unified' && <Pill tone="info">{tSpec('badgeUnified')}</Pill>}
+            {/* 기기 근거 사용 가능량이 있는 통합 메모리 기기(10-23 D117 — DGX Spark)는 70% 문구 대신 */}
+            {gpu.kind === 'unified' && <Pill tone="info">{tSpec(gpu.usableGBByRam ? 'badgeUnifiedDevice' : 'badgeUnified')}</Pill>}
             {gpu.kind === 'cpu' && <Pill tone="info">{tSpec('badgeCpu')}</Pill>}
             {isFp16Crippled(gpu) && <Pill tone="caution">{tSpec('badgeFp16')}</Pill>}
           </div>

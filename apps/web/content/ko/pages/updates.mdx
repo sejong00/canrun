@@ -2,6 +2,14 @@ CanRun은 자주 바뀝니다. 새 모델이 들어오고, 계산기에 기능�
 
 ## 바뀐 기능과 고친 계산
 
+<Update id="dgx-spark-64gb">
+
+### DGX Spark 64GB 구성과 협력 제조사 제품, GPU가 쓸 수 있는 메모리
+
+<SiteLink to="/gpu/nvidia-dgx-spark">DGX Spark</SiteLink>를 이제 64GB와 128GB 두 구성으로 계산하고, ASUS Ascent GX10이나 Lenovo ThinkStation PGX처럼 협력 제조사가 같은 GB10 기기로 낸 제품 이름으로도 계산기에서 찾을 수 있습니다. GPU 몫은 맥과 스트릭스 헤일로에 쓰는 70% 대신, 사용자들이 공개한 부팅 기록 가운데 가장 낮은 값에서 Linux와 데스크톱이 쓰는 몫을 뺀 양으로 바꿨고, 모델이 CPU로 넘어갈 때도 같은 한도를 씁니다. 그날 8k 컨텍스트에서 128GB 구성의 Solar Open 2 250B Q2_K 파일은 CPU 전용 '겨우 가능'에서 GPU '원활'로 올랐고, DeepSeek V4 Flash 0731 Q2_K 파일은 CPU 전용 '겨우 가능'에서 '불가'로 바뀌었습니다. 64GB 구성에서는 Q4_K_M Llama 3.3 70B가 8k 컨텍스트에서 GPU에 전부 올라간다고 계산됐습니다.
+
+</Update>
+
 <Update id="sparse-linear-hybrid">
 
 ### 희소 어텐션과 선형 어텐션을 섞은 모델도 계산합니다

@@ -209,7 +209,8 @@ describe('compressed attention (DeepSeek V4, 10-22 D115 review): -np 1, because 
     const moe = planAt('rtx-5090', ramConfig('rtx-5090', 192), 'MXFP4');
     expect(moe.mode).toBe('cpu-moe');
     expect(moe.llamaCpp?.command).toMatch(/^llama-server -hf \S+ -c 8192 -np 1 -ngl all --n-cpu-moe \d+ -fa on$/);
-    const cpu = planAt('nvidia-dgx-spark', hardwareConfigs(gpu('nvidia-dgx-spark'), seed.gpus)[0]!, 'Q2_K');
+    // CPU 전용 — Strix Halo 128GB 의 Q2_K(DGX Spark 128GB 는 10-23 D117 부터 기기 근거 사용 가능량을 넘어 어느 경로로도 안 들어간다)
+    const cpu = planAt('amd-strix-halo', ramConfig('amd-strix-halo', 128), 'Q2_K');
     expect(cpu.mode).toBe('cpu-only');
     expect(cpu.llamaCpp?.command).toContain(' -c 8192 -np 1 -ngl 0 ');
     const multi = planAt('rtx-5090', ramConfig('rtx-5090', 64, { gpuCount: 4 }), 'MXFP4');

@@ -6,6 +6,7 @@
  * - 고른 기준(D74): GPU = 인기 GPU 10종(`data/publish.json` 배치 1 — 검색 수요 상위, 공개 콤보가 붙어 방문이 가장 많다),
  *   모델 = `data/models.json` `popularity` 5 인 9종 + HF 30일 다운로드 1위(gemma-4-26b-a4b, 10-06 기준). 10-14 당시 기준이다 —
  *   10-16 D94 에서 인기도를 고쳐 지금 5 는 12종(gemma-4-26b-a4b·qwen3.5-9b·qwen3.6-35b-a3b 추가)이지만 이 목록은 그대로 둔다.
+ *   10-23 D117: GPU 에 nvidia-dgx-spark 를 더했다(64GB 구성 출시·OEM 판 7종 — 사용자 요청, "DGX Spark 로 돌릴 수 있는 LLM" 검색 수요).
  * - 순서 = 위 기준의 순서(표시에는 쓰지 않는다).
  */
 
@@ -13,7 +14,7 @@
  * 소개글을 마지막으로 고친 날 — 사이트맵 lastmod(레지스트리 허브 = 이 날·데이터 기준일·엔진 `ENGINE_SPEC_DATE` 중 가장 늦은 날, `scripts/build-sitemaps.ts`).
  * 소개글(en·ko)을 고친 커밋에서 함께 바꾼다. 날짜 기준은 `content/updates.ts` 와 같다: 배포(main 푸시)되는 날의 UTC 날짜 — KST 자정~09시 푸시는 전날.
  */
-export const HUB_INTROS_UPDATED = '2026-10-14';
+export const HUB_INTROS_UPDATED = '2026-10-23';
 export const GPU_INTRO_IDS = [
   'rtx-4060',
   'rtx-3060-12gb',
@@ -25,6 +26,7 @@ export const GPU_INTRO_IDS = [
   'rtx-5090',
   'apple-m4',
   'apple-m4-pro',
+  'nvidia-dgx-spark',
 ] as const;
 
 export const MODEL_INTRO_IDS = [

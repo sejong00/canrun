@@ -152,6 +152,8 @@ export const CALC_MESSAGE_SPEC: MessageSpec = {
   keys: [
     'GpuHub.badgeLaptop',
     'GpuHub.badgeUnified',
+    // 기기 근거 사용 가능량이 있는 통합 메모리 기기 (10-23 D117 — DGX Spark)
+    'GpuHub.badgeUnifiedDevice',
     'GpuHub.badgeFp16',
     'GpuHub.badgeCpu',
     'GpuHub.ramOption',

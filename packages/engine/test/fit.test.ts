@@ -144,6 +144,17 @@ describe('§2.4 mode ordering', () => {
     expect(r.mode).toBe('full-gpu');
     expect(r.vram.limit).toBe(128);
   });
+
+  it('a device value for unified memory (10-23 D117 — DGX Spark 64GB 48.2) sets the GPU pool and caps the CPU path at the same value', () => {
+    const spark64: Hardware = { ...M4_MAX_128, os: 'linux', ramGB: 64, effClass: 'dgx-spark', unifiedUsableGB: 48.2 };
+    // 70B Q4_K_M 8k: 파일 + KV + 버퍼가 48.2 안 — GPU 에 전부 (옛 × 0.70 = 44.8 이면 CPU 전용)
+    expect(fit(spark64, LLAMA33_70B_Q4).mode).toBe('full-gpu');
+    expect(fit({ ...spark64, unifiedUsableGB: undefined }, LLAMA33_70B_Q4).mode).toBe('cpu-only');
+    // 32k: GPU 에도 CPU 경로(ram − 4 = 60 이 아니라 48.2)에도 안 들어간다
+    const long = fit(spark64, LLAMA33_70B_Q4, { ctx: 32768 });
+    expect(long.fits).toBe(false);
+    expect(fit({ ...spark64, unifiedUsableGB: undefined }, LLAMA33_70B_Q4, { ctx: 32768 }).mode).toBe('cpu-only');
+  });
 });
 
 describe('§2.4-1 dGPU full-gpu counts only GPU-resident weights (10-03 D62)', () => {

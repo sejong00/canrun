@@ -126,6 +126,30 @@ describe('structural refinements', () => {
     expect(GpuSchema.safeParse({ ...validGpu, memBandwidthByRam: [{ ramGB: 16, memBandwidthGBs: 100 }] }).success).toBe(false);
   });
 
+  it('per-memory-size GPU-usable memory (10-23 D117 — DGX Spark): unified only, every listed size once, below the size', () => {
+    const spark = {
+      ...validGpu,
+      id: 'spark-test',
+      vendor: 'nvidia-dgx',
+      kind: 'unified',
+      vramGB: undefined,
+      ramOptionsGB: [64, 128],
+      memBandwidthGBs: 273,
+      effClass: 'dgx-spark',
+    };
+    const by = (list: unknown[]) => ({ ...spark, usableGBByRam: list });
+    const both = [{ ramGB: 64, usableGB: 48.2 }, { ramGB: 128, usableGB: 116.9 }];
+    expect(GpuSchema.safeParse(by(both)).success).toBe(true);
+    expect(GpuSchema.safeParse(spark).success).toBe(true);
+    expect(GpuSchema.safeParse(by([])).success).toBe(false);
+    // 구성 하나만 — 구성마다 규칙이 갈리지 않게 전부 적는다
+    expect(GpuSchema.safeParse(by([both[1]])).success).toBe(false);
+    expect(GpuSchema.safeParse(by([...both, { ramGB: 96, usableGB: 80 }])).success).toBe(false);
+    expect(GpuSchema.safeParse(by([...both, { ramGB: 64, usableGB: 40 }])).success).toBe(false);
+    expect(GpuSchema.safeParse(by([both[0], { ramGB: 128, usableGB: 128 }])).success).toBe(false);
+    expect(GpuSchema.safeParse({ ...validGpu, usableGBByRam: [{ ramGB: 16, usableGB: 10 }] }).success).toBe(false);
+  });
+
   it('every Apple chip in the seed names at least one Mac', () => {
     const apple = loadSeed().gpus.filter((g) => g.vendor === 'apple');
     expect(apple.length).toBeGreaterThan(0);
