@@ -10,6 +10,7 @@
 export type SiteUpdate = { readonly id: string; readonly date: string };
 
 export const SITE_UPDATES = [
+  { id: 'dgx-spark-guide-compare', date: '2026-10-23' },
   { id: 'one-unit-enough-alternatives', date: '2026-10-23' },
   { id: 'dgx-spark-128gb-rtx-pro-6000', date: '2026-10-23' },
   { id: 'dgx-spark-cluster', date: '2026-10-23' },

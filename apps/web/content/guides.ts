@@ -94,6 +94,9 @@ const PUBLISHED_1015 = { status: 'published', reviewedAt: '2026-10-15', datePubl
 /** 10-19 D103 — 사용자가 채팅으로 4편 모두 게시 승인(D108, D40). 날짜는 UTC(배포일) */
 const PUBLISHED_1019 = { status: 'published', reviewedAt: '2026-10-19', datePublished: '2026-10-19', dateModified: '2026-10-19', author: 'CanRun' } as const;
 
+/** 10-23 D119 — 사용자가 채팅으로 게시 승인(10-23 '다 게시', D122·D40). 날짜는 UTC(배포일) */
+const PUBLISHED_1023 = { status: 'published', reviewedAt: '2026-10-23', datePublished: '2026-10-23', dateModified: '2026-10-23', author: 'CanRun' } as const;
+
 export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
   'vram-requirements': {
     ...PUBLISHED,
@@ -334,7 +337,7 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
         models: ['qwen3.5-35b-a3b', 'gemma-4-31b', 'gpt-oss-120b', 'qwen3.5-122b-a10b', 'solar-open2-250b'],
       },
     },
-    related: ['mac-local-llm', 'moe-cpu-offload', 'kv-cache-context'],
+    related: ['dgx-spark-llm', 'mac-local-llm', 'moe-cpu-offload'],
     locales: {
       en: {
         title: 'Strix Halo vs DGX Spark vs Mac Studio for local LLMs: what 128 GB gets you',
@@ -500,7 +503,7 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
         models: ['qwen3-14b', 'gemma-3-27b', 'qwen3-30b-a3b-2507', 'qwen3-32b', 'llama-3.3-70b', 'gpt-oss-120b'],
       },
     },
-    related: ['vram-requirements', 'gpu-by-budget', 'moe-cpu-offload'],
+    related: ['dgx-spark-llm', 'vram-requirements', 'gpu-by-budget'],
     locales: {
       en: {
         title: "Two GPUs for local LLMs: memory adds up, speed doesn't",
@@ -646,11 +649,8 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
     },
   },
   'dgx-spark-llm': {
-    // 10-23 D119 초안 — 게시(published·reviewedAt)는 사용자가 채팅으로 승인한 뒤(D40). 날짜는 UTC(배포일)
-    status: 'draft',
-    datePublished: '2026-10-23',
-    dateModified: '2026-10-23',
-    author: 'CanRun',
+    // 10-23 D119 초안 → 10-23 사용자 게시 승인(D122)
+    ...PUBLISHED_1023,
     grids: {
       // DGX Spark 구성 6줄(1대 64·128GB, 64·128GB × 2대·4대 — GPU 허브 '메모리 구성별 판정' 표와 같은 칸) × 모델 6
       // (작은 MoE · dense 31B · dense 70B · gpt-oss-120b · 122B MoE · 한 대에 안 들어가는 284B MoE). 본문이 말하는 칸은 전부 <Expect>(여러 대는 nodes)로 고정.

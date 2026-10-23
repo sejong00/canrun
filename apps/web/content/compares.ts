@@ -65,6 +65,9 @@ export type CompareSlug = (typeof COMPARE_SLUGS)[number];
 /** 10-19 D106 v1 — 10-19 사용자가 채팅으로 12쌍 모두 게시 승인(D108). 날짜는 UTC(배포일) */
 const PUBLISHED_1019 = { status: 'published', reviewedAt: '2026-10-19', dateModified: '2026-10-19' } as const;
 
+/** 10-23 D119·D120 초안 4쌍 — 10-23 사용자가 채팅으로 모두 게시 승인('다 게시', D122). 날짜는 UTC(배포일) */
+const PUBLISHED_1023 = { status: 'published', reviewedAt: '2026-10-23', dateModified: '2026-10-23' } as const;
+
 export const COMPARES: Readonly<Record<CompareSlug, CompareEntry>> = {
   'rtx-5060-ti-16gb-vs-rtx-5070': {
     ...PUBLISHED_1019,
@@ -156,38 +159,34 @@ export const COMPARES: Readonly<Record<CompareSlug, CompareEntry>> = {
   // 메모리가 같아 GPU 몫·대역폭 차이가 그대로 드러나고, 카탈로그 공개 벤치마크도 M4 Max 40코어(1)보다 많다(5). M5 Ultra 256GB('vs mac studio m5 ultra' 자동완성)는
   // 이때 계획의 상한(14) 안에 두려고 넣지 않았다가 10-23 D120 사용자 결정으로 따로 더했다(아래)
   'nvidia-dgx-spark-vs-apple-m5-max-40c': {
-    status: 'draft',
+    ...PUBLISHED_1023,
     a: 'nvidia-dgx-spark',
     b: 'apple-m5-max-40c',
     group: 'cross-platform',
     demand: "Google en/ko 'dgx spark vs mac studio', ko 'dgx spark vs 맥스튜디오' (autocomplete 10-23); 'dgx spark vs mac studio m5 ultra' also suggested",
-    dateModified: '2026-10-23',
   },
   'nvidia-dgx-spark-vs-rtx-5090': {
-    status: 'draft',
+    ...PUBLISHED_1023,
     a: 'nvidia-dgx-spark',
     b: 'rtx-5090',
     group: 'cross-platform',
     demand: "Google ko 'dgx spark vs 5090' (autocomplete 10-23)",
-    dateModified: '2026-10-23',
   },
   // 10-23 D120 초안(게시는 사용자 승인 뒤). RTX PRO 6000 Blackwell 은 같은 날 카탈로그에 넣은 레코드(Workstation Edition 만 — Max-Q 는 같은 주 공개 실측에서 MoE 생성이 13% 남짓 느려 카탈로그 밖, D120 리뷰)
   'nvidia-dgx-spark-vs-rtx-pro-6000-blackwell': {
-    status: 'draft',
+    ...PUBLISHED_1023,
     a: 'nvidia-dgx-spark',
     b: 'rtx-pro-6000-blackwell',
     group: 'cross-platform',
     demand: "Google ko 'dgx spark vs rtx pro 6000' (autocomplete 10-23)",
-    dateModified: '2026-10-23',
   },
   // 10-23 D120 초안. M5 Ultra 는 맥 스튜디오(2026) 칩 — 비교 페이지는 허브 요약 구성(가장 큰 메모리 256GB)만 다룬다(`compareGpus` primaryIndex)
   'nvidia-dgx-spark-vs-apple-m5-ultra': {
-    status: 'draft',
+    ...PUBLISHED_1023,
     a: 'nvidia-dgx-spark',
     b: 'apple-m5-ultra',
     group: 'cross-platform',
     demand: "Google 'dgx spark vs mac studio m5 ultra' (autocomplete 10-23 — suggested with 'dgx spark vs mac studio')",
-    dateModified: '2026-10-23',
   },
 };
 
