@@ -71,6 +71,8 @@ export function validProp(kind: PropKind, value: string): boolean {
       return (EXPECT_CONFIDENCES as readonly string[]).includes(value);
     case 'vram':
       return /^[1-9]\d*$/.test(value) && catalogIds.dgpuVram.has(Number(value));
+    case 'nodes':
+      return /^[2-9]$/.test(value);
   }
 }
 

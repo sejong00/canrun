@@ -1,0 +1,149 @@
+The DGX Spark is NVIDIA's desktop built on its GB10 chip, sold with 64GB or 128GB of unified memory at the same bandwidth. In CanRun's calculation, the 128GB model holds gpt-oss-120b and Qwen3.5 122B-A10B on its GPU,<Expect model="gpt-oss-120b" gpu="nvidia-dgx-spark" ram="128" fits="true" mode="full-gpu" /><Expect model="qwen3.5-122b-a10b" gpu="nvidia-dgx-spark" ram="128" fits="true" mode="full-gpu" /> while the 64GB model still holds Llama 3.3 70B at Q4_K_M with an 8k context, but not gpt-oss-120b.<Expect model="llama-3.3-70b" gpu="nvidia-dgx-spark" ram="64" fits="true" mode="full-gpu" /><Expect model="gpt-oss-120b" gpu="nvidia-dgx-spark" ram="64" fits="false" /> Linking two or four units adds memory for larger models, but with llama.cpp it does not make a model run faster.
+
+## What runs on one, two or four DGX Sparks
+
+The grid shows six models on every DGX Spark configuration CanRun calculates: one unit with 64GB or 128GB, and two or four linked units of either size. Each cell is the verdict at an 8k context with an f16 (unquantized 16-bit) KV cache, the memory that holds the conversation so far, at each model's default quant. That is Q4_K_M, the 4-bit GGUF quant CanRun uses as its baseline, or MXFP4 for gpt-oss and DeepSeek V4 Flash 0731. Every model here except Llama 3.3 70B has a thinking mode, so CanRun rates those with 1.5× stricter speed thresholds. The same rows appear on the <HubLink gpu="nvidia-dgx-spark" /> page for every model in the catalog.
+
+<ComboGrid grid="dgxSpark" />
+
+An MoE (mixture-of-experts) model reads only a small share of its weights for each token, and that is what runs fast here. Qwen3.6 35B-A3B runs great on one unit of either size<Expect model="qwen3.6-35b-a3b" gpu="nvidia-dgx-spark" ram="64" verdict="S" mode="full-gpu" /><Expect model="qwen3.6-35b-a3b" gpu="nvidia-dgx-spark" ram="128" verdict="S" mode="full-gpu" /> and still runs great on four linked units, a theoretical estimate.<Expect model="qwen3.6-35b-a3b" gpu="nvidia-dgx-spark" ram="64" nodes="4" verdict="S" confidence="theoretical" /> gpt-oss-120b needs the 128GB model, where it runs great with a public benchmark behind it.<Expect model="gpt-oss-120b" gpu="nvidia-dgx-spark" ram="128" verdict="S" mode="full-gpu" confidence="measured" /> Qwen3.5 122B-A10B, which uses about twice as many parameters per token, runs well there, also with a public benchmark.<Expect model="qwen3.5-122b-a10b" gpu="nvidia-dgx-spark" ram="128" verdict="A" confidence="measured" />
+
+Dense models read every weight for every token, so the DGX Spark's bandwidth sets a low ceiling. Gemma 4 31B runs slowly on both sizes, again with a public benchmark,<Expect model="gemma-4-31b" gpu="nvidia-dgx-spark" ram="64" verdict="B" confidence="measured" /><Expect model="gemma-4-31b" gpu="nvidia-dgx-spark" ram="128" verdict="B" confidence="measured" /> and so does Llama 3.3 70B.<Expect model="llama-3.3-70b" gpu="nvidia-dgx-spark" ram="64" verdict="B" confidence="measured" /><Expect model="llama-3.3-70b" gpu="nvidia-dgx-spark" ram="128" verdict="B" confidence="measured" /> More memory does not change that, and neither do more units.
+
+The linked rows matter for models that fit on no single unit. DeepSeek V4 Flash 0731 needs <Num kind="needGB" model="deepseek-v4-flash-0731" gpu="nvidia-dgx-spark" /> at MXFP4. Two 64GB units are still too small for it,<Expect model="deepseek-v4-flash-0731" gpu="nvidia-dgx-spark" ram="64" nodes="2" fits="false" /> while two 128GB units or four 64GB units hold it and run it well in CanRun's estimate, which is theoretical.<Expect model="deepseek-v4-flash-0731" gpu="nvidia-dgx-spark" ram="128" nodes="2" verdict="A" confidence="theoretical" /><Expect model="deepseek-v4-flash-0731" gpu="nvidia-dgx-spark" ram="64" nodes="4" verdict="A" confidence="theoretical" /> GLM-5.3 Flash, not in the grid, is larger still. At Q4_K_M it runs well on two 128GB units,<Expect model="glm-5.3-flash" gpu="nvidia-dgx-spark" ram="128" nodes="2" verdict="A" confidence="theoretical" /> runs slowly on four,<Expect model="glm-5.3-flash" gpu="nvidia-dgx-spark" ram="128" nodes="4" verdict="B" confidence="theoretical" /> and does not fit on four 64GB units.<Expect model="glm-5.3-flash" gpu="nvidia-dgx-spark" ram="64" nodes="4" fits="false" /> All three are theoretical estimates. The four-unit result is lower because every extra unit adds time to each token, as the section on linking explains.
+
+The same cost shows on models that already fit on one unit. Qwen3.6 27B, a dense model, runs well on one 128GB unit<Expect model="qwen3.6-27b" gpu="nvidia-dgx-spark" ram="128" verdict="A" mode="full-gpu" /> but slowly on two, a theoretical estimate.<Expect model="qwen3.6-27b" gpu="nvidia-dgx-spark" ram="128" nodes="2" verdict="B" confidence="theoretical" /> If a model fits on one unit, run it on one.
+
+## How much memory the GPU can use
+
+The DGX Spark has no separate VRAM. Its CPU and GPU share one pool, and NVIDIA lists that pool as unified system memory without giving a separate figure for the GPU. On Linux the GPU takes its memory from the same pool as every other program, so CanRun counts what the system and the desktop leave free: <Num kind="usableGB" gpu="nvidia-dgx-spark" ram="128" /> on the 128GB model and <Num kind="usableGB" gpu="nvidia-dgx-spark" ram="64" /> on the 64GB model. A model fits when its GGUF file, its KV cache and a compute buffer, the runtime's working memory, add up to no more than that.
+
+The 128GB figure starts from owners' kernel boot logs on NVIDIA's developer forum. The lowest of them comes from DGX OS 7.5.0, where a new kernel feature reserves several gigabytes more than earlier kernels did, and a reply in that thread says updates to address it are rolling out. CanRun takes that lowest log and subtracts what the desktop uses when idle, as another owner measured it. No boot log for the 64GB model has been published yet, so CanRun subtracts the same fixed amount from it. A press report puts the 64GB model's room for a model somewhat higher than CanRun does, and NVIDIA has not confirmed it.
+
+The table counts how all catalog models fare on each configuration. Its usable column is the figure above.
+
+<UnifiedTierTable gpus="nvidia-dgx-spark" />
+
+Because CanRun starts from the lowest boot log, a system on an earlier kernel, a fixed kernel or without a desktop has some room to spare. That matters only for files whose need lands just above the line. The Q2_K file of DeepSeek V4 Flash 0731 needs <Num kind="needGB" model="deepseek-v4-flash-0731" quant="Q2_K" gpu="nvidia-dgx-spark" />, a little more than the 128GB figure, so CanRun shows it as not fitting on one unit.<Expect model="deepseek-v4-flash-0731" gpu="nvidia-dgx-spark" ram="128" quant="Q2_K" fits="false" /> On a kernel that leaves more memory free it may load, so check the llama.cpp load log before you rule it out.
+
+Three habits help on a real system. NVIDIA's known-issues page warns that the free memory a CUDA program reads can be lower than what it can actually allocate, and that `nvidia-smi` shows total memory use as Not Supported while still listing each process. One owner reported that running out of memory locked up the whole machine, which then needed a hard reboot, instead of ending the program with an out-of-memory error, so leave some headroom. And turn mmap off in llama.cpp: `--load-mode none` in current builds, `--no-mmap` in older ones. Owners on the forum found loading with mmap much slower, the llama.cpp maintainers' DGX Spark results run with it off, and CanRun's DGX Spark speed factors are fitted to those results.
+
+## 64GB or 128GB: what decides it
+
+Both sizes use the same chip at <Num kind="bandwidth" gpu="nvidia-dgx-spark" />, so a model that fits on both gets the same speed estimate. The choice comes down to which models you want to fit, and at what context length.
+
+Several large MoE models fit on the 128GB model and not on the 64GB one: gpt-oss-120b, Ling-3.0 Flash and Laguna S 2.1 among them.<Expect model="ling-3.0-flash" gpu="nvidia-dgx-spark" ram="64" fits="false" /><Expect model="ling-3.0-flash" gpu="nvidia-dgx-spark" ram="128" fits="true" mode="full-gpu" /><Expect model="laguna-s-2.1" gpu="nvidia-dgx-spark" ram="64" fits="false" /><Expect model="laguna-s-2.1" gpu="nvidia-dgx-spark" ram="128" fits="true" mode="full-gpu" /> For some models a smaller file closes the gap. Kolibri-1 at Q4_K_M needs <Num kind="needGB" model="kolibri-1" gpu="nvidia-dgx-spark" />, more than the 64GB figure, and one step down, at IQ4_XS, it fits there and runs great.<Expect model="kolibri-1" gpu="nvidia-dgx-spark" ram="64" fits="false" /><Expect model="kolibri-1" gpu="nvidia-dgx-spark" ram="64" quant="IQ4_XS" verdict="S" mode="full-gpu" /> Qwen3.5 122B-A10B fits on the 64GB model only as a 2-bit file, with heavy quality loss.<Expect model="qwen3.5-122b-a10b" gpu="nvidia-dgx-spark" ram="64" fits="false" /><Expect model="qwen3.5-122b-a10b" gpu="nvidia-dgx-spark" ram="64" quant="UD-Q2_K_XL" fits="true" />
+
+Context length eats into the same pool. Llama 3.3 70B fits on the 64GB model at 8k, but at 32k with an f16 KV cache it needs <Num kind="needGB" model="llama-3.3-70b" ctx="32768" gpu="nvidia-dgx-spark" />, more than the 64GB figure,<Expect model="llama-3.3-70b" gpu="nvidia-dgx-spark" ram="64" ctx="32768" fits="false" /> and well within the 128GB one. If you work with long documents or a coding agent's large context, count the KV cache before you pick the smaller size. <GuideLink slug="kv-cache-context" /> explains how it grows.
+
+Two 64GB units are not the same as one 128GB unit. They hold gpt-oss-120b and run it great in CanRun's estimate, a theoretical one,<Expect model="gpt-oss-120b" gpu="nvidia-dgx-spark" ram="64" nodes="2" verdict="S" confidence="theoretical" /> but that estimate is below the public benchmark of a single 128GB unit, because the token has to cross between the units. Solar Open 2 250B at IQ4_XS does not fit on two 64GB units<Expect model="solar-open2-250b" gpu="nvidia-dgx-spark" ram="64" nodes="2" fits="false" /> and runs well on two 128GB units, also a theoretical estimate.<Expect model="solar-open2-250b" gpu="nvidia-dgx-spark" ram="128" nodes="2" verdict="A" confidence="theoretical" />
+
+This guide does not compare prices. Our data lists the DGX Spark at <Price gpu="nvidia-dgx-spark" />, the price of NVIDIA's own 128GB model at launch. NVIDIA raised that price in February 2026, citing memory supply, and the 64GB model comes only from NVIDIA's partner makers, at their own prices.
+
+## Linking two or four units
+
+### What NVIDIA supports
+
+Each DGX Spark has ConnectX-7 networking with two QSFP ports. NVIDIA's clustering guide supports up to three units connected directly by cable and up to four through a switch, and its product page recommends a power-of-two count. Two units take a single QSFP cable; NVIDIA's cable guide says a second cable does not add performance. Three units are cabled in a ring. For four, NVIDIA's switch guide calls for a 200GbE switch, and a four-unit cable ring is possible only with manual setup.
+
+NVIDIA's own multi-unit guides cover NCCL, the library for GPU-to-GPU communication across units, and vLLM across two to four units. NVIDIA's llama.cpp guide does not cover linked units. Linking units with llama.cpp RPC is a community setup. It is the one CanRun calculates, because it extends the llama.cpp commands this site already prints.
+
+### What CanRun calculates: llama.cpp RPC
+
+With llama.cpp RPC, the first unit runs `llama-server` and every other unit runs an RPC server that takes a share of the layers. Memory adds up, but each token still passes through every unit in turn, so bandwidth does not add up, and every hop between units adds time to each token. CanRun works out that time from public two-unit runs and adds it once per extra unit. A fast, small model loses the most, because the hop is a large share of its time per token.
+
+The public runs agree on the direction. In the llama.cpp discussion on the DGX Spark, one participant ran gpt-oss-120b on one and two units on the same build over the default TCP connection, and two units generated about a fifth slower. Another tester, running over RDMA, saw DeepSeek V4 Flash 0731 lose only a few percent on two units, and loaded a 4-bit file on two units that was too large for one. The same discussion also has 4-bit files of MiniMax-M2 and Qwen3-VL-235B running on two units, files too large for one. We found no public llama.cpp RPC runs on four units, so CanRun's four-unit rows extend the two-unit hop time.
+
+In the calculator, which the form below opens, pick the DGX Spark and then the number of linked units, and the result prints the commands for each unit. They follow this pattern, with each unit's ConnectX-7 address in place of the node addresses. On every unit after the first:
+
+```
+ggml-rpc-server -H <node2-ip> -p 50052 -c
+```
+
+Then on the first unit:
+
+```
+llama-server -hf <model> -c 8192 -ngl all -fa on --rpc <node2-ip>:50052
+```
+
+Build llama.cpp with `-DGGML_RPC=ON` and build the `ggml-rpc-server` target as well, because NVIDIA's llama.cpp guide builds only `llama-server`. Builds from before late June 2026 call the server `rpc-server`. When llama.cpp is built with libibverbs, the RPC link switches to RDMA by itself. The RPC server has no security of its own, so keep it on the private link between the units. Ollama does not split a model across machines this way.
+
+### Tensor parallelism with vLLM can be faster
+
+vLLM and TensorRT-LLM can split each layer across units instead, which is called tensor parallelism. Every unit then reads only part of each layer for every token, so bandwidth does add up. NVIDIA's technical blog reports Llama 3.3 70B in NVFP4 on TensorRT-LLM: the time per output token fell to about half on two units and to a little over a quarter on four. One tester ran DeepSeek V4 Flash 0731 with vLLM on two units and generated about four times as fast as llama.cpp RPC on the same two units, though with different weights and quantization, as the author points out.
+
+CanRun does not calculate tensor parallelism. Every linked row on this site is a llama.cpp RPC estimate, so if you plan to run vLLM across units, read those rows as a llama.cpp baseline, not as a vLLM estimate. vLLM also uses its own weight formats and memory settings.
+
+## Compared with a Mac Studio, Strix Halo and RTX 5090
+
+The second grid puts one 128GB DGX Spark next to a 128GB Strix Halo machine (Ryzen AI Max+ 395), the Mac Studio (2026) with the 40-core GPU M5 Max at 128GB and the M5 Ultra at 256GB, and an RTX 5090 desktop with 32GB of system RAM. The rows run in that order.
+
+<ComboGrid grid="dgxPeers" />
+
+The Strix Halo is the closest match. Its bandwidth, <Num kind="bandwidth" gpu="amd-strix-halo" />, is near the DGX Spark's, and gpt-oss-120b runs great on both with public benchmarks.<Expect model="gpt-oss-120b" gpu="amd-strix-halo" ram="128" verdict="S" confidence="measured" /><Expect model="gpt-oss-120b" gpu="nvidia-dgx-spark" ram="128" verdict="S" confidence="measured" /> The difference is the GPU share. CanRun gives the Strix Halo about 70% of its memory, <Num kind="usableGB" gpu="amd-strix-halo" />, so the Q2_K file of Solar Open 2 250B runs slowly there, CPU-only (a theoretical estimate), but runs well on the DGX Spark's GPU.<Expect model="solar-open2-250b" gpu="amd-strix-halo" ram="128" quant="Q2_K" verdict="B" mode="cpu-only" /><Expect model="solar-open2-250b" gpu="nvidia-dgx-spark" ram="128" quant="Q2_K" verdict="A" mode="full-gpu" /> In a same-build comparison in the llama.cpp DGX Spark discussion, the DGX Spark also processed gpt-oss-120b prompts not quite twice as fast as the Strix Halo at the start of a conversation.
+
+The M5 Max has <Num kind="bandwidth" gpu="apple-m5-max-40c" />, a little over twice the DGX Spark's, and it shows on dense models: Gemma 4 31B and Llama 3.3 70B run well on the M5 Max<Expect model="gemma-4-31b" gpu="apple-m5-max-40c" ram="128" verdict="A" /><Expect model="llama-3.3-70b" gpu="apple-m5-max-40c" ram="128" verdict="A" mode="full-gpu" /> and slowly on the DGX Spark.<Expect model="gemma-4-31b" gpu="nvidia-dgx-spark" ram="128" verdict="B" /><Expect model="llama-3.3-70b" gpu="nvidia-dgx-spark" ram="128" verdict="B" /> Qwen3.5 122B-A10B runs great on the M5 Max and well on the DGX Spark.<Expect model="qwen3.5-122b-a10b" gpu="apple-m5-max-40c" ram="128" verdict="S" /><Expect model="qwen3.5-122b-a10b" gpu="nvidia-dgx-spark" ram="128" verdict="A" /> On the same 128GB, though, CanRun gives the Mac's GPU about 70% of the memory, so the Solar Open 2 250B Q2_K file that runs well on the DGX Spark's GPU runs slowly and CPU-only on the M5 Max, a theoretical estimate.<Expect model="solar-open2-250b" gpu="apple-m5-max-40c" ram="128" quant="Q2_K" verdict="B" mode="cpu-only" /> The macOS default limit is higher than CanRun's figure, as <GuideLink slug="mac-local-llm" /> explains.
+
+The M5 Ultra has about four and a half times the DGX Spark's bandwidth, and its 256GB configuration holds DeepSeek V4 Flash 0731 at MXFP4 on its own, where it runs great in CanRun's estimate (theoretical).<Expect model="deepseek-v4-flash-0731" gpu="apple-m5-ultra" ram="256" verdict="S" mode="full-gpu" confidence="theoretical" /> The DGX Spark needs two 128GB units for the same file.
+
+The RTX 5090 has 32GB of VRAM and <Num kind="bandwidth" gpu="rtx-5090" />, more than six times the DGX Spark's bandwidth. A model that fits in that VRAM runs much faster there: Gemma 4 31B runs great on the RTX 5090.<Expect model="gemma-4-31b" gpu="rtx-5090" verdict="S" mode="full-gpu" /> Larger models have to spill into system RAM. With 32GB of RAM, gpt-oss-120b does not fit,<Expect model="gpt-oss-120b" gpu="rtx-5090" ram="32" fits="false" /> and with 64GB it runs well with its experts in RAM, a theoretical estimate that depends on RAM speed.<Expect model="gpt-oss-120b" gpu="rtx-5090" ram="64" verdict="A" mode="cpu-moe" confidence="theoretical" /> Llama 3.3 70B runs slowly on both, for different reasons: on the RTX 5090 some of its layers stay in system RAM,<Expect model="llama-3.3-70b" gpu="rtx-5090" verdict="B" mode="partial-offload" /> and on the DGX Spark the whole model is on the GPU but bandwidth holds it back. <GuideLink slug="moe-cpu-offload" /> covers the graphics card plus system RAM route.
+
+Where to go next:
+
+- Every catalog model on one, two and four units: <HubLink gpu="nvidia-dgx-spark" />.
+- <GuideLink slug="unified-memory-128gb" />: the GPU share on the Strix Halo and the Macs, and the same-build Strix Halo comparison.
+- <GuideLink slug="multi-gpu" />: why splitting a model across devices adds memory and not speed.
+
+## How sure are these numbers?
+
+Memory figures are calculated with a formula: real GGUF file sizes, KV cache sizes from each model's configuration, and a compute-buffer formula. The approximation is the GPU share, taken from the lowest public boot log for the 128GB model and worked out from it for the 64GB model. On linked units, CanRun checks the unit with the largest share of the model, using llama.cpp's default split of layers in proportion to each unit's free memory. That share is an approximation, because CanRun treats every layer as the same size.
+
+Speeds on one unit are measured where a cell says so. The other one-unit cells are calibrated estimates with a ±20% band, fitted to the llama.cpp maintainers' DGX Spark results file, which was run with mmap off. Every linked row is a theoretical estimate (±30%). Its hop time comes from public two-unit runs over the default TCP connection, and public two-unit runs over RDMA generated faster than CanRun's linked estimates. There are no public four-unit runs to check against. Prompt processing on linked units is estimated as on one unit, with a rough ±40% band, and public two-unit runs moved both ways.
+
+Not modelled: tensor parallelism, power modes, other programs' memory, and more than one request at a time. Verdict names in this guide's text refer to the 8k context, f16 KV baseline. Models with a thinking mode, even one that is off by default such as Gemma 4 31B's, can spend extra tokens thinking before they answer, so CanRun makes their speed thresholds 1.5× stricter; the legend below does not show this. The thresholds:
+
+<Threshold />
+
+## FAQ
+
+### Can a 64GB DGX Spark run gpt-oss-120b?
+
+Not on one unit, in CanRun's calculation. gpt-oss-120b needs <Num kind="needGB" model="gpt-oss-120b" gpu="nvidia-dgx-spark" />, more than the <Num kind="usableGB" gpu="nvidia-dgx-spark" ram="64" /> CanRun counts for the 64GB model.<Expect model="gpt-oss-120b" gpu="nvidia-dgx-spark" ram="64" fits="false" /> Two linked 64GB units hold it and run it great in CanRun's estimate, a theoretical one,<Expect model="gpt-oss-120b" gpu="nvidia-dgx-spark" ram="64" nodes="2" verdict="S" confidence="theoretical" /> and one 128GB unit runs it great with a public benchmark behind it.<Expect model="gpt-oss-120b" gpu="nvidia-dgx-spark" ram="128" verdict="S" confidence="measured" />
+
+### Does linking two DGX Sparks make a model run faster?
+
+Not with llama.cpp RPC: memory adds up, but each token passes through both units, so CanRun's estimates and the public two-unit runs are no faster than one unit. With tensor parallelism in vLLM or TensorRT-LLM, which NVIDIA's own guide and blog use, public results on two units were faster than one; in NVIDIA's test, Llama 3.3 70B generated about twice as fast. CanRun does not calculate that case.
+
+### How many DGX Sparks can be linked?
+
+Up to four, according to NVIDIA. Two or three connect directly with QSFP cables, and for four NVIDIA's guides use a 200GbE switch. NVIDIA recommends a power-of-two count. The <HubLink gpu="nvidia-dgx-spark" /> page lists two and four units; three can be checked in the calculator.
+
+### Are the ASUS Ascent GX10 and other partner models the same machine?
+
+They use the same GB10 chip and memory bandwidth and differ mainly in storage, so CanRun calculates them as the DGX Spark, and the calculator finds them by name. NVIDIA sells its own model only with 128GB; the 64GB size comes only from partner makers.
+
+### Can a DGX Spark run 70B models?
+
+It can hold them; it runs dense ones slowly. Llama 3.3 70B at Q4_K_M fits even on the 64GB model at 8k and runs slowly on both sizes, with public benchmarks behind it.<Expect model="llama-3.3-70b" gpu="nvidia-dgx-spark" ram="64" verdict="B" confidence="measured" /><Expect model="llama-3.3-70b" gpu="nvidia-dgx-spark" ram="128" verdict="B" confidence="measured" /> MoE models of a larger total size, such as gpt-oss-120b on the 128GB model, run much faster because they read fewer weights per token.<Expect model="gpt-oss-120b" gpu="nvidia-dgx-spark" ram="128" verdict="S" />
+
+## Sources
+
+- [NVIDIA DGX Spark product page](https://www.nvidia.com/en-us/products/workstations/dgx-spark/): the 64GB and 128GB configurations at the same bandwidth, the 64GB one only from partner makers, up to four linked units, cabling and the power-of-two advice.
+- [NVIDIA blog: DGX Spark with 64GB](https://blogs.nvidia.com/blog/local-ai-dgx-spark-64gb-sync/): the partner makers selling the 64GB configuration.
+- [NVIDIA DGX Spark release notes](https://docs.nvidia.com/dgx/dgx-spark/release-notes.html): system software support for both configurations.
+- [NVIDIA developer forum: less RAM available at boot on DGX OS 7.5.0](https://forums.developer.nvidia.com/t/dgx-os-7-5-0-ota-uefi-5-36-0acum027-7-2-gib-less-ram-available-at-boot/383222): owners' boot logs on several kernels, the lowest of which CanRun's figure starts from, and the reply about updates to address it.
+- [NVIDIA developer forum: memory the DGX system takes up](https://forums.developer.nvidia.com/t/the-dgx-system-itself-takes-up-20gb-memory/350359): an owner's reading of the desktop's memory use at idle, which CanRun subtracts.
+- [NVIDIA DGX Spark user guide: known issues](https://docs.nvidia.com/dgx/dgx-spark/known-issues.html): free memory reported below what can be allocated, and `nvidia-smi` showing total memory use as Not Supported.
+- [NVIDIA developer forum: unresponsive instead of a CUDA out-of-memory error](https://forums.developer.nvidia.com/t/dgx-spark-becomes-unresponsive-zombie-instead-of-throwing-cuda-oom/353752): an owner's report of the machine locking up when memory ran out.
+- [NVIDIA developer forum: slow mmap on DGX Spark](https://forums.developer.nvidia.com/t/very-slow-mmap-on-dgx-spark-that-affects-model-loading-questions-to-nvidia/349886): model loading with and without mmap.
+- [NVIDIA DGX Spark user guide: clustering](https://docs.nvidia.com/dgx/dgx-spark/spark-clustering.html): up to three units by cable and four through a switch.
+- [NVIDIA: connect DGX Sparks by cable](https://build.nvidia.com/spark/connect-multiple-sparks/cable-devices) and [through a switch](https://build.nvidia.com/spark/multi-sparks-through-switch): one cable for two units, a ring for three, and the switch requirements.
+- [NVIDIA: NCCL across DGX Sparks](https://build.nvidia.com/spark/nccl) and [vLLM across DGX Sparks](https://build.nvidia.com/spark/vllm-cluster): NVIDIA's multi-unit guides for two to four units.
+- [NVIDIA: llama.cpp on DGX Spark](https://build.nvidia.com/spark/llama-cpp): NVIDIA's single-unit llama.cpp guide and its build command.
+- [NVIDIA technical blog: scaling workloads with DGX Spark](https://developer.nvidia.com/blog/scaling-autonomous-ai-agents-and-workloads-with-nvidia-dgx-spark): Llama 3.3 70B NVFP4 on TensorRT-LLM with tensor parallelism on one, two and four units.
+- [llama.cpp discussion #16578: DGX Spark performance](https://github.com/ggml-org/llama.cpp/discussions/16578#discussioncomment-15078806): gpt-oss-120b on one and two units over TCP, models run on two units that do not fit on one, and the same-build Strix Halo comparison.
+- [Classmethod: DeepSeek V4 Flash 0731 on one and two DGX Sparks](https://dev.classmethod.jp/en/articles/dgx-spark-2node-deepseek-v4-flash-0731/): llama.cpp RPC over RDMA on one and two units, the file too large for one unit, and vLLM with tensor parallelism on two.
+- [llama.cpp RPC README](https://github.com/ggml-org/llama.cpp/blob/184f6536024668e8908ab8c86033d56708e62b40/tools/rpc/README.md): the RPC server, its build option, RDMA and its lack of security.
+- [llama.cpp DGX Spark results file](https://github.com/ggml-org/llama.cpp/blob/3795cc1e89e16fbc145f8a5457ea30abd86e0d1d/benches/dgx-spark/dgx-spark.md): the single-unit results CanRun's DGX Spark speed factors are fitted to, run with mmap off.
+- [NVIDIA developer forum: DGX Spark price change](https://forums.developer.nvidia.com/t/2-23-2026-price-change-announcement/361713): the February 2026 price change for NVIDIA's own model, citing memory supply.
+- [Apple: Mac Studio (M5 Max or M5 Ultra) tech specs](https://support.apple.com/en-us/128107): M5 Max and M5 Ultra memory options and bandwidth.

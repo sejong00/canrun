@@ -29,6 +29,8 @@ describe('GPU hub related guides (D95)', () => {
     expect(first('rtx-4060-laptop')).toBe('laptop-gpu-llm');
     expect(first('apple-m4')).toBe('mac-local-llm');
     expect(first('amd-strix-halo')).toBe('unified-memory-128gb');
+    // DGX Spark 전용 가이드(10-23 D119)는 게시된 뒤에만 맨 앞 — 초안인 동안은 128GB 통합 메모리 비교가 그대로 맨 앞
+    expect(first('nvidia-dgx-spark')).toBe(isPublished('dgx-spark-llm') ? 'dgx-spark-llm' : 'unified-memory-128gb');
     expect(first('cpu-ddr5-5600-2ch')).toBe('cpu-only-llm');
     // 128GB 이상 구성이 있는 맥만 128GB 통합 메모리 비교를 붙인다
     expect(gpuHubGuides(catalog.gpus.find((g) => g.id === 'apple-m4-max-40c')!)).toContain('unified-memory-128gb');

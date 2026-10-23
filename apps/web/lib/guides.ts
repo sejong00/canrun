@@ -1,5 +1,5 @@
 import type { ComponentType } from 'react';
-import { GUIDES, GUIDE_SLUGS, type GuideEntry, type GuideGrid, type GuideLocale, type GuideSlug } from '@/content/guides';
+import { GUIDES, GUIDE_SLUGS, gridRows, parseGridRow, type GuideEntry, type GuideGrid, type GuideLocale, type GuideSlug } from '@/content/guides';
 import { ogImageLocale, type ContentLocale } from '@/i18n/locales';
 import type { Locale } from '@/i18n/routing';
 import { findGpu, findModel } from './catalog';
@@ -106,6 +106,10 @@ const LOADERS: Readonly<Record<GuideSlug, Readonly<Record<ContentLocale, () => P
     en: () => import('@/content/en/guides/ollama-lm-studio-requirements.mdx') as Promise<GuideModule>,
     ko: () => import('@/content/ko/guides/ollama-lm-studio-requirements.mdx') as Promise<GuideModule>,
   },
+  'dgx-spark-llm': {
+    en: () => import('@/content/en/guides/dgx-spark-llm.mdx') as Promise<GuideModule>,
+    ko: () => import('@/content/ko/guides/dgx-spark-llm.mdx') as Promise<GuideModule>,
+  },
 };
 
 export function isGuideSlug(slug: string): slug is GuideSlug {
@@ -146,6 +150,10 @@ export function findGuideGrid(key: string): GuideGrid {
   const grid = GUIDES[owners[0]!].grids[key]!;
   for (const id of grid.gpus) if (!findGpu(id)) throw new Error(`guide grid ${key}: unknown gpu "${id}"`);
   for (const id of grid.models) if (!findModel(id)) throw new Error(`guide grid ${key}: unknown model "${id}"`);
+  // 행(10-23 D119) — 행의 GPU 는 gpus 안, gpus 는 모두 행에 (구성 키는 그리드를 그릴 때 허브 구성으로 확인한다)
+  const rowGpus = gridRows(grid).map((row) => parseGridRow(row).gpuId);
+  for (const id of rowGpus) if (!grid.gpus.includes(id)) throw new Error(`guide grid ${key}: row gpu "${id}" is not in gpus`);
+  for (const id of grid.gpus) if (!rowGpus.includes(id)) throw new Error(`guide grid ${key}: gpu "${id}" has no row`);
   return grid;
 }
 

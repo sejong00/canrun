@@ -345,6 +345,7 @@
   },
   "GuideData": {
     "gridCaption": "Verdicts at 8k context with an f16 KV cache, assuming 32 GB of DDR5 system RAM and Windows on PCs (unified-memory machines: the memory size shown in the cell). Speeds are estimates with an error band and a confidence label.",
+    "gridCaptionRows": "Verdicts at 8k context with an f16 KV cache. A row that names a memory size uses that configuration; PCs with a graphics card assume 32 GB of DDR5 system RAM and Windows. Speeds are estimates with an error band and a confidence label.",
     "tierCaption": "How many of our {total} catalog models each card runs, by verdict (8k context, f16 KV cache, 32 GB DDR5 system RAM)",
     "memoryCaption": "Memory a model needs at {ctx} context: file of the default quant + f16 KV cache + compute buffer",
     "memoryCaptionGpu": "Graphics card memory a model needs at {ctx} context: weights of the default quant loaded on the GPU + f16 KV cache + compute buffer",

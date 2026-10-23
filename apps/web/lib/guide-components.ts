@@ -27,7 +27,9 @@ export type PropKind =
   | 'ram'
   | 'confidence'
   /** 그래픽카드 VRAM 용량(정수 GB) — 카탈로그에 그 용량의 dGPU 가 1장 이상 (VramPeers, 10-19 D105) */
-  | 'vram';
+  | 'vram'
+  /** 여러 대 연결 대수(2 이상 정수) — `<Expect nodes>` (10-23 D118, MDX 명세는 D119). 구성이 있는지는 대조 함수가 본다 */
+  | 'nodes';
 
 export type ComponentSpec = {
   /** 표·블록 요소 — MDX 에서 자기 줄에만 (문단 안에 넣으면 `<p><div>` 하이드레이션 불일치) */
@@ -110,6 +112,8 @@ export const GUIDE_COMPONENTS: Readonly<Record<string, ComponentSpec>> = {
       quant: opt('quant'),
       mode: opt('mode'),
       ram: opt('ram'),
+      // 여러 대 연결 구성(DGX Spark 2대·4대 — `ram` 과 함께, `ctx` 와는 함께 못 쓴다 — lib/expect-claim.ts)
+      nodes: opt('nodes'),
       ctx: opt('ctx'),
       kv: opt('kv'),
       confidence: opt('confidence'),

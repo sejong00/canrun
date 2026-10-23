@@ -32,9 +32,9 @@ export type CompareEntry = CompareStatus & {
   dateModified: string;
 };
 
-/** 비교 페이지 상한 — 고른 소수 쌍만 (프로그래매틱 대량 노출 금지) */
+/** 비교 페이지 상한 — 고른 소수 쌍만 (프로그래매틱 대량 노출 금지). 10-23 D119: DGX Spark 초안 2쌍으로 12 → 14(승인된 계획 C 절) */
 // source: docs/04 §11 (policy)
-export const COMPARE_MAX = 12;
+export const COMPARE_MAX = 14;
 
 export const COMPARE_SLUGS = [
   'rtx-5060-ti-16gb-vs-rtx-5070',
@@ -49,6 +49,9 @@ export const COMPARE_SLUGS = [
   'amd-strix-halo-vs-nvidia-dgx-spark',
   'amd-strix-halo-vs-rtx-5070-ti',
   'apple-m4-pro-vs-rtx-5060-ti-16gb',
+  // 10-23 D119: DGX Spark 초안 2쌍 — 게시는 사용자 승인 뒤(D106)
+  'nvidia-dgx-spark-vs-apple-m5-max-40c',
+  'nvidia-dgx-spark-vs-rtx-5090',
 ] as const;
 
 export type CompareSlug = (typeof COMPARE_SLUGS)[number];
@@ -143,6 +146,25 @@ export const COMPARES: Readonly<Record<CompareSlug, CompareEntry>> = {
     group: 'cross-platform',
     demand: "Google 'm4 pro vs 5060 ti'",
   },
+  // 10-23 D119 초안(게시는 사용자 승인 뒤). 맥 스튜디오 쪽 칩은 지금 파는 맥 스튜디오(2026, M5 Max·M5 Ultra) 가운데 같은 128GB 구성이 있는 M5 Max 40코어 —
+  // 메모리가 같아 GPU 몫·대역폭 차이가 그대로 드러나고, 카탈로그 공개 벤치마크도 M4 Max 40코어(1)보다 많다(5). M5 Ultra 256GB('vs mac studio m5 ultra' 자동완성)는
+  // 계획의 상한(14) 안에 두려고 넣지 않았다 — 필요하면 사용자 결정(PROGRESS §2 큐 4)
+  'nvidia-dgx-spark-vs-apple-m5-max-40c': {
+    status: 'draft',
+    a: 'nvidia-dgx-spark',
+    b: 'apple-m5-max-40c',
+    group: 'cross-platform',
+    demand: "Google en/ko 'dgx spark vs mac studio', ko 'dgx spark vs 맥스튜디오' (autocomplete 10-23); 'dgx spark vs mac studio m5 ultra' also suggested",
+    dateModified: '2026-10-23',
+  },
+  'nvidia-dgx-spark-vs-rtx-5090': {
+    status: 'draft',
+    a: 'nvidia-dgx-spark',
+    b: 'rtx-5090',
+    group: 'cross-platform',
+    demand: "Google ko 'dgx spark vs 5090' (autocomplete 10-23)",
+    dateModified: '2026-10-23',
+  },
 };
 
 /**
@@ -162,6 +184,8 @@ export const COMPARE_INTRO_SLUGS = [
   'amd-strix-halo-vs-nvidia-dgx-spark',
   'amd-strix-halo-vs-rtx-5070-ti',
   'apple-m4-pro-vs-rtx-5060-ti-16gb',
+  'nvidia-dgx-spark-vs-apple-m5-max-40c',
+  'nvidia-dgx-spark-vs-rtx-5090',
 ] as const satisfies readonly CompareSlug[];
 
 export type CompareIntroSlug = (typeof COMPARE_INTRO_SLUGS)[number];

@@ -345,6 +345,7 @@
   },
   "GuideData": {
     "gridCaption": "判定条件：8k 上下文、f16 KV 缓存；PC 按 32 GB DDR5 系统内存和 Windows 计算（统一内存设备按格中标注的内存容量计算）。速度是附有误差范围和可信度标签的估算。",
+    "gridCaptionRows": "判定条件：8k 上下文、f16 KV 缓存。标有内存容量的行按该配置计算；装独立显卡的 PC 按 32 GB DDR5 系统内存和 Windows 计算。速度是附有误差范围和可信度标签的估算。",
     "tierCaption": "在收录的 {total} 个模型中，每块显卡按判定各能运行多少个（8k 上下文、f16 KV 缓存、32 GB DDR5 系统内存）",
     "memoryCaption": "{ctx} 上下文下模型所需内存：默认量化的文件 + f16 KV 缓存 + 计算缓冲区",
     "memoryCaptionGpu": "{ctx} 上下文下模型所需显存：默认量化中载入 GPU 的权重 + f16 KV 缓存 + 计算缓冲区",

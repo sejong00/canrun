@@ -11,6 +11,7 @@ import type { QuantAssessment } from '@canrun/data';
 import { GUIDES, type GuideSlug } from '@/content/guides';
 import { catalog, findGpu, findModel } from '@/lib/catalog';
 import { getCombo } from '@/lib/combos';
+import { resolveGuideGrid } from '@/lib/guide-grid';
 import { getGpuHub, getModelHub } from '@/lib/hubs';
 import { isComboIndexable } from '@/lib/publish';
 
@@ -136,8 +137,26 @@ switch (cmd) {
     out = {
       slug: a,
       entry,
+      // 행마다(10-23 D119 — 구성 행 'gpu@128x2' 는 GPU 허브 그 구성의 칸, 대표 구성 행은 콤보 페이지와 같은 칸)
       grids: Object.fromEntries(
-        Object.entries(entry.grids).map(([key, g]) => [key, g.gpus.flatMap((gid) => g.models.map((mid) => combo(mid, gid)))]),
+        Object.keys(entry.grids).map((key) => [
+          key,
+          resolveGuideGrid(key).rows.map((row) => ({
+            row: row.key,
+            cells: row.cells.map((cell) =>
+              row.config === undefined
+                ? combo(cell.model.id, row.gpu.id)
+                : {
+                    model: cell.model.id,
+                    gpu: row.gpu.id,
+                    ramGB: row.config.ramGB,
+                    ...(row.config.nodes !== undefined ? { nodes: row.config.nodes } : {}),
+                    baseline: { quant: cell.combo.baseline.quant, verdict: cell.combo.baseline.result.verdict, reason: cell.combo.baseline.verdictReason },
+                    display: { quant: cell.combo.display.quant, tier: cell.combo.display.tier, ...speed(cell.combo.display) },
+                  },
+            ),
+          })),
+        ]),
       ),
     };
     break;

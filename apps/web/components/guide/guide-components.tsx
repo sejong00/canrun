@@ -1,5 +1,5 @@
 import { computeBufferGB, kvGB, usableGB } from '@canrun/engine';
-import { configKey, type ComboAssessment, type Gpu, type Model } from '@canrun/data';
+import { configKey, type Gpu, type HwConfig, type Model } from '@canrun/data';
 import { useLocale, useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
 import { GgufSourceBadge, LicenseBadge } from '@/components/badges';
@@ -22,7 +22,8 @@ import {
   type MemoryKind,
   type NumKind,
 } from '@/lib/guide-components';
-import { findGuideGrid, guideEntry, isGuideSlug, isPublished } from '@/lib/guides';
+import { resolveGuideGrid } from '@/lib/guide-grid';
+import { guideEntry, isGuideSlug, isPublished } from '@/lib/guides';
 import { getGpuHub, getModelHub } from '@/lib/hubs';
 import { comboHref, gpuHref, guideHref, localeHref, modelHref } from '@/lib/links';
 import { gpuName, memoryText, type Translate } from '@/lib/phrases';
@@ -88,7 +89,8 @@ function useHub(): { locale: Locale; hub: (href: string) => string } {
 
 /**
  * GPU × 모델 판정 그리드 — 레지스트리 그리드(D44). 셀 = 콤보 페이지 헤드라인과 같은 조립, 공개 콤보만 링크.
- * 링크 텍스트는 허브 표와 같은 `Table.comboLink`("RTX 4060에서 gpt-oss-20b 판정 보기" — 10-16 D95)
+ * 링크 텍스트는 허브 표와 같은 `Table.comboLink`("RTX 4060에서 gpt-oss-20b 판정 보기" — 10-16 D95).
+ * 구성 행(`'<gpu>@<구성 키>'`, 10-23 D119)은 GPU 허브 '메모리 구성별 판정' 표의 칸 — 행 머리에 메모리(·대수)를 적고, 여러 대 행이 있으면 허브와 같은 안내 문장을 붙인다
  */
 export function ComboGrid({ grid }: { grid: string }) {
   const { locale, hub } = useHub();
@@ -97,19 +99,24 @@ export function ComboGrid({ grid }: { grid: string }) {
   const tHint = useTranslations('Hint');
   const tVerdict = useTranslations('Verdict');
   const tTable = useTranslations('Table');
+  const tHub = useTranslations('GpuHub');
   const names = useNames();
-  const g = findGuideGrid(grid);
-  const models = g.models.map((id) => needModel(id, 'ComboGrid'));
-  const rows = g.gpus.map((id) => {
-    const gpu = needGpu(id, 'ComboGrid');
-    return { gpu, cells: models.map((model) => needCombo(model.id, gpu.id, 'ComboGrid')) };
-  });
+  const { models, rows } = resolveGuideGrid(grid);
   const anyTheoretical = rows.some((r) => r.cells.some((c) => c.combo.display.result.confidence === 'theoretical' && c.combo.display.fReason !== 'no-fit'));
+  const anyConfig = rows.some((r) => r.config !== undefined);
+  const anyCluster = rows.some((r) => (r.config?.nodes ?? 1) > 1);
+  const caption = t(anyConfig ? 'gridCaptionRows' : 'gridCaption');
+  const rowLabel = (gpu: Gpu, config: HwConfig | undefined) =>
+    config === undefined
+      ? memLabel(gpu, locale, tCommon)
+      : (config.nodes ?? 1) > 1
+        ? tHub('clusterOption', { ram: formatInt(locale, config.ramGB), nodes: formatInt(locale, config.nodes!) })
+        : tCommon('gb', { value: formatInt(locale, config.ramGB) });
   return (
     <DataBlock kind="combo-grid">
-      <ScrollTable label={t('gridCaption')}>
+      <ScrollTable label={caption}>
         <table className={TABLE_CLASS}>
-          <caption>{t('gridCaption')}</caption>
+          <caption>{caption}</caption>
           <thead>
             <tr>
               <th scope="col">{t('colHardware')}</th>
@@ -121,18 +128,16 @@ export function ComboGrid({ grid }: { grid: string }) {
             </tr>
           </thead>
           <tbody>
-            {rows.map(({ gpu, cells }) => (
-              <tr key={gpu.id}>
+            {rows.map(({ key, gpu, config, cells }) => (
+              <tr key={key} {...(config !== undefined ? { 'data-grid-config': configKey(config) } : {})}>
                 <th scope="row">
                   <a href={hub(gpuHref(gpu.id))}>{gpuName(names, gpu)}</a>
-                  <span className="block text-xs font-normal text-muted-foreground">{memLabel(gpu, locale, tCommon)}</span>
+                  <span className="block text-xs font-normal text-muted-foreground">{rowLabel(gpu, config)}</span>
                 </th>
-                {cells.map((page) => {
-                  const combo: ComboAssessment = page.combo;
+                {cells.map(({ model, combo, atRam, linkable }) => {
                   const q = combo.display;
-                  const linkable = isComboIndexable(gpu.id, page.model.id);
                   return (
-                    <td key={page.model.id}>
+                    <td key={model.id}>
                       <div className="flex min-w-36 flex-col items-start gap-1">
                         <VerdictBadge verdict={combo.baseline.result.verdict} />
                         {q.quant !== combo.baseline.quant && (
@@ -150,12 +155,10 @@ export function ComboGrid({ grid }: { grid: string }) {
                         ) : (
                           <SpeedCell q={q} />
                         )}
-                        {gpu.kind !== 'dgpu' && (
-                          <span className="text-xs text-muted-foreground">{t('atRam', { ram: formatInt(locale, page.config.ramGB) })}</span>
-                        )}
+                        {atRam !== undefined && <span className="text-xs text-muted-foreground">{t('atRam', { ram: formatInt(locale, atRam) })}</span>}
                         {linkable && (
-                          <a href={hub(comboHref(page.model.id, gpu.id))} data-combo-link className="text-xs">
-                            {tTable('comboLink', { model: page.model.name, gpu: gpuName(names, gpu) })}
+                          <a href={hub(comboHref(model.id, gpu.id))} data-combo-link className="text-xs">
+                            {tTable('comboLink', { model: model.name, gpu: gpuName(names, gpu) })}
                           </a>
                         )}
                       </div>
@@ -168,6 +171,11 @@ export function ComboGrid({ grid }: { grid: string }) {
         </table>
       </ScrollTable>
       <Theoretical show={anyTheoretical} />
+      {anyCluster && (
+        <p data-guide-cluster-note className="text-xs text-muted-foreground">
+          {tHub('clusterNote')}
+        </p>
+      )}
     </DataBlock>
   );
 }

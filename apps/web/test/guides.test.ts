@@ -5,10 +5,10 @@
  */
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { comboKey, indexableCombos } from '@canrun/data/client';
+import { clusterConfigs, comboKey, configKey, hardwareConfigs, indexableCombos } from '@canrun/data/client';
 import { describe, expect, it } from 'vitest';
 import { loadSeed } from '../../../packages/data/test/seed';
-import { GUIDES, GUIDE_SLUGS, type GuideLocale } from '../content/guides';
+import { GUIDES, GUIDE_SLUGS, gridRows, parseGridRow, type GuideLocale } from '../content/guides';
 import { GUIDE_COMPONENTS } from '../lib/guide-components';
 import { catalogIds, componentProblems, componentUsages, syntaxProblems } from './mdx-scan';
 import { HANGUL, outsideCode as stripCode, proseProblems } from './prose-rules';
@@ -18,6 +18,12 @@ const seed = loadSeed();
 const gpuIds = catalogIds.gpus;
 const modelIds = catalogIds.models;
 const LOCALES: readonly GuideLocale[] = ['en', 'ko'];
+/** 그리드 구성 행(`'<gpu>@<구성 키>'`, 10-23 D119)이 가리킬 수 있는 키 — 통합 메모리 기기의 1대 구성과 여러 대 연결 구성(GPU 허브와 같은 목록) */
+const configKeysOf = (gpuId: string): string[] => {
+  const gpu = seed.gpus.find((g) => g.id === gpuId);
+  if (!gpu || gpu.kind !== 'unified') return [];
+  return [...hardwareConfigs(gpu, seed.gpus), ...clusterConfigs(gpu, seed.gpus)].map(configKey);
+};
 
 const mdxPath = (locale: GuideLocale, slug: string) => join(root, 'content', locale, 'guides', `${slug}.mdx`);
 const readMdx = (locale: GuideLocale, slug: string) => readFileSync(mdxPath(locale, slug), 'utf8');
@@ -72,6 +78,14 @@ describe('guide registry ↔ MDX files ↔ loader map', () => {
         gridOwners.set(key, slug);
         for (const id of grid.gpus) expect(gpuIds.has(id), `${slug}.${key} gpu ${id}`).toBe(true);
         for (const id of grid.models) expect(modelIds.has(id), `${slug}.${key} model ${id}`).toBe(true);
+        // 행(10-23 D119): 행의 GPU 는 gpus 안(커버리지·관련 가이드 역링크가 gpus 를 본다), gpus 는 모두 행에, 구성 행은 그 기기의 허브 구성
+        const rows = gridRows(grid).map(parseGridRow);
+        expect(new Set(gridRows(grid)).size, `${slug}.${key} duplicate rows`).toBe(gridRows(grid).length);
+        for (const { gpuId, config } of rows) {
+          expect(grid.gpus.includes(gpuId), `${slug}.${key} row gpu ${gpuId} is not in gpus`).toBe(true);
+          if (config !== undefined) expect(configKeysOf(gpuId), `${slug}.${key} row ${gpuId}@${config}`).toContain(config);
+        }
+        for (const id of grid.gpus) expect(rows.some((r) => r.gpuId === id), `${slug}.${key} gpu ${id} has no row`).toBe(true);
       }
     }
   });

@@ -17,7 +17,24 @@ import type { ContentLocale } from '../i18n/locales';
 /** 장문 로캘 — 의존성 0 인 `i18n/locales.ts` 를 상대 경로로 (zh 는 장문 없음, D109) */
 export type GuideLocale = ContentLocale;
 
-export type GuideGrid = { gpus: readonly string[]; models: readonly string[] };
+/**
+ * 그리드 좌표 (D44). 기본은 `gpus` 를 한 줄씩 — 칸은 콤보 페이지와 같은 대표 구성(통합 메모리 칩은 가장 좋은 판정이 나는 가장 작은 메모리, 칸에 "N GB 구성").
+ * `rows`(10-23 D119)를 주면 그 순서로 행을 그린다: `'<gpu id>'` = 위와 같은 대표 구성 한 줄, `'<gpu id>@<구성 키>'` = 통합 메모리 기기의 그 구성 한 줄
+ * (`configKey` — 메모리 용량 '128', 여러 대 연결 '128x2'. GPU 허브 '메모리 구성별 판정' 표와 같은 칸이고 행 머리에 구성을 적는다).
+ * 행의 GPU 는 `gpus` 에 있어야 하고 `gpus` 의 GPU 는 모두 행에 한 번 이상 나온다(유닛 테스트) — `gpus` 가 콤보 커버리지·관련 가이드 역링크의 단일 출처인 것은 그대로
+ */
+export type GuideGrid = { gpus: readonly string[]; models: readonly string[]; rows?: readonly string[] };
+
+/** 그리드 행 하나 — `'<gpu id>'`(대표 구성) 또는 `'<gpu id>@<구성 키>'`(그 메모리 구성, 10-23 D119) */
+export function parseGridRow(row: string): { gpuId: string; config?: string } {
+  const at = row.indexOf('@');
+  return at < 0 ? { gpuId: row } : { gpuId: row.slice(0, at), config: row.slice(at + 1) };
+}
+
+/** 그리드가 그리는 행 — `rows` 가 없으면 `gpus` 순서 그대로 */
+export function gridRows(grid: GuideGrid): readonly string[] {
+  return grid.rows ?? grid.gpus;
+}
 
 export type GuideStatus = { status: 'draft' } | { status: 'published'; reviewedAt: string };
 
@@ -59,6 +76,8 @@ export const GUIDE_SLUGS = [
   'qwen3.6-vs-qwen3.8',
   'deepseek-local',
   'ollama-lm-studio-requirements',
+  // 10-23 D119: DGX Spark 검색용 가이드 초안(자동완성 'dgx spark llm 추천·성능'·'dgx spark 2대 연결'·'dgx spark 64gb') — 게시는 사용자 승인 뒤(D40)
+  'dgx-spark-llm',
 ] as const;
 
 export type GuideSlug = (typeof GUIDE_SLUGS)[number];
@@ -621,6 +640,50 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
         title: '올라마(Ollama)·LM Studio 사양 — 최소·권장 사양과 VRAM별 추천 모델',
         description:
           'Ollama와 LM Studio를 설치하고 돌리는 데 필요한 OS·CPU·GPU 조건과, 모델 크기별로 드는 RAM·VRAM을 정리했습니다. 8~32GB 그래픽카드에서 받을 만한 모델도 함께 봅니다.',
+      },
+    },
+  },
+  'dgx-spark-llm': {
+    // 10-23 D119 초안 — 게시(published·reviewedAt)는 사용자가 채팅으로 승인한 뒤(D40). 날짜는 UTC(배포일)
+    status: 'draft',
+    datePublished: '2026-10-23',
+    dateModified: '2026-10-23',
+    author: 'CanRun',
+    grids: {
+      // DGX Spark 구성 6줄(1대 64·128GB, 64·128GB × 2대·4대 — GPU 허브 '메모리 구성별 판정' 표와 같은 칸) × 모델 6
+      // (작은 MoE · dense 31B · dense 70B · gpt-oss-120b · 122B MoE · 한 대에 안 들어가는 284B MoE). 본문이 말하는 칸은 전부 <Expect>(여러 대는 nodes)로 고정
+      dgxSpark: {
+        gpus: ['nvidia-dgx-spark'],
+        rows: [
+          'nvidia-dgx-spark@64',
+          'nvidia-dgx-spark@128',
+          'nvidia-dgx-spark@64x2',
+          'nvidia-dgx-spark@128x2',
+          'nvidia-dgx-spark@64x4',
+          'nvidia-dgx-spark@128x4',
+        ],
+        models: ['qwen3.6-35b-a3b', 'gemma-4-31b', 'llama-3.3-70b', 'gpt-oss-120b', 'qwen3.5-122b-a10b', 'deepseek-v4-flash-0731'],
+      },
+      // 비교 대상 한 줄씩 — 통합 메모리는 128GB(맥 스튜디오 M5 Ultra 는 256GB) 구성 고정, RTX 5090 은 콤보 페이지와 같은 시스템 RAM 32GB.
+      // 본문이 이 순서(DGX Spark → Strix Halo → M5 Max → M5 Ultra → RTX 5090)로 설명한다 — 행을 바꾸면 그 문단을 다시 확인한다
+      dgxPeers: {
+        gpus: ['nvidia-dgx-spark', 'amd-strix-halo', 'apple-m5-max-40c', 'apple-m5-ultra', 'rtx-5090'],
+        rows: ['nvidia-dgx-spark@128', 'amd-strix-halo@128', 'apple-m5-max-40c@128', 'apple-m5-ultra@256', 'rtx-5090'],
+        models: ['qwen3.6-35b-a3b', 'gemma-4-31b', 'llama-3.3-70b', 'gpt-oss-120b', 'qwen3.5-122b-a10b'],
+      },
+    },
+    related: ['unified-memory-128gb', 'multi-gpu', 'moe-cpu-offload'],
+    locales: {
+      en: {
+        title: 'DGX Spark for local LLMs: what runs on 64GB, 128GB and two or four linked units',
+        description:
+          'Which local LLMs run on a 64GB or 128GB DGX Spark, how much memory its GPU can use, and what linking two or four units with llama.cpp or vLLM changes.',
+      },
+      ko: {
+        // 자동완성 'dgx spark llm 성능'·'dgx spark 2대 연결'·'dgx spark 64gb' — '추천'은 RECOMMEND_TITLE_APPROVED 승인 전이라 넣지 않는다
+        title: 'DGX Spark LLM 성능 — 64GB·128GB에서 돌아가는 모델과 2대 연결·4대 연결',
+        description:
+          'DGX Spark 64GB·128GB 한 대에서 돌아가는 로컬 LLM과 GPU가 쓸 수 있는 메모리를 정리했습니다. 두 대·네 대를 이으면 llama.cpp와 vLLM에서 무엇이 달라지는지도 다룹니다.',
       },
     },
   },
