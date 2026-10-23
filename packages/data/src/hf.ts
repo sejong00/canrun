@@ -96,6 +96,12 @@ export function parseHfInput(text: string): string | undefined {
  * (https://github.com/ggml-org/llama.cpp/blob/0a1ef309cdbb9f2024f58a38fb4c42352c5db569/common/download.cpp#L617-L623 · #L667-L689).
  */
 const DRAFT_FILE_PREFIX = /^(?:mmproj|mtp-|eagle3-|dflash-|dspark-)/i;
+/**
+ * 보조 파일을 따로 모아 둔 폴더(10-23 — JetBrains/Mellum2.1-12B-A2.5B-Thinking-GGUF 가 `mtp/…-MTP-Q4_K_M.gguf` 를 더해
+ * 본 파일과 함께 잡혀 Q4_K_M·Q8_0 행이 ambiguous match 가 됐다). 폴더 이름이 보조 파일 종류와 같을 때만 뺀다 —
+ * 파일 이름 가운데의 'MTP' 는 MTP 층을 함께 담은 본 파일일 수 있어 보지 않는다
+ */
+const DRAFT_DIR = /(?:^|\/)(?:mmproj|mtp|eagle3|dflash|dspark)\//i;
 
 /** ud: 'fallback' = 플레인 우선·없으면 UD- 변형, 'as-is' = 둘 다(UD- quant 자신), 'never' = 플레인만(별칭) */
 function matchToken(entries: readonly TreeEntry[], token: string, ud: 'fallback' | 'as-is' | 'never'): TreeEntry[] {
@@ -106,7 +112,7 @@ function matchToken(entries: readonly TreeEntry[], token: string, ud: 'fallback'
     const path = entry.path;
     if (!path.toLowerCase().endsWith('.gguf')) return false;
     const base = path.split('/').at(-1) ?? path;
-    if (DRAFT_FILE_PREFIX.test(base)) return false;
+    if (DRAFT_FILE_PREFIX.test(base) || DRAFT_DIR.test(path)) return false;
     return re.test(path);
   });
   if (udRe === undefined) return candidates;

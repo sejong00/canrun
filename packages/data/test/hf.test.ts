@@ -1325,6 +1325,22 @@ describe('file name alias Q4_K → Q4_K_M (10-22 엔진 후속 ⑧-b — ggml-or
     expect(matchQuantFiles([f('X-Q4_K_S.gguf'), f('X-Q4_K_L.gguf'), f('X-UD-Q4_K_XL.gguf'), f('X-IQ4_K.gguf'), f('X-UD-Q4_K.gguf')], 'Q4_K_M')).toEqual([]);
   });
 
+  it('files in a sidecar folder (mtp/) stay out; a main file with MTP in its name stays in (10-23 — Mellum2.1 GGUF repo)', () => {
+    const tree = [
+      f('Mellum2.1-12B-A2.5B-Thinking-Q4_K_M.gguf', 7_000_000_000),
+      f('Mellum2.1-12B-A2.5B-Thinking-Q8_0.gguf', 12_000_000_000),
+      f('mtp-Mellum2.1-12B-A2.5B-Thinking-BF16.gguf', 400_000_000),
+      f('mtp/Mellum2.1-12B-A2.5B-Thinking-MTP-Q4_K_M.gguf', 100_000_000),
+      f('mtp/Mellum2.1-12B-A2.5B-Thinking-MTP-Q8_0.gguf', 200_000_000),
+    ];
+    expect(matchQuantFiles(tree, 'Q4_K_M').map((e) => e.path)).toEqual(['Mellum2.1-12B-A2.5B-Thinking-Q4_K_M.gguf']);
+    expect(matchQuantFiles(tree, 'Q8_0').map((e) => e.path)).toEqual(['Mellum2.1-12B-A2.5B-Thinking-Q8_0.gguf']);
+    // 폴더가 아니라 파일 이름 가운데의 MTP 는 본 파일일 수 있다 — 그대로 잡는다
+    expect(matchQuantFiles([f('Qwen3.5-122B-A10B-MTP-Q4_K_M.gguf')], 'Q4_K_M').map((e) => e.path)).toEqual(['Qwen3.5-122B-A10B-MTP-Q4_K_M.gguf']);
+    // 양자화 이름 폴더(Q8_0/…)는 그대로
+    expect(matchQuantFiles([f('Q8_0/X-Q8_0-00001-of-00002.gguf'), f('Q8_0/X-Q8_0-00002-of-00002.gguf')], 'Q8_0')).toHaveLength(2);
+  });
+
   it('quantRowsFrom: the Q4_K files become the Q4_K_M baseline row, then Q2_K (2 shards each, sizes summed)', () => {
     const rows = quantRowsFrom(GLM_TREE, 'ggml-org/GLM-5.3-Flash-GGUF', 'glm-5.3-flash');
     expect(rows.map((r) => [r.quant, r.fileGB, r.fileName])).toEqual([
