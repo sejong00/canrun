@@ -310,8 +310,8 @@ export const ModelSchema = z
       loops: z.number().int().min(2).optional(),
       /**
        * 하이퍼 커넥션(mHC — config `hc_mult` > 1, DeepSeek V4 — 10-22 D115): 층 사이 잔차 흐름을 hc_mult 갈래로 나눠 층마다 섞는다(sinkhorn 반복).
-       * 가중치 크기는 헤더 실측에 이미 들어 있지만 층마다 더하는 연산(mHC 혼합·압축기·인덱서)을 속도식이 따로 세지 않는다 — 지금 빌드 공개 실측 1점이
-       * 추정보다 25% 느려(docs/02 §7·§9) 추정은 이론 추정(assess `isTheoretical`). 출처 = config.json `hc_mult`, GGUF `<arch>.hyper_connection.count`.
+       * 가중치 크기는 헤더 실측에 이미 들어 있지만 층마다 더하는 연산(mHC 혼합·압축기·인덱서)을 속도식이 따로 세지 않는다 — 공개 참고점(M2 Ultra Metal
+       * #28948 · DGX Spark CUDA #27970 — 파일 가정)이 모두 추정보다 21.5~33.1% 느려(docs/02 §7·§9) 추정은 이론 추정(assess `isTheoretical`). 출처 = config.json `hc_mult`, GGUF `<arch>.hyper_connection.count`.
        * GLM-5.3-Flash(KDA + DSA 희소 MLA + mHC — 10-22 엔진 후속 ⑧-b)도 같은 표시(attnType hybrid)
        */
       mhc: z.literal(true).optional(),

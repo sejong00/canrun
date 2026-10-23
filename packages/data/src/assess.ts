@@ -458,8 +458,8 @@ export function isTheoretical(gpu: GpuCore, model: ModelCore, mode: Mode): boole
   // docs/02 §9)도 실측이 없어 보정 추정의 근거가 안 된다(docs/02 §4 ⑨, PROGRESS §4 D114)
   if (model.arch.loops !== undefined) return true;
   // 하이퍼 커넥션(mHC)·압축 어텐션(DeepSeek V4 Flash — 10-22 D115): 엔진은 MoE 읽기 바이트·고정 시간 식 그대로 계산하고, 층마다 더하는 mHC 혼합(sinkhorn)·
-  // 압축기·인덱서 연산은 따로 세지 않는다. 지금 빌드 공개 실측 1점(M2 Ultra Metal, 파일은 작성자·시기로 본 가정)이 추정보다 25% 느리고 긴 문맥 감쇠도 엔진보다
-  // 커서 보정 추정의 근거가 안 된다(docs/02 §4 ⑩·§7·§9, PROGRESS §4 D115). GLM-5.3-Flash(KDA + DSA 희소 MLA·인덱서 + mHC — 10-22 ⑧-b)도 같은 플래그로:
+  // 압축기·인덱서 연산은 따로 세지 않는다. 공개 참고점(M2 Ultra Metal #28948 두 열 · DGX Spark CUDA #27970 두 열 × 깊이 4 — 파일 가정)이 모두 추정보다
+  // 21.5~33.1% 느리고 긴 문맥 감쇠도 엔진보다 커서 보정 추정의 근거가 안 된다(docs/02 §4 ⑩·§7·§9, PROGRESS §4 D115). GLM-5.3-Flash(KDA + DSA 희소 MLA·인덱서 + mHC — 10-22 ⑧-b)도 같은 플래그로:
   // 카탈로그 기기·파일로 잰 지금 빌드 공개 실측이 없고, 참고점(M2 Ultra·DGX Spark·6×3090)은 모두 추정보다 느리다(docs/02 §4 ⑩·§7)
   if (model.arch.mhc === true || model.arch.attnType === 'compressed') return true;
   // FP16 크리플 구형 GPU — 계수 도출 표본(RTX 30~50·RDNA3/4) 밖
