@@ -37,8 +37,8 @@ export type ResultCard = {
   measuredCount: number;
   bucket: SizeBucket;
   /**
-   * 통합·CPU 카탈로그 하드웨어: 콤보 페이지가 실제로 쓰는 구성 (허브·콤보는 RAM 옵션별 평가 중 최선 판정 구성을 고른다 —
-   * `pickConfigCombo`). 사용자 구성과 다르면 "상세" 링크에 부기한다. dGPU 는 `differsFromHubAssumption`(D2) 이 맡는다
+   * 통합·CPU 카탈로그 하드웨어: 콤보 페이지가 실제로 쓰는 구성 (허브·콤보는 RAM 옵션별 평가 중 최선 판정의 최소 구성을 고른다 —
+   * `pickConfigCombo`, 레코드에 `primaryRamGB` 가 있으면 판정과 관계없이 그 구성: DGX Spark 128GB, 10-23 D120). 사용자 구성과 다르면 "상세" 링크에 부기한다. dGPU 는 `differsFromHubAssumption`(D2) 이 맡는다
    */
   hubConfig?: { ramGB: number; os: Os };
   /**

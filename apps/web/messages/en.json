@@ -234,7 +234,7 @@
     "modelHint": "Not in the list? Load it from Hugging Face or enter its numbers below.",
     "modelEmpty": "Pick a model above to see which GPUs, Macs and CPUs run it.",
     "modelCtxClamped": "This model handles up to {ctx} of context, so that is what we used.",
-    "assumeModelMode": "Everything in the list uses {ctx} context and KV cache {kv}. For graphics cards we assume a single card, 32 GB of DDR5-5600 system RAM, Windows, and that the card also drives the display. Macs, unified-memory PCs and CPU-only setups use the smallest memory size that gets the best verdict, or the largest when none of them runs the model.",
+    "assumeModelMode": "Everything in the list uses {ctx} context and KV cache {kv}. For graphics cards we assume a single card, 32 GB of DDR5-5600 system RAM, Windows, and that the card also drives the display. Macs, unified-memory PCs and CPU-only setups use the smallest memory size that gets the best verdict, or the largest when none of them runs the model. The DGX Spark always uses NVIDIA's own 128 GB model.",
     "mineLabel": "Your setup",
     "mineNote": "The list below uses the assumptions shown with the model above, so the same GPU can come out differently from your setup.",
     "mineAllModels": "All models with my setup",

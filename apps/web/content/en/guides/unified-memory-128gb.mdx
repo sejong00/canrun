@@ -62,7 +62,7 @@ Read the DGX Spark result with its build in mind. Our data takes it from the lla
 
 ## Dense models show the bandwidth gap
 
-The grid compares five models on the five chips and on an RTX 5090 at an 8k context. Each unified-memory cell names the smallest memory size that reaches that chip's best verdict for the model ("with N GB"); the DGX Spark's cells always use NVIDIA's own 128GB model. A cell can therefore name a smaller size, such as 32GB or 48GB, even though this guide is about 128GB. Once a model fits on the GPU, CanRun gives every larger configuration of the same chip the same speed estimate. The RTX 5090 row assumes 32GB of system RAM. Every model in this grid has a thinking mode (Gemma 4 31B's is off by default), so every cell uses CanRun's 1.5× stricter speed thresholds.
+The grid compares five models on the five chips and on an RTX 5090 at an 8k context. Each unified-memory cell names the smallest memory size that reaches that chip's best verdict for the model ("with N GB"). A cell can therefore name a smaller size, such as 32GB or 48GB, even though this guide is about 128GB. The DGX Spark's cells are the exception: they always use NVIDIA's own 128GB model. Once a model fits on the GPU, CanRun gives every larger configuration of the same chip the same speed estimate. The RTX 5090 row assumes 32GB of system RAM. Every model in this grid has a thinking mode (Gemma 4 31B's is off by default), so every cell uses CanRun's 1.5× stricter speed thresholds.
 
 <ComboGrid grid="unified128" />
 

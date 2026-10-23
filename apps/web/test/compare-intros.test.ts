@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { COMPARE_INTRO_COMPONENTS, COMPARE_INTRO_SLUGS, COMPARE_SLUGS, COMPARES, publishedCompares } from '../content/compares';
 import { resolveExpect, type ExpectClaim } from '../lib/expect-claim';
+import { getCombo } from '../lib/combos';
 import { GUIDE_COMPONENTS } from '../lib/guide-components';
 import { componentProblems, componentUsages, syntaxProblems } from './mdx-scan';
 import { HANGUL, outsideCode, proseOf, proseProblems } from './prose-rules';
@@ -166,5 +167,24 @@ describe('compare intro MDX bodies (AUTHORING §12)', () => {
     expect(bad(`${good.en}\n\n- a list item`)).toMatch(/list/);
     expect(bad(`${good.ko} 4090은 쾌적입니다.`, 'ko')).toMatch(/verdict name used as a predicate/);
     expect(bad(good.ko, 'en')).toMatch(/Hangul/);
+  });
+});
+
+describe('claims the intros make outside <Expect> (10-23 D120 review)', () => {
+  it("M5 Ultra 256GB × GLM-5.3-Flash: 'Runs slowly' is the CPU-only cap — the speed estimate alone would rate higher", () => {
+    // nvidia-dgx-spark-vs-apple-m5-ultra 소개글 en 'theoretical speed estimate alone would rate higher' · ko '추정 속도만으로는 더 높은 판정이 나옵니다'
+    const combo = getCombo('glm-5.3-flash', 'apple-m5-ultra')!.configCombos.find((c) => c.ramGB === 256)!;
+    expect(combo.baseline.result.mode).toBe('cpu-only');
+    expect(combo.baseline.verdictReason).toBe('cap-cpu-only');
+  });
+
+  it('RTX PRO 6000 Blackwell × Solar Open 2 250B Q2_K: just over the usable VRAM CanRun counts from the listed 96GB, under what the card reports', () => {
+    // 소개글 'a little more than the usable … CanRun counts from the listed 96GB' · 'the card reports slightly more memory to llama.cpp, so the whole file may fit'
+    // (llama-bench "VRAM: 97250 MiB" = 101.97GB — #15013 16420189, gpus.json note). --fit 이 비워 두는 1024MiB 를 빼도 남는다
+    const q = getCombo('solar-open2-250b', 'rtx-pro-6000-blackwell')!.combo.perQuant.find((r) => r.quant === 'Q2_K')!;
+    expect(q.result.mode).toBe('cpu-moe');
+    expect(q.memory.needGB).toBeGreaterThan(q.memory.gpuUsableGB);
+    expect(q.memory.needGB - q.memory.gpuUsableGB).toBeLessThan(1);
+    expect(q.memory.needGB).toBeLessThan((97250 - 1024) * 1.048576 / 1000);
   });
 });

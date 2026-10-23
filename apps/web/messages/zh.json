@@ -234,7 +234,7 @@
     "modelHint": "列表里没有？可以从 Hugging Face 加载，或在下方输入它的数值。",
     "modelEmpty": "在上方选择模型，即可查看哪些 GPU、Mac 和 CPU 能运行它。",
     "modelCtxClamped": "这个模型最多支持 {ctx} 上下文，因此按这个长度计算。",
-    "assumeModelMode": "列表中的所有结果均按上下文 {ctx}、KV 缓存 {kv} 计算。显卡假设为单卡、32 GB DDR5-5600 系统内存、Windows，并且这块显卡同时连接显示器。Mac、统一内存 PC 和纯 CPU 配置按能取得最佳判定的最小内存容量计算；如果所有容量都无法运行该模型，则按最大容量计算。",
+    "assumeModelMode": "列表中的所有结果均按上下文 {ctx}、KV 缓存 {kv} 计算。显卡假设为单卡、32 GB DDR5-5600 系统内存、Windows，并且这块显卡同时连接显示器。Mac、统一内存 PC 和纯 CPU 配置按能取得最佳判定的最小内存容量计算；如果所有容量都无法运行该模型，则按最大容量计算。DGX Spark 例外：始终按 NVIDIA 自己销售的 128 GB 版本计算。",
     "mineLabel": "你的配置",
     "mineNote": "下方列表使用上方模型旁列出的假设条件，因此同一款 GPU 的结果可能与你的配置不同。",
     "mineAllModels": "用我的配置查看所有模型",

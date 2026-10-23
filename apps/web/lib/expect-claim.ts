@@ -1,5 +1,5 @@
 import type { Confidence, Verdict } from '@canrun/engine';
-import type { ComboAssessment } from '@canrun/data';
+import { ctxMatrix, type ComboAssessment } from '@canrun/data';
 import { getCombo } from './combos';
 import { EXPECT_CONFIDENCES, EXPECT_MODES } from './guide-components';
 
@@ -12,7 +12,9 @@ import { EXPECT_CONFIDENCES, EXPECT_MODES } from './guide-components';
  * — 없으면 페이지 구성) · `ctx`/`kv`(콤보 ctx 표의 칸) · `mode`(실행 방식) · `confidence`(신뢰 라벨 — "공개 벤치마크가 표에 있다"·"이론 추정이다").
  * ctx 표는 콤보 페이지의 `qConfig` 구성으로 계산된다 — 기준 구성(dGPU 시스템 RAM 32GB)에 안 들어가는 콤보면 RAM 힌트 구성(예: 64GB)이라
  * 페이지 RAM 과 다르다. 그래서 그런 콤보의 ctx 주장은 `ram` 으로 그 용량을 밝혀야 하고, `ram` 을 주면 ctx 표의 RAM 과 같아야 한다
- * (10-14 hub-intros 리뷰 — 같은 8k 칸을 두고 "안 올라간다"와 "올라간다"가 둘 다 통과하던 문제).
+ * (10-14 hub-intros 리뷰 — 같은 8k 칸을 두고 "안 올라간다"와 "올라간다"가 둘 다 통과하던 문제). 통합 메모리·CPU 는 메모리 옵션이 곧 구성이라, `ram` 이
+ * ctx 표의 구성과 다르면 그 구성(`configCombos` 의 표시 양자화)으로 같은 ctx 표를 계산해 칸을 본다(10-23 D120 리뷰 — DGX Spark 대표 구성이 128GB 가 된 뒤
+ * "64GB 구성은 32k 에 안 들어간다"를 고정할 수 없던 문제). 그래픽카드(시스템 RAM 계단)는 그대로 ctx 표의 RAM 만.
  * `nodes`(10-23 D118): 여러 대 연결 구성(DGX Spark 2대·4대 — 콤보의 `clusterCombos`)을 가리킨다. `ram` 과 함께만 쓰고(구성 키가 (RAM, 대수)), ctx 표는 1대
  * 구성으로 계산되므로 `ctx` 와 함께 쓸 수 없다.
  */
@@ -55,7 +57,16 @@ export function resolveExpect(claim: ExpectClaim): ExpectActual {
   if (ctx !== undefined) {
     const tableRam = page.qConfig.ramGB;
     if (ram !== undefined && Number(ram) !== tableRam) {
-      throw new Error(`guide Expect: ${at} — the ctx table is computed at ${tableRam} GB, not ${ram} GB`);
+      // 통합·CPU: 그 메모리 구성의 ctx 표 (gpuHub.configs 와 configCombos 는 같은 순서 — getCombo)
+      const index = page.gpu.kind === 'dgpu' ? -1 : page.configCombos.findIndex((c) => c.ramGB === Number(ram));
+      if (index < 0) throw new Error(`guide Expect: ${at} — the ctx table is computed at ${tableRam} GB, not ${ram} GB`);
+      const q = page.configCombos[index]!.display;
+      if (quant !== undefined && quant !== q.quant) throw new Error(`guide Expect: ${at} — the ${ram} GB ctx table is for ${q.quant}`);
+      const cell = ctxMatrix(page.gpu, page.gpuHub.configs[index]!, page.model, q)
+        .rows.flat()
+        .find((c) => c.ctx === Number(ctx) && c.kvQuant === (kv ?? 'f16'));
+      if (!cell) throw new Error(`guide Expect: ${at} has no ctx table cell`);
+      return { verdict: cell.verdict, fits: cell.fits, mode: cell.mode, confidence: cell.result.confidence };
     }
     if (ram === undefined && page.usesRamHint) {
       throw new Error(`guide Expect: ${at} — the ctx table is computed at ${tableRam} GB (RAM hint, not the page's ${page.config.ramGB} GB) — say so with ram="${tableRam}"`);

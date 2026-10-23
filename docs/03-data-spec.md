@@ -138,7 +138,7 @@ Submission (P2, D1 — 미구현) { BenchPoint + submitterHash, ip rate-limit fi
 
 | id | VRAM | BW | FP16 | MSRP | Street 26-08 | 비고 |
 |---|---|---|---|---|---|---|
-| rtx-pro-6000-blackwell | 96 | 1792 | 126 | — | — | 10-23 D120 — 전문가용(Workstation Edition 600W, NVIDIA 데이터시트 96GB GDDR7 ECC·512-bit·1792GB/s·FP32 126 TFLOPS — 제품 페이지 125). Max-Q Workstation Edition(300W, 같은 메모리·대역폭, FP32 110)은 별칭 — 공개 tg 실측이 같다(#15013·#15396), pp 는 이 레코드로 보면 높게 나온다. Server Edition(패시브 냉각·서버 전용, 대역폭 다름)은 범위 밖. 출시가는 NVIDIA 미공개라 비움. 공개 실측 3건(#15013 Llama 2 7B b6392, #15396 gpt-oss-20b·120b b6205) |
+| rtx-pro-6000-blackwell | 96 | 1792 | 126 | — | — | 10-23 D120 — 전문가용(Workstation Edition 600W 만, NVIDIA 데이터시트 96GB GDDR7 ECC·512-bit·1792GB/s·FP32 126 TFLOPS — 제품 페이지 125). Max-Q Workstation Edition(300W, 같은 메모리·대역폭, FP32 110)은 카탈로그 밖(D120 리뷰 — 처음엔 별칭): 같은 주 빌드 공개 실측(#15396 b6199 vs b6205)에서 gpt-oss tg 0.87배·pp 0.82배라 이 레코드로 확정하지 않는다(별칭 없음 — 감지 none). dense tg 는 빌드가 다른 쌍뿐이지만 거의 같다(#15013). 별도 레코드는 사용자 결정. Server Edition(패시브 냉각·서버 전용)은 데스크톱 계산기 범위 밖. 출시가는 NVIDIA 미공개라 비움. 공개 실측 1건(#15013 Llama 2 7B b6392) — #15396 gpt-oss 2025-08 빌드 값은 지금 빌드보다 19~24% 낮아 넣지 않았다(docs/02 §9) |
 | rtx-5090 | 32 | 1792 | 104.8 | $1,999 | ~$4,200 | |
 | rtx-5080 | 16 | 960 | 56.3 | $999 | ~$1,256 | |
 | rtx-5070-ti | 16 | 896 | 44.1 | $749 | ~$949 | |

@@ -86,7 +86,10 @@ export function gpuTokens(text: string): string[] {
       out.push(tok === 'mobile' || tok === 'maxq' ? 'laptop' : tok);
     }
   }
-  return [...new Set(out)];
+  const set = [...new Set(out)];
+  // NVIDIA 전문가용 'RTX PRO' 는 제품군 이름이다 — rtx 가 같이 있으면 pro 를 한 토큰 'rtxpro' 로 (10-23 D120 리뷰). 'pro' 하나·'radeon pro'·
+  // 'macbook pro' 가 RTX PRO 6000 Blackwell 을 Apple M4 Pro·M5 Pro 앞에 두지 않게(Apple 의 pro 는 칩 등급 단어). 'rtx 6000 pro' 어순도 같은 토큰이 된다
+  return set.includes('rtx') ? set.map((t) => (t === 'pro' ? 'rtxpro' : t)) : set;
 }
 
 export type GpuNames = Readonly<Record<string, string>>;

@@ -171,7 +171,7 @@ export const COMPARES: Readonly<Record<CompareSlug, CompareEntry>> = {
     demand: "Google ko 'dgx spark vs 5090' (autocomplete 10-23)",
     dateModified: '2026-10-23',
   },
-  // 10-23 D120 초안(게시는 사용자 승인 뒤). RTX PRO 6000 Blackwell 은 같은 날 카탈로그에 넣은 레코드(Workstation Edition — Max-Q 는 별칭)
+  // 10-23 D120 초안(게시는 사용자 승인 뒤). RTX PRO 6000 Blackwell 은 같은 날 카탈로그에 넣은 레코드(Workstation Edition 만 — Max-Q 는 같은 주 공개 실측에서 MoE 생성이 13% 남짓 느려 카탈로그 밖, D120 리뷰)
   'nvidia-dgx-spark-vs-rtx-pro-6000-blackwell': {
     status: 'draft',
     a: 'nvidia-dgx-spark',

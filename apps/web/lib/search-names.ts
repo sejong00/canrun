@@ -52,8 +52,6 @@ const MIXED_CASE: Readonly<Record<string, string>> = {
   thinkstation: 'ThinkStation',
   edgexpert: 'EdgeXpert',
   g1n: 'G1n',
-  // RTX PRO 6000 Blackwell Max-Q Workstation Edition (10-23 D120)
-  'max-q': 'Max-Q',
 };
 
 /** 소문자 별칭 하나 → 표기 ("5070ti" → "5070Ti", "4070tis" → "4070TiS", "ryzen ai max 395" → "Ryzen AI Max 395", "lenovo thinkstation pgx" → "Lenovo ThinkStation PGX") */

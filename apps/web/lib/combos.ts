@@ -40,7 +40,7 @@ export type ComboPage = {
   model: Model;
   gpuHub: GpuHubData;
   modelHub: ModelHubData;
-  /** 통합·CPU: 모델 허브 행과 같은 대표 구성 (최고 판정의 최소 RAM) */
+  /** 통합·CPU: 모델 허브 행과 같은 대표 구성 (`pickConfigCombo` — 최고 판정의 최소 RAM, 레코드에 `primaryRamGB` 가 있으면 그 구성: DGX Spark 128GB, 10-23 D120) */
   configIndex: number;
   config: HwConfig;
   combo: ComboAssessment;

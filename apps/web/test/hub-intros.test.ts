@@ -178,6 +178,22 @@ describe('<Expect> ctx claims follow the RAM the ctx table is computed at (10-14
     expect(resolveExpect({ model: 'llama-3.1-8b', gpu: 'rtx-3090', ctx: '32768', ram: pageRam })).toEqual(cell);
     expect(() => resolveExpect({ model: 'llama-3.1-8b', gpu: 'rtx-3090', ctx: '32768', ram: '128' })).toThrow(/computed at/);
   });
+
+  it('on a unified-memory device ram names another configuration, and its ctx table is computed (10-23 D120 review)', () => {
+    // DGX Spark 의 ctx 표는 대표 구성 128GB(primaryRamGB) — 64GB 칸은 그 구성의 표시 양자화로 따로 계산한다
+    const page = getCombo('llama-3.3-70b', 'nvidia-dgx-spark')!;
+    expect(page.qConfig.ramGB).toBe(128);
+    const at = (ram: string | undefined, ctx: string) => resolveExpect({ model: 'llama-3.3-70b', gpu: 'nvidia-dgx-spark', ctx, ...(ram ? { ram } : {}) });
+    expect(at('64', '8192').fits).toBe(true);
+    expect(at('64', '32768').fits).toBe(false);
+    expect(at('128', '32768')).toEqual(at(undefined, '32768'));
+    expect(at('128', '32768').fits).toBe(true);
+    // 64GB 8k 칸은 64GB 구성 행(표시 양자화)과 같은 판정 — 같은 구성을 두 경로로 본다
+    expect(at('64', '8192').verdict).toBe(page.configCombos.find((c) => c.ramGB === 64)!.display.result.verdict);
+    expect(() => at('96', '32768')).toThrow(/computed at 128 GB/);
+    const q64 = page.configCombos.find((c) => c.ramGB === 64)!.display.quant;
+    expect(() => resolveExpect({ model: 'llama-3.3-70b', gpu: 'nvidia-dgx-spark', ram: '64', ctx: '32768', quant: q64 === 'Q8_0' ? 'Q2_K' : 'Q8_0' })).toThrow(/ctx table is for/);
+  });
 });
 
 describe('<Expect nodes> — linked DGX Spark units (10-23 D118)', () => {
