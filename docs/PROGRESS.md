@@ -278,7 +278,7 @@
 
 ## 7. 이력 (최신이 위)
 
-- **10-24** GSC 색인 요청 1일차 완료(사용자) — DGX Spark 가이드 en·ko · DGX 허브 en·ko · ko 비교 4쌍 · RTX PRO 6000 허브 en·ko. 2일차(en 비교 4쌍)는 다음 날
+- **10-24** GSC 색인 요청 완료(사용자) — DGX Spark 가이드 en·ko · DGX 허브 en·ko · 비교 4쌍 en·ko · RTX PRO 6000 허브 en·ko(14개). 애드센스 재신청 결과는 아직(10-21 신청)
 - **10-24** 신모델 자동 추가 ② — ① 런 성공·추가 0종(PR 없음). 스킵 목록: MiniMaxAI/MiniMax-M3.1-Flash(wait, 보류 구조 minimax_m3_vl)·tencent/WeVisOne-VL-2B·WeVisOne-VL-4B(wait, 보류 구조 qwen3_vl_text). 기준 미달 4건(RecursiveSI/flint·InternScience/Sage-A1.5·ornith-ai/Ornith-1.5-122B·KRAFTON/Raon-1-mini-preview)은 적지 않음
 - **10-24** D123 — RTX PRO 6000 Blackwell Max-Q 별도 레코드(300W, 사용자 '넣자') · 모델 허브 '가장 싼 GPU' 답을 가격 있는 행에서(사용자 '그래' — 게시 모델 허브 27쪽 FAQ). Max-Q 속도는 새 상수 없이 Workstation 과 같은 추정 + 지금 빌드 실측 1건(gpt-oss-20b b9674) 조인 — 0.87배 근거는 2025-08 빌드였고, D120 리뷰가 Workstation 지금 빌드 값으로 든 #19053 은 Max-Q 값이었다(정정). 기존 판정 덤프 바이트 동일(새 행·인접 GPU 만). 게이트 전부 통과(유닛 1,762 · verify-engine 297 · build 10,564장 · export 98 · E2E 246 · check-expect 3,538/0). 푸시하지 않았다
 - **10-23** D122 — DGX Spark 가이드 1편·비교 4쌍 게시(사용자 승인 "다 게시"). 다음: RTX PRO 6000 Max-Q 별도 레코드·모델 허브 '가장 싼 GPU' 답 바꾸기(같은 채팅 결정), GSC 새 주소 색인 요청(사용자, 선택)
