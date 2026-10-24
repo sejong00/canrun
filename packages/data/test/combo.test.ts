@@ -332,8 +332,10 @@ describe('adjacentCombos (docs/04 §2 ④, D9)', () => {
 });
 
 describe('twinGpus (D22) / titleVerdict (D14)', () => {
-  it('finds the memory-identical siblings (7 groups incl. one triple)', () => {
+  it('finds the memory-identical siblings (8 groups incl. one triple)', () => {
     expect(twinGpus(gpu('rtx-4090'), seed.gpus).map((g) => g.id)).toEqual(['rtx-3090-ti']);
+    // 10-24 D123 — RTX PRO 6000 Blackwell 의 300W Max-Q 판: 96GB·1792GB/s·nvidia 가 같아 생성 속도 추정이 같고 pp(FP16 110 vs 126)만 다르다
+    expect(twinGpus(gpu('rtx-pro-6000-blackwell'), seed.gpus).map((g) => g.id)).toEqual(['rtx-pro-6000-blackwell-max-q']);
     expect(twinGpus(gpu('rx-9070'), seed.gpus).map((g) => g.id)).toEqual(['rx-9070-xt']);
     expect(twinGpus(gpu('rtx-5060'), seed.gpus).map((g) => g.id)).toEqual(['rtx-3070', 'rtx-5060-ti-8gb']);
     expect(twinGpus(gpu('rtx-4060'), seed.gpus)).toEqual([]);
@@ -345,7 +347,7 @@ describe('twinGpus (D22) / titleVerdict (D14)', () => {
     const groups = new Set(
       seed.gpus.filter((g) => twinGpus(g, seed.gpus).length > 0).map((g) => [g.id, ...twinGpus(g, seed.gpus).map((t) => t.id)].sort().join(',')),
     );
-    expect(groups.size).toBe(7);
+    expect(groups.size).toBe(8);
   });
 
   it('title verdict follows baseline → recommended quant → RAM hint → F', () => {

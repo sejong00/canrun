@@ -887,6 +887,8 @@
     "modelCheapQ": "能让 {model} 运行良好的最便宜 GPU 是哪款？",
     "modelCheapA": "运行流畅的最便宜选择：{gpu}，{price}（{date} 市场价），{speed}。",
     "modelCheapNone": "在有当前市场价的 GPU 中，没有一款能在 {quant} 下达到“运行流畅”或“运行良好”。已收录的最佳选择是 {gpu}：{verdict}。",
+    "modelCheapNoneListed": "在有当前市场价的 GPU 中，没有一款能在 {quant} 下达到“运行流畅”或“运行良好”。把只有首发价的硬件也算上，最佳选择是 {gpu}：{verdict}。",
+    "modelCheapNoneUnlisted": "在有市场价或首发价的硬件中，没有一款能在 {quant} 下运行。已收录的最佳选择是没有价格信息的 {gpu}：{verdict}。",
     "modelCardsQ": "{model} 能在 8 GB、16 GB 或 24 GB 的 GPU 上运行吗？",
     "modelCardsA": "{quant}、8k 上下文下：{cards}。",
     "modelCard": "{gpu}：{verdict}",

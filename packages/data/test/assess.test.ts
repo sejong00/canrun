@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import {
   assessCombo,
   baselineRow,
+  bestListedPriceRow,
   canMixWith,
   cheapestOptions,
   clusterConfigs,
@@ -18,6 +19,7 @@ import {
   ggufPublisher,
   hardwareConfigs,
   HUB_POLICY,
+  hasListedPrice,
   isFp16Crippled,
   isTheoretical,
   isMixableGpu,
@@ -816,6 +818,35 @@ describe('모델 → GPU 행 (10-03 D65 — 모델 허브 표와 계산기 모�
     expect(rankableStreet({ kind: 'dgpu', streetUSD: 300, priceAsOf: '2026-08-09' })).toEqual({ usd: 300, asOf: '2026-08-09' });
   });
 
+  it('hasListedPrice: 출시가 또는 기준일 있는 실거래가 — 통합 메모리 기기의 출시가도 든다 (10-24 D123)', () => {
+    expect(hasListedPrice(gpu('rtx-4060-ti-16gb'))).toBe(true); // 출시가만
+    expect(hasListedPrice(gpu('rtx-3090'))).toBe(true);
+    expect(hasListedPrice(gpu('nvidia-dgx-spark'))).toBe(true); // 통합 메모리 출시가
+    expect(hasListedPrice(gpu('rtx-pro-6000-blackwell'))).toBe(false);
+    expect(hasListedPrice(gpu('rtx-pro-6000-blackwell-max-q'))).toBe(false);
+    expect(hasListedPrice(gpu('apple-m5-ultra'))).toBe(false);
+    expect(hasListedPrice({ streetUSD: 300 })).toBe(false); // 기준일 없는 실거래가는 가격이 아니다(규칙 2)
+    expect(hasListedPrice({ streetUSD: 300, priceAsOf: '2026-08-09' })).toBe(true);
+  });
+
+  it('bestListedPriceRow: 표 순서대로 가격 있는 첫 행 — 가격 없는 첫 행(RTX PRO 6000·M5 Ultra)을 건너뛴다 (10-24 D123)', () => {
+    const pick = (id: string) => {
+      const hub = summarizeModel(seed, model(id));
+      const row = bestListedPriceRow(hub.gpuRows)!;
+      return { first: hub.gpuRows[0]!.gpu.id, gpu: row.gpu.id, ram: row.combo.ramGB, verdict: row.combo.baseline.result.verdict, cheapest: hub.cheapest };
+    };
+    // 실거래가 기준 쾌적·원활이 없는 모델 — 표 첫 행은 가격 없는 RTX PRO 6000, 가격 있는 행에서는 DGX Spark 128GB(출시가)
+    expect(pick('llama-3.3-70b')).toMatchObject({ first: 'rtx-pro-6000-blackwell', gpu: 'nvidia-dgx-spark', ram: 128, verdict: 'B', cheapest: {} });
+    expect(pick('gpt-oss-120b')).toMatchObject({ first: 'rtx-pro-6000-blackwell', gpu: 'nvidia-dgx-spark', ram: 128, verdict: 'S', cheapest: {} });
+    // 가격 있는 행이 모두 불가 — 호출부(모델 허브 FAQ)는 그 사실과 가격 없는 첫 행을 쓴다
+    expect(pick('deepseek-v4-flash-0731')).toMatchObject({ first: 'apple-m5-ultra', verdict: 'F', cheapest: {} });
+    // 표 첫 행이 이미 가격이 있으면 그 행
+    const rows = modelGpuRows(seed, model('llama-3.1-8b'));
+    const firstListed = rows.findIndex((r) => hasListedPrice(r.gpu));
+    expect(bestListedPriceRow(rows)).toBe(rows[firstListed]);
+    expect(bestListedPriceRow(rows.filter((r) => !hasListedPrice(r.gpu)))).toBeUndefined();
+  });
+
   it('cheapestOptions: 원활 최저가는 쾌적 최저가보다 쌀 때만', () => {
     const rows = modelGpuRows(seed, model('deepseek-r1-distill-32b'));
     const { great, well } = cheapestOptions(rows);
@@ -1083,9 +1114,10 @@ describe('서로 다른 GPU 섞기 (docs/02 §6 베타, 10-03 D67)', () => {
     expect(canMixWith(gpu('arc-b580'), gpu('arc-b580'))).toBe(false);
     expect(canMixWith(gpu('apple-m4'), gpu('rtx-3060-12gb'))).toBe(false);
     expect(canMixWith(gpu('cpu-ddr5-5600-2ch'), gpu('rtx-3060-12gb'))).toBe(false);
-    // 섞을 수 있는 카드 = NVIDIA 데스크톱 25(10-23 D120 RTX PRO 6000 Blackwell 포함) + AMD 6 (GTX 1080 Ti 제외)
-    expect(seed.gpus.filter(isMixableGpu).map((g) => g.effClass).sort()).toEqual([...Array(6).fill('amd'), ...Array(25).fill('nvidia')]);
+    // 섞을 수 있는 카드 = NVIDIA 데스크톱 26(10-23 D120 RTX PRO 6000 Blackwell · 10-24 D123 Max-Q 포함) + AMD 6 (GTX 1080 Ti 제외)
+    expect(seed.gpus.filter(isMixableGpu).map((g) => g.effClass).sort()).toEqual([...Array(6).fill('amd'), ...Array(26).fill('nvidia')]);
     expect(canMixWith(gpu('rtx-pro-6000-blackwell'), gpu('rtx-5090'))).toBe(true);
+    expect(canMixWith(gpu('rtx-pro-6000-blackwell-max-q'), gpu('rtx-pro-6000-blackwell'))).toBe(true);
   });
 
   const mixed = (ramGB: number) => hardwareConfigs(gpu('rtx-3090'), seed.gpus, { ramGB, extraGpus: [gpu('rtx-3060-12gb')] })[0]!;

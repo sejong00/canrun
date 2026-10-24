@@ -172,9 +172,12 @@ export const COMPARES: Readonly<Record<CompareSlug, CompareEntry>> = {
     group: 'cross-platform',
     demand: "Google ko 'dgx spark vs 5090' (autocomplete 10-23)",
   },
-  // 10-23 D120 초안(게시는 사용자 승인 뒤). RTX PRO 6000 Blackwell 은 같은 날 카탈로그에 넣은 레코드(Workstation Edition 만 — Max-Q 는 같은 주 공개 실측에서 MoE 생성이 13% 남짓 느려 카탈로그 밖, D120 리뷰)
+  // 10-23 D120 초안 → D122 게시. RTX PRO 6000 Blackwell 은 같은 날 카탈로그에 넣은 Workstation Edition(600W) 레코드. 300W Max-Q 는 처음엔 카탈로그 밖(D120 리뷰 —
+  // 2025-08 같은 주 빌드에서 MoE 생성 0.87배)이었다가 10-24 D123 에 별도 레코드 `rtx-pro-6000-blackwell-max-q` 가 됐다(지금 빌드 근거로는 생성 속도 차이를 정할 수 없어 추정이 같다)
   'nvidia-dgx-spark-vs-rtx-pro-6000-blackwell': {
     ...PUBLISHED_1023,
+    // 10-24 D123: 소개글 첫 문단의 Max-Q 문장(카탈로그 밖 → 별도 페이지)
+    dateModified: '2026-10-24',
     a: 'nvidia-dgx-spark',
     b: 'rtx-pro-6000-blackwell',
     group: 'cross-platform',

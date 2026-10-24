@@ -628,7 +628,7 @@ export const MOE_OVERHEAD_CASES: readonly SourcedSpeedCase[] = [
   moeCase('RTX 3090 gpt-oss-20b tg128 (b9867)', NV(936), OSS20_MX, 210.37, PR(25319)),
   moeCase('RTX 4090 gpt-oss-20b tg128 (b9867)', NV(1008), OSS20_MX, 264.26, PR(25319)),
   moeCase('RTX 5090 gpt-oss-20b tg128 (b9867)', NV(1792), OSS20_MX, 411.96, PR(25319)),
-  moeCase('RTX PRO 6000 Blackwell gpt-oss-20b tg128 (#19053)', NV(1792), OSS20_MX, 353.16, PR(19053)),
+  moeCase('RTX PRO 6000 Blackwell Max-Q gpt-oss-20b tg128 (#19053)', NV(1792), OSS20_MX, 353.16, PR(19053)),
   moeCase('RTX 6000 Ada gpt-oss-20b tg128 (#19053)', NV(960), OSS20_MX, 253.9, PR(19053)),
   moeCase('RTX PRO 6000 Blackwell gpt-oss-20b tg128 (#22522 PDL)', NV(1792), OSS20_MX, 376.31, PR(22522)),
   moeCase('RTX PRO 6000 Blackwell Nemotron 3 Nano Q4_K_M tg128 (#22522 PDL)', NV(1792), NEMO_Q4, 325.74, PR(22522)),

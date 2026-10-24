@@ -83,10 +83,24 @@ export function gpuTokens(text: string): string[] {
     if (m) tokens = [m[1]!, m[2]!];
     for (const tok of tokens) {
       if (NOISE.has(tok)) continue;
-      out.push(tok === 'mobile' || tok === 'maxq' ? 'laptop' : tok);
+      out.push(tok === 'mobile' ? 'laptop' : tok);
     }
   }
-  const set = [...new Set(out)];
+  // 'Max-Q' — GeForce 노트북의 'maxq' 는 laptop 표시다. NVIDIA 전문가용 'RTX PRO' 에서는 300W 데스크톱 판(RTX PRO 6000 Blackwell Max-Q)의
+  // 제품 단어라 한 토큰 'maxq' 로 둔다 — 하이픈으로 갈린 'max'·'q' 도 합친다(10-24 D123). 그래서 'max' 하나는 Apple M4 Max 목록에 이 카드를 끼우지 않고,
+  // 'rtx pro 6000 maxq' 가 노트북 질의가 되지 않는다. RTX PRO 가 아닌 문자열은 전과 같다
+  const rtxPro = out.includes('rtx') && out.includes('pro');
+  const merged: string[] = [];
+  for (let i = 0; i < out.length; i += 1) {
+    const tok = out[i]!;
+    if (rtxPro && tok === 'max' && out[i + 1] === 'q') {
+      merged.push('maxq');
+      i += 1;
+    } else {
+      merged.push(tok === 'maxq' && !rtxPro ? 'laptop' : tok);
+    }
+  }
+  const set = [...new Set(merged)];
   // NVIDIA 전문가용 'RTX PRO' 는 제품군 이름이다 — rtx 가 같이 있으면 pro 를 한 토큰 'rtxpro' 로 (10-23 D120 리뷰). 'pro' 하나·'radeon pro'·
   // 'macbook pro' 가 RTX PRO 6000 Blackwell 을 Apple M4 Pro·M5 Pro 앞에 두지 않게(Apple 의 pro 는 칩 등급 단어). 'rtx 6000 pro' 어순도 같은 토큰이 된다
   return set.includes('rtx') ? set.map((t) => (t === 'pro' ? 'rtxpro' : t)) : set;

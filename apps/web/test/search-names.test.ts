@@ -79,6 +79,9 @@ describe('GPU aliases ("다른 표기" on GPU hubs)', () => {
     // NVIDIA RTX PRO 6000 Blackwell (10-23 D120) — RTX 뒤의 PRO 는 전부 대문자
     ['rtx pro 6000', 'RTX PRO 6000'],
     ['rtx pro 6000 blackwell workstation edition', 'RTX PRO 6000 Blackwell Workstation Edition'],
+    // Max-Q Workstation Edition (10-24 D123 — 별도 레코드) — Max-Q 는 그 표기
+    ['rtx pro 6000 max-q', 'RTX PRO 6000 Max-Q'],
+    ['rtx pro 6000 blackwell max-q workstation edition', 'RTX PRO 6000 Blackwell Max-Q Workstation Edition'],
     ['m5 pro', 'M5 Pro'],
   ] as const)('%s → %s', (alias, expected) => {
     expect(aliasLabel(alias)).toBe(expected);
@@ -99,8 +102,9 @@ describe('GPU aliases ("다른 표기" on GPU hubs)', () => {
       'Acer Veriton GN100',
       'GIGABYTE AI TOP ATOM',
     ]);
-    // Max-Q Workstation Edition 은 카탈로그 밖이라 '다른 표기'에도 없다 (10-23 D120 리뷰)
+    // Max-Q Workstation Edition 은 따로 레코드라(10-24 D123) Workstation Edition 의 '다른 표기'에 없고 자기 허브에 있다
     expect(gpuAliasLabels(gpu('rtx-pro-6000-blackwell'))).toEqual(['RTX PRO 6000', 'RTX PRO 6000 Blackwell Workstation Edition']);
+    expect(gpuAliasLabels(gpu('rtx-pro-6000-blackwell-max-q'))).toEqual(['RTX PRO 6000 Max-Q', 'RTX PRO 6000 Blackwell Max-Q Workstation Edition']);
     expect(gpuAliasLabels({ kind: 'dgpu', aliases: ['5070ti', '5070Ti'] })).toEqual(['5070Ti']);
     for (const g of catalog.gpus.filter((x) => x.kind === 'cpu')) expect(gpuAliasLabels(g), g.id).toEqual([]);
   });

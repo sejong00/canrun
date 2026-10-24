@@ -1,4 +1,6 @@
 import {
+  bestListedPriceRow,
+  hasListedPrice,
   isReasoning,
   MTP_LOADABLE_MODELS,
   rankableStreet,
@@ -176,11 +178,21 @@ function buildFaq(
   } else if (well) {
     cheapAnswer = t.faq('modelCheapWellOnly', priced(well));
   } else {
-    cheapAnswer = t.faq('modelCheapNone', {
+    // 실거래가 기준 쾌적·원활 GPU 가 없으면 가격(출시가 또는 기준일 있는 실거래가)이 있는 행 가운데 가장 나은 것 (10-24 D123 — 사용자 결정).
+    // 가격 있는 행이 모두 불가면 그 사실과 표 첫 행(가격 없음)을, 가격 있는 행이 아예 없으면(또는 첫 행부터 불가면) 전과 같은 문장
+    const listed = bestListedPriceRow(hub.gpuRows);
+    const rowValues = (row: ModelGpuRow) => ({
       quant: hub.baselineQuant,
-      gpu: rowLabel(t, best, locale),
-      verdict: t.verdict(best.combo.baseline.result.verdict),
+      gpu: rowLabel(t, row, locale),
+      verdict: t.verdict(row.combo.baseline.result.verdict),
     });
+    if (listed && listed.combo.baseline.result.verdict !== 'F') {
+      cheapAnswer = t.faq('modelCheapNoneListed', rowValues(listed));
+    } else if (listed && !hasListedPrice(best.gpu) && best.combo.baseline.result.verdict !== 'F') {
+      cheapAnswer = t.faq('modelCheapNoneUnlisted', rowValues(best));
+    } else {
+      cheapAnswer = t.faq('modelCheapNone', rowValues(best));
+    }
   }
   items.push({ question: t.faq('modelCheapQ', { model: model.name }), answer: cheapAnswer });
 

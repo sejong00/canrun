@@ -2,6 +2,14 @@ CanRun은 자주 바뀝니다. 새 모델이 들어오고, 계산기에 기능�
 
 ## 바뀐 기능과 고친 계산
 
+<Update id="rtx-pro-6000-max-q">
+
+### RTX PRO 6000 Blackwell Max-Q 추가, ‘가장 싼 GPU’ 답은 가격이 있는 하드웨어에서
+
+NVIDIA의 VRAM 96GB 워크스테이션용 그래픽카드 가운데 300W판인 <SiteLink to="/gpu/rtx-pro-6000-blackwell-max-q">RTX PRO 6000 Blackwell Max-Q</SiteLink>를 600W Workstation Edition과 따로 넣었습니다. 메모리와 대역폭이 같아 생성 속도는 같게, 프롬프트 처리만 더 느리게 추정합니다. 예전 llama.cpp 빌드에서는 생성도 더 느렸지만, 최근 빌드의 공개 결과에서는 차이가 거의 없었습니다. 모델 페이지의 ‘원활하게 돌아가는 가장 싼 GPU’ 질문은 실거래가가 있는 GPU 가운데 쾌적하거나 원활한 것이 없을 때, 가격이 없는 기기가 올 수 있는 표 첫 줄 대신 실거래가나 출시가가 있는 하드웨어 가운데 가장 나은 것을 답합니다. 이날 모델 페이지 6곳은 이 답이 DGX Spark로 바뀌었고, 가격이 있는 하드웨어로는 기준 양자화를 돌릴 수 없는 3곳은 그 사실을 먼저 적습니다.
+
+</Update>
+
 <Update id="dgx-spark-guide-compare">
 
 ### DGX Spark 가이드와 비교 페이지 4개를 더했습니다
@@ -22,7 +30,7 @@ CanRun은 자주 바뀝니다. 새 모델이 들어오고, 계산기에 기능�
 
 ### DGX Spark 페이지는 128GB 구성 기준, RTX PRO 6000 Blackwell 추가
 
-모델별 <SiteLink to="/gpu/nvidia-dgx-spark">DGX Spark</SiteLink> 페이지와 모델 페이지 표의 DGX Spark 줄은 이제 64GB 구성의 판정이 같아도 NVIDIA가 직접 파는 128GB 구성을 기준으로 보여 주고, 64GB 구성의 판정은 ‘메모리 용량별 판정’ 목록에 그대로 있습니다. 그날 판정은 바뀌지 않았습니다. 대신 이 페이지들의 메모리 막대, 판정이 그대로 유지되는 최대 컨텍스트, 더 큰 모델 안내가 128GB 구성 기준으로 바뀌었습니다. NVIDIA의 VRAM 96GB 워크스테이션용 그래픽카드 <SiteLink to="/gpu/rtx-pro-6000-blackwell">RTX PRO 6000 Blackwell</SiteLink>도 카탈로그에 넣었고, 600W Workstation Edition 기준으로 계산합니다. 300W판 Max-Q Workstation Edition은 메모리와 대역폭이 같지만 공개 벤치마크에서 gpt-oss 생성 속도가 더 느려서 계산하지 않습니다.
+모델별 <SiteLink to="/gpu/nvidia-dgx-spark">DGX Spark</SiteLink> 페이지와 모델 페이지 표의 DGX Spark 줄은 이제 64GB 구성의 판정이 같아도 NVIDIA가 직접 파는 128GB 구성을 기준으로 보여 주고, 64GB 구성의 판정은 ‘메모리 용량별 판정’ 목록에 그대로 있습니다. 그날 판정은 바뀌지 않았습니다. 대신 이 페이지들의 메모리 막대, 판정이 그대로 유지되는 최대 컨텍스트, 더 큰 모델 안내가 128GB 구성 기준으로 바뀌었습니다. NVIDIA의 VRAM 96GB 워크스테이션용 그래픽카드 <SiteLink to="/gpu/rtx-pro-6000-blackwell">RTX PRO 6000 Blackwell</SiteLink>도 카탈로그에 넣었고, 600W Workstation Edition 기준으로 계산합니다.
 
 </Update>
 

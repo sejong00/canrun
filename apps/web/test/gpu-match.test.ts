@@ -39,11 +39,12 @@ describe('interpretDetection — renderer strings', () => {
     ['RTX 2080 (only the Ti is tracked) → none', { renderer: ANGLE('NVIDIA, NVIDIA GeForce RTX 2080 (0x00001E87) Direct3D11 vs_5_0 ps_5_0, D3D11') }, { kind: 'none', vendor: 'nvidia' }],
     ['RTX 5070 Laptop (only the Ti Laptop is tracked) → none', { renderer: ANGLE('NVIDIA, NVIDIA GeForce RTX 5070 Laptop GPU Direct3D11 vs_5_0 ps_5_0, D3D11') }, { kind: 'none', vendor: 'nvidia' }],
     ['RTX 5090', { renderer: ANGLE('NVIDIA, NVIDIA GeForce RTX 5090 (0x00002B85) Direct3D11 vs_5_0 ps_5_0, D3D11') }, { kind: 'exact', id: 'rtx-5090' }],
-    // RTX PRO 6000 Blackwell (10-23 D120) — 레코드는 Workstation Edition 만. Max-Q(300W)는 메모리·대역폭이 같아도 같은 주 공개 실측에서
-    // MoE 생성이 13% 남짓 느려 이 레코드로 확정하지 않는다(D120 리뷰 — 별칭을 뺐다), Server Edition·RTX 6000 Ada 는 카탈로그 밖
+    // RTX PRO 6000 Blackwell (10-23 D120) — Workstation Edition(600W)과 Max-Q Workstation Edition(300W, 10-24 D123 별도 레코드)은 메모리·대역폭이
+    // 같아도 서로의 렌더러 문자열로 확정되지 않는다. Server Edition·RTX 6000 Ada 는 카탈로그 밖
     ['RTX PRO 6000 Blackwell Workstation Edition', { renderer: ANGLE('NVIDIA, NVIDIA RTX PRO 6000 Blackwell Workstation Edition Direct3D11 vs_5_0 ps_5_0, D3D11') }, { kind: 'exact', id: 'rtx-pro-6000-blackwell' }],
     ['Linux raw RTX PRO 6000 Blackwell Workstation Edition', { renderer: 'NVIDIA RTX PRO 6000 Blackwell Workstation Edition/PCIe/SSE2' }, { kind: 'exact', id: 'rtx-pro-6000-blackwell' }],
-    ['RTX PRO 6000 Blackwell Max-Q (not tracked) → none, never the Workstation Edition', { renderer: 'NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition/PCIe/SSE2' }, { kind: 'none', vendor: 'nvidia' }],
+    ['Linux raw RTX PRO 6000 Blackwell Max-Q → the Max-Q record, never the Workstation Edition', { renderer: 'NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition/PCIe/SSE2' }, { kind: 'exact', id: 'rtx-pro-6000-blackwell-max-q' }],
+    ['RTX PRO 6000 Blackwell Max-Q (ANGLE)', { renderer: ANGLE('NVIDIA, NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition Direct3D11 vs_5_0 ps_5_0, D3D11') }, { kind: 'exact', id: 'rtx-pro-6000-blackwell-max-q' }],
     ['RTX PRO 6000 Blackwell Server Edition (not tracked) → none', { renderer: ANGLE('NVIDIA, NVIDIA RTX PRO 6000 Blackwell Server Edition Direct3D11 vs_5_0 ps_5_0, D3D11') }, { kind: 'none', vendor: 'nvidia' }],
     ['RTX 6000 Ada (not tracked) → none, never the PRO 6000', { renderer: ANGLE('NVIDIA, NVIDIA RTX 6000 Ada Generation Direct3D11 vs_5_0 ps_5_0, D3D11') }, { kind: 'none', vendor: 'nvidia' }],
     ['RTX 4090 Laptop (not desktop 4090)', { renderer: ANGLE('NVIDIA, NVIDIA GeForce RTX 4090 Laptop GPU (0x00002757) Direct3D11 vs_5_0 ps_5_0, D3D11') }, { kind: 'exact', id: 'rtx-4090-laptop' }],
@@ -146,15 +147,23 @@ describe('matchGpu — catalog self-resolution', () => {
     for (const q of ['HP ZGX Nano G1n AI Station', 'Acer Veriton GN100 AI Mini Workstation', 'MSI EdgeXpert MS-C931']) {
       expect(rankGpus(q, gpus)[0]?.id, q).toBe('nvidia-dgx-spark');
     }
-    // RTX PRO 6000 Blackwell (10-23 D120) — 'rtx pro 6000'·'rtx 6000 pro' 는 확정, 'rtx 6000'(RTX 6000 Ada 일 수 있다)·Max-Q(카탈로그 밖 — D120 리뷰)는
-    // 확정하지 않는다. Max-Q 를 치면 목록 맨 위에는 뜬다(겹치는 토큰이 가장 많다)
+    // RTX PRO 6000 Blackwell (10-23 D120) — 'rtx pro 6000'·'rtx 6000 pro' 는 Workstation Edition 으로 확정, 'rtx 6000'(RTX 6000 Ada 일 수 있다)은
+    // 확정하지 않는다. Max-Q(10-24 D123 별도 레코드)는 'Max-Q'·'max q'·'maxq' 어느 표기든 Max-Q 레코드 — RTX PRO 의 maxq 는 노트북 표시가 아니다
     for (const q of ['rtx pro 6000', 'RTX PRO 6000 Blackwell', 'rtx 6000 pro', 'RTX PRO 6000 Blackwell Workstation Edition']) {
       expect(matchGpu(q, gpus), q).toEqual({ kind: 'exact', id: 'rtx-pro-6000-blackwell' });
     }
-    for (const q of ['rtx 6000', 'RTX PRO 6000 Max-Q', 'rtx pro 6000 maxq', 'RTX PRO 6000 Blackwell Max-Q Workstation Edition']) {
-      expect(matchGpu(q, gpus).kind, q).not.toBe('exact');
+    for (const q of ['RTX PRO 6000 Max-Q', 'rtx pro 6000 maxq', 'rtx pro 6000 max q', 'RTX PRO 6000 Blackwell Max-Q', 'RTX PRO 6000 Blackwell Max-Q Workstation Edition']) {
+      expect(matchGpu(q, gpus), q).toEqual({ kind: 'exact', id: 'rtx-pro-6000-blackwell-max-q' });
     }
-    for (const q of ['pro 6000', 'RTX PRO 6000 Max-Q', 'rtx pro']) expect(rankGpus(q, gpus)[0]?.id, q).toBe('rtx-pro-6000-blackwell');
+    expect(matchGpu('rtx 6000', gpus).kind).not.toBe('exact');
+    expect(rankGpus('pro 6000', gpus)[0]?.id).toBe('rtx-pro-6000-blackwell');
+    // 'rtx pro' 는 두 판이 같은 점수(이름 부분 일치) — 기존 규칙대로 토큰이 많은 이름(Max-Q)이 앞, 둘 다 맨 위 둘
+    expect(rankGpus('rtx pro', gpus).map((g) => g.id).slice(0, 2)).toEqual(['rtx-pro-6000-blackwell-max-q', 'rtx-pro-6000-blackwell']);
+    for (const q of ['RTX PRO 6000 Max-Q', 'rtx pro 6000 maxq']) expect(rankGpus(q, gpus)[0]?.id, q).toBe('rtx-pro-6000-blackwell-max-q');
+    // 'rtx pro 6000' 목록에는 두 판이 다 뜬다 — Workstation 이 위(별칭 정확 일치)
+    expect(rankGpus('rtx pro 6000', gpus).map((g) => g.id).slice(0, 2)).toEqual(['rtx-pro-6000-blackwell', 'rtx-pro-6000-blackwell-max-q']);
+    // GeForce 노트북의 maxq 는 그대로 노트북 표시 — 데스크톱 카드를 확정하지 않는다
+    expect(matchGpu('rtx 4090 maxq', gpus)).toEqual({ kind: 'exact', id: 'rtx-4090-laptop' });
     expect(matchGpu('DDR5-5600 듀얼채널 CPU', gpus, { names: koNames })).toEqual({ kind: 'exact', id: 'cpu-ddr5-5600-2ch' });
     expect(matchGpu('nope', gpus)).toEqual({ kind: 'none' });
     expect(matchGpu('', gpus)).toEqual({ kind: 'none' });
@@ -187,6 +196,8 @@ describe('matchGpu — catalog self-resolution', () => {
     expect(ids('radeon pro')).toEqual(['apple-m4-pro', 'apple-m5-pro']);
     expect(ids('ai')).toEqual(['amd-strix-halo']);
     expect(ids('max')).not.toContain('nvidia-dgx-spark');
+    // RTX PRO 6000 Blackwell Max-Q(10-24 D123)의 'Max-Q' 는 한 토큰(maxq) — max 하나로는 뜨지 않는다
+    expect(ids('max')).not.toContain('rtx-pro-6000-blackwell-max-q');
     // 이름 부분 일치가 없으면 겹치는 토큰 목록 — Apple Pro·Max 후보가 남고, 남의 이름 단어만 겹치는 DGX Spark 는 빠진다
     expect(ids('pro max')).toEqual(expect.arrayContaining(['apple-m4-pro', 'apple-m4-max-40c', 'apple-m5-pro', 'apple-m5-max-40c']));
     expect(ids('pro max')).not.toContain('nvidia-dgx-spark');

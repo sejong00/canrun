@@ -1344,6 +1344,23 @@ export function cheapestOptions<G extends GpuCore>(
   return { ...(great ? { great } : {}), ...(well ? { well } : {}) };
 }
 
+/**
+ * 가격이 나와 있는 기기 — 출시가(msrpUSD) 또는 기준일이 있는 실거래가 (10-24 D123). 기준일 없는 실거래가는 가격으로 치지 않는다(규칙 2).
+ * 순위·최저가(`rankableStreet` — dGPU 실거래가만)보다 넓다: 출시가만 있는 통합 메모리 기기(DGX Spark·Strix Halo)도 든다
+ */
+export function hasListedPrice(gpu: Pick<GpuCore, 'msrpUSD' | 'streetUSD' | 'priceAsOf'>): boolean {
+  return gpu.msrpUSD !== undefined || (gpu.streetUSD !== undefined && Boolean(gpu.priceAsOf));
+}
+
+/**
+ * 모델 허브 FAQ '가장 싼 GPU' 답에서 실거래가 기준 쾌적·원활 GPU 가 없을 때 드는 행 (10-24 D123 — 사용자 결정: 가격 없는 표 첫 행
+ * (RTX PRO 6000·M5 Ultra 등)을 '가장 나은 선택'으로 들지 않는다). 표 순서(판정 → tok/s) 그대로 가격(`hasListedPrice`)이 있는 첫 행 —
+ * 가격 있는 행이 하나도 없으면 undefined. 그 행이 F 인지(가격 있는 하드웨어로는 못 돌린다)는 호출부가 본다
+ */
+export function bestListedPriceRow<G extends GpuCore>(rows: readonly ModelGpuRow<G>[]): ModelGpuRow<G> | undefined {
+  return rows.find((r) => hasListedPrice(r.gpu));
+}
+
 export function summarizeModel(catalog: SeedCatalog, model: Model): ModelHubData {
   const rows = catalog.modelQuants.filter((mq) => mq.modelId === model.id);
   const tiers = tierMap(catalog.quantDefs);

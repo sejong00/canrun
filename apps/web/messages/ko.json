@@ -887,6 +887,8 @@
     "modelCheapQ": "{model}, 원활하게 돌아가는 가장 싼 GPU는 무엇인가요?",
     "modelCheapA": "쾌적하게 돌리는 가장 싼 GPU는 {gpu}입니다. 실거래가는 {date} 기준 {price}이고, 속도는 {speed}입니다.",
     "modelCheapNone": "실거래가가 확인된 GPU 가운데 {quant} 기준으로 쾌적하거나 원활하게 돌리는 GPU는 없습니다. CanRun이 다루는 하드웨어 전체에서 가장 나은 선택은 {gpu}입니다(판정: {verdict}).",
+    "modelCheapNoneListed": "실거래가가 확인된 GPU 가운데 {quant} 기준으로 쾌적하거나 원활하게 돌리는 GPU는 없습니다. 출시가만 나와 있는 하드웨어까지 넣으면 가장 나은 선택은 {gpu}입니다(판정: {verdict}).",
+    "modelCheapNoneUnlisted": "실거래가나 출시가가 나와 있는 하드웨어로는 {quant} 기준으로 돌릴 수 없습니다. CanRun이 다루는 하드웨어 전체에서 가장 나은 선택은 가격 정보가 없는 {gpu}입니다(판정: {verdict}).",
     "modelCardsQ": "{model}, 8GB·16GB·24GB GPU에서 돌아가나요?",
     "modelCardsA": "{quant}·8k 컨텍스트 기준 카드별 판정입니다. {cards}.",
     "modelCard": "{gpu}: {verdict}",

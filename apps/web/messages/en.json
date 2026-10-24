@@ -887,6 +887,8 @@
     "modelCheapQ": "What is the cheapest GPU that runs {model} well?",
     "modelCheapA": "Cheapest that runs it great: {gpu} at {price} (street price as of {date}), {speed}.",
     "modelCheapNone": "No GPU with a current street price reaches Runs great or Runs well at {quant}. The best tracked option is {gpu}: {verdict}.",
+    "modelCheapNoneListed": "No GPU with a current street price reaches Runs great or Runs well at {quant}. Counting hardware with only a launch price too, the best option is {gpu}: {verdict}.",
+    "modelCheapNoneUnlisted": "Nothing with a street or launch price can run it at {quant}. The best tracked option, which has no listed price, is {gpu}: {verdict}.",
     "modelCardsQ": "Can {model} run on an 8 GB, 16 GB or 24 GB GPU?",
     "modelCardsA": "At {quant} with 8k context: {cards}.",
     "modelCard": "{gpu} — {verdict}",

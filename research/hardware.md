@@ -6,7 +6,8 @@
 
 | GPU | VRAM | BW GB/s | FP16 | MSRP | Street 26-08 |
 |---|---|---|---|---|---|
-| RTX PRO 6000 Blackwell (10-23 D120 — Workstation Edition 만, Max-Q 는 카탈로그 밖 — 같은 주 공개 실측 gpt-oss tg 0.87배) | 96 GDDR7 ECC | 1,792 | 126 (NVIDIA 데이터시트 FP32, 제품 페이지 125 · Max-Q 110) | 미공개 | — |
+| RTX PRO 6000 Blackwell (10-23 D120 — Workstation Edition 600W) | 96 GDDR7 ECC | 1,792 | 126 (NVIDIA 데이터시트 FP32, 제품 페이지 125) | 미공개 | — |
+| RTX PRO 6000 Blackwell Max-Q (10-24 D123 — Max-Q Workstation Edition 300W, 별도 레코드. 2025-08 같은 주 빌드에선 gpt-oss tg 0.87배였지만 지금 빌드 공개 값은 차이가 없거나 작아 효율 보정 없음 — 레코드 note) | 96 GDDR7 ECC | 1,792 | 110 (NVIDIA 데이터시트 FP32) | 미공개 | — |
 | RTX 5090 | 32 GDDR7 | 1,792 | 104.8 | $1,999 | $4,200~4,288 |
 | RTX 5080 | 16 GDDR7 | 960 | 56.3 | $999 | ~$1,256 |
 | RTX 5070 Ti | 16 GDDR7 | 896 | 44.1 | $749 | ~$949 |
