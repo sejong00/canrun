@@ -1,0 +1,2 @@
+﻿"model","digest","sizeBytes","family","parameterSize","quant","format","run","numCtx","promptTokens","genTokens","ppTokS","tgTokS","loadMs","gpuShare","ollama"
+"gemma4:e2b-it-qat","07ea59a474013479c8b6b802bef095c40e964a1d776ba02f264c0e30e1aede0c","4336358185","gemma4","4.6B","Q4_0","gguf","1","8192","397","256","7108.84","176.33","2","1","0.40.7"

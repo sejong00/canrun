@@ -1380,3 +1380,47 @@ export const CLUSTER_SPLIT_SIM: ReadonlyArray<{
     source: 'https://huggingface.co/bartowski/Kolibri-1-GGUF/blob/main/Kolibri-1-Q4_K_M.gguf',
   },
 ];
+
+// ---------- 18) 자체 실측 — RTX 5060 Ti 16GB · Ollama 0.40.7 (10-25 D124, P0-5 첫 측정) ----------
+/**
+ * 사용자 PC(GeForce RTX 5060 Ti 16GB · 448GB/s, Windows 11, 드라이버 591.86)에서 `scripts/own-bench/ollama-bench.ps1` 로 잰 생성 속도
+ * (/api/generate eval_count ÷ eval_duration, 데우기 1회 뒤 3회의 중앙값). 프롬프트 389~404 토큰 + 생성 183~256 토큰(중앙값 회) —
+ * 엔진 비교의 ctx 는 그 끝 깊이(프롬프트 + 생성)다(num_ctx 8192 는 할당 크기라 KV 를 그만큼 읽지 않는다).
+ * fileGB = 그 Ollama 태그의 model 레이어 크기(registry.ollama.ai 매니페스트 — 결과 파일의 digest 가 매니페스트 sha256 과 같다),
+ * kv = 카탈로그 arch.kvBytesPerTokenF16(Gemma 3 는 SWA 반영값 64 KiB).
+ * **회귀 밖 참고점(관측 고정)** — 엔진 상수를 이 점에 맞추지 않았다(규칙 1, 보정 여부는 PROGRESS §2 사용자 결정 항목).
+ * Llama 3.1 8B·Gemma 3 12B 는 카탈로그 Q4_K_M 행과 텐서 형식이 하나하나 같아 data/benchmarks.json 에 들어갔고(sourceType own),
+ * Qwen3 8B·14B 는 Ollama 파일의 attn_v 가 F16 인 다른 양자화 구성(카탈로그 unsloth 파일보다 4%·3% 크다)이라 들어가지 않았다
+ */
+// source: https://github.com/sejong00/canrun/blob/main/data/own-bench/raw/20261025-131211/results.json
+export const OWN_BENCH_SOURCE = 'https://github.com/sejong00/canrun/blob/main/data/own-bench/raw/20261025-131211/results.json';
+export const RTX_5060_TI_16GB: Hardware = dgpu(16, 448, 'nvidia');
+
+export type OwnBenchCase = {
+  label: string;
+  mq: ModelQuant;
+  /** 실측 끝 깊이 = 프롬프트 + 생성(중앙값 회) */
+  ctx: number;
+  measuredTg: number;
+  /** benchmarks.json 에 들어가 콤보에 조인되는가 (카탈로그 행과 같은 파일) */
+  joined: boolean;
+  /** 관측 고정 — (엔진 − 실측) ÷ 실측 */
+  recordedErr: number;
+  /** 매니페스트 URL (파일 크기·digest) */
+  manifest: string;
+};
+
+export const OWN_BENCH_CASES: readonly OwnBenchCase[] = [
+  // model 레이어 sha256:667b0c19… 4,920,738,944 B — bartowski Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf 4,920,739,232 B 와 텐서 292개 형식 동일
+  { label: 'llama3.1:8b Q4_K_M', mq: dense(4.92, 128, 8.03), ctx: 389 + 256, measuredTg: 81.44, joined: true, recordedErr: -0.231, manifest: 'https://registry.ollama.ai/v2/library/llama3.1/manifests/8b' },
+  // model 레이어 sha256:a3de86cd… 5,225,374,496 B — unsloth Qwen3-8B-Q4_K_M.gguf 5,027,784,512 B 와 attn_v 36개 형식이 다르다(Ollama F16)
+  { label: 'qwen3:8b Q4_K_M (Ollama file)', mq: dense(5.23, 144, 8.2), ctx: 404 + 236, measuredTg: 77.31, joined: false, recordedErr: -0.238, manifest: 'https://registry.ollama.ai/v2/library/qwen3/manifests/8b' },
+  // model 레이어 sha256:13576eb6… 7,309,830,496 B — bartowski google_gemma-3-12b-it-Q4_K_M.gguf 7,300,575,264 B 와 텐서 626개 형식 동일(차이는 메타데이터), 비전 projector 는 별도 레이어
+  { label: 'gemma3:12b Q4_K_M', mq: dense(7.31, 64, 12.2), ctx: 398 + 256, measuredTg: 50.28, joined: true, recordedErr: -0.152, manifest: 'https://registry.ollama.ai/v2/library/gemma3/manifests/12b' },
+  // model 레이어 sha256:a8cc1361… 9,276,184,896 B — unsloth Qwen3-14B-Q4_K_M.gguf 9,001,753,984 B 와 attn_v 40개 형식이 다르다(Ollama F16)
+  { label: 'qwen3:14b Q4_K_M (Ollama file)', mq: dense(9.28, 160, 14.8), ctx: 404 + 183, measuredTg: 43.73, joined: false, recordedErr: -0.235, manifest: 'https://registry.ollama.ai/v2/library/qwen3/manifests/14b' },
+];
+
+/** 같은 카드의 공개 llama.cpp 점(benchmarks.json s1-5060ti-l27b — b6002 FA 끔 tg128) — 자체 실측과 나란히 보는 참고 */
+// source: https://github.com/ggml-org/llama.cpp/discussions/15013#discussioncomment-13972383
+export const OWN_BENCH_SAME_CARD_PUBLIC = { label: '5060 Ti L2-7B Q4_0 b6002 fa0', mq: L2_7B, ctx: 512, measuredTg: 90.94 } as const;

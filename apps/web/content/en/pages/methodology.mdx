@@ -28,7 +28,7 @@ A mixture-of-experts (MoE) model reads only its shared layers and the few expert
 
 Every speed on CanRun is a range with a label:
 
-- **Measured**: a public benchmark of the same GPU, model and quant. We show where it came from and under what conditions.
+- **Measured**: a benchmark of the same GPU, model and quant, either a public one or one we ran ourselves and published with its raw log. We show where it came from and under what conditions.
 - **Calibrated**: our estimate, checked against benchmarks of similar setups. The range is ±12% for dense models running fully on an NVIDIA or AMD card, and ±20% for other hardware, mixture-of-experts (MoE) models and setups that spill into system RAM.
 - **Theoretical**: an estimate for a setup we have not been able to check against benchmarks yet, shown with a ±30% range.
 

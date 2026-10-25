@@ -1,0 +1,1 @@
+﻿{"model":"gemma4:e2b-it-qat","digest":"07ea59a474013479c8b6b802bef095c40e964a1d776ba02f264c0e30e1aede0c","sizeBytes":4336358185,"family":"gemma4","parameterSize":"4.6B","quant":"Q4_0","format":"gguf","run":1,"numCtx":8192,"promptTokens":397,"genTokens":256,"ppTokS":7108.84,"tgTokS":176.33,"loadMs":2,"gpuShare":1,"ollama":"0.40.7"}

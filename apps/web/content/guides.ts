@@ -78,6 +78,8 @@ export const GUIDE_SLUGS = [
   'ollama-lm-studio-requirements',
   // 10-23 D119: DGX Spark 검색용 가이드 초안(자동완성 'dgx spark llm 추천·성능'·'dgx spark 2대 연결'·'dgx spark 64gb') — 게시는 사용자 승인 뒤(D40)
   'dgx-spark-llm',
+  // 10-25 D124: 자체 실측(P0-5 첫 측정 — RTX 5060 Ti 16GB · Ollama 0.40.7) 초안 — 게시는 사용자 승인 뒤(D40)
+  'rtx-5060-ti-16gb-local-llm',
 ] as const;
 
 export type GuideSlug = (typeof GUIDE_SLUGS)[number];
@@ -222,8 +224,9 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
   'kv-cache-context': {
     ...PUBLISHED,
     // 10-03 D62: 필요량 정의(그래픽카드에 올라가는 가중치)·여유 문장 갱신. 10-03 D63: Mamba-2·conv·KDA+MLA 하이브리드 KV 세는 법.
-    // 10-22 D114 리뷰: 전체 카탈로그 KV 표에 들어간 반복 층 모델(Nanbeige4.2 3B)을 GQA 절에서 설명
-    dateModified: '2026-10-21',
+    // 10-22 D114 리뷰: 전체 카탈로그 KV 표에 들어간 반복 층 모델(Nanbeige4.2 3B)을 GQA 절에서 설명.
+    // 10-25 D124: Gemma 3 12B × RTX 5060 Ti 16GB 표의 8k f16 칸이 자체 실측이 되어 '모두 보정' 문장·행마다 떨어진다는 문장에 예외를 적음
+    dateModified: '2026-10-25',
     grids: {},
     related: ['ollama-context-length', 'vram-requirements', 'gguf-quantization'],
     locales: {
@@ -289,8 +292,8 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
   },
   'local-coding-agents': {
     ...PUBLISHED_1015,
-    // 10-16 D91: pp 추정이 모델 크기를 반영 — 프롬프트 처리 문단 갱신
-    dateModified: '2026-10-16',
+    // 10-16 D91: pp 추정이 모델 크기를 반영 — 프롬프트 처리 문단 갱신. 10-25 D124: 속도 그리드 RTX 5060 Ti 16GB 행 첫 칸(자체 실측) 문장
+    dateModified: '2026-10-25',
     // ComboGrid 는 8k 고정이라 쓰지 않는다 — 32k·64k·128k 는 CtxTable 로
     grids: {},
     related: ['ollama-context-length', 'kv-cache-context', 'vram-requirements'],
@@ -400,11 +403,12 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
   },
   'tokens-per-second': {
     ...PUBLISHED_1015,
-    // 10-16 D91: pp 추정이 모델 크기를 반영 — 프롬프트 처리 문단 갱신
-    dateModified: '2026-10-16',
+    // 10-16 D91: pp 추정이 모델 크기를 반영 — 프롬프트 처리 문단 갱신. 10-25 D124: 속도 그리드 RTX 5060 Ti 16GB 행 첫 칸(자체 실측) 문장
+    dateModified: '2026-10-25',
     grids: {
       // 모델 4 × 대역폭 작은 순 8칸(CPU 89.6 → RTX 5090 1792 GB/s). 본문이 이 순서("least memory bandwidth to the most" /
-      // "위에서부터 메모리 대역폭이 작은 순서")와 "RTX 4060 행 첫 칸이 4060 Ti 16GB 보다 높은 건 실측이라서"를 말한다 —
+      // "위에서부터 메모리 대역폭이 작은 순서")와 "RTX 4060 행 첫 칸이 4060 Ti 16GB 보다 높은 건 실측이라서"·"RTX 5060 Ti 16GB 행 첫 칸이 5070 보다 높은 건
+      // 자체 실측이라서"(10-25 D124)를 말한다 —
       // 카드나 순서를 바꾸면 두 문장을 다시 확인한다
       speed: {
         gpus: ['cpu-ddr5-5600-2ch', 'rtx-4060', 'rtx-4060-ti-16gb', 'rtx-3060-12gb', 'rtx-5060-ti-16gb', 'rtx-5070', 'rtx-3090', 'rtx-5090'],
@@ -427,8 +431,8 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
   },
   'amd-intel-gpus': {
     ...PUBLISHED_1015,
-    // 10-16 D91: pp 추정이 모델 크기를 반영 — 프롬프트 처리 문단 갱신
-    dateModified: '2026-10-16',
+    // 10-16 D91: pp 추정이 모델 크기를 반영 — 프롬프트 처리 문단 갱신. 10-25 D124: 속도 그리드 RTX 5060 Ti 16GB 행 첫 칸(자체 실측) 문장
+    dateModified: '2026-10-25',
     grids: {
       // 라데온·Arc 카드 바로 아래에 VRAM 이 같은 NVIDIA 카드: 12GB B580/3060 · 16GB 9060 XT/5060 Ti · 16GB 9070 XT/5070 Ti ·
       // 24GB 7900 XTX/3090 × 모델 6. 본문이 이 순서("one row after the other" / "한 줄씩 번갈아")와 12·16·24GB 절의 짝을
@@ -687,6 +691,33 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
         title: 'DGX Spark LLM 추천 — 64GB·128GB에서 돌아가는 모델과 2대·4대 연결',
         description:
           'DGX Spark 64GB·128GB 한 대에서 돌아가는 로컬 LLM과 GPU가 쓸 수 있는 메모리를 정리했습니다. 두 대·네 대를 이으면 llama.cpp와 vLLM에서 무엇이 달라지는지도 다룹니다.',
+      },
+    },
+  },
+  'rtx-5060-ti-16gb-local-llm': {
+    // 10-25 D124 초안 — 자체 실측 2점(Llama 3.1 8B·Gemma 3 12B, 카탈로그 행과 같은 파일)과 CanRun 추정 대조. 게시는 사용자 승인 뒤(D40)
+    status: 'draft',
+    datePublished: '2026-10-25',
+    dateModified: '2026-10-25',
+    author: 'CanRun',
+    grids: {
+      // 이 카드 한 줄 × 모델 8 — 직접 잰 8B~14B 4종 + 16GB 경계를 보여 주는 MoE·27B 4종. 본문이 말하는 칸은 전부 <Expect> 로 고정
+      rtx5060tiOwn: {
+        gpus: ['rtx-5060-ti-16gb'],
+        models: ['llama-3.1-8b', 'qwen3-8b', 'gemma-3-12b', 'qwen3-14b', 'gpt-oss-20b', 'gemma-4-26b-a4b', 'qwen3.8-27b', 'qwen3-30b-a3b-2507'],
+      },
+    },
+    related: ['tokens-per-second', 'ollama-vs-llama-cpp-lm-studio', 'vram-requirements'],
+    locales: {
+      en: {
+        title: 'Local LLMs on an RTX 5060 Ti 16GB: what we measured with Ollama',
+        description:
+          'Four 8B to 14B models measured with Ollama on an RTX 5060 Ti 16GB: how the test works, how the results compare with CanRun estimates, and what fits in 16GB.',
+      },
+      ko: {
+        title: 'RTX 5060 Ti 16GB에서 직접 돌려 본 로컬 LLM — Ollama로 잰 속도와 CanRun 추정',
+        description:
+          'RTX 5060 Ti 16GB에서 8B~14B 모델 네 개를 Ollama로 직접 쟀습니다. 측정 방법과 CanRun 추정과의 차이, 16GB 카드에 들어가는 모델을 정리했습니다.',
       },
     },
   },

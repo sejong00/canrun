@@ -254,6 +254,7 @@ KV = KiB/tok(f16). 파일 크기 = 실측 GGUF(decimal GB), 출처 repo 명기.
 | CPU DDR5-5600 | Mistral-7B Q4_K_M | — | — | 11.2 | llamafile #450 |
 | CPU DDR5-5600 | Qwen3-30B-A3B Q4 | — | — | 18~20 | hardware-corner |
 | RTX 3060 12GB+DDR5 | Qwen3.6-35B-A3B (cpu-moe) | — | — | 51~53 | openclawdc 2026-07 |
+| RTX 5060 Ti 16GB | L3.1-8B Q4_K_M / Gemma 3 12B Q4_K_M | 짧음(512 표기 — 실제 깊이 ≤ 654) | 3,666 / 1,692 | 81.4 / 50.3 | **자체 실측** Ollama 0.40.7 (10-25 D124 — 원시 로그 `data/own-bench/raw/20261025-131211/`) |
 
 ## 5. 데이터 파이프라인 (`scripts/`)
 
@@ -297,6 +298,8 @@ llama-bench -m {model.gguf} -p 2048 -n 128 -d 8192,16384             # 컨텍스
 - **D. 불가 판정 실증**: llama-3.3-70b Q4_K_M — "안 됨"을 실측으로 못박는 콤보 페이지용
 - **E. 한국 모델 5종 (ko 차별화 — 글로벌에 공개 실측 전무 = 백링크 유인, P0-4b 시드)**: kanana-1.5-8b {Q4_K_M, Q8_0} / hyperclovax-seed-think-14b Q4_K_M(단일 배포, 리즈닝 — 감쇠 측정 포함) / kanana-1.5-15.7b-a3b Q4_K_M(10.44GB — 16GB 풀 GPU MoE) / hyperclovax-seed-1.5b Q8_0(온디바이스급 대조) / exaone-4.5-33b IQ4_XS(18.03GB — `-ngl` 부분 오프로드, C그룹 절벽 곡선과 교차 검증) — 각 ctx {2k, 16k}
 → 출시 시 16GB 세그먼트에 "실측 배지" 달린 페이지 확보.
+
+**Ollama 측정과 원시 로그 공개(10-25 D124 — 첫 측정)**: 위 llama-bench 표준과 별도로 `scripts/own-bench/ollama-bench.ps1`(Ollama `/api/generate` — num_ctx 8192·num_predict 256·think false·temperature 0, 데우기 1회 뒤 3회, 매번 프롬프트 첫 줄을 바꿔 캐시 회피, tg = eval_count/eval_duration·pp = prompt_eval_count/prompt_eval_duration, size_vram/size 기록)로 잴 수 있다. ① 원시 로그는 저장소 `data/own-bench/raw/<YYYYMMDD-HHMMSS>/`(results.json — 측정마다 한 줄 · summary.csv · system.json — GPU·드라이버·CPU 이름, RAM GB, OS·Ollama 버전만, 사용자 이름·경로 없음)에 커밋하고, BenchPoint `sourceUrl` = `https://github.com/sejong00/canrun/blob/main/data/own-bench/raw/<폴더>/results.json`. ② 레코드는 모델·조건마다 1건(3회 중앙값, 세 값은 note) — tg 소수 1자리·pp 정수. ③ **조인은 같은 파일일 때만**: 그 Ollama 태그 매니페스트(`https://registry.ollama.ai/v2/library/<이름>/manifests/<태그>` — 결과의 digest 가 매니페스트 sha256)의 model 레이어 GGUF 헤더를 카탈로그 행 파일 헤더와 텐서마다 대조해 양자화 형식이 모두 같을 때 행 id 로 넣는다(크기 차이는 메타데이터뿐). 형식이 다르면(예: Ollama `qwen3:8b`·`qwen3:14b` 의 attn_v F16 — 파일이 4%·3% 크다) 넣지 않는다. 카탈로그 행과 맞추려면 `ollama pull hf.co/<카탈로그 ggufRepo>:<quant>` 로 받아 잰다. ④ `ctx` 는 실제로 채운 깊이 기준 — 짧은 프롬프트(프롬프트 + 생성이 1k 미만)는 llama-bench 단문 관례대로 512, num_ctx(할당 크기)는 flags·note 에. ⑤ 빌드 표기는 `backendVersion: "Ollama <버전>"`(내장 llama.cpp 빌드 번호는 API 에 없다). 첫 측정의 PC 는 시스템 RAM 32GB 다(위 리그 가정 16GB 와 다름 — 풀 GPU 측정에는 영향 없다).
 
 ## 7. 갱신 케이던스 요약
 | 데이터 | 주기 | 방법 |

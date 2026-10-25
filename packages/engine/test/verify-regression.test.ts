@@ -46,6 +46,10 @@
  *     분할과 견준다(남은 메모리가 같을 때와 첫 기기가 0.1% 작을 때 — 원격 한 대가 한 칸 더 받는다, D118 리뷰 2차) — 앞쪽 dense MoE(GLM-5.3-Flash)·크기가 고른
  *     층(DeepSeek V4 Flash 0731)은 두 경우 모두 그 이상, 층마다 양자화가 다른 Kolibri-1 Q4_K_M 은 알려진 과소(최대 −2.04GB)를 값으로 고정(D118 리뷰).
  *     3·4대는 이동 횟수(대수 − 1)로 늘린 이론값(4대 RPC 공개 실측 없음) — 라벨은 이론 추정(docs/02 §6.2·§7)
+ * 18) 자체 실측(RTX 5060 Ti 16GB · Ollama 0.40.7 — 10-25 D124, P0-5 첫 측정): 짧은 프롬프트(끝 깊이 587~654 토큰) 4점을 같은 깊이·같은 파일 크기로
+ *     계산하면 엔진(nvidia 0.70)이 15~24% 낮다 — 관측 고정(±1%p)이고 엔진 상수는 이 점에 맞추지 않았다. 4점 모두 보정 밴드(+12%) 밖이고,
+ *     같은 카드의 2025-08 공개 점(b6002)도 실효 계수 0.79 로 클래스 값보다 높다. 사이트 8k 값과의 나머지 차이는 엔진 자신의 컨텍스트 항(×1.07~1.22)이다
+ *     — 보정 여부는 사용자 결정(PROGRESS §2)
  */
 import { describe, expect, it } from 'vitest';
 import { fit } from '../src/fit';
@@ -85,6 +89,9 @@ import {
   LOOP_RATIO_SOURCE,
   NANBEIGE42_Q4,
   NANBEIGE42_Q4_OWAO,
+  OWN_BENCH_CASES,
+  OWN_BENCH_SAME_CARD_PUBLIC,
+  OWN_BENCH_SOURCE,
   PLE_SPEED_CASES,
   MOE_OLD_BUILD_CASES,
   MOE_OVERHEAD_CASES,
@@ -102,6 +109,7 @@ import {
   QWEN3_8B_Q4,
   RTX_4060_8GB,
   RTX_4090,
+  RTX_5060_TI_16GB,
   CLUSTER_FIT_CASES,
   CLUSTER_RPC_PAIRS,
   CLUSTER_SPLIT_SIM,
@@ -946,5 +954,50 @@ describe('17) DGX Spark cluster — llama.cpp RPC layer split (10-23 D118, docs/
       (gpuResidentGBFor(DSV4_FLASH_MXFP4_CLUSTER) * clusterShareOf(DSV4_FLASH_MXFP4_CLUSTER, 3)) + (DSV4_FLASH_MXFP4_CLUSTER.fileGB! - gpuResidentGBFor(DSV4_FLASH_MXFP4_CLUSTER)),
       9,
     );
+  });
+});
+
+describe('18) 자체 실측 — RTX 5060 Ti 16GB · Ollama 0.40.7 (10-25 D124, 회귀 밖 관측 고정)', () => {
+  const rows = OWN_BENCH_CASES.map((c) => {
+    const est = tgEstimate(RTX_5060_TI_16GB, c.mq, { mode: 'full-gpu' }, { ctx: c.ctx });
+    return { c, est, err: (est - c.measuredTg) / c.measuredTg, implied: (c.measuredTg * bytesPerTokenGB(c.mq, c.ctx)) / RTX_5060_TI_16GB.memBandwidthGBs };
+  });
+
+  it('has the 4 measured models with an https raw-log source — 2 joined (same file as the catalog row), 2 not (Ollama attn_v F16 file)', () => {
+    expect(OWN_BENCH_SOURCE.startsWith('https://github.com/')).toBe(true);
+    expect(OWN_BENCH_CASES).toHaveLength(4);
+    expect(OWN_BENCH_CASES.filter((c) => c.joined).map((c) => c.label)).toEqual(['llama3.1:8b Q4_K_M', 'gemma3:12b Q4_K_M']);
+    for (const c of OWN_BENCH_CASES) expect(c.manifest.startsWith('https://registry.ollama.ai/')).toBe(true);
+  });
+
+  it.each(OWN_BENCH_CASES.map((c, i) => [c.label, i] as const))(
+    '%s: engine at the measured depth and file size — recorded error ±1%%p',
+    (_label, i) => {
+      const r = rows[i]!;
+      expect(r.err).toBeCloseTo(r.c.recordedErr, 2);
+      expect(Math.abs(r.err - r.c.recordedErr)).toBeLessThanOrEqual(0.01);
+    },
+  );
+
+  it('every point is above the calibrated band (measured > est × 1.12) — the known underestimate the PROGRESS §2 decision item is about', () => {
+    for (const r of rows) expect(r.c.measuredTg, r.c.label).toBeGreaterThan(r.est * 1.12);
+  });
+
+  it("implied efficiency 0.82–0.92 against the class 0.70; the same card's 2025-08 public point (b6002, FA off) is 0.79 — under 12% from the estimate", () => {
+    for (const r of rows) {
+      expect(r.implied, r.c.label).toBeGreaterThan(0.82);
+      expect(r.implied, r.c.label).toBeLessThan(0.93);
+    }
+    const p = OWN_BENCH_SAME_CARD_PUBLIC;
+    const implied = (p.measuredTg * bytesPerTokenGB(p.mq, p.ctx)) / RTX_5060_TI_16GB.memBandwidthGBs;
+    expect(implied).toBeCloseTo(0.791, 2);
+    const est = tgEstimate(RTX_5060_TI_16GB, p.mq, { mode: 'full-gpu' }, { ctx: p.ctx });
+    expect(Math.abs(est / p.measuredTg - 1)).toBeLessThanOrEqual(0.12);
+  });
+
+  it("the site 8k value is lower again by the engine's own context term (×1.07 Gemma 3 SWA … ×1.22 Qwen3 8B) — part of the gap is the 8k assumption, not the coefficient", () => {
+    const ratios = OWN_BENCH_CASES.map((c) => bytesPerTokenGB(c.mq, 8192) / bytesPerTokenGB(c.mq, c.ctx));
+    expect(Math.min(...ratios)).toBeGreaterThan(1.06);
+    expect(Math.max(...ratios)).toBeLessThan(1.23);
   });
 });

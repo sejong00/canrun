@@ -1,0 +1,11 @@
+﻿{
+    "date":  "2026-10-25T12:41:12",
+    "ollama":  "0.40.7",
+    "gpu":  "NVIDIA GeForce RTX 5060 Ti, 16311 MiB, 591.86",
+    "cpu":  "AMD Ryzen 5 9600X 6-Core Processor",
+    "ramGB":  33.4,
+    "numCtx":  8192,
+    "numPredict":  256,
+    "runs":  1,
+    "os":  "Microsoft Windows NT 10.0.26200.0"
+}

@@ -110,6 +110,10 @@ const LOADERS: Readonly<Record<GuideSlug, Readonly<Record<ContentLocale, () => P
     en: () => import('@/content/en/guides/dgx-spark-llm.mdx') as Promise<GuideModule>,
     ko: () => import('@/content/ko/guides/dgx-spark-llm.mdx') as Promise<GuideModule>,
   },
+  'rtx-5060-ti-16gb-local-llm': {
+    en: () => import('@/content/en/guides/rtx-5060-ti-16gb-local-llm.mdx') as Promise<GuideModule>,
+    ko: () => import('@/content/ko/guides/rtx-5060-ti-16gb-local-llm.mdx') as Promise<GuideModule>,
+  },
 };
 
 export function isGuideSlug(slug: string): slug is GuideSlug {

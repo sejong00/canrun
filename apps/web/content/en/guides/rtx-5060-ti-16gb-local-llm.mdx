@@ -1,0 +1,115 @@
+We ran four common 8B to 14B models with Ollama on a <HubLink gpu="rtx-5060-ti-16gb" /> in a desktop with 32GB of system RAM. All four loaded fully onto the card, and all four generated faster than CanRun's 8k estimate for that card. Two of the runs, Llama 3.1 8B and Gemma 3 12B, used the same files as CanRun's Q4_K_M rows, so their pages for this card now show them as measured.<Expect model="llama-3.1-8b" gpu="rtx-5060-ti-16gb" verdict="S" confidence="measured" /><Expect model="gemma-3-12b" gpu="rtx-5060-ti-16gb" verdict="S" confidence="measured" />
+
+## What we measured
+
+Each box below shows one result per model, the median of our three runs on this card, followed by CanRun's own estimate for an 8k context with its range and label.
+
+<Measured model="llama-3.1-8b" gpu="rtx-5060-ti-16gb" />
+
+<Measured model="gemma-3-12b" gpu="rtx-5060-ti-16gb" />
+
+The context shown with each result is the depth the run actually reached. The prompt was about 400 tokens and each reply up to 256 tokens, so the KV cache never held more than about 650 tokens. That is a short chat, far from the full 8k context CanRun assumes when it rates a model. Both models Run great on this card either way.
+
+We also ran Qwen3 8B and Qwen3 14B. They loaded fully onto the GPU too and came out faster than CanRun's estimate by a similar margin, but they are not in the boxes above. Ollama's `qwen3:8b` and `qwen3:14b` downloads are Q4_K_M files made differently from the ones CanRun lists: they keep one kind of attention weight (`attn_v`) at 16-bit, which makes them a few percent larger. A measurement of a different file would not be a fair check of the row CanRun shows, so we left those two out of the catalog. Their numbers are in the raw log linked below, together with a short test of Gemma 4 E2B in Google's QAT Q4_0 build, a file CanRun does not list.
+
+To check that a file matches, we compared Ollama's registry manifest for each tag with the Hugging Face file CanRun uses. For Llama 3.1 8B and Gemma 3 12B every tensor has the same quantization type and the tensor data adds up to the same size; the files differ only in metadata. Ollama keeps Gemma 3's vision part in a separate file, which a text-only test does not use.
+
+## The machine and the software
+
+- Graphics card: the RTX 5060 Ti 16GB, with <Num kind="vramGB" gpu="rtx-5060-ti-16gb" /> of VRAM and <Num kind="bandwidth" gpu="rtx-5060-ti-16gb" /> of memory bandwidth. CanRun assumes a card like this also drives the Windows display and counts <Num kind="usableGB" gpu="rtx-5060-ti-16gb" /> of it as usable.
+- NVIDIA driver 591.86 on Windows 11.
+- CPU: AMD Ryzen 5 9600X, a six-core desktop chip. System RAM: 32GB.
+- Ollama 0.40.7. Ollama runs GGUF files through the llama.cpp code it bundles, but its API does not say which llama.cpp build that is, so we can only name the Ollama version.
+
+For every model, the script recorded that the whole model sat in VRAM during the runs.
+
+## How we measured, so you can repeat it
+
+The test is a PowerShell script in CanRun's repository, [scripts/own-bench/ollama-bench.ps1](https://github.com/sejong00/canrun/blob/main/scripts/own-bench/ollama-bench.ps1). It talks to a running Ollama through its local API and does the following for each model:
+
+- loads the model and sends one warm-up request, which it throws away;
+- sends three requests with the same long prompt, changing the first line every time so that Ollama cannot reuse the processed prompt from its cache;
+- uses an 8k context window (`num_ctx 8192`), at most 256 new tokens (`num_predict 256`), temperature 0, and thinking turned off for models that have it;
+- reads the generation speed as `eval_count` divided by `eval_duration`, and the prompt speed as `prompt_eval_count` divided by `prompt_eval_duration`, the timings Ollama returns with every reply;
+- records how much of the model sat in VRAM, because a model that spills into system RAM runs far slower;
+- unloads the model before moving on to the next one.
+
+To run it on your own PC, start Ollama, then open PowerShell:
+
+```powershell
+git clone https://github.com/sejong00/canrun
+cd canrun
+powershell -ExecutionPolicy Bypass -File scripts\own-bench\ollama-bench.ps1 -Models llama3.1:8b,gemma3:12b -Pull -RemoveAfter
+```
+
+`-Pull` downloads models you do not have yet, and `-RemoveAfter` deletes only the models the script downloaded once they have been measured. Without `-Models` the script measures every model you already have. Results go to a new folder under `data\own-bench\raw`, with one line per run in `results.json`, the same rows in `summary.csv`, and the card, CPU, RAM size and Ollama version in `system.json`. The script records names and sizes only, not your user name or file paths.
+
+The raw results of the runs on this page are in the repository as well: [results.json](https://github.com/sejong00/canrun/blob/main/data/own-bench/raw/20261025-131211/results.json) and [system.json](https://github.com/sejong00/canrun/blob/main/data/own-bench/raw/20261025-131211/system.json).
+
+## Why the runs were faster than CanRun's estimate
+
+The gap has two parts, and only one of them is a mistake.
+
+The first part is the context. CanRun rates every model at an 8k context, and as a chat grows each new token has to read more of the KV cache. These runs stopped at about 650 tokens. CanRun's own formula says that at that depth Llama 3.1 8B would generate about a fifth faster than at 8k, Qwen3 8B a little more and Gemma 3 12B much less, because Gemma 3 keeps most of its layers to a short sliding window. The same formula has matched public benchmarks of this card at 4k and 16k well: the drop it predicts between the two is close to what was measured. So part of the gap is simply that a short chat is faster than a full one.
+
+The second part is the efficiency figure. Even when we put the real depth and the exact file size into the formula, CanRun's estimate came out 15% below the Gemma 3 12B run and 23–24% below the other three. That is outside the ±12% range CanRun gives a calibrated estimate on an NVIDIA card. CanRun uses one efficiency figure for every NVIDIA card. In the public results it was fitted to, cards with less bandwidth already came closer to their rated bandwidth than fast cards such as the RTX 4090, and the RTX 5060 Ti 16GB is one of the slower ones. A public llama-bench result for this card from an August 2025 llama.cpp build was already above CanRun's estimate, though still inside the range. These runs, on a much newer Ollama, are further above it.
+
+We cannot yet tell how much of that second part comes from the card itself and how much from the newer software. Ollama and llama-bench also time things a little differently. Separating them needs a llama-bench run with a current llama.cpp build on the same PC, which is first on our list below. Until then CanRun keeps its estimate as it is. We have not changed the calculation to match one machine, and whether to refit the figure for this card is a decision we will record on the methodology page if we make it.
+
+## What fits on this card
+
+The verdicts below are CanRun's at an 8k context with an f16 KV cache, assuming 32GB of system RAM. The two measured cells are the ones above; everything else is an estimate with its label.
+
+<ComboGrid grid="rtx5060tiOwn" />
+
+Dense models up to about 14B fit at Q4_K_M with plenty of room for a longer context. Qwen3 14B Runs great with the whole model on the GPU.<Expect model="qwen3-14b" gpu="rtx-5060-ti-16gb" verdict="S" mode="full-gpu" /> gpt-oss-20b also fits, and its cell in the grid holds a public benchmark run on this card.<Expect model="gpt-oss-20b" gpu="rtx-5060-ti-16gb" verdict="S" confidence="measured" />
+
+Around 26B to 30B the 16GB limit starts to decide. Gemma 4 26B-A4B at Q4_K_M needs more than the card can use, so CanRun keeps some of its experts in system RAM, and it Runs well as a theoretical estimate.<Expect model="gemma-4-26b-a4b" gpu="rtx-5060-ti-16gb" verdict="A" mode="cpu-moe" confidence="theoretical" /> At IQ4_XS it fits fully on the card and Runs great, a calibrated estimate.<Expect model="gemma-4-26b-a4b" gpu="rtx-5060-ti-16gb" quant="IQ4_XS" verdict="S" mode="full-gpu" confidence="calibrated" /> The ladder below shows how each quant of that model lands on this card.
+
+<QuantLadder model="gemma-4-26b-a4b" gpu="rtx-5060-ti-16gb" />
+
+A dense 27B model is a different story. Qwen3.8 27B at Q4_K_M spills part of its weights into system RAM and Runs slowly.<Expect model="qwen3.8-27b" gpu="rtx-5060-ti-16gb" verdict="B" mode="partial-offload" /> At IQ4_XS it still does not quite fit, but enough stays on the GPU that it Runs well.<Expect model="qwen3.8-27b" gpu="rtx-5060-ti-16gb" quant="IQ4_XS" verdict="A" mode="partial-offload" /> Qwen3 30B-A3B is an MoE model that reads few weights per token, so even with some experts in system RAM it Runs well, again as a theoretical estimate.<Expect model="qwen3-30b-a3b-2507" gpu="rtx-5060-ti-16gb" verdict="A" mode="cpu-moe" confidence="theoretical" /> After loading a model in that range, check `ollama ps`: it should read `100% GPU` for anything CanRun says fits fully.
+
+## What we will measure next
+
+- **llama-bench on the same PC** with a current llama.cpp build, using `-d 0,8192`, so that one run gives both an empty context and the 8k depth CanRun rates at. This separates the effect of the newer software from the card, and checks the 8k figure directly.
+- **Qwen3 8B and Qwen3 14B with CanRun's files.** Ollama can pull a GGUF straight from Hugging Face, for example `ollama pull hf.co/unsloth/Qwen3-8B-GGUF:Q4_K_M`, which is the file CanRun lists. Those runs can then join the catalog like the two above.
+- **gpt-oss-20b**, to see whether our machine reproduces the public result shown on its page.
+- **An MoE model with experts in system RAM**, such as Qwen3 30B-A3B, because those estimates carry the theoretical label and need real measurements most.
+- **Korean models** such as Kanana 1.5 8B, which have few public benchmarks anywhere.
+
+## How sure are these numbers?
+
+The measured label means a benchmark of the same card, model and quant exists, here one we ran ourselves and published with its raw log. It is still one machine. Another RTX 5060 Ti 16GB with a different driver, a factory overclock, other programs using the GPU or a longer conversation will land somewhere else, and a full 8k chat will be slower than these runs. The three runs per model were within about one percent of each other, so repeating the test on the same PC changes little; the conditions above matter more.
+
+For cells without a measurement, CanRun's speeds are estimates with a range and a label. Calibrated means ±12% for dense models fully on an NVIDIA or AMD card and ±20% for other setups; theoretical means ±30%. On this card, our runs suggest the calibrated range sits low for short chats. The verdict lines are below.
+
+<Threshold />
+
+## FAQ
+
+### Why was Ollama faster than CanRun's estimate?
+
+Mostly because of the context and the efficiency figure. These runs had a short prompt, while CanRun rates at a full 8k context, which is slower. At the same depth CanRun's estimate was still 15–24% low for this card, outside its calibrated range, which points at the single efficiency figure CanRun uses for all NVIDIA cards and possibly at newer software.
+
+### Is Ollama's Q4_K_M the same file as the one on Hugging Face?
+
+Not always. Ollama's Llama 3.1 8B and Gemma 3 12B match the Hugging Face files CanRun lists tensor by tensor, but its Qwen3 8B and Qwen3 14B keep the `attn_v` weights at 16-bit and are a few percent larger. If you compare your speed with a site like CanRun, check which file you have: `ollama show <model>` names the quant, and pulling with `hf.co/<repository>:<quant>` gets the exact Hugging Face file.
+
+### Why does the result say 512 context when the script sets 8192?
+
+`num_ctx 8192` only sets how much memory Ollama reserves for the context. Speed depends on how much of it is filled, and these runs filled under a thousand tokens. CanRun records short-prompt results the way it records llama-bench's short test, under 512.
+
+### Can I send my own measurement?
+
+Yes. Run the script, then send the `summary.csv` and `system.json` it writes through the contact page, or open an issue on the GitHub repository. Tell us whether anything else was using the GPU. We add a result to a page only when the file matches the one CanRun lists.
+
+## Sources
+
+- [CanRun raw results for this page](https://github.com/sejong00/canrun/blob/main/data/own-bench/raw/20261025-131211/results.json): every run, with model digests and file sizes
+- [CanRun benchmark script](https://github.com/sejong00/canrun/blob/main/scripts/own-bench/ollama-bench.ps1): the PowerShell script used for these runs
+- [Ollama API documentation](https://github.com/ollama/ollama/blob/main/docs/api.md): `eval_count`, `eval_duration`, `prompt_eval_count` and `prompt_eval_duration` in `/api/generate` replies, and `size_vram` in `/api/ps`
+- [Ollama registry manifest for llama3.1:8b](https://registry.ollama.ai/v2/library/llama3.1/manifests/8b), [gemma3:12b](https://registry.ollama.ai/v2/library/gemma3/manifests/12b), [qwen3:8b](https://registry.ollama.ai/v2/library/qwen3/manifests/8b) and [qwen3:14b](https://registry.ollama.ai/v2/library/qwen3/manifests/14b): the model file and its size for each tag
+- [bartowski/Meta-Llama-3.1-8B-Instruct-GGUF](https://huggingface.co/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF), [bartowski/google_gemma-3-12b-it-GGUF](https://huggingface.co/bartowski/google_gemma-3-12b-it-GGUF), [unsloth/Qwen3-8B-GGUF](https://huggingface.co/unsloth/Qwen3-8B-GGUF) and [unsloth/Qwen3-14B-GGUF](https://huggingface.co/unsloth/Qwen3-14B-GGUF): the Q4_K_M files CanRun lists
+- [Hugging Face: use Ollama with any GGUF model on the Hub](https://huggingface.co/docs/hub/ollama): the `hf.co/<repository>:<quant>` form
+- [llama.cpp discussion #15013: NVIDIA CUDA performance](https://github.com/ggml-org/llama.cpp/discussions/15013): the public Llama 2 7B result for the RTX 5060 Ti 16GB from an August 2025 build
