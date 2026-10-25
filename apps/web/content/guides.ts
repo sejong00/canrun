@@ -99,6 +99,9 @@ const PUBLISHED_1019 = { status: 'published', reviewedAt: '2026-10-19', datePubl
 /** 10-23 D119 — 사용자가 채팅으로 게시 승인(10-23 '다 게시', D122·D40). 날짜는 UTC(배포일) */
 const PUBLISHED_1023 = { status: 'published', reviewedAt: '2026-10-23', datePublished: '2026-10-23', dateModified: '2026-10-23', author: 'CanRun' } as const;
 
+/** 10-25 D124 — 사용자가 채팅으로 게시 승인(10-25 '일단 게시하자', D125·D40). 날짜는 UTC(배포일) */
+const PUBLISHED_1025 = { status: 'published', reviewedAt: '2026-10-25', datePublished: '2026-10-25', dateModified: '2026-10-25', author: 'CanRun' } as const;
+
 export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
   'vram-requirements': {
     ...PUBLISHED,
@@ -252,7 +255,7 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
         models: ['llama-3.1-8b', 'qwen3-14b', 'gpt-oss-20b', 'qwen3.8-27b', 'qwen3.5-35b-a3b', 'gpt-oss-120b'],
       },
     },
-    related: ['vram-requirements', 'gguf-quantization', 'kv-cache-context'],
+    related: ['rtx-5060-ti-16gb-local-llm', 'vram-requirements', 'gguf-quantization'],
     locales: {
       en: {
         // 10-15 사용자 결정: 제목에 "Recommended"/"추천" 허용(AUTHORING §2 예외 — 본문은 메모리 기준 데이터로 답하고 제품 구매를 권하지 않는다)
@@ -695,11 +698,8 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
     },
   },
   'rtx-5060-ti-16gb-local-llm': {
-    // 10-25 D124 초안 — 자체 실측 2점(Llama 3.1 8B·Gemma 3 12B, 카탈로그 행과 같은 파일)과 CanRun 추정 대조. 게시는 사용자 승인 뒤(D40)
-    status: 'draft',
-    datePublished: '2026-10-25',
-    dateModified: '2026-10-25',
-    author: 'CanRun',
+    // 10-25 D124 초안 — 자체 실측 2점(Llama 3.1 8B·Gemma 3 12B, 카탈로그 행과 같은 파일)과 CanRun 추정 대조 → 10-25 사용자 게시 승인(D125)
+    ...PUBLISHED_1025,
     grids: {
       // 이 카드 한 줄 × 모델 8 — 직접 잰 8B~14B 4종 + 16GB 경계를 보여 주는 MoE·27B 4종. 본문이 말하는 칸은 전부 <Expect> 로 고정
       rtx5060tiOwn: {
