@@ -39,7 +39,8 @@ describe('assembleResults parity with the hubs (8k · f16 · policy defaults)', 
       }
     }
     expect(combos).toBeGreaterThan(2000);
-  });
+    // 전 조합 대조라 카탈로그가 커지면 기본 5초를 넘는다(10-25 CI 에서 9.7초) — 이 테스트만 넉넉히
+  }, 60_000);
 
   it('keeps the measured join on the hub anchor (rtx-4060 × llama-3.1-8b) and drops it at 16k', () => {
     const at8k = assembleResults(catalog, withGpu('rtx-4060'))!.all.find((c) => c.model.id === 'llama-3.1-8b')!;
