@@ -282,6 +282,7 @@
 
 ## 7. 이력 (최신이 위)
 
+- **10-25** GSC 색인 요청 완료(사용자) — RTX 5060 Ti 16GB 자체 실측 가이드 en·ko(D125). 첫 시도는 게시 배포 전이라 noindex 로 실패, 배포 뒤 다시 요청
 - **10-25** D125 — RTX 5060 Ti 16GB 자체 실측 가이드 게시(사용자 승인). 보정 값 재조정은 더 잰 뒤(사용자 결정 (a))
 - **10-25** D124 — P0-5 첫 자체 실측(사용자 PC: RTX 5060 Ti 16GB·Ollama 0.40.7, 사용자 승인 '그래 진행해'): 스크립트·원시 로그 커밋(`scripts/own-bench/`·`data/own-bench/raw/`), own 2행(Llama 3.1 8B 81.4·Gemma 3 12B 50.3 tok/s, ctx 512 — 카탈로그 파일과 텐서 형식이 같음을 매니페스트 + GGUF 헤더로 확인), Qwen3 8B·14B(Ollama 파일 attn_v F16)·Gemma 4 E2B QAT 는 뺌. 엔진 대조: 같은 깊이·파일에서도 15~24% 낮음(밴드 밖) — 재보정은 §2 큐 5 사용자 결정, verify-engine 18) 관측 고정(상수 변경 없음). 가이드 초안 `rtx-5060-ti-16gb-local-llm`(draft) · 업데이트 소식 1항목 · 게시 글 3편(kv-cache-context·tokens-per-second·methodology) 문장 en·ko. 바뀐 게시 페이지 49(판정 덤프 변화는 이 카드 2칸뿐 — 판정 S 그대로). 게이트: validate-data · typecheck · lint · test:coverage 1,773(전체 100/98.82% — 기본 5초 제한에서는 calc-run 패리티 1건이 PC 부하(게임 실행 중)로 시간 초과, 단독 2.6초·제한 30초로 전부 통과) · verify-engine 305 · build · test:export 98 · E2E(Edge) 246 · check-expect 3,562 실패 0 · og 글꼴 부분집합 재생성. push 안 함(로컬 커밋)
 - **10-24** GSC 색인 요청 완료(사용자) — DGX Spark 가이드 en·ko · DGX 허브 en·ko · 비교 4쌍 en·ko · RTX PRO 6000 허브 en·ko(14개). 애드센스 재신청 결과는 아직(10-21 신청)
