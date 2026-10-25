@@ -6,7 +6,9 @@
     "navCalculator": "Calculator",
     "navModels": "Models",
     "navGpus": "GPUs",
-    "navGuides": "Guides"
+    "navGuides": "Guides",
+    "mtNotice": "The interface text on this page was machine-translated (beta). The English version is the one to rely on.",
+    "mtNoticeLink": "Read this page in English"
   },
   "Home": {
     "metaTitle": "Can My PC Run Local AI? GPU & RAM LLM Calculator — CanRun",
@@ -30,7 +32,10 @@
     "browseGpus": "Popular GPUs and Macs",
     "browseModels": "Popular models",
     "allModels": "See all {count} models",
-    "allGpus": "See all {count} GPUs, Macs and PCs"
+    "allGpus": "See all {count} GPUs, Macs and PCs",
+    "readTitle": "Guides and GPU comparisons",
+    "allGuides": "All guides",
+    "allCompares": "All GPU comparisons"
   },
   "CalcWidget": {
     "title": "Check it on your own PC",
@@ -1107,6 +1112,7 @@
     "methodology": "How we calculate",
     "updates": "Updates",
     "privacy": "Privacy",
+    "terms": "Terms",
     "contact": "Contact",
     "dataUpdated": "Data updated: {date}"
   },
@@ -1119,6 +1125,8 @@
     "updatesDescription": "What has changed on CanRun, newest first: new calculator features, corrections to how we estimate memory and speed, and the date each model joined the catalog.",
     "privacyTitle": "Privacy policy",
     "privacyDescription": "What CanRun collects (nothing personal), how the calculator runs in your browser, and what our hosting provider logs.",
+    "termsTitle": "Terms of use",
+    "termsDescription": "The terms for using CanRun: why every result is an estimate for reference, who decides what to buy, how outside links and model licenses work, ads, and quoting our pages.",
     "contactTitle": "Contact",
     "contactDescription": "How to reach CanRun: report a wrong number, ask for a model or GPU to be added, or send feedback by email."
   },

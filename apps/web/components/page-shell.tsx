@@ -91,6 +91,16 @@ export function PageShell({
           </nav>
         </div>
       </header>
+      {/* 기계번역 안내 (10-25 D126) — 장문이 없는 로캘(zh, D109)은 화면 문구가 기계번역이라 같은 페이지의 영어판을 한 줄로 알린다.
+          서버 렌더 고정 높이 한 줄이라 CLS 없음. 링크는 hreflang="en" — zh 페이지의 다른 언어 링크 예외(test/export-invariants.spec.ts "zh (D109)") */}
+      {!isContentLocale(locale) && (
+        <p data-mt-notice className="mx-auto max-w-5xl px-4 pt-3 text-xs text-muted-foreground sm:px-6">
+          {tSite('mtNotice')}{' '}
+          <a href={localeHref('en', href)} hrefLang={HTML_LANG.en} data-mt-notice-link className="underline underline-offset-4 hover:text-foreground">
+            {tSite('mtNoticeLink')}
+          </a>
+        </p>
+      )}
       <main className="mx-auto max-w-5xl px-4 py-10 sm:px-6 sm:py-12">{children}</main>
     </>
   );

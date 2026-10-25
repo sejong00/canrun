@@ -6,7 +6,9 @@
     "navCalculator": "计算器",
     "navModels": "模型",
     "navGpus": "显卡",
-    "navGuides": "指南"
+    "navGuides": "指南",
+    "mtNotice": "本页面界面文字为机器翻译（测试版），内容以英文版为准。",
+    "mtNoticeLink": "查看本页英文版"
   },
   "Home": {
     "metaTitle": "我的电脑能跑本地 AI 吗？显卡与内存 LLM 计算器 — CanRun",
@@ -30,7 +32,10 @@
     "browseGpus": "热门显卡与 Mac",
     "browseModels": "热门模型",
     "allModels": "查看全部 {count} 个模型",
-    "allGpus": "查看全部 {count} 款显卡、Mac 和 PC"
+    "allGpus": "查看全部 {count} 款显卡、Mac 和 PC",
+    "readTitle": "指南与显卡对比",
+    "allGuides": "全部指南",
+    "allCompares": "全部显卡对比"
   },
   "CalcWidget": {
     "title": "用你自己的电脑算一算",
@@ -1107,6 +1112,7 @@
     "methodology": "计算方法",
     "updates": "更新日志",
     "privacy": "隐私政策",
+    "terms": "使用条款",
     "contact": "联系我们",
     "dataUpdated": "数据更新日期：{date}"
   },
@@ -1119,6 +1125,8 @@
     "updatesDescription": "CanRun 的变更记录，最新的在前：计算器新功能、内存和速度估算方法的修正，以及每个模型被收录的日期。",
     "privacyTitle": "隐私政策",
     "privacyDescription": "CanRun 收集哪些信息（不收集个人信息）、计算器如何在你的浏览器中运行，以及我们的托管服务商会记录哪些日志。",
+    "termsTitle": "使用条款",
+    "termsDescription": "使用 CanRun 的条款：为什么每个结果都只是供参考的估算、购买决定由谁做出、外部链接与模型许可、广告，以及如何引用本站页面。",
     "contactTitle": "联系我们",
     "contactDescription": "如何联系 CanRun：通过电子邮件反馈数字错误、请求添加模型或显卡，或发送其他意见。"
   },

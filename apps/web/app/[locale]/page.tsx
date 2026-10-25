@@ -3,11 +3,14 @@ import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { CalcWidget } from '@/components/calc-widget';
 import { JsonLd } from '@/components/json-ld';
 import { PageShell } from '@/components/page-shell';
-import { HTML_LANG } from '@/i18n/locales';
+import { publishedCompares } from '@/content/compares';
+import { GUIDES } from '@/content/guides';
+import { HTML_LANG, isContentLocale } from '@/i18n/locales';
 import type { Locale } from '@/i18n/routing';
 import { catalog } from '@/lib/catalog';
 import { webSiteJsonLd } from '@/lib/jsonld';
-import { calculatorHref, comboHref, gpuHref, gpusHref, localeHref, modelHref, modelsHref } from '@/lib/links';
+import { publishedGuides } from '@/lib/guides';
+import { calculatorHref, comboHref, comparesHref, gpuHref, gpusHref, guideHref, guidesHref, localeHref, modelHref, modelsHref } from '@/lib/links';
 import { gpuName, shortGpuName, type Translate } from '@/lib/phrases';
 import { HOME_QUICK_PICKS, popularCombos } from '@/lib/popular-combos';
 import { buildPageMetadata } from '@/lib/seo';
@@ -19,6 +22,9 @@ type Props = {
 
 /** 홈에서 링크하는 인기 모델 기준 (사이트맵 전 발견 경로 — docs/04 §2 고아 페이지 0) */
 const POPULAR_MODEL_MIN = 4;
+
+/** 홈 '가이드와 GPU 비교' 묶음에 보이는 최신 게시 가이드 수 (10-25 D126) */
+const HOME_GUIDE_COUNT = 4;
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale } = await params;
@@ -56,6 +62,16 @@ export default async function HomePage({ params }: Props) {
   const calcAction = localeHref(locale, calculatorHref());
   // 많이 찾는 조합 (10-16 D95) — 공개 콤보로만, 링크 텍스트는 콤보 제목과 같은 짧은 GPU 이름 ("RTX 4060에서 gpt-oss-20b")
   const combos = popularCombos();
+  // 가이드와 GPU 비교 (10-25 D126) — 헤더에는 가이드 목차만 있고 비교 목차로 가는 입구가 홈에 없었다. 장문 로캘(en·ko)만 — zh 는 가이드가 없다(D109).
+  // 최신 게시 가이드(datePublished 내림차순, 같은 날은 레지스트리 순) + 두 목차. 게시가 0이면 그 링크를 내지 않는다(D40·D106)
+  const homeGuides = isContentLocale(locale)
+    ? publishedGuides()
+        .map((slug, i) => ({ slug, i, date: GUIDES[slug].datePublished }))
+        .sort((a, b) => (a.date === b.date ? a.i - b.i : a.date < b.date ? 1 : -1))
+        .slice(0, HOME_GUIDE_COUNT)
+        .map(({ slug }) => ({ slug, title: GUIDES[slug].locales[locale].title }))
+    : [];
+  const hasCompares = publishedCompares().length > 0;
 
   return (
     <PageShell locale={locale} href="/">
@@ -88,6 +104,37 @@ export default async function HomePage({ params }: Props) {
             ))}
           </ul>
         </section>
+
+        {isContentLocale(locale) && (homeGuides.length > 0 || hasCompares) && (
+          <section aria-labelledby="guides-compare" className="flex flex-col gap-3">
+            <h2 id="guides-compare" className="text-xl font-semibold tracking-tight">
+              {t('readTitle')}
+            </h2>
+            {homeGuides.length > 0 && (
+              <ul className="flex flex-col gap-2 text-sm">
+                {homeGuides.map(({ slug, title }) => (
+                  <li key={slug}>
+                    <a href={localeHref(locale, guideHref(slug))} data-home-guide>
+                      {title}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+              {homeGuides.length > 0 && (
+                <a href={localeHref(locale, guidesHref())} data-home-index="guides">
+                  {t('allGuides')}
+                </a>
+              )}
+              {hasCompares && (
+                <a href={localeHref(locale, comparesHref())} data-home-index="compare">
+                  {t('allCompares')}
+                </a>
+              )}
+            </p>
+          </section>
+        )}
 
         <section aria-labelledby="how-it-works" className="flex flex-col gap-3">
           <h2 id="how-it-works" className="text-xl font-semibold tracking-tight">

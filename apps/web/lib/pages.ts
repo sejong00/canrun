@@ -23,6 +23,10 @@ const LOADERS: Readonly<Record<StaticPageSlug, Readonly<Record<ContentLocale, ()
     en: () => import('@/content/en/pages/privacy.mdx') as Promise<PageModule>,
     ko: () => import('@/content/ko/pages/privacy.mdx') as Promise<PageModule>,
   },
+  terms: {
+    en: () => import('@/content/en/pages/terms.mdx') as Promise<PageModule>,
+    ko: () => import('@/content/ko/pages/terms.mdx') as Promise<PageModule>,
+  },
   contact: {
     en: () => import('@/content/en/pages/contact.mdx') as Promise<PageModule>,
     ko: () => import('@/content/ko/pages/contact.mdx') as Promise<PageModule>,

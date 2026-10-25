@@ -108,7 +108,7 @@ export function CalculatorIsland({
     return () => window.removeEventListener('popstate', onPop);
   }, [catalog, names]);
 
-  // 상태 → URL (디바운스) — 로드 직후에도 돌려 홈 폼의 자유 텍스트를 캐노니컬 id 로 바꾸고 스위처 href 에 쿼리를 붙인다(D31).
+  // 상태 → URL (디바운스) — 로드 직후에도 돌려 홈 폼의 자유 텍스트를 캐노니컬 id 로 바꾸고 스위처 href 에 쿼리를 붙인다(D31). zh 기계번역 안내의 영어판 링크도 같다(D126).
   // history.state 를 그대로 넘겨 Next 내부 트리(__NA)를 보존한다
   useEffect(() => {
     if (!restored) return;
@@ -117,7 +117,7 @@ export function CalculatorIsland({
       if (window.location.search !== qs) {
         window.history.replaceState(window.history.state, '', `${window.location.pathname}${qs}${window.location.hash}`);
       }
-      for (const a of document.querySelectorAll<HTMLAnchorElement>('a[data-locale-switch]')) {
+      for (const a of document.querySelectorAll<HTMLAnchorElement>('a[data-locale-switch], a[data-mt-notice-link]')) {
         const href = a.getAttribute('href') ?? '';
         a.setAttribute('href', `${href.split('?')[0]}${qs}`);
       }

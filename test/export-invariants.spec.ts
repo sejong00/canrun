@@ -1841,7 +1841,7 @@ describe('zh (D109 — 화면 문구만, 공개 작업 전까지 noindex·hrefla
     expect(bad).toEqual([]);
   });
 
-  it('links only to /zh/* — apart from the switcher, the footer static pages go to the English pages with hreflang="en"; no guide links', () => {
+  it('links only to /zh/* — apart from the switcher, the footer static pages and the machine-translation notice go to the English pages with hreflang="en"; no guide links', () => {
     for (const page of requireZh()) {
       expect(page.markers.navGuides, `${page.file} a[data-nav-guides]`).toBeUndefined();
       expect(page.relatedGuideHrefs, `${page.file} a[data-related-guide]`).toEqual([]);
@@ -1849,8 +1849,11 @@ describe('zh (D109 — 화면 문구만, 공개 작업 전까지 noindex·hrefla
         ['/calculator', '/models', '/gpus'].map((bare) => localePath('zh', bare)),
       );
       const footer: string[] = [];
+      // 기계번역 안내 (10-25 D126) — zh 페이지마다 한 줄, 같은 페이지의 영어판으로
+      const notice = page.links.filter((l) => l.mtNotice);
+      expect(notice.map((l) => [l.href, l.hrefLang]), `${page.file} machine-translation notice`).toEqual([[stripLocale(page.urlPath), 'en']]);
       for (const link of page.links) {
-        if (link.localeSwitch) continue;
+        if (link.localeSwitch || link.mtNotice) continue;
         if (link.footerLink !== undefined && (STATIC_PAGE_SLUGS as readonly string[]).includes(link.footerLink)) {
           footer.push(link.footerLink);
           expect([link.href, link.hrefLang], `${page.file} footer ${link.footerLink}`).toEqual([`/${link.footerLink}`, 'en']);
@@ -1922,6 +1925,11 @@ describe('zh (D109 — 화면 문구만, 공개 작업 전까지 noindex·hrefla
     expect(existsSync(join(outDir, 'zh/rss.xml'))).toBe(false);
     // 막으면 크롤러가 noindex 를 읽지 못한다 (docs/04 §6)
     expect(readFileSync(join(outDir, 'robots.txt'), 'utf8')).not.toMatch(/^Disallow:.*\/zh/m);
+  });
+
+  it('en and ko pages have no machine-translation notice (zh only — D126)', () => {
+    const bad = pages.filter((p) => p.links.some((l) => l.mtNotice)).map((p) => p.file);
+    expect(bad).toEqual([]);
   });
 
   it('en and ko pages carry no Chinese characters except the 中文 switcher label', () => {

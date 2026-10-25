@@ -66,9 +66,10 @@ export type PageFacts = {
   faq: Array<{ question: string; answer: string }>;
   /**
    * `<a href="/…">` 내부 링크 전부 (localeSwitch = `data-locale-switch` 보유). hrefLang = `hreflang` 속성(있을 때만 — 언어 선택·zh 푸터의
-   * 영어 정적 페이지), footerLink = 푸터 `data-footer-link` 값(있을 때만) — 10-19 D109
+   * 영어 정적 페이지), footerLink = 푸터 `data-footer-link` 값(있을 때만) — 10-19 D109. mtNotice = zh 기계번역 안내의 영어판 링크
+   * (`data-mt-notice-link` 보유 — 10-25 D126)
    */
-  links: Array<{ href: string; localeSwitch: boolean; hrefLang?: string; footerLink?: string }>;
+  links: Array<{ href: string; localeSwitch: boolean; mtNotice: boolean; hrefLang?: string; footerLink?: string }>;
   /** `href="/en"` · `href="/en/…"` 출현 수 (HTML 전체) */
   enPrefixedLinkCount: number;
   /** 가시 텍스트의 한글 어절 — en·zh 페이지만 수집 (ko 는 빈 배열) */
@@ -658,6 +659,7 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
     links.push({
       href,
       localeSwitch: hasAttr(tag, 'data-locale-switch'),
+      mtNotice: hasAttr(tag, 'data-mt-notice-link'),
       ...(hrefLang === undefined ? {} : { hrefLang }),
       ...(footerLink === undefined ? {} : { footerLink }),
     });

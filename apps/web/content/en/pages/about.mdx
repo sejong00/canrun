@@ -9,14 +9,26 @@ CanRun answers one question: can this PC or Mac run this local LLM, and how well
 
 The <SiteLink to="/calculator">calculator</SiteLink> covers any combination, and every GPU, model and model-on-GPU pair also has its own page.
 
+## Why CanRun exists
+
+Plenty of calculators tell you how much memory a model needs, but few say how fast it will actually run on your hardware, or how far that number can be trusted. CanRun was built to answer both: every speed estimate is checked against real benchmarks, and how far it has been off is published rather than hidden. It is written in English and Korean, because there was hardly any tool like it for Korean readers.
+
 ## Where the numbers come from
 
 Model sizes come from the actual GGUF files on Hugging Face, and memory figures from each model's published configuration. GPU and chip specs come from manufacturer pages. Speed estimates start from memory bandwidth and are calibrated against public benchmarks. The full method, how accurate it has been and where it falls short are on the <SiteLink to="/methodology">How we calculate</SiteLink> page.
+
+Since October 2026 we also run models ourselves. The first two were Llama 3.1 8B and Gemma 3 12B on a <SiteLink to="/gpu/rtx-5060-ti-16gb">GeForce RTX 5060 Ti 16GB</SiteLink> with Ollama, and the <SiteLink to="/guides/rtx-5060-ti-16gb-local-llm">RTX 5060 Ti 16GB guide</SiteLink> shows the PC, the script anyone can run to repeat the test and how the results compare with CanRun's estimates. Every measured speed on the site, ours or public, is labeled Measured and says where it came from.
 
 ## How often it is updated
 
 Model data is checked against Hugging Face every week, and new models are added once llama.cpp supports them. The date of the current data is at the bottom of every page. It is currently <DataUpdated />. The <SiteLink to="/updates">Updates</SiteLink> page lists what has changed on the site and the date each model was added.
 
+## How mistakes get fixed
+
+When a number turns out to be wrong, we correct the data or the calculation and add a note to the <SiteLink to="/updates">Updates</SiteLink> page. Changes from the weekly Hugging Face check go through automatic checks before they reach the site, and large or unusual changes are looked at by hand first.
+
+If a number looks wrong or a model is missing, email <ContactEmail /> or open an issue in the [CanRun repository on GitHub](https://github.com/sejong00/canrun/issues). GitHub issues are public, so use email for anything you would rather keep private. The <SiteLink to="/contact">contact page</SiteLink> lists what helps us check a report.
+
 ## Who runs CanRun
 
-CanRun is an independent project. It is not affiliated with any GPU maker or model publisher, and its verdicts are calculated from data, not from any commercial arrangement. If a number looks wrong or a model is missing, please get in touch through the <SiteLink to="/contact">contact page</SiteLink>.
+CanRun is an independent project run by one person, YOO, KING. It is not affiliated with any GPU maker or model publisher, and its verdicts are calculated from data, not from any commercial arrangement.

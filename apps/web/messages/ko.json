@@ -6,7 +6,9 @@
     "navCalculator": "계산기",
     "navModels": "모델",
     "navGpus": "GPU",
-    "navGuides": "가이드"
+    "navGuides": "가이드",
+    "mtNotice": "이 페이지의 화면 문구는 기계로 번역했습니다(베타). 내용은 영어판을 기준으로 합니다.",
+    "mtNoticeLink": "이 페이지 영어판 보기"
   },
   "Home": {
     "metaTitle": "내 PC로 LLM 돌릴 수 있을까? GPU·RAM 로컬 LLM 계산기 — CanRun",
@@ -30,7 +32,10 @@
     "browseGpus": "인기 GPU·맥",
     "browseModels": "인기 모델",
     "allModels": "모델 {count}종 모두 보기",
-    "allGpus": "GPU·맥·PC {count}종 모두 보기"
+    "allGpus": "GPU·맥·PC {count}종 모두 보기",
+    "readTitle": "가이드와 GPU 비교",
+    "allGuides": "가이드 전체 보기",
+    "allCompares": "GPU 비교 전체 보기"
   },
   "CalcWidget": {
     "title": "내 PC로 계산해 보기",
@@ -1107,6 +1112,7 @@
     "methodology": "계산 방법",
     "updates": "업데이트 소식",
     "privacy": "개인정보처리방침",
+    "terms": "이용약관",
     "contact": "문의",
     "dataUpdated": "데이터 기준일: {date}"
   },
@@ -1119,6 +1125,8 @@
     "updatesDescription": "CanRun에서 바뀐 점을 최신순으로 정리했습니다. 계산기 새 기능, 메모리·속도 계산을 고친 내용, 모델마다 카탈로그에 들어온 날짜를 볼 수 있습니다.",
     "privacyTitle": "개인정보처리방침",
     "privacyDescription": "CanRun이 모으는 정보(개인정보 없음), 계산기가 브라우저 안에서 돌아가는 방식, 호스팅 업체가 남기는 접속 기록을 설명합니다.",
+    "termsTitle": "이용약관",
+    "termsDescription": "CanRun을 쓸 때 알아 두실 조건을 정리했습니다. 계산 결과가 참고용 추정치인 이유, 구매 판단은 누가 하는지, 외부 링크와 모델 라이선스, 광고, 콘텐츠를 인용하는 방법을 다룹니다.",
     "contactTitle": "문의",
     "contactDescription": "잘못된 수치 제보, 모델·GPU 추가 요청, 의견은 이메일로 보내 주세요. CanRun에 연락하는 방법을 안내합니다."
   },

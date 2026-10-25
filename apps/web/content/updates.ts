@@ -10,6 +10,7 @@
 export type SiteUpdate = { readonly id: string; readonly date: string };
 
 export const SITE_UPDATES = [
+  { id: 'terms-about', date: '2026-10-25' },
   { id: 'rtx-5060-ti-guide', date: '2026-10-25' },
   { id: 'own-benchmark-rtx-5060-ti', date: '2026-10-25' },
   { id: 'rtx-pro-6000-max-q', date: '2026-10-24' },
