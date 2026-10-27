@@ -13,6 +13,54 @@
 
 자동완성 근거: "can i run llama 70b locally", "rtx 4060 llm performance/reddit/16gb", "best gpu for local llm 2026", ko "로컬 llm 사양/추천/순위". 콤보 빌드는 **수요 검증된 조합만**: 인기 GPU 30 × 인기 모델 20에서 시작(SEOmatic 룰: 콤보의 60%+가 수요 문서화).
 
+### 1-1. 자동완성 조사 — 사이트 공통 검색어 (2026-10-27, PROGRESS §4 D127)
+조회: Google `suggestqueries.google.com/complete/search?client=firefox`(hl=ko·en), Naver `ac.search.naver.com/nx/ac?st=100&r_format=json`. **검색량은 모른다** — 자동완성은 그런 검색어가 있다는 것만 보여 주고, 목록 순서가 인기 순이라는 보장도 없다. 네이버는 두 단어 넘는 질의에 대부분 빈 목록을 돌려줬다(빈 목록 = 데이터 없음이지 수요 없음이 아니다). 사용자 확인(10-27 스크린샷): 네이버 "로컬llm 계산" 검색 결과에 다른 사이트의 "VRAM 계산기 — 내 그래픽카드로 돌아가는 로컬 LLM" 제목이 뜬다 — "로컬 llm 계산"·"로컬llm 계산" 질의의 자동완성은 구글·네이버 모두 비었다(그래서 "계산기"·"사양 확인" 쪽 말로 대응).
+
+| 질의 | Google 자동완성(요약) | Naver |
+|---|---|---|
+| 로컬 llm | 추천 · 구축 · 성능 · 순위 · 모델 · 성능 비교 · 컴퓨터 사양 | 구축 · 미니pc · 사양 · 추천 · 설치 · 서버 · 하는방법 |
+| 로컬 llm 사양 | 디시 · 추천 · **확인 · 확인 사이트** · 컴퓨터 사양 · 구축 사양 · 최소 사양 · 맥미니 사양 | (질의 그대로) |
+| 로컬 llm 그래픽카드 / 그래픽 | 추천 · 가성비 그래픽카드 · 용 그래픽 카드 · 내장 그래픽 | — |
+| 로컬 llm 추천 | 디시 · 사이트 · 모델 · 맥 미니 · 코딩 용 · 한국어 · ollama · openclaw | (질의 그대로) |
+| vram 계산기 / vram 계산 | llm vram 계산기 · llm vram 계산 | — |
+| llm vram | calculator · 8gb · 계산 · 16gb · estimator · 12gb · requirements | — |
+| llm 사양 / llm 컴퓨터 | 컴퓨터 사양 · 서버 사양 · 노트북 llm 사양 · 컴퓨터 견적 · 용 컴퓨터 | — |
+| llm 계산기 | 토큰 계산기 · gpu 계산기 · vram 계산기 | — |
+| llm gpu | **메모리 계산 사이트** · 추천 · 사양 · benchmark · calculator | — |
+| llm 그래픽카드 | 추천 · 2개 · 순위 · 용 그래픽카드 · 가성비 · 라데온 · 듀얼 | — |
+| ollama 사양 | 컴퓨터 사양 · 최소 사양 · 권장 사양 · 설치 사양 · gemma4 사양 | — |
+| ollama 그래픽카드 | (질의 그대로) | — |
+| gpu llm | benchmark · calculator · performance comparison · tokens per second | — |
+| 내 컴퓨터 llm | 내 컴퓨터에 맞는 llm | — |
+| 그래픽카드 ai | 활용 · 성능 순위 · 성능 비교 · 벤치마크 · ai용 | ai성능 비교 |
+| 맥북 llm | 설치 · 추천 · 성능 · 로컬 · 구동 · m5 · m1 | — |
+| llm 돌리기 | 로컬로 돌리기 · 집에서 llm 돌리기 | — |
+| 로컬 ai 그래픽카드 / ai 그래픽카드 추천 | 추천 · 디시 · 학습용 · 그림 | — |
+| llm vram calculator (en) | huggingface · reddit · github · estimator · local llm vram calculator · inference | — |
+| can i run llm (en) | locally · on my laptop · on macbook air · **calculator** · on my pc | — |
+| local llm gpu (en) | benchmarks · requirements · comparison · recommendations · calculator · vs cpu | — |
+| llm gpu requirements (en) | calculator · llm hardware requirements(+ calculator) · system requirements | — |
+| how much vram for llm (en) | models · local · needed · 70b · 7b | — |
+| ollama gpu requirements · local llm requirements (en) | system/hardware requirements(windows·mac·linux) · minimum · ram · vram requirements · calculator | — |
+
+**검색어 → 페이지 대응**(10-27 — 제목·설명 손질 근거. 전/후 문구는 PROGRESS §4 D127):
+
+| 검색어 묶음 | 대응 페이지 | 손질 전 제목·설명에 빠졌던 말 | 이번 조치 |
+|---|---|---|---|
+| vram 계산기 · llm vram 계산기 · llm gpu 계산기 · llm gpu 메모리 계산 사이트 · llm vram calculator · local llm gpu calculator | 계산기 | ko "그래픽카드"·"로컬 LLM"(제목은 "LLM·VRAM"으로 붙여 씀), 설명에 "VRAM" / en 설명에 VRAM 없음 | ko·en 제목·설명 |
+| 로컬 llm 사양 확인(사이트) · 내 컴퓨터에 맞는 llm · llm 돌리기 · can i run llm (on my pc / calculator) | 홈 | ko "로컬 LLM 돌릴"·"사양 확인"·"그래픽카드"·"내 컴퓨터" / en "can i run" 형태·"VRAM" | ko·en 제목·설명 |
+| 로컬 llm 사양 · 로컬 llm 컴퓨터·최소 사양 · llm vram 8gb·12gb·16gb · how much vram for llm · llm gpu requirements | 가이드 `vram-requirements` | ko "그래픽카드" / en "requirements" | ko·en 제목·설명 |
+| 로컬 llm 그래픽카드 (추천·가성비) · llm 그래픽카드 추천 · ai 그래픽카드 추천 · local llm gpu recommendations | 가이드 `gpu-by-budget` | ko "로컬 LLM"이 제목 뒤쪽 | ko 제목(en 은 그대로 — "Recommended GPUs for local LLMs" 가 이미 맞다) |
+| ollama 사양 · ollama 컴퓨터·최소·권장 사양 · ollama 그래픽카드 · ollama system/gpu requirements | 가이드 `ollama-lm-studio-requirements` | ko "그래픽카드"·"컴퓨터 사양" / en 설명 "requirements" | ko 제목·설명, en 설명 |
+| 로컬 llm 구축·설치 · ollama 설정 · 로컬 llm 성능 | 가이드 목차 | ko·en 제목에 사양·그래픽카드·Ollama 없음 | ko·en 제목·설명 |
+| 로컬 llm 모델 · 로컬 llm 순위 · 로컬 llm 추천 모델 | 모델 목록 | "VRAM"(Q4_K_M 필요 메모리 열이 있는데 제목에 없음) | ko·en 제목·설명("순위"는 성능 순위가 아니라 쓰지 않음) |
+| llm 그래픽카드 순위 · 그래픽카드 ai 성능 비교 · 그래픽카드 vram · vram 16gb 그래픽카드 | GPU 목록(그 다음 GPU 비교 목차) | ko 제목 "GPU"만 · 설명에 "VRAM"·용량별 가장 싼 카드 없음 | ko 제목·설명, en 설명 |
+| 맥북 llm · 맥 미니 로컬 llm · 로컬 llm 미니pc | 가이드 `mac-local-llm`·`unified-memory-128gb` | 없음(이미 맥북·맥 미니·미니PC) | 그대로 |
+| 한국어 로컬 llm 추천 · 코딩 용 로컬 llm 추천 · openclaw 로컬 llm | 가이드 `korean-open-llms`·`local-coding-agents` | "추천"(승인 목록 밖이라 넣지 않음) | 그대로 |
+| {gpu} llm · gpu llm performance · rtx 4060 llm | GPU 허브 템플릿 | — | 바꾸지 않음(제안만 — PROGRESS §2) |
+| {model} 사양 · {model} requirements · ollama gemma4 사양 | 모델 허브 템플릿 | — | 바꾸지 않음(제안만) |
+| can i run {model} on {gpu} · {gpu}로 {model} 돌리기 | 조합 템플릿 | 없음(이미 그 형태) | 그대로 |
+
 ## 2. URL·정보 구조 (모두 trailing slash 없음, 슬러그 언어 불변)
 ```
 /                      홈=간이 계산기 (T1 "can my pc run ai")

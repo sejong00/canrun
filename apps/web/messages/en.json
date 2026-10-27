@@ -11,8 +11,8 @@
     "mtNoticeLink": "Read this page in English"
   },
   "Home": {
-    "metaTitle": "Can My PC Run Local AI? GPU & RAM LLM Calculator — CanRun",
-    "metaDescription": "Type your GPU or Mac chip and see which open LLMs actually run on your PC — quantization, memory needed and an estimated tok/s band with a confidence label. Free, in your browser, English and Korean.",
+    "metaTitle": "Can I Run an LLM on My PC? GPU, VRAM & RAM Calculator — CanRun",
+    "metaDescription": "Type your GPU or Mac chip to see which open LLMs run locally on your PC: quantization, VRAM needed and an estimated tok/s band with a confidence label. A free local LLM calculator in your browser.",
     "heading": "Can my PC run this LLM?",
     "intro": "Type your GPU or Mac chip — see the models that actually run, their quant, the memory they need and an estimated tok/s band.",
     "formLegend": "Start with your GPU",
@@ -46,8 +46,8 @@
     "openGpu": "Open {gpu} in the calculator"
   },
   "Calculator": {
-    "metaTitle": "LLM VRAM Calculator: What Runs on Your GPU & RAM",
-    "metaDescription": "Pick your GPU or Mac chip, RAM and OS to see which of {total} open LLMs run, at which GGUF quant, with an estimated tokens-per-second band and a confidence label. Detects your GPU in the browser; results share as a link.",
+    "metaTitle": "LLM VRAM Calculator: Which Local LLMs Run on Your GPU & RAM",
+    "metaDescription": "Pick your GPU or Mac chip, RAM and OS to see which of {total} open LLMs run, at which GGUF quant and how much VRAM each needs, with an estimated tokens-per-second band and a confidence label. Detects your GPU in the browser; results share as a link.",
     "crumb": "Calculator",
     "h1": "Which local LLMs can your PC run?",
     "lede": "Pick your hardware to see every model’s verdict, recommended quant and estimated speed band — or start from a model to see which GPUs run it.",
@@ -335,8 +335,8 @@
     "readModelMode": "Shopping for hardware instead? Switch to “{mode}” and pick a model to see which GPUs, Macs and CPUs run it, along with the cheapest GPU by street price that runs it great or well."
   },
   "Guides": {
-    "indexMetaTitle": "Local LLM guides: VRAM, quantization, context length and Macs",
-    "indexMetaDescription": "Practical guides to running LLMs on your own hardware, built on CanRun data: how much memory models need, which quant to download, and what context length costs.",
+    "indexMetaTitle": "Local LLM guides: hardware requirements, GPUs and Ollama settings",
+    "indexMetaDescription": "Practical guides to running LLMs on your own PC or Mac, built on CanRun data: how much VRAM models need, what each GPU budget runs, Ollama and LM Studio requirements, which quant to download, and what context length costs.",
     "indexH1": "Local LLM guides",
     "indexIntro": "Practical guides to running LLMs on your own PC or Mac. Every number in them comes from the same data and estimates as our GPU, model and combo pages.",
     "indexEmpty": "Our first guides are being reviewed. They will appear here once they are published.",
@@ -698,8 +698,8 @@
     "calcLink": "Filter this list by budget, type and context in the calculator"
   },
   "ModelList": {
-    "metaTitle": "All {count} Local LLMs Compared: Size, License, Context & Downloads",
-    "metaDescription": "Every open-weight LLM on CanRun, {count} in all: the graphics card memory each needs at Q4_K_M, parameters, release date, thinking mode, license, max context and Hugging Face downloads. Open a model to see which GPUs run it.",
+    "metaTitle": "All {count} Local LLMs Compared: VRAM, Size, License & Downloads",
+    "metaDescription": "Every open-weight LLM on CanRun, {count} in all: the graphics card memory (VRAM) each needs at Q4_K_M, parameters, release date, thinking mode, license, max context and Hugging Face downloads. Open a model to see which GPUs run it.",
     "h1": "Every local LLM on CanRun",
     "intro": "{count} open-weight models with GGUF files, from {smallest}B to {largest}B parameters. Pick one to see how much memory it needs at each quant and context length, and how it runs on {gpus} GPUs, Macs and PCs.",
     "tableTitle": "All models",
@@ -756,7 +756,7 @@
   },
   "GpuList": {
     "metaTitle": "All {count} GPUs, Macs & PCs for Local LLMs: Memory, Bandwidth, Price",
-    "metaDescription": "Every graphics card, Mac chip, unified-memory PC and CPU setup on CanRun, {count} in all, with memory, memory bandwidth, price and how many of {models} local LLMs run great or well on each.",
+    "metaDescription": "Every graphics card, Mac chip, unified-memory PC and CPU setup on CanRun, {count} in all, with memory (VRAM), memory bandwidth, price and how many of {models} local LLMs run great or well on each, plus the cheapest graphics card for each memory size.",
     "h1": "Every GPU, Mac and PC on CanRun",
     "intro": "{count} graphics cards, Mac chips, unified-memory PCs and CPU-only setups, grouped by type. Each row lists memory, memory bandwidth and price, and how many of the {models} models in our catalog run great or well. Open a device to see every model’s verdict and estimated speed.",
     "jumpLabel": "Jump to",
