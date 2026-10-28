@@ -116,14 +116,16 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
     related: ['kv-cache-context', 'gguf-quantization', 'mac-local-llm'],
     locales: {
       en: {
-        title: 'How much VRAM do local LLMs need? 8–32 GB tiers (2026)',
+        // 10-27 D127: 제목·설명만 검색어('how much vram for llm'·'llm gpu requirements'·'llm vram requirements')에 맞춰 — dateModified 그대로(D94 관례)
+        title: 'How much VRAM do local LLMs need? GPU requirements for 8–32 GB (2026)',
         description:
-          'What fits on 8, 12, 16, 24 and 32 GB graphics cards: the memory formula, model-by-model verdicts, and how context length and quantization change the answer.',
+          'LLM VRAM requirements by card size: what fits on 8, 12, 16, 24 and 32 GB graphics cards, the memory formula, and how context length and quantization change it.',
       },
       ko: {
-        title: '로컬 LLM 사양 — VRAM 8~32GB로 돌릴 수 있는 모델 (2026)',
+        // 10-27 D127: '로컬 llm 사양'·'로컬 llm 컴퓨터 사양'·'llm vram 16gb' 자동완성 — 그래픽카드·사양을 앞쪽에
+        title: '로컬 LLM 사양 — 그래픽카드 VRAM 8~32GB별로 돌릴 수 있는 모델 (2026)',
         description:
-          '그래픽카드 VRAM 8·12·16·24·32GB에서 어떤 모델이 돌아가는지 정리했습니다. 필요한 메모리를 계산하는 법과, 컨텍스트·양자화에 따라 달라지는 점도 함께 다룹니다.',
+          '로컬 LLM에 필요한 그래픽카드 사양을 VRAM 8·12·16·24·32GB별로 정리했습니다. 용량마다 돌아가는 모델과 필요한 메모리를 계산하는 법, 컨텍스트·양자화에 따라 달라지는 점을 함께 다룹니다.',
       },
     },
   },
@@ -264,8 +266,8 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
           'Which local LLMs each GPU memory size runs, 8GB to 32GB, with dated street prices: 12GB vs 8GB cards, a new 16GB card vs a 24GB RTX 3090, and when system RAM helps.',
       },
       ko: {
-        // 10-16 D94: "AI용 그래픽카드"(자동완성 조사)
-        title: 'AI용 그래픽카드 추천 — 예산별로 돌릴 수 있는 로컬 LLM (2026)',
+        // 10-16 D94: "AI용 그래픽카드"(자동완성 조사). 10-27 D127: '로컬 llm 그래픽카드 추천'·'llm 그래픽카드 추천' 자동완성 — '로컬 LLM'을 '그래픽카드 추천' 앞에
+        title: 'AI·로컬 LLM용 그래픽카드 추천 — 예산별로 돌릴 수 있는 모델 (2026)',
         description:
           '그래픽카드 VRAM 용량별로 돌아가는 로컬 LLM과 실거래가를 정리했습니다. 12GB와 8GB 카드, 신품 16GB와 24GB RTX 3090을 데이터로 비교하고, 시스템 RAM이 도움이 되는 경우도 다룹니다.',
       },
@@ -645,13 +647,14 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
       en: {
         title: 'Ollama and LM Studio system requirements: minimum specs, RAM and VRAM by model size',
         description:
-          'What Ollama and LM Studio need to install and run: OS, CPU and GPU support, how much RAM and VRAM each model size takes, and what to pull on 8–32GB cards.',
+          'What Ollama and LM Studio need to install and run: OS, CPU and GPU requirements, how much RAM and VRAM each model size takes, and what to pull on 8–32GB cards.',
       },
       ko: {
         // '추천' — 10-19 사용자 채팅 승인(RECOMMEND_TITLE_APPROVED). 본문은 메모리 기준으로만 쓴다
-        title: '올라마(Ollama)·LM Studio 사양 — 최소·권장 사양과 VRAM별 추천 모델',
+        // 10-27 D127: 'ollama 그래픽카드'·'ollama 컴퓨터 사양' 자동완성 — 그래픽카드·컴퓨터 사양
+        title: '올라마(Ollama)·LM Studio 사양 — 최소·권장 사양과 그래픽카드 VRAM별 추천 모델',
         description:
-          'Ollama와 LM Studio를 설치하고 돌리는 데 필요한 OS·CPU·GPU 조건과, 모델 크기별로 드는 RAM·VRAM을 정리했습니다. 8~32GB 그래픽카드에서 받을 만한 모델도 함께 봅니다.',
+          'Ollama와 LM Studio를 설치하고 돌리는 데 필요한 컴퓨터 사양(OS·CPU·GPU 조건)과, 모델 크기별로 드는 RAM·VRAM을 정리했습니다. 8~32GB 그래픽카드에서 받을 만한 모델도 함께 봅니다.',
       },
     },
   },
