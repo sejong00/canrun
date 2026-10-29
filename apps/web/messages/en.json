@@ -596,7 +596,7 @@
     "file": "File"
   },
   "GpuHub": {
-    "metaTitle": "{gpu} for Local LLMs: What Runs & How Fast ({memory})",
+    "metaTitle": "{gpu} LLM: Which Local LLMs Run & How Fast ({memory})",
     "metaCard": "{gpu}",
     "metaDescription": "{gpu} · {memory}: at Q4_K_M with 8k context, {good} of {total} local LLMs run great or well.",
     "metaDescriptionNone": "{gpu} · {memory}: verdicts and estimated speed bands for {total} local LLMs at Q4_K_M with 8k context.",
@@ -605,6 +605,7 @@
     "metaLargest": " Largest that fits entirely in {memory}: {model} at {quant}, {speed}.",
     "metaLargestCpu": " Largest it can run: {model} at {quant}, {speed}.",
     "memoryVram": "{vram} GB",
+    "memoryVramTitle": "{vram} GB VRAM",
     "memoryUnified": "{min}–{max} GB unified",
     "memoryUnifiedOne": "{max} GB of unified memory",
     "memoryRam": "{min}–{max} GB RAM",

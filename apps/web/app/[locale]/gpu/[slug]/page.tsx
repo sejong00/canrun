@@ -155,7 +155,11 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     locale,
     // zh 는 en 카드(D109 — 카드는 검색 노출 로캘만 그린다)
     ogImage: hubOgImage('gpu', hub.gpu.id, ogImageLocale(locale)),
-    title: t.hub('metaTitle', { gpu: name, memory }),
+    // 제목은 검색어 꼴 "{gpu} llm"·"{gpu} vram"에 맞춰 GPU 이름 바로 뒤에 LLM, 그래픽카드는 "VRAM 24GB" (10-29 GSC 검색어, D128)
+    title: t.hub('metaTitle', {
+      gpu: hub.gpu.kind === 'dgpu' ? display : name,
+      memory: hub.gpu.kind === 'dgpu' ? t.hub('memoryVramTitle', { vram: formatInt(locale, hub.gpu.vramGB ?? 0) }) : memory,
+    }),
     description: summary + largest,
   });
 }

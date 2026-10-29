@@ -596,7 +596,7 @@
     "file": "파일"
   },
   "GpuHub": {
-    "metaTitle": "{gpu}에서 돌아가는 로컬 LLM과 예상 속도 ({memory})",
+    "metaTitle": "{gpu} 로컬 LLM — 돌아가는 모델과 예상 속도 ({memory})",
     "metaCard": "{gpu} 그래픽카드",
     "metaDescription": "{gpu}({memory})에서 로컬 LLM {total}개 중 {good}개가 쾌적하거나 원활하게 돌아갑니다(Q4_K_M·8k 컨텍스트 기준).",
     "metaDescriptionNone": "Q4_K_M·8k 컨텍스트 기준으로 {gpu}({memory})에서 로컬 LLM {total}개의 판정과 예상 속도 범위를 보여 줍니다.",
@@ -605,6 +605,7 @@
     "metaLargest": " {memory}에 통째로 올라가는 가장 큰 모델은 {model} {quant}이고, 속도는 {speed}입니다.",
     "metaLargestCpu": " 돌릴 수 있는 가장 큰 모델은 {model} {quant}이고, 속도는 {speed}입니다.",
     "memoryVram": "{vram}GB",
+    "memoryVramTitle": "VRAM {vram}GB",
     "memoryUnified": "통합 메모리 {min}–{max}GB",
     "memoryUnifiedOne": "통합 메모리 {max}GB",
     "memoryRam": "RAM {min}–{max}GB",

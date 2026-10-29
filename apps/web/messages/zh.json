@@ -596,7 +596,7 @@
     "file": "文件"
   },
   "GpuHub": {
-    "metaTitle": "{gpu}：能跑哪些本地大模型、速度多快（{memory}）",
+    "metaTitle": "{gpu} 本地大模型：能跑哪些、速度多快（{memory}）",
     "metaCard": "{gpu} 显卡",
     "metaDescription": "{gpu} · {memory}：在 Q4_K_M 量化、8k 上下文下，{total} 个本地大模型中有 {good} 个运行流畅或运行良好。",
     "metaDescriptionNone": "{gpu} · {memory}：{total} 个本地大模型在 Q4_K_M 量化、8k 上下文下的判定和速度估算区间。",
@@ -605,6 +605,7 @@
     "metaLargest": "能完整放进 {memory} 的最大模型：{model}（{quant}），{speed}。",
     "metaLargestCpu": "能运行的最大模型：{model}（{quant}），{speed}。",
     "memoryVram": "{vram} GB",
+    "memoryVramTitle": "{vram} GB 显存",
     "memoryUnified": "{min}–{max} GB 统一内存",
     "memoryUnifiedOne": "{max} GB 统一内存",
     "memoryRam": "{min}–{max} GB 内存",
