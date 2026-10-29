@@ -79,7 +79,8 @@ describe('combo and guide cards (D96)', () => {
         }
       }
     }
-  });
+    // 배치 2 개방(D129)으로 카드 360장 — CI 에서 5초를 넘는다
+  }, 60_000);
 
   it('guide cards carry the registry title for every published guide', () => {
     const slugs = publishedGuides();
