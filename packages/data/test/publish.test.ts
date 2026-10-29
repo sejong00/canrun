@@ -14,8 +14,8 @@ import { loadSeed } from './seed';
 const seed = loadSeed();
 
 describe('seed publish.json', () => {
-  it('batch 1 (10 GPUs × 6 models) is open since P1-6 (09-30, user-approved gate — rule 5)', () => {
-    expect(seed.publish.currentBatch).toBe(1);
+  it('batches 1 (10 GPUs × 6 models, 09-30) and 2 (10-29 D129) are open — user-approved gates, rule 5', () => {
+    expect(seed.publish.currentBatch).toBe(2);
     expect(seed.publish.batches[0]!.batch).toBe(1);
     expect(seed.publish.batches[0]!.gpuIds).toHaveLength(10);
     expect(seed.publish.batches[0]!.modelIds).toHaveLength(6);
@@ -29,11 +29,13 @@ describe('seed publish.json', () => {
     expect(batch2.modelIds.filter((id) => seed.publish.batches[0]!.modelIds.includes(id))).toEqual([]);
   });
 
-  it('batch 1 indexes exactly the 60 candidate combos, nothing outside it', () => {
-    expect(indexableCombos(seed.publish).size).toBe(60);
+  it('batches 1 + 2 index exactly the 60 + 120 candidate combos, nothing outside them', () => {
+    expect(indexableCombos(seed.publish).size).toBe(180);
+    expect(indexableCombos({ ...seed.publish, currentBatch: 1 }).size).toBe(60);
     expect(comboPublishState(seed.publish, 'rtx-4060', 'llama-3.1-8b')).toEqual({ batch: 1, indexable: true });
-    // 배치 2 계획에 든 쌍 — 배치 번호는 있지만 아직 색인 안 함
-    expect(comboPublishState(seed.publish, 'rtx-4060', 'llama-3.3-70b')).toEqual({ batch: 2, indexable: false });
+    expect(comboPublishState(seed.publish, 'rtx-4060', 'llama-3.3-70b')).toEqual({ batch: 2, indexable: true });
+    // 배치 1 만 열었을 때 — 배치 번호는 있지만 색인 안 함
+    expect(comboPublishState({ ...seed.publish, currentBatch: 1 }, 'rtx-4060', 'llama-3.3-70b')).toEqual({ batch: 2, indexable: false });
     expect(comboPublishState(seed.publish, 'rtx-4060', 'phi-4')).toEqual({ indexable: false });
   });
 

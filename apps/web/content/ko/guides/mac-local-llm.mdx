@@ -32,6 +32,10 @@ macOS가 실제로 정해 둔 기본 한도는 메모리 용량에 따라 다릅
 
 <ComboGrid grid="apple" />
 
+다음 표는 같은 기준으로 최근 모델과 큰 모델 열두 개를 판정한 결과입니다. Gemma 4, Qwen3.5, Qwen3.6, Qwen3.8, Qwen3 8B·32B, Llama 3.3 70B가 들어 있고, 모델마다 필요한 메모리는 각 모델 페이지에서 볼 수 있습니다.
+
+<ComboGrid grid="apple2026" />
+
 16GB M4에서는 Llama 3.1 8B와 Gemma 3 12B가 모두 원활하게 돌아갑니다<Expect model="llama-3.1-8b" gpu="apple-m4" verdict="A" /><Expect model="gemma-3-12b" gpu="apple-m4" verdict="A" />. Qwen3 14B는 여유가 1GB도 안 되게 아슬아슬하게 들어가고, 속도가 느려 겨우 돌아갑니다<Expect model="qwen3-14b" gpu="apple-m4" verdict="B" />. 한국 모델 <HubLink model="kanana-1.5-8b" />도 16GB M4에서 원활하게 돌아갑니다<Expect model="kanana-1.5-8b" gpu="apple-m4" verdict="A" />. EXAONE 등 다른 한국 모델의 판정은 ‘<GuideLink slug="korean-open-llms" />’에서 볼 수 있습니다.
 
 gpt-oss-20b를 돌리려면 24GB 구성이 필요합니다. 기본 배포 형식인 MXFP4 파일만 해도 <Num kind="fileGB" model="gpt-oss-20b" />라서 16GB 맥의 GPU 몫(16GB의 약 70%)보다 큽니다. KV 캐시와 연산 버퍼까지 더한 8k 기준 합계는 <Num kind="needGB" model="gpt-oss-20b" gpu="apple-m4" />입니다. 그래서 CanRun은 <ComboLink model="gpt-oss-20b" gpu="apple-m4" />를 24GB 구성으로 계산합니다. 24GB 구성에서 M4는 쾌적하게 돌아가고<Expect model="gpt-oss-20b" gpu="apple-m4" verdict="S" />, M4 Pro와 M5 Pro도 쾌적하게 돌아갑니다<Expect model="gpt-oss-20b" gpu="apple-m4-pro" verdict="S" /><Expect model="gpt-oss-20b" gpu="apple-m5-pro" verdict="S" />. 모델 카드에 있는 ‘16GB 메모리 안에서 돈다’는 설명은 모델이 16GB를 전부 쓸 수 있을 때의 이야기입니다.

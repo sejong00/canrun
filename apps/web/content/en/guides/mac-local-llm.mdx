@@ -34,6 +34,10 @@ Compare each total with the "Usable by the GPU" column above. In the grid, each 
 
 <ComboGrid grid="apple" />
 
+The next grid applies the same rules to twelve newer or larger models: Gemma 4, Qwen3.5, Qwen3.6, Qwen3.8, Qwen3 8B and 32B, and Llama 3.3 70B. Their memory needs are on each model page.
+
+<ComboGrid grid="apple2026" />
+
 OpenAI's gpt-oss-20b needs <Num kind="needGB" model="gpt-oss-20b" gpu="apple-m4" /> at 8k, and its MXFP4 file alone, <Num kind="fileGB" model="gpt-oss-20b" />, is larger than a 16GB Mac's GPU share, so 24GB is the smallest configuration that holds it. With 24GB, <ComboLink model="gpt-oss-20b" gpu="apple-m4" /> Runs great,<Expect model="gpt-oss-20b" gpu="apple-m4" verdict="S" /> and so it does on the 24GB M4 Pro and M5 Pro.<Expect model="gpt-oss-20b" gpu="apple-m4-pro" verdict="S" /><Expect model="gpt-oss-20b" gpu="apple-m5-pro" verdict="S" /> The model card says it runs within 16GB of memory; a 16GB Mac gives its GPU only part of that, so in CanRun's calculation the file alone does not fit.
 
 Qwen3 30B-A3B (2507) is a mixture-of-experts (MoE) model: each token uses only about 3B of its parameters, but all of them must sit in memory, <Num kind="needGB" model="qwen3-30b-a3b-2507" gpu="apple-m4" /> at 8k. It Runs great on the 32GB M4<Expect model="qwen3-30b-a3b-2507" gpu="apple-m4" verdict="S" /> and on the 48GB M4 Pro and M5 Pro.<Expect model="qwen3-30b-a3b-2507" gpu="apple-m4-pro" verdict="S" /><Expect model="qwen3-30b-a3b-2507" gpu="apple-m5-pro" verdict="S" /> At 24GB it exceeds the GPU share, so CanRun moves it to CPU-only, a theoretical estimate capped at Runs slowly; the grid omits that cell, but the chip pages show it. Our page for <ComboLink model="qwen3-30b-a3b-2507" gpu="apple-m4-pro" /> covers the 48GB configuration.

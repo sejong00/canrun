@@ -86,6 +86,11 @@ export type GuideSlug = (typeof GUIDE_SLUGS)[number];
 
 /** 배치 1 모델(docs/04 §3) — vram·mac 그리드가 공유 */
 const BATCH1_MODELS = ['llama-3.1-8b', 'gemma-3-12b', 'qwen3-14b', 'gpt-oss-20b', 'qwen3-30b-a3b-2507', 'gpt-oss-120b'] as const;
+/** 배치 2 모델(data/publish.json, 10-29 D129 개방) — 배치 2 콤보의 가이드 인바운드(D44) */
+const BATCH2_MODELS = [
+  'gemma-4-26b-a4b', 'gemma-4-31b', 'gemma-4-12b', 'qwen3.8-27b', 'qwen3.6-35b-a3b', 'qwen3.5-35b-a3b',
+  'qwen3.5-9b', 'qwen3.5-27b', 'qwen3.5-122b-a10b', 'qwen3-8b', 'qwen3-32b', 'llama-3.3-70b',
+] as const;
 
 /** 09-30 사용자가 채팅으로 6편 모두 게시 승인 (D40) */
 const PUBLISHED = { status: 'published', reviewedAt: '2026-09-30', datePublished: '2026-09-30', dateModified: '2026-09-30', author: 'CanRun' } as const;
@@ -106,11 +111,16 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
   'vram-requirements': {
     ...PUBLISHED,
     // 10-03 D62: 필요량 정의(그래픽카드에 올라가는 가중치)·여유 문장 갱신. 10-03 D63: en "5090 이 더하는 모델 없음" → Nemotron 3.5 Lightning. 10-19 D105: 2026 모델(Gemma 4·Qwen3.6/3.8)·용량별 카드 표(VramPeers)
-    dateModified: '2026-10-19',
+    // 10-29 D129: 배치 2 모델 표(tiers2026)
+    dateModified: '2026-10-29',
     grids: {
       tiers: {
         gpus: ['rtx-4060', 'rtx-3060-12gb', 'rtx-4070', 'rtx-5070', 'rtx-5060-ti-16gb', 'rtx-3090', 'rtx-4090', 'rtx-5090'],
         models: BATCH1_MODELS,
+      },
+      tiers2026: {
+        gpus: ['rtx-4060', 'rtx-3060-12gb', 'rtx-4070', 'rtx-5070', 'rtx-5060-ti-16gb', 'rtx-3090', 'rtx-4090', 'rtx-5090'],
+        models: BATCH2_MODELS,
       },
     },
     related: ['kv-cache-context', 'gguf-quantization', 'mac-local-llm'],
@@ -204,11 +214,16 @@ export const GUIDES: Readonly<Record<GuideSlug, GuideEntry>> = {
   },
   'mac-local-llm': {
     ...PUBLISHED,
-    dateModified: '2026-10-15',
+    // 10-29 D129: 배치 2 모델 표(apple2026)
+    dateModified: '2026-10-29',
     grids: {
       apple: {
         gpus: ['apple-m4', 'apple-m4-pro', 'apple-m4-max-40c', 'apple-m5-pro'],
         models: BATCH1_MODELS,
+      },
+      apple2026: {
+        gpus: ['apple-m4', 'apple-m4-pro', 'apple-m4-max-40c', 'apple-m5-pro'],
+        models: BATCH2_MODELS,
       },
     },
     related: ['vram-requirements', 'kv-cache-context', 'korean-open-llms'],

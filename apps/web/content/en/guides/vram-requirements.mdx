@@ -28,6 +28,10 @@ The grid crosses six popular models with eight NVIDIA cards. Every verdict assum
 
 <ComboGrid grid="tiers" />
 
+The second grid uses the same cards and assumptions for twelve newer or larger models people often look up: Gemma 4, Qwen3.5, Qwen3.6, Qwen3.8, Qwen3 8B and 32B, and Llama 3.3 70B.
+
+<ComboGrid grid="tiers2026" />
+
 ### 8GB: RTX 4060
 
 On the <HubLink gpu="rtx-4060" />, Llama 3.1 8B fits fully with about a gigabyte to spare (<Num kind="needGB" model="llama-3.1-8b" /> against <Num kind="usableGB" gpu="rtx-4060" /> usable; `ollama ps` should show 100% GPU) and Runs great, a measured cell.<Expect model="llama-3.1-8b" gpu="rtx-4060" verdict="S" /> Our page for <ComboLink model="llama-3.1-8b" gpu="rtx-4060" /> covers longer contexts.

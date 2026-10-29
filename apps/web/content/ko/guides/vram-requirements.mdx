@@ -30,6 +30,10 @@ MoE(전문가 혼합) 모델은 조금 다르게 봐야 합니다. gpt-oss-20b�
 
 <ComboGrid grid="tiers" />
 
+두 번째 표는 같은 카드와 같은 조건으로, 많이 찾는 최근 모델과 큰 모델 열두 개를 판정한 결과입니다. Gemma 4, Qwen3.5, Qwen3.6, Qwen3.8, Qwen3 8B·32B, Llama 3.3 70B가 들어 있습니다.
+
+<ComboGrid grid="tiers2026" />
+
 ### 8GB: RTX 4060
 
 <HubLink gpu="rtx-4060" />은 많이 쓰는 8GB 카드로, 사용 가능 메모리는 <Num kind="usableGB" gpu="rtx-4060" />입니다. Llama 3.1 8B는 필요량이 <Num kind="needGB" model="llama-3.1-8b" />라 GPU에 전부 들어가고, 쾌적하게 돌아갑니다<Expect model="llama-3.1-8b" gpu="rtx-4060" verdict="S" />. 이 조합의 속도는 추정치가 아니라 공개 벤치마크에서 실제로 잰 값입니다. 여유는 1GB 남짓이니, `ollama ps`의 PROCESSOR 열이 `100% GPU`인지 확인해 보세요.

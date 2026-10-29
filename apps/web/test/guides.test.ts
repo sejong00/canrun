@@ -190,6 +190,6 @@ describe('batch-1 coverage (docs/04 §2 ③, D44)', () => {
       }
     }
     const missing = [...next].filter((key) => !rendered.has(key));
-    expect(missing, 'batch-1 combos without a guide grid (vram-requirements · mac-local-llm)').toEqual([]);
+    expect(missing, 'open-batch combos without a guide grid (vram-requirements · mac-local-llm)').toEqual([]);
   });
 });

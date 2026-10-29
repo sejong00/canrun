@@ -312,7 +312,8 @@ describe('adjacentCombos (docs/04 §2 ④, D9)', () => {
   });
 
   it('unpublished pages use the whole catalogue', () => {
-    const adj = adjacentCombos(seed, seed.publish, gpu('rtx-4060'), model('llama-3.3-70b'));
+    // 배치 1 만 열린 상태 — rtx-4060/llama-3.3-70b 는 배치 2 (10-29 D129 개방 전)
+    const adj = adjacentCombos(seed, { ...seed.publish, currentBatch: 1 }, gpu('rtx-4060'), model('llama-3.3-70b'));
     expect(adj.restricted).toBe(false);
     expect(adj.models.map((m) => m.id)).toEqual(['qwen3.5-35b-a3b', 'solar-open-100b']);
     expect(adj.gpus.map((g) => g.id)).toEqual(['rtx-4060-ti-8gb', 'rtx-3050-8gb']);
