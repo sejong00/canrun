@@ -288,6 +288,7 @@
 
 ## 7. 이력 (최신이 위)
 
+- **10-31** 신모델 자동 추가 ②(클라우드) — ① 런 성공, 추가 0종이라 PR 없음(보고서는 이슈 #117 코멘트). 스킵 목록: JetBrains/Mellum2.1-12B-A2.5B-Thinking-MTP skip(드래프트 모델), microsoft/Mage-VL-Cowork wait(Q4_K_M GGUF 없음). 기준 미달 2종(RecursiveSI/flint·KRAFTON/Raon-1-mini-preview)은 다운로드가 늘 수 있어 적지 않음
 - **10-28** 신모델 자동 추가 ②(클라우드) — ① 런 성공(10-28 보고서는 PR #113 코멘트). 신모델 자동 추가 PR #113 에 main 병합 후 머지 — 추가: Nanbeige/Nanbeige4.3-33B(dense 33.12B, 반복 층 없음 — model_type llama). 바로잡은 값: 레코드 note 에 판정 근거(템플릿 enable_thinking 기본 켬 → default-on, 용도 chat·reasoning) 기록. 이틀째 클라우드에서 HF 접근이 막혀 카드 대조(최대 컨텍스트 524,288 = config 값·coding 여부)와 모델 소개는 못 함 — 소개는 docs/03 §5.3-7 대로 다음 실행이 main 에 씀. 스킵 목록: Base 3종 skip(LFM3-1.7B-Base·Ling-3.1-flash-base·Spark-X2.6-1.7B-Base), wait 6종(LFM3-1.7B·LFM3-VL-2B·d1-2B — lfm3 보류 구조, Ornith-1.5-122B — 활성 파라미터 카드 확인 필요, Ling-3.1-flash-1019 — GGUF 없음, Spark-X2.6-1.7B — 검사 실패)
 - **10-27** D127 — 검색어 조사(Google·Naver 자동완성 질의 37개, 결과·대응표 `docs/04` §1-1) + 기존 페이지 제목·설명 다듬기(사용자 요청): 홈·계산기·가이드 목차·모델 목록·GPU 목록(en·ko) · 가이드 3편(`vram-requirements`·`gpu-by-budget`·`ollama-lm-studio-requirements`, dateModified 그대로). URL·구조·새 페이지 없음, 허브·조합 템플릿 제목은 제안만(§2 큐 6). 게이트 전부 통과(유닛 1,773 · verify-engine 305 · build · export 99 · E2E 246 — 첫 실행에서 계산기 하이드레이션 대기 1건이 시간 초과, 그 파일만 다시 돌려 58 통과). 푸시하지 않았다
 - **10-29** D128 — GPU 허브 제목 템플릿을 GSC 검색어 꼴(`{gpu} llm`·`{gpu} vram`)로 바꿈(en·ko·zh, 사용자 승인). 배치 2 게이트: 조합 사이트맵 en 60/60·ko 60/60 색인. 게이트: validate-data · typecheck · lint · 유닛 1,773 · verify-engine · build · export 99 (E2E 는 제목 문구만 바뀌어 생략)
