@@ -30,9 +30,9 @@ import { guideEntry } from '@/lib/guides';
 import { getGpuHub } from '@/lib/hubs';
 import type { QA } from '@/lib/jsonld';
 import { msrpConfigRamGB } from '@/lib/krw';
-import { comboHref, compareHref, comparesHref, gpuHref, gpusHref, guideHref, localeHref, modelHref } from '@/lib/links';
+import { compareHref, comparesHref, gpuHref, gpusHref, guideHref, localeHref, modelHref } from '@/lib/links';
 import { hubOgImage } from '@/lib/og-images';
-import { isComboIndexable } from '@/lib/publish';
+import { comboCellLink } from '@/lib/publish';
 import { gpuName, modeKey, quantText, speedPhrase, type Translate } from '@/lib/phrases';
 import { gpuAliasLabels, gpuSearchName, macLineList, macLineMemory, macLines } from '@/lib/search-names';
 import { buildPageMetadata } from '@/lib/seo';
@@ -543,14 +543,7 @@ export default async function GpuHubPage({ params }: Props) {
                       combo={row.combos[hub.primaryIndex]!}
                       gpu={gpu}
                       showReasoning
-                      comboLink={
-                        isComboIndexable(gpu.id, row.model.id)
-                          ? {
-                              href: localeHref(locale, comboHref(row.model.id, gpu.id)),
-                              text: tTable('comboLink', { model: row.model.name, gpu: name }),
-                            }
-                          : undefined
-                      }
+                      comboLink={comboCellLink(locale, row.model.id, gpu.id, tTable('comboLink', { model: row.model.name, gpu: name }))}
                     />
                   </tr>
                 ))}

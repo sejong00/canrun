@@ -5,7 +5,7 @@ import { JsonLd } from '@/components/json-ld';
 import { PageShell } from '@/components/page-shell';
 import { publishedCompares } from '@/content/compares';
 import { GUIDES } from '@/content/guides';
-import { HTML_LANG, isContentLocale } from '@/i18n/locales';
+import { HTML_LANG, hasComboPages, isContentLocale } from '@/i18n/locales';
 import type { Locale } from '@/i18n/routing';
 import { catalog } from '@/lib/catalog';
 import { webSiteJsonLd } from '@/lib/jsonld';
@@ -13,6 +13,7 @@ import { publishedGuides } from '@/lib/guides';
 import { calculatorHref, comboHref, comparesHref, gpuHref, gpusHref, guideHref, guidesHref, localeHref, modelHref, modelsHref } from '@/lib/links';
 import { gpuName, shortGpuName, type Translate } from '@/lib/phrases';
 import { HOME_QUICK_PICKS, popularCombos } from '@/lib/popular-combos';
+import { comboCalcHref } from '@/lib/publish';
 import { buildPageMetadata } from '@/lib/seo';
 import { SITE_ALTERNATE_NAMES, absoluteUrl } from '@/lib/site';
 
@@ -157,7 +158,11 @@ export default async function HomePage({ params }: Props) {
             <ul className="grid gap-x-4 gap-y-2 text-sm sm:grid-cols-2">
               {combos.map(({ gpu, model }) => (
                 <li key={`${gpu.id}/${model.id}`}>
-                  <a href={localeHref(locale, comboHref(model.id, gpu.id))} data-combo-link>
+                  {/* zh 는 조합 페이지가 없어(11-02 D130) 같은 GPU·모델을 미리 채운 계산기로 */}
+                  <a
+                    href={hasComboPages(locale) ? localeHref(locale, comboHref(model.id, gpu.id)) : comboCalcHref(locale, model.id, gpu.id)}
+                    {...(hasComboPages(locale) ? { 'data-combo-link': true } : { 'data-calc-link': true })}
+                  >
                     {t('popularCombo', { model: model.name, gpu: shortGpuName(gpuName(tNames, gpu)) })}
                   </a>
                 </li>

@@ -256,3 +256,30 @@ for (const locale of LOCALES) {
     });
   }
 }
+
+/**
+ * 없어진 조합 주소 → 계산기 (11-02 D130) — 색인 밖 쌍과 zh 조합은 페이지가 없다. 404.html 의 스크립트가 같은 GPU·모델을
+ * 미리 채운 계산기(로캘 유지, 원래 쿼리 이어 붙임)로 보내고, 계산기는 그 GPU 를 고른 채 열린다
+ */
+test.describe('removed combo URLs land on the calculator (D130)', () => {
+  for (const [from, to] of [
+    ['/can-i-run/qwen3-14b/on/rx-9060-xt-16gb?ram=64', '/calculator?gpu=rx-9060-xt-16gb&m=qwen3-14b&ram=64'],
+    ['/ko/can-i-run/llama-3.1-8b/on/rtx-3050-8gb', '/ko/calculator?gpu=rtx-3050-8gb&m=llama-3.1-8b'],
+    ['/zh/can-i-run/qwen3-14b/on/rtx-4060', '/zh/calculator?gpu=rtx-4060&m=qwen3-14b'],
+  ] as const) {
+    test(`${from} → ${to}`, async ({ page }) => {
+      const response = await page.goto(from, { waitUntil: 'commit' });
+      expect(response?.status(), 'the removed page itself is a 404').toBe(404);
+      await page.waitForURL((url) => url.pathname === to.split('?')[0]);
+      const url = new URL(page.url());
+      expect(`${url.pathname}${url.search}`).toBe(to);
+      await expect(page.locator('[data-result-card]').first()).toBeVisible();
+    });
+  }
+
+  test('an indexable combo is still served as its own page (200, no redirect)', async ({ page }) => {
+    const response = await page.goto('/can-i-run/qwen3-14b/on/rtx-4060');
+    expect(response?.status()).toBe(200);
+    expect(new URL(page.url()).pathname).toBe('/can-i-run/qwen3-14b/on/rtx-4060');
+  });
+});

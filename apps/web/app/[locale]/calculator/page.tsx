@@ -16,6 +16,7 @@ import { CALC_MESSAGE_SPEC } from '@/lib/i18n-lite';
 import { softwareApplicationJsonLd } from '@/lib/jsonld';
 import { calculatorHref, gpuHref, localeHref, mailtoHref } from '@/lib/links';
 import { FX } from '@/lib/price';
+import { comboPageKeys } from '@/lib/publish';
 import { gpuName, type Translate } from '@/lib/phrases';
 import { buildPageMetadata } from '@/lib/seo';
 import { CONTACT_EMAIL, absoluteUrl } from '@/lib/site';
@@ -80,6 +81,7 @@ export default async function CalculatorPage({ params }: Props) {
           dict={dict}
           issueUrl={mailtoHref(CONTACT_EMAIL, t('requestModelSubject'))}
           {...(locale === 'ko' ? { fx: { usdKrw: FX.usdKrw, asOf: FX.asOf } } : {})}
+          comboPages={comboPageKeys(locale)}
         />
 
         <noscript>

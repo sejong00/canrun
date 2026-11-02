@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { SpeedCell } from '@/components/estimate';
 import { Pill } from '@/components/pill';
 import { VerdictBadge, VerdictLegend } from '@/components/verdict';
+import { hasComboPages } from '@/i18n/locales';
 import type { Locale } from '@/i18n/routing';
 import { formatCtx, formatInt } from '@/lib/format';
 import { calculatorHref, comboHref, gpuHref, localeHref, modelHref } from '@/lib/links';
@@ -132,13 +133,15 @@ function ModelLine({
   const tCommon = useTranslations('Common');
   const tMode = useTranslations('Mode');
   const tHint = useTranslations('Hint');
+  // 조합 페이지는 색인 쌍 × en·ko 에만 있다(11-02 D130) — zh 계산기는 모델 허브로
+  const linkCombo = comboIndexable && hasComboPages(locale);
   return (
     <>
       <span className="flex flex-wrap items-center gap-2">
         {/* 공개(index) 콤보만 콤보 페이지로, 나머지는 모델 허브로 — 공개 페이지는 공개 콤보로만 링크한다(docs/04 §3) */}
         <a
-          href={localeHref(locale, comboIndexable ? comboHref(model.id, gpuId) : modelHref(model.id))}
-          data-start-pick={comboIndexable ? 'combo' : 'model'}
+          href={localeHref(locale, linkCombo ? comboHref(model.id, gpuId) : modelHref(model.id))}
+          data-start-pick={linkCombo ? 'combo' : 'model'}
           className="font-medium"
         >
           {model.name}

@@ -17,16 +17,19 @@ const NAV_LINK = 'inline-flex min-h-9 items-center text-muted-foreground underli
  *
  * `availableIn` — 이 페이지가 있는 로캘(기본 전부). 장문 페이지(가이드·정적 페이지)는 `CONTENT_LOCALES` 를 넘긴다:
  * 그 페이지가 없는 로캘(zh, D109)로 가는 전환 링크는 그 로캘 홈으로 보낸다(404 대신).
+ * `fallbackHref` — 그 로캘 홈 대신 갈 곳(로캘 프리픽스 없는 내부 경로). 조합 페이지(11-02 D130)는 zh 에 없어 같은 GPU·모델의 계산기로 보낸다.
  */
 export function PageShell({
   locale,
   href,
   availableIn = ALL_LOCALES,
+  fallbackHref = '/',
   children,
 }: {
   locale: Locale;
   href: string;
   availableIn?: readonly Locale[];
+  fallbackHref?: string;
   children: ReactNode;
 }) {
   const tSite = useTranslations('Site');
@@ -78,7 +81,7 @@ export function PageShell({
               ) : (
                 <a
                   key={target}
-                  href={localeHref(target, availableIn.includes(target) ? href : '/')}
+                  href={localeHref(target, availableIn.includes(target) ? href : fallbackHref)}
                   hrefLang={HTML_LANG[target]}
                   lang={HTML_LANG[target]}
                   data-locale-switch

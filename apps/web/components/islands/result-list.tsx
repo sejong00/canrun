@@ -34,6 +34,7 @@ export function ResultList({
   results,
   hydrated,
   prefix,
+  comboPage,
   issueUrl,
   pinnedMeta,
   onSeeGpus,
@@ -46,6 +47,8 @@ export function ResultList({
   results: RunResult | undefined;
   hydrated: boolean;
   prefix: string;
+  /** 정적 조합 페이지가 있는 쌍인가 (11-02 D130) */
+  comboPage: (gpuId: string, modelId: string) => boolean;
   issueUrl: string;
   /** 결과 맨 위 카드의 출처 — 불러온 모델의 HF 저장소(D57) 또는 직접 입력(D66) */
   pinnedMeta?: PinnedMeta;
@@ -160,6 +163,7 @@ export function ResultList({
                   state={state}
                   hardware={results.hardware}
                   prefix={prefix}
+                  hasComboPage={false}
                   focused={false}
                   external={pinnedMeta}
                   onSeeGpus={() => onSeeGpus()}
@@ -196,6 +200,7 @@ export function ResultList({
                   state={state}
                   hardware={results.hardware}
                   prefix={prefix}
+                  hasComboPage={comboPage(results.hardware.gpu.id, card.model.id)}
                   focused={state.focus === card.model.id}
                   onSeeGpus={() => onSeeGpus(card.model.id)}
                 />

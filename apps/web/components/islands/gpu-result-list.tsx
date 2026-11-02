@@ -34,6 +34,7 @@ export function GpuResultList({
   total,
   hydrated,
   prefix,
+  comboPage,
   fx,
   onUseGpu,
   onMineAll,
@@ -51,6 +52,8 @@ export function GpuResultList({
   total: number;
   hydrated: boolean;
   prefix: string;
+  /** 정적 조합 페이지가 있는 쌍인가 (11-02 D130) — 없으면 행의 '상세' 링크를 두지 않는다 */
+  comboPage: (gpuId: string, modelId: string) => boolean;
   /** ko 페이지만 — 원화 참고값 */
   fx?: KrwRate;
   onUseGpu: (gpuId: string, ramGB?: number) => void;
@@ -233,7 +236,7 @@ export function GpuResultList({
                 const { gpu, combo } = row;
                 const name = gpuName(t.names, gpu);
                 // 하드웨어 모드 카드와 같은 쿼리 규칙(D64): 기준 조건이 아니면 그 셀, 기준이면 dGPU 는 `?ram=32`(RAM 힌트 페이지도 이 행과 같은 RAM 으로 열리게)
-                const comboHref = run.external
+                const comboHref = run.external || !comboPage(gpu.id, run.model.id)
                   ? undefined
                   : `${prefix}/can-i-run/${run.model.id}/on/${gpu.id}${comboDetailQuery(state, { gpu, gpuCount: 1, ramGB: combo.ramGB }, run.ctx)}`;
                 return (

@@ -10,11 +10,13 @@
  *  - URL 당 파일 1개 (foo.html 과 foo/index.html 중복 금지)
  *  - out/en/ 부재 (평탄화), en 페이지에 /en 프리픽스 링크 0건, _redirects 한도
  *  - 허브·콤보 구조화 데이터, 규칙 3 밴드, 제목·description 유일, 고아 0, 한글 누출 0
- *  - 콤보(P1-2): 전 조합 존재 · publish.json 게이트(noindex) · 링크 규칙 · 깊이(D15) ·
+ *  - 콤보(P1-2): 색인 쌍 × en·ko 만 존재(11-02 D130 — D9 의 전 조합 생성 대체) · publish.json 게이트 · 링크 규칙 · 깊이(D15) ·
  *    보일러플레이트(D16) · 파일 위생(D18)
+ *  - 내부 링크 전수(D130): en·ko·zh 모든 페이지의 `<a href="/…">` 가 out/ 의 실제 파일로 풀린다 — 없는 페이지로 가는 링크 0
+ *  - 404.html 의 없어진 조합 주소 → 계산기 스크립트(D130)
  *
  * zh(10-19 D109 — 화면 문구만 기계번역, 공개 작업 전까지 noindex): 위 en/ko 불변식은 en/ko 페이지(`pages`)에만 건다.
- * zh 페이지(`zhPages`)는 맨 아래 "zh (D109)" 블록이 따로 본다 — 템플릿 페이지 집합 = en, 전부 noindex·자기 캐노니컬·hreflang 없음,
+ * zh 페이지(`zhPages`)는 맨 아래 "zh (D109)" 블록이 따로 본다 — 템플릿 페이지 집합 = en(조합 제외 — D130), 전부 noindex·자기 캐노니컬·hreflang 없음,
  * 사이트맵·RSS 밖, 한글·원화 없음, 내부 링크는 /zh/* 만(푸터의 영어 정적 페이지 예외).
  */
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
@@ -31,6 +33,8 @@ import { SITE_UPDATES, latestSiteUpdate } from '../apps/web/content/updates';
 import { ADSENSE_CLIENT, DAUM_WEBMASTER_LINE, INDEXNOW_KEY } from '../apps/web/lib/site';
 import { ENGINE_SPEC_DATE } from '../packages/engine/src/index';
 import { CF_PAGES_REDIRECT_LINE_LIMIT } from '../scripts/build-redirects';
+import { FALLBACK_MARKER } from '../scripts/combo-fallback';
+import { resolveOutPath } from '../scripts/serve-out';
 import { comboCardText, loadCatalog, ogTranslators } from '../scripts/og-cards';
 import { HUB_POLICY, MAC_LINES, summarizeGpu, type GpuHubData } from '../packages/data/src/index';
 import { comboOgImage, compareOgImage, defaultOgImage, guideOgImage, hubOgImage } from '../apps/web/lib/og-images';
@@ -841,20 +845,34 @@ describe('_redirects (docs/05 §3)', () => {
 // P1-2 콤보 페이지 불변식 (docs/04 §3·§4, 결정 D9~D18)
 // ---------------------------------------------------------------------------
 
-describe('combo pages exist for the whole catalog (결정 D9 — 전 조합 생성)', () => {
-  it('every gpus.json × models.json pair has an en and a ko combo page', () => {
+describe('combo pages exist for exactly the indexable pairs (11-02 D130 — 결정 D9 의 전 조합 생성 대체)', () => {
+  it('the en/ko combo page set is exactly indexable(publish.json) × {en, ko} — no static page for a pair outside the open batches', () => {
     requireCombos();
     const urls = urlSet();
+    const plan = loadPublish();
     const missing: string[] = [];
+    const extra: string[] = [];
     for (const gpu of gpus) {
       for (const model of models) {
+        const indexable = comboIndexable(plan, gpu.id, model.id);
         for (const locale of ['en', 'ko'] as const) {
           const path = comboPath(locale, model.id, gpu.id);
-          if (!urls.has(path)) missing.push(path);
+          if (indexable && !urls.has(path)) missing.push(path);
+          if (!indexable && urls.has(path)) extra.push(path);
         }
       }
     }
-    expect(missing, `${missing.length} combo pages missing (first: ${missing.slice(0, 5).join(', ')})`).toEqual([]);
+    expect(missing, `${missing.length} indexable combo pages missing (first: ${missing.slice(0, 5).join(', ')})`).toEqual([]);
+    expect(extra, `${extra.length} combo pages for non-indexable pairs (first: ${extra.slice(0, 5).join(', ')})`).toEqual([]);
+    // 파일 수준에서도 — out/ 어디에도(zh 포함) 색인 밖 쌍의 조합 HTML 이 없다
+    const stray = outFiles
+      .map((f) => f.rel)
+      .filter((rel) => rel.endsWith('.html') && rel.includes('can-i-run/'))
+      .filter((rel) => {
+        const combo = comboOf(`/${rel.slice(0, -'.html'.length)}`);
+        return combo === undefined || rel.startsWith('zh/') || !comboIndexable(plan, combo.gpuId, combo.modelId);
+      });
+    expect(stray, 'combo HTML outside indexable × {en, ko}').toEqual([]);
   });
 
   it('every combo URL names a catalog GPU and model (no stray combos)', () => {
@@ -1310,7 +1328,11 @@ describe('memory-size verdict lists and the system RAM toggle (10-03 D64)', () =
       // 행과 그 안의 칩이 한 번씩
       expect(page.oneUnitMarks, `${page.file} one-unit marks`).toBe(linked.filter((r) => r.oneUnit).length * 2);
     }
-    expect(dgx, 'DGX Spark combos').toBeGreaterThan(0);
+    // 조합 페이지는 색인 쌍만(11-02 D130) — DGX Spark 가 열린 배치에 없으면 조합이 없다. 그 사실을 단언하고(공회전 숨기지 않기) 끝낸다.
+    // 여러 대 표시 자체는 아래 GPU 허브 검사가 계속 본다
+    const dgxIndexable = models.filter((m) => comboIndexable(loadPublish(), 'nvidia-dgx-spark', m.id)).length;
+    expect(dgx, 'DGX Spark combos = indexable DGX Spark pairs × 2 locales').toBe(dgxIndexable * 2);
+    if (dgx === 0) return;
     // 한 대에 들어가는 모델(1대로 충분)과 연결이 필요한 모델이 둘 다 실제로 있다 — 빈 검사가 아니다
     const dgxRows = requireCombos().filter((p) => p.combo!.gpuId === 'nvidia-dgx-spark').flatMap((p) => p.ramSteps.filter((r) => r.nodes > 1));
     expect(dgxRows.some((r) => r.oneUnit)).toBe(true);
@@ -1774,6 +1796,37 @@ describe('sitemaps · robots.txt · RSS (P1-5)', () => {
 });
 
 // ---------------------------------------------------------------------------
+// 없는 페이지로 가는 링크 0 (11-02 D130 — 조합 페이지를 색인 쌍 × en·ko 로 줄인 뒤의 회귀 방지)
+// ---------------------------------------------------------------------------
+
+describe('no internal link to a missing page (D130)', () => {
+  it('every <a href="/…"> on every en/ko/zh page resolves to a file in out/ (same mapping as Cloudflare Pages / serve-out)', () => {
+    const checked = new Map<string, boolean>();
+    const broken: string[] = [];
+    for (const page of [...pages, ...zhPages]) {
+      for (const { href } of page.links) {
+        const path = href.replace(/&amp;/g, '&');
+        let ok = checked.get(path);
+        if (ok === undefined) {
+          ok = resolveOutPath(outDir, path).status === 200;
+          checked.set(path, ok);
+        }
+        if (!ok) broken.push(`${page.file} → ${href}`);
+      }
+    }
+    console.log(`[links] ${checked.size} distinct internal hrefs checked, ${broken.length} broken`);
+    expect(broken.slice(0, 20), `${broken.length} links to missing pages`).toEqual([]);
+  });
+
+  it('404.html carries the combo → calculator fallback script once, inside <head>', () => {
+    const html = readFileSync(join(outDir, '404.html'), 'utf8');
+    expect(html.split(`<script ${FALLBACK_MARKER}=""`).length - 1, 'fallback script count').toBe(1);
+    expect(html.indexOf(FALLBACK_MARKER)).toBeLessThan(html.indexOf('</head>'));
+    expect(html).toContain('/calculator?');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // zh (10-19 D109) — 화면 문구만 기계번역(사용자 승인), 공개 작업(애드센스 승인 뒤) 전까지 검색 제외
 // ---------------------------------------------------------------------------
 
@@ -1786,15 +1839,18 @@ describe('zh (D109 — 화면 문구만, 공개 작업 전까지 noindex·hrefla
   };
   const origin = () => new URL(pages.find((p) => p.urlPath === '/')!.canonical!).origin;
 
-  it('the zh page set is exactly the en template pages — no guides, guides index or static pages', () => {
+  it('the zh page set is exactly the en template pages — no guides, guides index, static pages or combo pages (D130)', () => {
     const zh = requireZh();
-    const expected = pages.filter((p) => p.locale === 'en' && !isLongForm(p)).map((p) => localePath('zh', p.urlPath));
+    const expected = pages.filter((p) => p.locale === 'en' && !isLongForm(p) && p.kind !== 'combo').map((p) => localePath('zh', p.urlPath));
     expect(zh.map((p) => p.urlPath).sort()).toEqual(expected.sort());
     expect(new Set(zh.map((p) => p.urlPath)).size, 'one file per zh URL').toBe(zh.length);
     expect(zh.filter(isLongForm).map((p) => p.file)).toEqual([]);
     for (const slug of STATIC_PAGE_SLUGS) expect(existsSync(join(outDir, `zh/${slug}.html`)), `zh/${slug}.html`).toBe(false);
     expect(existsSync(join(outDir, 'zh/guides.html')), 'zh/guides.html').toBe(false);
     expect(existsSync(join(outDir, 'zh/guides')), 'zh/guides/').toBe(false);
+    // 조합 페이지는 zh 에 하나도 없다 (11-02 D130) — zh 의 조합 링크는 계산기로 간다
+    expect(zh.filter((p) => p.kind === 'combo').map((p) => p.file)).toEqual([]);
+    expect(existsSync(join(outDir, 'zh/can-i-run')), 'zh/can-i-run/').toBe(false);
     console.log(`[zh] ${zh.length} zh pages · ${pages.length} en/ko pages · ${outFiles.length} files in out/`);
   });
 
@@ -1937,18 +1993,49 @@ describe('zh (D109 — 화면 문구만, 공개 작업 전까지 noindex·hrefla
     expect(bad.slice(0, 20)).toEqual([]);
   });
 
-  it('every language-switcher link (en/ko/zh) points at an existing page: the same page in the other locale, or the zh home from a long-form page', () => {
+  it('every language-switcher link (en/ko/zh) points at an existing page: the same page in the other locale, the zh home from a long-form page, or the zh calculator with that GPU and model from a combo (D130)', () => {
     const all = new Set([...pages, ...zhPages].map((p) => p.urlPath));
+    const decode = (href: string) => href.replace(/&amp;/g, '&');
     for (const page of [...pages, ...zhPages]) {
       const bare = stripLocale(page.urlPath);
       const targets = ALL_LOCALES.filter((locale) => locale !== page.locale);
       const switches = page.links.filter((l) => l.localeSwitch);
-      expect(switches.map((l) => l.href), `${page.file} switcher`).toEqual(
-        targets.map((target) => localePath(target, (CONTENT_LOCALES as readonly string[]).includes(target) || !isLongForm(page) ? bare : '/')),
-      );
+      if (page.combo) {
+        // 조합 → zh 는 같은 GPU·모델을 미리 채운 zh 계산기(위젯 딥 링크와 같은 쿼리), en·ko 는 짝 조합
+        const deep = page.calcDeepLinks.find((l) => l.kind === 'combo')?.href;
+        expect(deep, `${page.file} combo calculator deep link`).toBeDefined();
+        expect(switches.map((l) => decode(l.href)), `${page.file} switcher`).toEqual(
+          targets.map((target) => (target === 'zh' ? localePath('zh', stripLocale(deep!)) : localePath(target, bare))),
+        );
+        const zhSwitch = new URL(decode(switches.find((l) => l.hrefLang === HTML_LANG.zh)!.href), 'https://example.com');
+        expect([zhSwitch.searchParams.get('gpu'), zhSwitch.searchParams.get('m')], `${page.file} zh switch query`).toEqual([
+          page.combo.gpuId,
+          page.combo.modelId,
+        ]);
+      } else {
+        expect(switches.map((l) => l.href), `${page.file} switcher`).toEqual(
+          targets.map((target) => localePath(target, (CONTENT_LOCALES as readonly string[]).includes(target) || !isLongForm(page) ? bare : '/')),
+        );
+      }
       expect(switches.map((l) => l.hrefLang), `${page.file} switcher hreflang`).toEqual(targets.map((target) => HTML_LANG[target]));
-      for (const { href } of switches) expect(all.has(href), `${page.file} switcher → missing ${href}`).toBe(true);
+      for (const { href } of switches) expect(all.has(href.split('?')[0]!), `${page.file} switcher → missing ${href}`).toBe(true);
     }
+  });
+
+  it('zh hub, compare and home verdict links go to the zh calculator with that GPU and model (a[data-calc-link], D130), never to a combo', () => {
+    let calcLinks = 0;
+    for (const page of requireZh()) {
+      expect(page.comboLinkHrefs, `${page.file} a[data-combo-link]`).toEqual([]);
+      for (const link of page.links) expect(comboOf(link.href.split('?')[0]!), `${page.file} → ${link.href}`).toBeUndefined();
+      for (const href of page.calcLinkHrefs) {
+        const url = new URL(href.replace(/&amp;/g, '&'), 'https://example.com');
+        expect(url.pathname, `${page.file} a[data-calc-link] ${href}`).toBe(localePath('zh', '/calculator'));
+        const [gpuId, modelId] = [url.searchParams.get('gpu'), url.searchParams.get('m')];
+        expect(gpuId !== null && modelId !== null && comboIndexable(loadPublish(), gpuId, modelId), `${page.file} a[data-calc-link] ${href} names an indexable pair`).toBe(true);
+        calcLinks += 1;
+      }
+    }
+    expect(calcLinks, 'zh a[data-calc-link] count').toBeGreaterThan(0);
   });
 
   it('_redirects send the reversed compare slug to the registry slug in every routed locale, zh included', () => {

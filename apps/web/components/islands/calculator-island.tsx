@@ -39,11 +39,14 @@ export function CalculatorIsland({
   dict,
   issueUrl,
   fx,
+  comboPages,
 }: {
   locale: string;
   catalog: CatalogLite;
   dict: Dict;
   issueUrl: string;
+  /** 정적 조합 페이지가 있는 쌍(`gpu/model` — 11-02 D130: 색인 쌍 × en·ko, zh 는 빈 목록). 카드 '상세' 링크는 여기 있는 쌍만 */
+  comboPages: readonly string[];
   /** ko 페이지만 — 모델 모드 가격의 원화 참고값(D61) */
   fx?: KrwRate;
 }) {
@@ -55,6 +58,10 @@ export function CalculatorIsland({
     return out;
   }, [dict]);
   const reducer = useMemo(() => makeReducer(catalog), [catalog]);
+  const comboPage = useMemo(() => {
+    const set = new Set(comboPages);
+    return (gpuId: string, modelId: string) => set.has(`${gpuId}/${modelId}`);
+  }, [comboPages]);
   const [state, dispatch] = useReducer(reducer, undefined, defaultState);
   const [restored, setRestored] = useState(false);
   // 모델 폼이 차지할 최소 높이 — SSR 하드웨어 폼이 화면에 보이던 높이(`?mode=model` 딥링크의 레이아웃 이동 방지, D65)
@@ -383,6 +390,7 @@ export function CalculatorIsland({
           total={catalog.gpus.length}
           hydrated={hydrated}
           prefix={prefix}
+          comboPage={comboPage}
           {...(fx ? { fx } : {})}
           onUseGpu={switchToGpu}
           onMineAll={mineAll}
@@ -397,6 +405,7 @@ export function CalculatorIsland({
           results={results}
           hydrated={hydrated}
           prefix={prefix}
+          comboPage={comboPage}
           issueUrl={issueUrl}
           {...(pinnedMeta ? { pinnedMeta } : {})}
           onSeeGpus={seeGpus}

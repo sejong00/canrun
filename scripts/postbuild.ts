@@ -17,6 +17,7 @@
  *      충돌은 즉시 실패
  *   3. `data/aliases.json` + GPU 비교 뒤집은 순서 슬러그(10-19 D106) → `out/_redirects` 생성 (scripts/build-redirects.ts)
  *   4. 사이트맵·robots.txt·RSS(가이드 본문 포함 — D93)·ads.txt·IndexNow 키 파일 생성 (scripts/build-sitemaps.ts — P1-5)
+ *   3b. 없어진 조합 주소(11-02 D130 — 색인 밖·zh 조합) → 계산기: `out/404.html` 에 인라인 스크립트 (scripts/combo-fallback.ts)
  *   5. 공유 카드 PNG — GPU·모델 허브 `out/og/{gpu,model}/<id>-<locale>.png`(D60), 공개 콤보 `out/og/combo/<model>/<gpu>-<locale>.png`·
  *      게시 가이드 `out/og/guide/<slug>-<locale>.png`(D96)·게시 GPU 비교 `out/og/compare/<slug>-<locale>.png`(10-19 D106) (scripts/og-cards.ts)
  *
@@ -24,12 +25,13 @@
  * 뒤로가기(history) 경로에서 실패 요청 0 은 e2e/smoke.spec.ts 가 본다.
  * 의존성 없음(node:fs/path 만).
  */
-import { existsSync, readdirSync, renameSync, rmdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, renameSync, rmdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { INDEXNOW_KEY } from '../apps/web/lib/site';
 import { buildRedirects, compareRedirects, loadAliases } from './build-redirects';
 import { buildSitemaps } from './build-sitemaps';
+import { injectComboFallback, type FallbackLabels } from './combo-fallback';
 import { renderOgImages } from './og-cards';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -120,6 +122,16 @@ if (!existsSync(rootIndex)) {
 const redirects = buildRedirects([...loadAliases(repoRoot), ...compareRedirects()]);
 writeFileSync(join(outDir, '_redirects'), redirects, 'utf8');
 
+// --- 3b. 없어진 조합 주소 → 계산기 (D130) -------------------------------------
+// 링크 문구는 조합 페이지 계산기 위젯과 같은 messages 키 — 404 는 로캘이 없어 셋 다 박고 경로 프리픽스로 고른다
+const openCombo = (locale: string): string =>
+  (JSON.parse(readFileSync(resolve(repoRoot, `apps/web/messages/${locale}.json`), 'utf8')) as { CalcWidget: { openCombo: string } }).CalcWidget
+    .openCombo;
+const fallbackLabels: FallbackLabels = { '': openCombo('en'), '/ko': openCombo('ko'), '/zh': openCombo('zh') };
+const notFoundHtml = join(outDir, '404.html');
+if (!existsSync(notFoundHtml)) throw new Error('out/404.html is missing — cannot add the combo fallback script (D130)');
+writeFileSync(notFoundHtml, injectComboFallback(readFileSync(notFoundHtml, 'utf8'), fallbackLabels), 'utf8');
+
 // --- 4. 사이트맵·robots·RSS (P1-5) -------------------------------------------
 const seoFiles = buildSitemaps(repoRoot, outDir);
 // 5. 공유 카드 — 허브(10-01 D60)·공개 콤보·게시 가이드(10-16 D96). 판정·속도가 데이터를 따라가도록 빌드마다 다시 그린다
@@ -127,5 +139,5 @@ const og = await renderOgImages(outDir);
 
 console.log(
   `[postbuild] pruned ${pruned.txtFiles} RSC .txt + ${pruned.nextDirs} __next.* dirs ` +
-    `(${pruned.emptyDirs} emptied dirs removed), flattened ${flattened} en entries to root, _redirects written, ${seoFiles.join(' ')}, og cards ${og.hubs} hub + ${og.combos} combo + ${og.guides} guide + ${og.compares} compare`,
+    `(${pruned.emptyDirs} emptied dirs removed), flattened ${flattened} en entries to root, _redirects written, 404 combo fallback added, ${seoFiles.join(' ')}, og cards ${og.hubs} hub + ${og.combos} combo + ${og.guides} guide + ${og.compares} compare`,
 );

@@ -19,6 +19,16 @@ export type IndexedLocale = (typeof INDEXED_LOCALES)[number];
 export const CONTENT_LOCALES = ['en', 'ko'] as const satisfies readonly AppLocale[];
 export type ContentLocale = (typeof CONTENT_LOCALES)[number];
 
+/**
+ * 정적 조합 페이지(`/can-i-run/{model}/on/{gpu}`)를 만드는 로캘 (11-02 D130) — 색인 대상 로캘만. 조합 페이지는 색인 배치에 든 쌍만
+ * 만들고(`data/publish.json`), zh 는 조합 페이지가 하나도 없다 — zh 화면의 조합 링크는 이 GPU·모델을 미리 채운 계산기로 간다
+ */
+export const COMBO_LOCALES = INDEXED_LOCALES;
+
+export function hasComboPages(locale: string): locale is IndexedLocale {
+  return (COMBO_LOCALES as readonly string[]).includes(locale);
+}
+
 export function isIndexedLocale(locale: string): locale is IndexedLocale {
   return (INDEXED_LOCALES as readonly string[]).includes(locale);
 }

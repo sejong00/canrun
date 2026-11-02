@@ -35,6 +35,7 @@ export function ResultCard({
   state,
   hardware,
   prefix,
+  hasComboPage,
   focused,
   external,
   onSeeGpus,
@@ -45,6 +46,8 @@ export function ResultCard({
   state: CalcState;
   hardware: ResolvedHardware;
   prefix: string;
+  /** 이 GPU·모델의 정적 조합 페이지가 있는가 (11-02 D130 — 색인 쌍 × en·ko). 없으면 '상세'·'실행 방법' 대신 모델 허브 링크 */
+  hasComboPage: boolean;
   focused: boolean;
   /** 카탈로그 밖 모델 — 허브·콤보 페이지 대신 HF 링크와 실행 명령(D57), 직접 입력이면 링크 없이(D66) */
   external?: PinnedMeta;
@@ -63,7 +66,7 @@ export function ResultCard({
   const detailQuery = comboDetailQuery(state, hardware, card.ctx);
   // `?ram=N` 이면 콤보 페이지가 사용자 RAM 으로 열린다 — 라벨의 허브 가정에서 RAM 을 뺀다 (10-03 D64 리뷰 반영)
   const ramShown = detailQuery.startsWith('?ram=');
-  const comboHref = custom || external ? undefined : `${prefix}/can-i-run/${model.id}/on/${hardware.gpu.id}${detailQuery}`;
+  const comboHref = custom || external || !hasComboPage ? undefined : `${prefix}/can-i-run/${model.id}/on/${hardware.gpu.id}${detailQuery}`;
   // 컨텍스트 여유는 돌아가는 카드에만 — F(미탑재·너무 느림)엔 `maxCtx` 가 없고 현재 ctx 를 여유로 보이면 거짓
   const maxCtx = q.result.verdict === 'F' ? undefined : (combo.maxCtx ?? card.ctx);
   const maxCtxText =

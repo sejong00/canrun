@@ -103,6 +103,8 @@ export type PageFacts = {
   adjacentHrefs: string[];
   /** `a[data-combo-link]` href (허브·가이드 그리드의 판정 링크, 홈 "많이 찾는 조합", 가이드 ComboLink, GPU 비교 표) */
   comboLinkHrefs: string[];
+  /** `a[data-calc-link]` href — 조합 페이지가 없는 로캘(zh)의 판정 링크가 가는 계산기 딥 링크 (11-02 D130) */
+  calcLinkHrefs: string[];
   /** `a[data-compare-link]` href — GPU 허브의 "다른 기기와 비교" 블록 (10-19 D106, 게시 쌍만) */
   compareLinkHrefs: string[];
   /** GPU 비교 페이지면 URL 의 슬러그 (레지스트리 슬러그만 — kindOf 와 같은 규칙) */
@@ -636,6 +638,7 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
   const links: PageFacts['links'] = [];
   const adjacentHrefs: string[] = [];
   const comboLinkHrefs: string[] = [];
+  const calcLinkHrefs: string[] = [];
   const compareLinkHrefs: string[] = [];
   const startPickHrefs: string[] = [];
   let navCalculator: string | undefined;
@@ -665,6 +668,7 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
     });
     if (hasAttr(tag, 'data-adjacent')) adjacentHrefs.push(href);
     if (hasAttr(tag, 'data-combo-link')) comboLinkHrefs.push(href);
+    if (hasAttr(tag, 'data-calc-link')) calcLinkHrefs.push(href);
     if (hasAttr(tag, 'data-compare-link')) compareLinkHrefs.push(href);
     if (hasAttr(tag, 'data-start-pick')) startPickHrefs.push(href);
     if (hasAttr(tag, 'data-nav-calculator')) navCalculator = href;
@@ -894,6 +898,7 @@ export function extractPageFacts(html: string, file: string, ctx: FactsContext):
     ...(verdictSentence === undefined ? {} : { verdictSentence }),
     adjacentHrefs,
     comboLinkHrefs,
+    calcLinkHrefs,
     compareLinkHrefs,
     ...(kind === 'compare' ? { compareSlug: compareSlugOf(urlPath)! } : {}),
     startGpuIds: elementsWithAttr(noScript, 'data-start-gpu').map((e) => attrValue(e.openTag, 'data-start-gpu') ?? ''),

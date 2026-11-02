@@ -28,7 +28,7 @@ import { BenchTable, ScrollTable, TABLE_CLASS } from '@/components/hub-table';
 import { PageShell } from '@/components/page-shell';
 import { VerdictBadge } from '@/components/verdict';
 import { VramBar } from '@/components/vram-bar';
-import { ogImageLocale } from '@/i18n/locales';
+import { COMBO_LOCALES, ogImageLocale } from '@/i18n/locales';
 import type { Locale } from '@/i18n/routing';
 import { calcDeepQuery } from '@/lib/calc-catalog';
 import { catalog } from '@/lib/catalog';
@@ -46,16 +46,24 @@ import { getCombo } from '@/lib/combos';
 import { formatCtx, formatGB, formatInt } from '@/lib/format';
 import { calculatorHref, comboHref, localeHref, modelHref } from '@/lib/links';
 import { comboOgImage } from '@/lib/og-images';
-import { canLinkCombo } from '@/lib/publish';
+import { canLinkCombo, isComboIndexable } from '@/lib/publish';
 import { capOverestimateText, gpuName, modeKey, ppPhrase, shortGpuName, speedPhrase, type Translate } from '@/lib/phrases';
 import { buildPageMetadata } from '@/lib/seo';
 import { absoluteUrl } from '@/lib/site';
 
 type Props = { params: Promise<{ locale: Locale; model: string; gpu: string }> };
 
-/** docs/04 §2 `/can-i-run/{model}/on/{gpu}` — 카탈로그 전 조합 (결정 D9), 인덱싱은 publish.json 게이트 */
+/**
+ * docs/04 §2 `/can-i-run/{model}/on/{gpu}` — 색인 배치에 든 쌍 × 조합 로캘(en·ko)만 (11-02 D130 — D9 의 '전 조합 생성'을 대체).
+ * 배치 밖 조합·zh 조합은 페이지를 만들지 않고 계산기로 본다. 배치를 열면(`data/publish.json`) 페이지가 따라 생긴다.
+ * 부모 레이아웃의 `[locale]` 을 덮어쓰려고 로캘까지 돌려준다(`contentLocaleParams` 와 같은 방식 — D109 스파이크)
+ */
 export function generateStaticParams() {
-  return catalog.models.flatMap((model) => catalog.gpus.map((gpu) => ({ model: model.id, gpu: gpu.id })));
+  return COMBO_LOCALES.flatMap((locale) =>
+    catalog.models.flatMap((model) =>
+      catalog.gpus.filter((gpu) => isComboIndexable(gpu.id, model.id)).map((gpu) => ({ locale, model: model.id, gpu: gpu.id })),
+    ),
+  );
 }
 
 export const dynamicParams = false;
@@ -333,8 +341,11 @@ export default async function ComboPage({ params }: Props) {
     }
   };
 
+  // 이 GPU·모델을 미리 채운 계산기 — 위젯 링크와, 조합 페이지가 없는 로캘(zh, D130)로 가는 언어 전환 링크가 같은 곳으로 간다
+  const calcHref = calculatorHref(calcDeepQuery({ gpuId: gpu.id, modelId: model.id, ramGB: page.config.ramGB }));
+
   return (
-    <PageShell locale={locale} href={href}>
+    <PageShell locale={locale} href={href} availableIn={COMBO_LOCALES} fallbackHref={calcHref}>
       <article className="flex flex-col gap-10">
         <header className="flex flex-col gap-4">
           <Breadcrumbs
@@ -384,7 +395,7 @@ export default async function ComboPage({ params }: Props) {
             links: [
               {
                 kind: 'combo',
-                href: localeHref(locale, calculatorHref(calcDeepQuery({ gpuId: gpu.id, modelId: model.id, ramGB: page.config.ramGB }))),
+                href: localeHref(locale, calcHref),
                 text: tWidget('openCombo'),
               },
             ],

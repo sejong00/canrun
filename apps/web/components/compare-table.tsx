@@ -4,14 +4,14 @@ import { SpeedCell } from '@/components/estimate';
 import { ScrollTable, TABLE_CLASS } from '@/components/hub-table';
 import { VerdictBadge } from '@/components/verdict';
 import type { Locale } from '@/i18n/routing';
-import { comboHref, localeHref, modelHref } from '@/lib/links';
-import { isComboIndexable } from '@/lib/publish';
+import { localeHref, modelHref } from '@/lib/links';
+import { comboLinkTarget } from '@/lib/publish';
 
 type Side = { gpu: Gpu; name: string };
 
 /**
  * 한 기기의 판정 칸 — 배지는 기준 양자화, 기준이 불가라 다른 양자화로 수치를 보이면 GPU 허브 표(`ComboCells`)처럼 그 양자화의 판정을 덧붙인다.
- * 판정 링크는 공개 콤보로만(D9·D12 — `data-combo-link`)
+ * 판정 링크는 공개 콤보로만(D9·D12 — `data-combo-link`). 조합 페이지가 없는 로캘(zh)은 같은 GPU·모델의 계산기로(11-02 D130 — `data-calc-link`)
  */
 function VerdictCell({ combo, side, modelId, modelName }: { combo: ComboAssessment; side: Side; modelId: string; modelName: string }) {
   const locale = useLocale() as Locale;
@@ -19,6 +19,7 @@ function VerdictCell({ combo, side, modelId, modelName }: { combo: ComboAssessme
   const tVerdict = useTranslations('Verdict');
   const tTable = useTranslations('Table');
   const q = combo.display;
+  const target = comboLinkTarget(locale, modelId, side.gpu.id);
   return (
     <td>
       <div className="flex flex-col items-start gap-1">
@@ -28,8 +29,8 @@ function VerdictCell({ combo, side, modelId, modelName }: { combo: ComboAssessme
             {tHint(q.tier === 'desperate' ? 'recommendedDesperate' : 'recommended', { quant: q.quant, verdict: tVerdict(q.result.verdict) })}
           </span>
         )}
-        {isComboIndexable(side.gpu.id, modelId) && (
-          <a href={localeHref(locale, comboHref(modelId, side.gpu.id))} data-combo-link className="text-xs">
+        {target !== undefined && (
+          <a href={target.href} {...(target.page ? { 'data-combo-link': true } : { 'data-calc-link': true })} className="text-xs">
             {tTable('comboLink', { model: modelName, gpu: side.name })}
           </a>
         )}

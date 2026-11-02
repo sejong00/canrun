@@ -77,38 +77,43 @@ for (const locale of LOCALES) {
   }
 
   test.describe(`${locale} combo island Ollama block follows the cell both ways (review fix)`, () => {
-    test('8k·f16 cpu-moe → q4_0 full-gpu cell swaps the Ollama command and notes → back', async ({ page }) => {
-      // 8k·f16 은 cpu-moe(Ollama 0.30+ 자동 전문가 배치 각주), 8k·q4_0 은 full-gpu — data 로 확인한 쌍
+    test('64k·f16 cpu-moe → 64k·q4_0 full-gpu cell swaps the Ollama command and notes → back', async ({ page }) => {
+      // 8k·f16 은 full-gpu, 64k·f16 은 cpu-moe(Ollama 0.30+ 자동 전문가 배치 각주), 64k·q4_0 은 full-gpu — data 로 확인한 쌍.
+      // 조합 페이지는 색인 쌍만이라(11-02 D130) 8k 에서 바로 cpu-moe → full-gpu 로 바뀌는 색인 쌍이 없어 64k 칸으로 본다
       // (10-01 D56 부터 cpu-moe 도 Ollama 명령을 보여 준다 — 생략은 분할 GGUF 뿐이라 셀마다 바뀌지 않는다)
       const problems = collectProblems(page);
       const moeNote = locale === 'ko' ? 'Ollama 0.30 이상' : 'Ollama 0.30 and later';
       const notes = page.locator('figure[data-snippet="ollama"] [data-snippet-notes="ollama"]');
-      await open(page, localePath(locale, '/can-i-run/kanana-1.5-15.7b-a3b/on/rtx-4070'));
+      await open(page, localePath(locale, '/can-i-run/qwen3-30b-a3b-2507/on/rtx-4090'));
       await expect(page.locator('figure[data-snippet-omitted="ollama"]')).toHaveCount(0);
       await expect(page.locator('figure[data-snippet="ollama"]')).toHaveCount(1);
-      await expect(notes).toContainText(moeNote);
+      await expect(notes).not.toContainText(moeNote);
       await expect(page.locator('[data-ctx-slider]')).toBeEnabled();
 
+      await page.locator('button[data-ctx-tick="65536"]').click();
+      await expect(notes).toContainText(moeNote);
       await page.locator('[data-kv-toggle] input[value="q4_0"]').check();
       const code = page.locator('figure[data-snippet="ollama"] [data-snippet-code="ollama"]');
       await expect(code).toContainText('OLLAMA_CONTEXT_LENGTH');
-      await expect(code).toContainText('8192');
+      await expect(code).toContainText('65536');
       // 셀이 KV q4_0 을 가정하므로 Ollama 서버도 같은 KV 타입으로 띄운다 (재검증 — 없으면 f16 KV 로 돌아 안 들어간다)
       await expect(code).toContainText('OLLAMA_KV_CACHE_TYPE');
       await expect(code).toContainText('q4_0');
       await expect(code).toContainText('OLLAMA_FLASH_ATTENTION');
-      await expect(page.locator('figure[data-snippet="ollama"] [data-snippet-code="ollama-repl"]')).toContainText('num_ctx 8192');
+      await expect(page.locator('figure[data-snippet="ollama"] [data-snippet-code="ollama-repl"]')).toContainText('num_ctx 65536');
       await expect(notes).not.toContainText(moeNote);
 
-      await page.locator('button[data-ctx-reset]').click();
+      await page.locator('[data-kv-toggle] input[value="f16"]').check();
       await expect(notes).toContainText(moeNote);
       await expect(page.locator('figure[data-snippet="ollama"] [data-snippet-code="ollama"]')).not.toContainText('OLLAMA_KV_CACHE_TYPE');
+      await page.locator('button[data-ctx-reset]').click();
+      await expect(notes).not.toContainText(moeNote);
       expect(problems).toEqual([]);
     });
 
     test('every ctx step keeps exactly one Ollama state and the command matches the selected ctx', async ({ page }) => {
-      // 8k full-gpu, 긴 ctx 에선 cpu-moe·미탑재로 바뀌는 페이지 — 셀마다 Ollama 블록이 정확히 하나
-      await open(page, localePath(locale, '/can-i-run/gpt-oss-20b/on/rtx-5070-ti'));
+      // 8k full-gpu, 긴 ctx 에선 cpu-moe·미탑재로 바뀌는 페이지 — 셀마다 Ollama 블록이 정확히 하나 (색인 쌍 — D130)
+      await open(page, localePath(locale, '/can-i-run/gpt-oss-20b/on/rtx-5060-ti-16gb'));
       const slider = page.locator('[data-ctx-slider]');
       await expect(slider).toBeEnabled();
       const ticks = await page.locator('button[data-ctx-tick]').all();
@@ -130,7 +135,7 @@ for (const locale of LOCALES) {
 
   test.describe(`${locale} combo island summaries stay truthful (re-verification)`, () => {
     test('a page without a run command never talks about "the commands below"', async ({ page }) => {
-      await open(page, localePath(locale, '/can-i-run/llama-3.3-70b/on/rtx-5060'));
+      await open(page, localePath(locale, '/can-i-run/llama-3.3-70b/on/rtx-4060'));
       await expect(page.locator('[data-no-run]')).toBeVisible();
       await page.locator('button[data-ctx-tick="4096"]').click();
       const summary = page.locator('[data-live-summary]');
@@ -259,7 +264,7 @@ for (const locale of LOCALES) {
     });
 
     test('a page without a static run command shows the command a bigger RAM allows, never "the commands below"', async ({ page }) => {
-      await open(page, localePath(locale, '/can-i-run/llama-3.3-70b/on/rtx-5060'));
+      await open(page, localePath(locale, '/can-i-run/llama-3.3-70b/on/rtx-4060'));
       await expect(page.locator('[data-no-run]')).toBeVisible();
       // 명령이 없는 자리에서도 다른 RAM 의 명령이 있는 곳을 가리킨다
       await expect(page.locator('[data-no-run]')).toContainText(((await page.locator('#ctx-heading').textContent()) ?? '').trim());

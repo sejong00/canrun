@@ -39,9 +39,9 @@ import { needAt8k } from '@/lib/model-need';
 import { getModelHub } from '@/lib/hubs';
 import type { QA } from '@/lib/jsonld';
 import { msrpConfigRamGB } from '@/lib/krw';
-import { calculatorHref, comboHref, gpuHref, hfUrl, localeHref, modelHref, modelsHref } from '@/lib/links';
+import { calculatorHref, gpuHref, hfUrl, localeHref, modelHref, modelsHref } from '@/lib/links';
 import { hubOgImage } from '@/lib/og-images';
-import { isComboIndexable } from '@/lib/publish';
+import { comboCellLink } from '@/lib/publish';
 import { gpuName, quantText, speedPhrase, type Translate } from '@/lib/phrases';
 import { searchModelName } from '@/lib/search-names';
 import { buildPageMetadata } from '@/lib/seo';
@@ -552,14 +552,7 @@ export default async function ModelHubPage({ params }: Props) {
                       <ComboCells
                         combo={row.combo}
                         gpu={gpu}
-                        comboLink={
-                          isComboIndexable(gpu.id, model.id)
-                            ? {
-                                href: localeHref(locale, comboHref(model.id, gpu.id)),
-                                text: tTable('comboLink', { model: model.name, gpu: gpuName(t.names, gpu) }),
-                              }
-                            : undefined
-                        }
+                        comboLink={comboCellLink(locale, model.id, gpu.id, tTable('comboLink', { model: model.name, gpu: gpuName(t.names, gpu) }))}
                       />
                       <td className="text-xs">{price}</td>
                     </tr>

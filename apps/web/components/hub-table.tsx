@@ -82,6 +82,7 @@ export function Notes({
  * 표시 quant(기준이 F 면 추천) — 둘이 다르면 배지 아래에 표시 quant 의 판정을 덧붙인다.
  * showReasoning: 행마다 모델이 다른 GPU 허브에서만 리즈닝 표시 (모델 허브는 표 아래 한 번).
  * comboLink: 공개(index) 콤보 페이지로 가는 판정 링크 — 미공개 콤보는 링크하지 않는다 (D9·D12).
+ * `calc` 면 그 로캘에 조합 페이지가 없어(zh — 11-02 D130) 같은 GPU·모델의 계산기로 가는 링크 — 마커가 `data-calc-link` 로 바뀐다.
  * 링크 텍스트는 대상 조합 이름("RTX 4060에서 gpt-oss-20b 판정 보기" — `Table.comboLink`, 10-16 D95):
  * 텍스트만 읽어도 어디로 가는지 알 수 있게 하고, 행마다 같은 "상세" + aria-label 조합은 쓰지 않는다.
  */
@@ -94,7 +95,7 @@ export function ComboCells({
   combo: ComboAssessment;
   gpu: Gpu;
   showReasoning?: boolean;
-  comboLink?: { href: string; text: string };
+  comboLink?: { href: string; text: string; calc?: boolean };
 }) {
   const tMode = useTranslations('Mode');
   const tHint = useTranslations('Hint');
@@ -116,7 +117,7 @@ export function ComboCells({
             </span>
           )}
           {comboLink && (
-            <a href={comboLink.href} data-combo-link className="text-xs">
+            <a href={comboLink.href} {...(comboLink.calc ? { 'data-calc-link': true } : { 'data-combo-link': true })} className="text-xs">
               {comboLink.text}
             </a>
           )}
