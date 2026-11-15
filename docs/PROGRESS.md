@@ -289,6 +289,7 @@
 
 ## 7. 이력 (최신이 위)
 
+- **11-15** 신모델 자동 추가 ②(클라우드) — ① 런 성공, 추가 0종이라 PR 없음(보고서는 이슈 #127 코멘트). 스킵 목록: Cactus-Compute/mirage wait(보류 구조 model_type=mirage — 기준 미달에서 다운로드 24,452회로 넘어옴, HF 접근 막혀 카드 미확인). 기준 미달 2종(thinkingmachines/Inkling-2-Small·meituan-longcat/LongCat-2.5)은 다운로드가 늘 수 있어 적지 않음
 - **11-12** 신모델 자동 추가 ②(클라우드) — ① 런 성공, 추가 0종이라 PR 없음(보고서는 이슈 #126 코멘트). 스킵 목록: inclusionAI/SingVL_S1_4B wait(Q4_K_M GGUF 없음, HF 접근 막혀 카드 미확인). 기준 미달 2종(Cactus-Compute/mirage·meituan-longcat/LongCat-2.5)은 다운로드가 늘 수 있어 적지 않음
 - **11-05** 신모델 자동 추가 ②(클라우드) — ① 런 성공, 추가 0종이라 PR 없음(보고서는 이슈 #121 코멘트). 스킵 목록: moonshotai/Kimi-K3.1-Pro wait(보류 구조 model_type=kimi_linear, HF 접근 막혀 카드 미확인). 기준 미달 1종(sensenova/SenseNova-Loop-9B-Preview)은 다운로드가 늘 수 있어 적지 않음
 - **11-02** D130 — 조합 페이지를 색인 쌍(180) × en·ko 로만 만들고 나머지 조합·zh 조합은 계산기로 보냄(사용자 승인, 애드센스 '가치 낮은 콘텐츠' 2회 거절 대응): HTML 10,744 → 838, 없는 페이지로 가는 링크 0(export 전수 검사), 없어진 주소는 404.html 스크립트가 같은 GPU·모델의 계산기로. 게이트: validate-data · typecheck · lint · 유닛 1,778 · verify-engine · build · export 102 · 로컬 E2E(Edge) 250
