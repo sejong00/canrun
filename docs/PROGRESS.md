@@ -289,6 +289,7 @@
 
 ## 7. 이력 (최신이 위)
 
+- **11-25** 신모델 자동 추가 ②(클라우드) — 오늘 ① 런은 12:00 KST 기준 아직 시작 전, 열린 신모델 PR 없음. 11-24 ① 런(추가 0종, 보고서는 이슈 #132 코멘트)의 확인 필요 후보를 스킵 목록에: wait 6종 — 보류 구조 thinkingmachines/Inkling-2-Mini(inkling2_loop_text)·inclusionAI/LingSante-3.1-air-VL(bailing_moe_v3_vl)·Aleph-Alpha/Kolibri-1.1(kolibri1_1)·baidu/ERNIE-5.5-Flash-Preview 와 -BF16(ernie5_5_moe), GGUF 없음 inclusionAI/LingSante-3.1-flash. 기준 미달 3종(XingChen-AGI/Xing4.1-Preview·sensenova/SenseNova-Loop-9B·KORMo-VL/KORMo-Web-11B)은 적지 않음
 - **11-21** 신모델 자동 추가 ②(클라우드) — ① 런 성공, 추가 0종이라 PR 없음(보고서는 이슈 #131 코멘트). 스킵 목록: tencent/Hy4-base skip(Base — 대화용 짝 Hy4). 기준 미달 3종(thinkingmachines/Inkling-2-Mini·sensenova/SenseNova-Loop-9B·KORMo-VL/KORMo-Web-11B)은 다운로드가 늘 수 있어 적지 않음
 - **11-19** 신모델 자동 추가 ②(클라우드) — ① 런 성공, 추가 0종이라 PR 없음(보고서는 이슈 #130 코멘트). 스킵 목록: tencent/Hy4-flash-base skip(Base — 대화용 짝 Hy4-flash), tencent/Hy4-flash wait(보류 구조 model_type=hy_v4_flash), microsoft/Aion-1.0-Instruct-2.3B wait(보류 구조 model_type=aion_instruct) — HF 접근 막혀 카드 미확인. 기준 미달 4종(MinimaLabs/KLM-1.6·sensenova/SenseNova-Loop-9B·KORMo-VL/KORMo-Web-11B·nex-agi/Nex-N2.6)은 다운로드가 늘 수 있어 적지 않음
 - **11-18** 신모델 자동 추가 ②(클라우드) — ① 런 성공, 추가 0종이라 PR 없음(보고서는 이슈 #129 코멘트). 스킵 목록: nvidia/Nemotron-Labs-Sigma-distill 10종(3B·8B × nfe2/4/8/16·spec) wait(보류 구조 model_type=nemotron_labs_sigma — 11-17·11-18 이틀 연속 '확인 필요', HF 접근 막혀 카드 미확인). 기준 미달 5종(MinimaLabs/KLM-1.6·thinkingmachines/Inkling-2-Small·sensenova/SenseNova-Loop-9B·nex-agi/Nex-N2.6·meituan-longcat/LongCat-2.5)은 다운로드가 늘 수 있어 적지 않음
