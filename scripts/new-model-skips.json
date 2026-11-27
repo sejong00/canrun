@@ -68,5 +68,6 @@
   { "hfId": "inclusionAI/LingSante-3.1-air-VL", "decision": "wait", "reason": "처음 보는 구조(model_type=bailing_moe_v3_vl — 선례 없음)라 add-model 이 보류(11-24 ① 런, 30일 다운로드 206회) — 클라우드에서 HF 접근이 막혀 카드·config 는 직접 못 읽음. 분류기 층 지도·llama.cpp 본선 지원·Q4_K_M GGUF 를 확인한 뒤 다시 확인", "decidedAt": "2026-11-25" },
   { "hfId": "Aleph-Alpha/Kolibri-1.1", "decision": "wait", "reason": "처음 보는 구조(model_type=kolibri1_1 — 선례 없음)라 add-model 이 보류(11-24 ① 런, 30일 다운로드 4회) — 클라우드에서 HF 접근이 막혀 카드·config 는 직접 못 읽음. 분류기 층 지도·llama.cpp 본선 지원·Q4_K_M GGUF 를 확인한 뒤 다시 확인", "decidedAt": "2026-11-25" },
   { "hfId": "baidu/ERNIE-5.5-Flash-Preview", "decision": "wait", "reason": "처음 보는 구조(model_type=ernie5_5_moe — 선례 없음)라 add-model 이 보류(11-24 ① 런, 출시 11-23) — 클라우드에서 HF 접근이 막혀 카드·config 는 직접 못 읽음. 분류기 층 지도에 ernie5_5_moe 를 넣고 llama.cpp 본선 지원·Q4_K_M GGUF·생각 모드를 확인한 뒤 다시 확인", "decidedAt": "2026-11-25" },
-  { "hfId": "baidu/ERNIE-5.5-Flash-Preview-BF16", "decision": "wait", "reason": "처음 보는 구조(model_type=ernie5_5_moe — 선례 없음)라 add-model 이 보류(11-24 ① 런) — BF16 판 저장소. 본 저장소 baidu/ERNIE-5.5-Flash-Preview 와 같이 다시 확인", "decidedAt": "2026-11-25" }
+  { "hfId": "baidu/ERNIE-5.5-Flash-Preview-BF16", "decision": "wait", "reason": "처음 보는 구조(model_type=ernie5_5_moe — 선례 없음)라 add-model 이 보류(11-24 ① 런) — BF16 판 저장소. 본 저장소 baidu/ERNIE-5.5-Flash-Preview 와 같이 다시 확인", "decidedAt": "2026-11-25" },
+  { "hfId": "JetBrains/Mellum2.1-12B-A2.5B-Instruct-MTP", "decision": "skip", "reason": "추측 디코딩용 드래프트(MTP) 모델(11-26 ① 런 '확인 필요', 30일 다운로드 8회) — 계산기 대상이 아님(Thinking-MTP 와 같음)", "decidedAt": "2026-11-27" }
 ]
